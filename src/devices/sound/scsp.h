@@ -81,6 +81,7 @@ private:
     u32 phase_step;
     int *table;
     int *scale;
+    bool noise; // noise waveform, taken from the LFSR instead of a table
   };
 
   struct SCSP_SLOT {
@@ -173,10 +174,13 @@ private:
                   // RingBuf
 
   // LFO
-  int m_PLFO_TRI[256], m_PLFO_SQR[256], m_PLFO_SAW[256], m_PLFO_NOI[256];
-  int m_ALFO_TRI[256], m_ALFO_SQR[256], m_ALFO_SAW[256], m_ALFO_NOI[256];
+  int m_PLFO_TRI[256], m_PLFO_SQR[256], m_PLFO_SAW[256];
+  int m_ALFO_TRI[256], m_ALFO_SQR[256], m_ALFO_SAW[256];
   int m_PSCALES[8][256];
   int m_ASCALES[8][256];
+
+  // noise generator: 17-bit LFSR, clocked once per slot step
+  u32 m_lfsr;
 
   void exec_dma(); /*state DMA transfer function*/
   void CheckPendingIRQ();
