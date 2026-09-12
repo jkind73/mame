@@ -275,7 +275,7 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag,
       m_main_irq_cb(*this), m_midi_out_cb(*this), m_BUFPTR(0),
       m_stream(nullptr), m_current_level(0), m_MidiOutW(0), m_MidiOutR(0),
       m_MidiW(0), m_MidiR(0), m_master_volume(0), m_mcieb(0), m_mcipd(0),
-      m_RBUFDST(nullptr) {
+      m_RBUFDST(nullptr), m_lfsr(1) {
   std::fill(std::begin(m_RINGBUF), std::end(m_RINGBUF), 0);
   std::fill(std::begin(m_MidiStack), std::end(m_MidiStack), 0);
   std::fill(std::begin(m_MidiOutStack), std::end(m_MidiOutStack), 0);
@@ -287,12 +287,11 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag,
   std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
   std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
   std::fill(std::begin(m_PLFO_SAW), std::end(m_PLFO_SAW), 0);
-  std::fill(std::begin(m_PLFO_NOI), std::end(m_PLFO_NOI), 0);
+
   std::fill(std::begin(m_ALFO_TRI), std::end(m_ALFO_TRI), 0);
   std::fill(std::begin(m_ALFO_SQR), std::end(m_ALFO_SQR), 0);
   std::fill(std::begin(m_ALFO_SAW), std::end(m_ALFO_SAW), 0);
-  std::fill(std::begin(m_ALFO_NOI), std::end(m_ALFO_NOI), 0);
-  std::fill(std::begin(m_ALFO_NOI), std::end(m_ALFO_NOI), 0);
+
   memset(m_PSCALES, 0, sizeof(m_PSCALES));
   memset(m_ASCALES, 0, sizeof(m_ASCALES));
   memset(&m_Slots, 0, sizeof(m_Slots));
@@ -373,6 +372,8 @@ void scsp_device::device_start() {
   save_item(NAME(m_mcieb));
   save_item(NAME(m_mcipd));
 
+  save_item(NAME(m_lfsr));
+
   save_item(NAME(m_DSP.RBP));
   save_item(NAME(m_DSP.RBL));
   save_item(NAME(m_DSP.COEF));
@@ -398,6 +399,9 @@ void scsp_device::device_reset() {
 
   // no interrupt is being requested to the sound CPU after a reset
   m_current_level = 0;
+
+  // the noise generator restarts from a known state
+  m_lfsr = 1;
 }
 
 //-------------------------------------------------
@@ -1007,9 +1011,7 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
   case 0x1e: // SCIEB
   case 0x1f:
     if (!m_irq_cb.isunset())
-
       CheckPendingIRQ();
-
     break;
   case 0x20: // SCIPD
   case 0x21:
@@ -1292,7 +1294,8 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
       sample = (s >> SHIFT);
     }
   } else if (SSCTL(slot) == 1) // Internally generated data (Noise)
-    sample = (s16)(machine().rand() & 0xffff); // Unknown algorithm
+    sample = (s16)((m_lfsr & 0xff)
+                   << 8);    // low byte of the LFSR, as Mednafen and Ymir do
   else if (SSCTL(slot) >= 2) // Internally generated data (All 0)
     sample = 0;
 
@@ -1427,6 +1430,10 @@ void scsp_device::DoMasterSamples(sound_stream &stream) {
 #else
       m_RBUFDST = m_RINGBUF + m_BUFPTR;
 #endif
+      // the noise generator is a 17-bit LFSR clocked once per slot step,
+      // active slot or not (Mednafen and Ymir both clock it per slot)
+      m_lfsr = (m_lfsr >> 1) | (((m_lfsr >> 5) ^ m_lfsr) & 1) << 16;
+
       if (m_Slots[sl].active) {
         SCSP_SLOT *slot = m_Slots + sl;
         u16 Enc;
@@ -1655,12 +1662,7 @@ void scsp_device::LFO_Init() {
     m_ALFO_TRI[i] = a;
     m_PLFO_TRI[i] = p;
 
-    // noise
-    // a=lfo_noise[i];
-    a = machine().rand() & 0xff;
-    p = 128 - a;
-    m_ALFO_NOI[i] = a;
-    m_PLFO_NOI[i] = p;
+    // the noise waveform is not a table, it comes from the LFSR
   }
 
   for (int s = 0; s < 8; ++s) {
@@ -1681,7 +1683,7 @@ s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO) {
 #if LFO_SHIFT != 8
   LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
 #endif
-  p = LFO->table[LFO->phase >> LFO_SHIFT];
+  p = LFO->noise ? (int)(s8)(m_lfsr & ~1) : LFO->table[LFO->phase >> LFO_SHIFT];
   p = LFO->scale[p + 128];
   return p << (SHIFT - LFO_SHIFT);
 }
@@ -1692,7 +1694,7 @@ s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO) {
 #if LFO_SHIFT != 8
   LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
 #endif
-  p = LFO->table[LFO->phase >> LFO_SHIFT];
+  p = LFO->noise ? (int)(u8)(m_lfsr & ~1) : LFO->table[LFO->phase >> LFO_SHIFT];
   p = LFO->scale[p];
   return p << (SHIFT - LFO_SHIFT);
 }
@@ -1713,9 +1715,10 @@ void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS,
       LFO->table = m_ALFO_TRI;
       break;
     case 3:
-      LFO->table = m_ALFO_NOI;
-      break;
+      LFO->table = nullptr;
+      break; // taken from the LFSR
     }
+    LFO->noise = (LFOWS == 3);
     LFO->scale = m_ASCALES[LFOS];
   } else {
     switch (LFOWS) {
@@ -1729,9 +1732,10 @@ void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS,
       LFO->table = m_PLFO_TRI;
       break;
     case 3:
-      LFO->table = m_PLFO_NOI;
-      break;
+      LFO->table = nullptr;
+      break; // taken from the LFSR
     }
+    LFO->noise = (LFOWS == 3);
     LFO->scale = m_PSCALES[LFOS];
   }
 }
