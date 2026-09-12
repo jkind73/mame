@@ -268,6 +268,7 @@ protected:
   inline int vdp2_window_process(int x, int y);
   int vdp2_window_process_pixel(int x, int y);
   uint32_t vdp2_window_config() const;
+  uint32_t vdp2_read_rotation_coefficient(uint32_t address);
   void vdp2_window_cache_line(int y);
   void vdp2_window_cache_invalidate() { m_window_cache_y = -1; }
   void vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y, int *e_y,
