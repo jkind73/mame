@@ -477,6 +477,7 @@ test1f diagnostic hacks:
 #include "saturn_cd_hle.h"
 #include "saturn_cdb.h"
 
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/scudsp/scudsp.h"
 #include "machine/nvram.h"
@@ -558,6 +559,9 @@ private:
   uint8_t saturn_direct_port_read(bool which);
   uint8_t smpc_direct_mode(uint16_t in_value, bool which);
   uint8_t smpc_th_control_mode(uint16_t in_value, bool which);
+  void gun_latch(bool which);
+  void gun1_latch();
+  void gun2_latch();
 
   void nvram_init(nvram_device &nvram, void *data, size_t size);
 
@@ -929,6 +933,13 @@ inline uint8_t sat_console_state::saturn_direct_port_read(bool which) {
   saturn_control_port_device *port = which == true ? m_ctrl2 : m_ctrl1;
   uint8_t cur_mode = m_smpc_hle->get_ddr(which);
   uint8_t res = 0;
+  uint8_t pdr_res;
+
+  // devices that speak their own line protocol (cfr. the Virtua Gun) are
+  // not decoded as control pads
+  if (port->read_pdr(cur_mode, m_direct_mux[which], pdr_res))
+    return pdr_res;
+
   uint16_t ctrl_read = port->read_direct();
 
   //  check for control method
@@ -993,6 +1004,17 @@ uint8_t sat_console_state::smpc_direct_mode(uint16_t in_value, bool which) {
 
   return 0x80 | 0x10 | ((in_value >> shift_bit[hshake]) & 0xf);
 }
+
+void sat_console_state::gun_latch(bool which) {
+  // a light gun pulls the port's latch line: the SMPC routes it to the VDP2
+  // external latch input when the matching EXLE bit is set
+  if (m_smpc_hle->get_exle(which))
+    m_vdp2->external_latch();
+}
+
+void sat_console_state::gun1_latch() { gun_latch(false); }
+
+void sat_console_state::gun2_latch() { gun_latch(true); }
 
 void sat_console_state::saturn(machine_config &config) {
   /* basic machine hardware */
@@ -1101,8 +1123,12 @@ void sat_console_state::saturn(machine_config &config) {
   m_saturn_cd_hle->host_irq_cb().set(m_scu,
                                      FUNC(saturn_scu_device::cd_block_irq_w));
 
-  SATURN_CONTROL_PORT(config, "ctrl1", saturn_controls, "joypad");
-  SATURN_CONTROL_PORT(config, "ctrl2", saturn_controls, "joypad");
+  SATURN_CONTROL_PORT(config, m_ctrl1, saturn_controls, "joypad")
+      .set_screen_tag("screen");
+  m_ctrl1->set_latch_callback(FUNC(sat_console_state::gun1_latch));
+  SATURN_CONTROL_PORT(config, m_ctrl2, saturn_controls, "joypad")
+      .set_screen_tag("screen");
+  m_ctrl2->set_latch_callback(FUNC(sat_console_state::gun2_latch));
 }
 
 static void saturn_cart(device_slot_interface &device) {
