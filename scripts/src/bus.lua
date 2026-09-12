@@ -5196,6 +5196,8 @@ if BUSES["SAT_CTRL"] then
 		MAME_DIR .. "src/devices/bus/sat_ctrl/joy_md.h",
 		MAME_DIR .. "src/devices/bus/sat_ctrl/keybd.cpp",
 		MAME_DIR .. "src/devices/bus/sat_ctrl/keybd.h",
+		MAME_DIR .. "src/devices/bus/sat_ctrl/mission.cpp",
+		MAME_DIR .. "src/devices/bus/sat_ctrl/mission.h",
 		MAME_DIR .. "src/devices/bus/sat_ctrl/mouse.cpp",
 		MAME_DIR .. "src/devices/bus/sat_ctrl/mouse.h",
 		MAME_DIR .. "src/devices/bus/sat_ctrl/multitap.cpp",
