@@ -9,9 +9,9 @@
 #include "ctrl.h"
 #include "emu.h"
 
-
 // slot devices
 #include "analog.h"
+#include "gun.h"
 #include "joy.h"
 #include "joy_md.h"
 #include "keybd.h"
@@ -63,7 +63,8 @@ saturn_control_port_device::saturn_control_port_device(
     : device_t(mconfig, SATURN_CONTROL_PORT, tag, owner, clock),
       device_single_card_slot_interface<device_saturn_control_port_interface>(
           mconfig, *this),
-      m_device(nullptr) {}
+      m_screen(*this, finder_base::DUMMY_TAG), m_device(nullptr),
+      m_latch_cb(*this) {}
 
 //-------------------------------------------------
 //  ~saturn_control_port_device - destructor
@@ -77,6 +78,7 @@ saturn_control_port_device::~saturn_control_port_device() {}
 
 void saturn_control_port_device::device_start() {
   m_device = get_card_device();
+  m_latch_cb.resolve_safe();
 }
 
 uint8_t saturn_control_port_device::read_status() {
@@ -109,6 +111,13 @@ uint16_t saturn_control_port_device::read_direct() {
   return data;
 }
 
+bool saturn_control_port_device::read_pdr(uint8_t ddr, uint8_t data,
+                                          uint8_t &res) {
+  if (m_device)
+    return m_device->read_pdr(ddr, data, res);
+  return false;
+}
+
 //-------------------------------------------------
 //  SLOT_INTERFACE( saturn_controls )
 //-------------------------------------------------
@@ -118,7 +127,7 @@ void saturn_controls(device_slot_interface &device) {
   device.option_add("racing", SATURN_WHEEL);
   device.option_add("analog", SATURN_ANALOG);
   device.option_add("mission", SATURN_MISSION);
-  //  device.option_add("lightgun",  SATURN_LIGHTGUN);
+  device.option_add("lightgun", SATURN_GUN);
   device.option_add("trackball", SATURN_TRACK);
   device.option_add("keyboard", SATURN_KEYBD);
   device.option_add("joy_md3", SATURN_JOYMD3B);
