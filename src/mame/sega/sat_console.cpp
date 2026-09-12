@@ -477,7 +477,6 @@ test1f diagnostic hacks:
 #include "saturn_cd_hle.h"
 #include "saturn_cdb.h"
 
-
 #include "cpu/m68000/m68000.h"
 #include "cpu/scudsp/scudsp.h"
 #include "machine/nvram.h"
@@ -1099,6 +1098,8 @@ void sat_console_state::saturn(machine_config &config) {
   SATURN_CD_HLE(config, m_saturn_cd_hle);
   m_saturn_cd_hle->add_route(0, "scsp", 1.0, 0);
   m_saturn_cd_hle->add_route(1, "scsp", 1.0, 1);
+  m_saturn_cd_hle->host_irq_cb().set(m_scu,
+                                     FUNC(saturn_scu_device::cd_block_irq_w));
 
   SATURN_CONTROL_PORT(config, "ctrl1", saturn_controls, "joypad");
   SATURN_CONTROL_PORT(config, "ctrl2", saturn_controls, "joypad");
