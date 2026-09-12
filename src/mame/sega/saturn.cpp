@@ -9191,6 +9191,22 @@ void saturn_state::vdp2_fade_effects() {
   // %04x",VDP2_COAR,VDP2_COAG,VDP2_COAB,VDP2_COBR,VDP2_COBG,VDP2_COBB);
 }
 
+// Window X coordinates are handled as signed 16 bit values: several games
+// program out of range parameters and expect them to work (the Panzer
+// Dragoon II Zwei and Panzer Dragoon Saga line window tables, Radiant
+// Silvergun, Snatcher). A negative end point leaves the window empty, a
+// negative start point is clamped to the left edge.
+static void fixup_window_x(int *s_x, int *e_x) {
+  if (*s_x < 0)
+    *s_x = 0;
+
+  if (*e_x < 0) {
+    if (*s_x >= *e_x)
+      *s_x = 0x3ff;
+    *e_x = 0;
+  }
+}
+
 void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
                                                 int *e_y, int y) {
   /*W0*/
@@ -9206,6 +9222,9 @@ void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
     *e_y = ((VDP2_W0EY & 0x7ff) >> 0);
     break;
   }
+
+  int raw_s_x, raw_e_x;
+
   // check if line window is enabled
   if (VDP2_W0LWE) {
     uint32_t base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
@@ -9214,35 +9233,41 @@ void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
     uint8_t interlace = (m_vdp2->get_lsmd() == 3);
     uint32_t vram_data = m_vdp2_vram[(address >> 2) + (y >> interlace)];
 
-    *s_x = (vram_data >> 16) & 0x3ff;
-    *e_x = (vram_data & 0x3ff);
+    raw_s_x = (int16_t)(vram_data >> 16);
+    raw_e_x = (int16_t)(vram_data & 0xffff);
   } else {
-    switch (m_vdp2->get_hreso() & 6) {
-    /*Normal*/
-    case 0:
-      *s_x = ((VDP2_W0SX & 0x3fe) >> 1);
-      *e_x = ((VDP2_W0EX & 0x3fe) >> 1);
-      break;
-    /*Hi-Res*/
-    case 2:
-      *s_x = ((VDP2_W0SX & 0x3ff) >> 0);
-      *e_x = ((VDP2_W0EX & 0x3ff) >> 0);
-      break;
-    /*Exclusive Normal*/
-    case 4:
-      *s_x = ((VDP2_W0SX & 0x1ff) >> 0);
-      *e_x = ((VDP2_W0EX & 0x1ff) >> 0);
-      *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
-      *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
-      break;
-    /*Exclusive Hi-Res*/
-    case 6:
-      *s_x = ((VDP2_W0SX & 0x1ff) << 1);
-      *e_x = ((VDP2_W0EX & 0x1ff) << 1);
-      *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
-      *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
-      break;
-    }
+    raw_s_x = (int16_t)VDP2_WPSX0;
+    raw_e_x = (int16_t)VDP2_WPEX0;
+  }
+
+  fixup_window_x(&raw_s_x, &raw_e_x);
+
+  // the line window table holds coordinates in the same format as WPSX/WPEX
+  switch (m_vdp2->get_hreso() & 6) {
+  /*Normal*/
+  case 0:
+    *s_x = ((raw_s_x & 0x3fe) >> 1);
+    *e_x = ((raw_e_x & 0x3fe) >> 1);
+    break;
+  /*Hi-Res*/
+  case 2:
+    *s_x = ((raw_s_x & 0x3ff) >> 0);
+    *e_x = ((raw_e_x & 0x3ff) >> 0);
+    break;
+  /*Exclusive Normal*/
+  case 4:
+    *s_x = ((raw_s_x & 0x1ff) >> 0);
+    *e_x = ((raw_e_x & 0x1ff) >> 0);
+    *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
+    *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
+    break;
+  /*Exclusive Hi-Res*/
+  case 6:
+    *s_x = ((raw_s_x & 0x1ff) << 1);
+    *e_x = ((raw_e_x & 0x1ff) << 1);
+    *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
+    *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
+    break;
   }
 }
 
@@ -9261,6 +9286,9 @@ void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
     *e_y = ((VDP2_W1EY & 0x7ff) >> 0);
     break;
   }
+
+  int raw_s_x, raw_e_x;
+
   // check if line window is enabled
   if (VDP2_W1LWE) {
     uint32_t base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
@@ -9269,35 +9297,41 @@ void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
     uint8_t interlace = (m_vdp2->get_lsmd() == 3);
     uint32_t vram_data = m_vdp2_vram[(address >> 2) + (y >> interlace)];
 
-    *s_x = (vram_data >> 16) & 0x3ff;
-    *e_x = (vram_data & 0x3ff);
+    raw_s_x = (int16_t)(vram_data >> 16);
+    raw_e_x = (int16_t)(vram_data & 0xffff);
   } else {
-    switch (m_vdp2->get_hreso() & 6) {
-    /*Normal*/
-    case 0:
-      *s_x = ((VDP2_W1SX & 0x3fe) >> 1);
-      *e_x = ((VDP2_W1EX & 0x3fe) >> 1);
-      break;
-    /*Hi-Res*/
-    case 2:
-      *s_x = ((VDP2_W1SX & 0x3ff) >> 0);
-      *e_x = ((VDP2_W1EX & 0x3ff) >> 0);
-      break;
-    /*Exclusive Normal*/
-    case 4:
-      *s_x = ((VDP2_W1SX & 0x1ff) >> 0);
-      *e_x = ((VDP2_W1EX & 0x1ff) >> 0);
-      *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
-      *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
-      break;
-    /*Exclusive Hi-Res*/
-    case 6:
-      *s_x = ((VDP2_W1SX & 0x1ff) << 1);
-      *e_x = ((VDP2_W1EX & 0x1ff) << 1);
-      *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
-      *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
-      break;
-    }
+    raw_s_x = (int16_t)VDP2_WPSX1;
+    raw_e_x = (int16_t)VDP2_WPEX1;
+  }
+
+  fixup_window_x(&raw_s_x, &raw_e_x);
+
+  // the line window table holds coordinates in the same format as WPSX/WPEX
+  switch (m_vdp2->get_hreso() & 6) {
+  /*Normal*/
+  case 0:
+    *s_x = ((raw_s_x & 0x3fe) >> 1);
+    *e_x = ((raw_e_x & 0x3fe) >> 1);
+    break;
+  /*Hi-Res*/
+  case 2:
+    *s_x = ((raw_s_x & 0x3ff) >> 0);
+    *e_x = ((raw_e_x & 0x3ff) >> 0);
+    break;
+  /*Exclusive Normal*/
+  case 4:
+    *s_x = ((raw_s_x & 0x1ff) >> 0);
+    *e_x = ((raw_e_x & 0x1ff) >> 0);
+    *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
+    *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
+    break;
+  /*Exclusive Hi-Res*/
+  case 6:
+    *s_x = ((raw_s_x & 0x1ff) << 1);
+    *e_x = ((raw_e_x & 0x1ff) << 1);
+    *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
+    *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
+    break;
   }
 }
 
