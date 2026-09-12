@@ -404,6 +404,12 @@ protected:
     int layer_name = 0; /* just to keep track */
   } current_tilemap;
 
+  // The 2048-entry fade A/B palette tables are rebuilt from CRAM and the
+  // color offset registers, so track when either of them changes instead of
+  // recomputing all 4096 pens every frame.
+  bool m_fade_effects_dirty = true;
+  void mark_fade_effects_dirty() { m_fade_effects_dirty = true; }
+
   // Per scanline window mask cache: neither the VDP2 registers nor VRAM can
   // change while a frame is being rendered, so the (expensive) window
   // evaluation is done once per line and window configuration instead of

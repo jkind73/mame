@@ -197,6 +197,9 @@ void saturn_state::machine_reset() {
   m_en_68k = 0;
 
   m_vdp2_legacy.old_crmd = -1;
+
+  // rebuild the faded palette tables for the new frame
+  mark_fade_effects_dirty();
 }
 
 void saturn_state::soundram_w(offs_t offset, uint16_t data, uint16_t mem_mask) {
@@ -438,6 +441,10 @@ void saturn_state::system_reset_w(int state) {
   memset(m_vdp2_cram.get(), 0x00, 0x080000);
   memset(m_vdp1_vram.get(), 0x00, 0x100000);
   // A-Bus
+
+  // CRAM and the color offset registers were cleared behind the VDP2's back
+  mark_fade_effects_dirty();
+  vdp2_window_cache_invalidate();
 }
 
 void saturn_state::system_halt_w(int state) {
@@ -8907,6 +8914,8 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
   offset &= (0xfff) >> (2);
   COMBINE_DATA(&m_vdp2_cram[offset]);
 
+  mark_fade_effects_dirty();
+
   switch (VDP2_CRMD) {
   /*Mode 2/3*/
   case 2:
@@ -8948,6 +8957,9 @@ void saturn_state::refresh_palette_data() {
   int r, g, b;
   int c_i;
   uint8_t bank;
+
+  // the faded copies are derived from these pens
+  mark_fade_effects_dirty();
 
   switch (VDP2_CRMD) {
   case 2:
@@ -8998,6 +9010,10 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
 
   // window coordinates may have changed
   vdp2_window_cache_invalidate();
+
+  // COAR/COAG/COAB/COBR/COBG/COBB feed the fade tables
+  if ((offset >= 0x114 / 2) && (offset <= 0x11e / 2))
+    mark_fade_effects_dirty();
 
   if (m_vdp2_legacy.old_crmd != VDP2_CRMD) {
     m_vdp2_legacy.old_crmd = VDP2_CRMD;
@@ -9091,6 +9107,12 @@ void saturn_state::vdp2_fade_effects() {
   uint8_t r, g, b;
   rgb_t color;
   int i;
+
+  // nothing to do unless CRAM or the color offset registers changed since
+  // the last rebuild
+  if (!m_fade_effects_dirty)
+    return;
+
   // popmessage("%04x %04x",VDP2_CLOFEN,VDP2_CLOFSL);
   for (i = 0; i < 2048; i++) {
     /*Fade A*/
@@ -9155,6 +9177,8 @@ void saturn_state::vdp2_fade_effects() {
     b = t_b;
     m_palette->set_pen_color(i + (2048 * 2), rgb_t(r, g, b));
   }
+
+  m_fade_effects_dirty = false;
   // popmessage("%04x %04x %04x %04x %04x
   // %04x",VDP2_COAR,VDP2_COAG,VDP2_COAB,VDP2_COBR,VDP2_COBG,VDP2_COBB);
 }
