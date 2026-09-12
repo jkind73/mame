@@ -7668,7 +7668,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   int8_t screen_over_process;
   uint8_t vcnt_shift, hcnt_shift;
   uint8_t coeff_msb;
-  uint32_t *coeff_table_base, coeff_table_offset;
+  uint32_t coeff_table_offset;
   int32_t coeff_table_val;
   uint32_t address;
   uint32_t *line;
@@ -7690,7 +7690,6 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   use_coeff_table = coeff_table_mode = coeff_table_size = coeff_table_shift = 0;
   coeff_table_offset = 0;
   coeff_table_val = 0;
-  coeff_table_base = nullptr;
 
   LOGMASKED(LOG_ROZ, "Rendering RBG with parameter %s\n", iRP == 1 ? "A" : "B");
   LOGMASKED(LOG_ROZ, "RPMD (parameter mode) = %x\n", VDP2_RPMD);
@@ -7717,11 +7716,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     screen_over_process = VDP2_RBOVR;
   }
   if (use_coeff_table) {
-    if (VDP2_CRKTE == 0) {
-      coeff_table_base = m_vdp2_vram.get();
-    } else {
-      coeff_table_base = m_vdp2_cram.get();
-    }
+    /* the table lives in VRAM, or in the upper half of CRAM when CRKTE is set
+     */
     if (coeff_table_size == 0) {
       coeff_table_offset = (coeff_table_offset & 0x0003) * 0x40000;
       coeff_table_shift = 2;
@@ -7812,7 +7808,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 0:
           address = coeff_table_offset +
                     ((RP.kast + RP.dkast * (vcnt >> vcnt_shift)) >> 16) * 4;
-          coeff_table_val = coeff_table_base[address / 4];
+          coeff_table_val = vdp2_read_rotation_coefficient(address);
           // coeff_line_color_screen_data = (coeff_table_val & 0x7f000000) >>
           // 24;
           coeff_msb = (coeff_table_val & 0x80000000) > 0;
@@ -7825,7 +7821,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 1:
           address = coeff_table_offset +
                     ((RP.kast + RP.dkast * (vcnt >> vcnt_shift)) >> 16) * 2;
-          coeff_table_val = coeff_table_base[address / 4];
+          coeff_table_val = vdp2_read_rotation_coefficient(address);
           if ((address & 2) == 0) {
             coeff_table_val >>= 16;
           }
@@ -7924,7 +7920,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
               ((RP.kast + RP.dkast * (vcnt >> vcnt_shift) + RP.dkax * hcnt) >>
                16) *
                   4;
-          coeff_table_val = coeff_table_base[address / 4];
+          coeff_table_val = vdp2_read_rotation_coefficient(address);
           // coeff_line_color_screen_data = (coeff_table_val & 0x7f000000) >>
           // 24;
           coeff_msb = (coeff_table_val & 0x80000000) > 0;
@@ -7940,7 +7936,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
               ((RP.kast + RP.dkast * (vcnt >> vcnt_shift) + RP.dkax * hcnt) >>
                16) *
                   2;
-          coeff_table_val = coeff_table_base[address / 4];
+          coeff_table_val = vdp2_read_rotation_coefficient(address);
           if ((address & 2) == 0) {
             coeff_table_val >>= 16;
           }
@@ -8481,6 +8477,17 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
   }
 
   vdp2_check_tilemap(bitmap, cliprect);
+}
+
+uint32_t saturn_state::vdp2_read_rotation_coefficient(uint32_t address) {
+  /* with CRKTE set the rotation coefficient table is read from color RAM
+     instead of VRAM: address bit 11 is forced and the 4 KiB of CRAM are wrapped
+     around, so the table always lands in the upper half of CRAM (cfr. FIFA Road
+     to World Cup 98) */
+  if (VDP2_CRKTE)
+    return m_vdp2_cram[((address | 0x800) & 0xfff) >> 2];
+
+  return m_vdp2_vram[address >> 2];
 }
 
 void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
