@@ -179,9 +179,9 @@ private:
   int m_ASCALES[8][256];
 
   void exec_dma(); /*state DMA transfer function*/
-
   void CheckPendingIRQ();
   void MainCheckPendingIRQ(u16 irq_type);
+  void update_main_irq();
   void ResetInterrupts();
   TIMER_CALLBACK_MEMBER(timer_cb);
   void timer_sync(int idx);
