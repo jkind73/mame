@@ -1952,8 +1952,6 @@ void saturn_state::vdp1_draw_distorted_sprite(const rectangle &cliprect) {
   } else {
     xsize = (current_sprite.CMDSIZE & 0x3f00) >> 8;
     xsize = xsize * 8;
-    if (xsize == 0)
-      return; /* setting prohibited */
 
     ysize = (current_sprite.CMDSIZE & 0x00ff);
     if (ysize == 0)
@@ -1972,7 +1970,13 @@ void saturn_state::vdp1_draw_distorted_sprite(const rectangle &cliprect) {
   q[3].x = x2s(current_sprite.CMDXD);
   q[3].y = y2s(current_sprite.CMDYD);
 
-  if (direction & 1) { // xflip
+  if (xsize == 0) {
+    // CMDSIZE.H = 0 is not "setting prohibited" for a textured sprite: the
+    // character pattern has no width, so the VDP1 never fetches any texel
+    // but the first one. Policenauts draws its shooting range scorecard
+    // with such commands.
+    q[0].u = q[1].u = q[2].u = q[3].u = 0;
+  } else if (direction & 1) { // xflip
     q[0].u = q[3].u = xsize - 1;
     q[1].u = q[2].u = 0;
   } else {
@@ -2109,7 +2113,11 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
     q[3].y = y2s(y2);
   }
 
-  if (direction & 1) { // xflip
+  if (xsize == 0) {
+    // see vdp1_draw_distorted_sprite: CMDSIZE.H = 0 means the pattern has
+    // no width and only the first texel is ever fetched
+    q[0].u = q[1].u = q[2].u = q[3].u = 0;
+  } else if (direction & 1) { // xflip
     q[0].u = q[3].u = xsize - 1;
     q[1].u = q[2].u = 0;
   } else {
