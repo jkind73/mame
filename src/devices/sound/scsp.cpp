@@ -450,7 +450,14 @@ void scsp_device::sound_stream_update(sound_stream &stream) {
   // saturn:toughtrk will hang on Human logo otherwise
   m_latched_MSLC_data = /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
 
-  // TODO: 1 sample (1Fs) 44.1 kHz irq here.
+  // 1Fs: one output sample has been produced.  Hardware requests this every
+  // sample (44.1 kHz); samples are generated in batches here, so request it
+  // once per update, like Yabause does.
+  if (stream.samples() > 0) {
+    m_udata.data[0x20 / 2] |= 0x400;
+    CheckPendingIRQ();
+    MainCheckPendingIRQ(0x400);
+  }
 }
 
 void scsp_device::CheckPendingIRQ() {
@@ -483,9 +490,7 @@ void scsp_device::CheckPendingIRQ() {
       lv1 &= lv2;
       lv0 &= lv2;
     }
-    if (lv1)
-
-    {
+    if (lv1) {
       level |= 0x2;
       lv0 &= lv1;
     }
@@ -513,10 +518,12 @@ void scsp_device::MainCheckPendingIRQ(u16 irq_type) {
 
   // machine().scheduler().synchronize(); // force resync
 
-  if (m_mcipd & m_mcieb)
-    m_main_irq_cb(1);
-  else
-    m_main_irq_cb(0);
+  update_main_irq();
+}
+
+// re-drive the main CPU interrupt line from whatever is pending and enabled
+void scsp_device::update_main_irq() {
+  m_main_irq_cb((m_mcipd & m_mcieb) ? 1 : 0);
 }
 
 void scsp_device::ResetInterrupts() {
@@ -950,6 +957,12 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
     }
     m_MidiOutStack[m_MidiOutW++] = data;
     m_MidiOutW &= 31;
+
+    // the buffer is no longer empty, drop the pending request
+    m_udata.data[0x20 / 2] &= ~0x200;
+    m_mcipd &= ~0x200;
+    CheckPendingIRQ();
+    update_main_irq();
   } break;
   case 8:
   case 9:
@@ -993,15 +1006,10 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
     break;
   case 0x1e: // SCIEB
   case 0x1f:
-    if (!m_irq_cb.isunset()) {
+    if (!m_irq_cb.isunset())
+
       CheckPendingIRQ();
-      // TODO: sample tick (bit 10), MIDI out empty (bit 9) and DMA end (bit 4)
-      // interrupts are not fully implemented, log their enablement so that
-      // software relying on them can be spotted
-      if (m_udata.data[0x1e / 2] & 0x610)
-        logerror("%s: SCSP SCIEB enabled %04x\n", machine().describe_context(),
-                 m_udata.data[0x1e / 2]);
-    }
+
     break;
   case 0x20: // SCIPD
   case 0x21:
@@ -1056,10 +1064,10 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
 
     MainCheckPendingIRQ(0);
 
-    // TODO: external INT0-2, MIDI in/out and sample tick are not routed
-    // to the main CPU yet, log their enablement so that software relying
-    // on them can be spotted
-    if (m_mcieb & ~0x1f0)
+    // TODO: the external INT0-2N pins (bits 0-2) are not wired up by any
+    // current user of this device, log their enablement so that software
+    // relying on them can be spotted
+    if (m_mcieb & 0x007)
       logerror("%s: SCSP MCIEB enabled %04x\n", machine().describe_context(),
                m_mcieb);
     break;
@@ -1093,7 +1101,9 @@ void scsp_device::UpdateRegR(int reg) {
     if (m_MidiR == m_MidiW) // if the input FIFO is empty, clear the IRQ
     {
       m_udata.data[0x20 / 2] &= ~0x08;
+      m_mcipd &= ~0x08;
       CheckPendingIRQ();
+      update_main_irq();
     }
     m_udata.data[0x4 / 2] = v;
   } break;
@@ -1116,10 +1126,6 @@ void scsp_device::UpdateRegR(int reg) {
       data = (data & 0xff00) | timer_read(idx);
     }
     break;
-
-    // case 0x20:
-    //   m_udata.data[0x20/2] ^= 0x400;
-    //   break;
 
   case 0x2a:
   case 0x2b:
@@ -1572,6 +1578,12 @@ void scsp_device::tra_complete() {
   // if buffer not empty, transmit next byte
   if (m_MidiOutR != m_MidiOutW) {
     transmit_register_setup(m_MidiOutStack[m_MidiOutR]);
+  } else {
+    // the output buffer has drained, request the MIDI out empty interrupt
+    // on both the sound CPU (SCIPD) and the main CPU (MCIPD) side
+    m_udata.data[0x20 / 2] |= 0x200;
+    CheckPendingIRQ();
+    MainCheckPendingIRQ(0x200);
   }
 }
 
@@ -1581,6 +1593,7 @@ void scsp_device::rcv_complete() {
   m_MidiW &= 31;
 
   CheckPendingIRQ();
+  MainCheckPendingIRQ(0x08);
 }
 
 // LFO handling
