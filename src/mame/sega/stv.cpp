@@ -1164,13 +1164,10 @@ void stv_state::stv_mem(address_map &map) {
       .mirror(0x20000000)
       .region("abus", 0); // cartridge
   /* Sound */
-  map(0x05a00000, 0x05a7ffff)
-      .rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w))
-      .mirror(0x80000); // the SCSP has 512KB of sound RAM; the top of the 1MB
-                        // window mirrors it
+  map(0x05a00000, 0x05afffff)
+      .rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w));
   map(0x05b00000, 0x05b00fff)
-      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write))
-      .mirror(0xfff000); // SCSP registers are mirrored across the 1MB window
+      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
   /* VDP1 */
   map(0x05c00000, 0x05c7ffff)
       .rw(FUNC(stv_state::vdp1_vram_r), FUNC(stv_state::vdp1_vram_w));
@@ -1225,19 +1222,17 @@ void stv_state::stvcd_mem(address_map &map) {
 
 // same as base saturn
 void stv_state::sound_mem(address_map &map) {
-  map(0x000000, 0x07ffff)
+  map(0x000000, 0x0fffff)
       .before_delay(NAME([](offs_t) { return 1; }))
       .ram()
-      .mirror(0x80000)
       .share("sound_ram");
   map(0x100000, 0x100fff)
       .before_delay(NAME([](offs_t) { return 1; }))
-      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write))
-      .mirror(0xfff000);
+      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
 }
 
 void stv_state::scsp_mem(address_map &map) {
-  map(0x000000, 0x07ffff).ram().mirror(0x80000).share("sound_ram");
+  map(0x000000, 0x0fffff).ram().share("sound_ram");
 }
 
 /********************************************
@@ -1430,7 +1425,6 @@ void stv_state::stvcd(machine_config &config) {
   saturn_cd_hle_device &stvcd(SATURN_CD_HLE(config, "saturn_cd_hle"));
   stvcd.add_route(0, "scsp", 1.0, 0);
   stvcd.add_route(1, "scsp", 1.0, 1);
-  stvcd.host_irq_cb().set(m_scu, FUNC(saturn_scu_device::cd_block_irq_w));
 }
 
 void stv_state::sega5838_map(address_map &map) {
