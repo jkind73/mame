@@ -9026,7 +9026,6 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
 void saturn_state::refresh_palette_data() {
   int r, g, b;
   int c_i;
-  uint8_t bank;
 
   // the faded copies are derived from these pens
   mark_fade_effects_dirty();
@@ -9043,23 +9042,27 @@ void saturn_state::refresh_palette_data() {
     }
   } break;
   case 0: {
-    for (bank = 0; bank < 2; bank++) {
-      for (c_i = 0; c_i < 0x400; c_i++) {
-        b = ((m_vdp2_cram[c_i] & 0x00007c00) >> 10);
-        g = ((m_vdp2_cram[c_i] & 0x000003e0) >> 5);
-        r = ((m_vdp2_cram[c_i] & 0x0000001f) >> 0);
-        m_palette->set_pen_color((c_i * 2) + 1 + bank * 0x400, pal5bit(r),
-                                 pal5bit(g), pal5bit(b));
-        b = ((m_vdp2_cram[c_i] & 0x7c000000) >> 26);
-        g = ((m_vdp2_cram[c_i] & 0x03e00000) >> 21);
-        r = ((m_vdp2_cram[c_i] & 0x001f0000) >> 16);
-        m_palette->set_pen_color(c_i * 2 + bank * 0x400, pal5bit(r), pal5bit(g),
-                                 pal5bit(b));
-      }
+    /* mode 0 holds 1024 colours and the most significant bit of the color
+       RAM address is ignored, so the upper half mirrors the lower half */
+    for (c_i = 0; c_i < 0x200; c_i++) {
+      b = ((m_vdp2_cram[c_i] & 0x00007c00) >> 10);
+      g = ((m_vdp2_cram[c_i] & 0x000003e0) >> 5);
+      r = ((m_vdp2_cram[c_i] & 0x0000001f) >> 0);
+      m_palette->set_pen_color((c_i * 2) + 1, pal5bit(r), pal5bit(g),
+                               pal5bit(b));
+      m_palette->set_pen_color(((c_i * 2) + 1) ^ 0x400, pal5bit(r), pal5bit(g),
+                               pal5bit(b));
+      b = ((m_vdp2_cram[c_i] & 0x7c000000) >> 26);
+      g = ((m_vdp2_cram[c_i] & 0x03e00000) >> 21);
+      r = ((m_vdp2_cram[c_i] & 0x001f0000) >> 16);
+      m_palette->set_pen_color(c_i * 2, pal5bit(r), pal5bit(g), pal5bit(b));
+      m_palette->set_pen_color((c_i * 2) ^ 0x400, pal5bit(r), pal5bit(g),
+                               pal5bit(b));
     }
   } break;
   case 1: {
-    for (c_i = 0; c_i < 0x800; c_i++) {
+    /* mode 1 holds the full 2048 colours */
+    for (c_i = 0; c_i < 0x400; c_i++) {
       b = ((m_vdp2_cram[c_i] & 0x00007c00) >> 10);
       g = ((m_vdp2_cram[c_i] & 0x000003e0) >> 5);
       r = ((m_vdp2_cram[c_i] & 0x0000001f) >> 0);
