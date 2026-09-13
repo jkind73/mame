@@ -140,6 +140,11 @@ void smpc_hle_device::device_start() {
   save_item(NAME(m_prev_sshoff));
   save_item(NAME(m_prev_sndoff));
   save_item(NAME(m_prev_cdoff));
+  // latches driven by SMPC commands (CDON/CDOFF, SETSZONE, NMIRESET),
+  // not by device_reset, so they must survive a state load
+  save_item(NAME(m_cd_sf));
+  save_item(NAME(m_cur_dotsel));
+  save_item(NAME(m_NMI_reset));
 
   m_cmd_timer = timer_alloc(FUNC(smpc_hle_device::handle_command), this);
   m_rtc_timer = timer_alloc(FUNC(smpc_hle_device::handle_rtc_increment), this);
