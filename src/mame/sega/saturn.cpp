@@ -1430,8 +1430,15 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
             (m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt * 2) & 0xfffff]
              << 8);
       // mode = 5;
-      //  TODO: 0x1-0x7ffe reserved (color bank)
       pix = raw;
+      /* the manual lists only 0x0000 as a transparent colour code and calls
+         0x0001-0x7ffe "invalid" because that range is reserved for colour bank
+         data, but the hardware skips every value below the 0x7fff end code
+         here. Sonic X-treme draws RGB 5:5:5 sprites containing 0x0060 (read
+         from VDP1 VRAM 0x10000) and expects them not to overwrite the frame
+         buffer. */
+      if (raw < 0x7fff)
+        raw = 0;
       transpen = 0;
       endcode = 0x7fff;
       break;
