@@ -1312,7 +1312,7 @@ void saturn_state::drawpixel_8bpp_trans(int x, int y, int patterndata,
                                         int offsetcnt) {
   uint16_t pix;
 
-  pix = m_vdp1_legacy.gfx_decode[patterndata + offsetcnt] & 0xff;
+  pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
   if (pix != 0) {
     m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
   }
@@ -1322,7 +1322,7 @@ void saturn_state::drawpixel_4bpp_notrans(int x, int y, int patterndata,
                                           int offsetcnt) {
   uint16_t pix;
 
-  pix = m_vdp1_legacy.gfx_decode[patterndata + offsetcnt / 2];
+  pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
   pix = offsetcnt & 1 ? (pix & 0x0f) : ((pix & 0xf0) >> 4);
   m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
 }
@@ -1331,7 +1331,7 @@ void saturn_state::drawpixel_4bpp_trans(int x, int y, int patterndata,
                                         int offsetcnt) {
   uint16_t pix;
 
-  pix = m_vdp1_legacy.gfx_decode[patterndata + offsetcnt / 2];
+  pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
   pix = offsetcnt & 1 ? (pix & 0x0f) : ((pix & 0xf0) >> 4);
   if (pix != 0)
     m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
@@ -1370,7 +1370,7 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
     switch (current_sprite.CMDPMOD & 0x0038) {
     case 0x0000: // mode 0 16 colour bank mode (4bits) (hanagumi blocks)
       // most of the shienryu sprites use this mode
-      raw = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0xfffff];
+      raw = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
       raw = offsetcnt & 1 ? (raw & 0x0f) : ((raw & 0xf0) >> 4);
       pix = raw + ((current_sprite.CMDCOLR & 0xfff0));
       // mode = 0;
@@ -1379,7 +1379,7 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       break;
     case 0x0008: // mode 1 16 colour lookup table mode (4bits)
       // shienryu explosions (and some enemies) use this mode
-      raw = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0xfffff];
+      raw = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
       raw = offsetcnt & 1 ? (raw & 0x0f) : ((raw & 0xf0) >> 4);
       pix =
           raw & 1
@@ -1398,7 +1398,7 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
     case 0x0010: // mode 2 64 colour bank mode (8bits) (character select
                  // portraits on hanagumi)
       raw =
-          m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0xfffff] & 0xff;
+          m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
       // mode = 2;
       /* only the low six bits of the dot data select a colour here - the top
          two are ignored (they still count for the 0xff end code and for the
@@ -1413,7 +1413,7 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
     case 0x0018: // mode 3 128 colour bank mode (8bits) (little characters on
                  // hanagumi use this mode)
       raw =
-          m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0xfffff] & 0xff;
+          m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
       /* seven bits of colour data, see mode 2 */
       pix = (raw & 0x7f) + (current_sprite.CMDCOLR & 0xff80);
       transpen = 0;
@@ -1422,7 +1422,7 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       break;
     case 0x0020: // mode 4 256 colour bank mode (8bits) (hanagumi title)
       raw =
-          m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0xfffff] & 0xff;
+          m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
       pix = raw + (current_sprite.CMDCOLR & 0xff00);
       transpen = 0;
       endcode = 0xff;
@@ -1435,8 +1435,8 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
          on a word address) and Ymir (charAddr &= ~0xF) do the same */
       patterndata &= ~0xf;
       raw = m_vdp1_legacy
-                .gfx_decode[(patterndata + offsetcnt * 2 + 1) & 0xfffff] |
-            (m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt * 2) & 0xfffff]
+                .gfx_decode[(patterndata + offsetcnt * 2 + 1) & 0x7ffff] |
+            (m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt * 2) & 0x7ffff]
              << 8);
       // mode = 5;
       pix = raw;
