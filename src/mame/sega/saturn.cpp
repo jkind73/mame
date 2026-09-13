@@ -2715,6 +2715,31 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.framebuffer_clear_on_next_frame));
   save_item(NAME(m_vdp1_legacy.local_x));
   save_item(NAME(m_vdp1_legacy.local_y));
+
+  // VDP1 state cached outside m_vdp1_regs: EWDR is the pixel value the erase
+  // function actually writes, and LOPR/COPR are what the 0x12/0x14 register
+  // reads return, so these are live state rather than derived copies
+  save_item(NAME(m_vdp1_legacy.ewdr));
+  save_item(NAME(m_vdp1_legacy.lopr));
+  save_item(NAME(m_vdp1_legacy.copr));
+
+  // framebuffer geometry latched from TVMR/DIE; double_interlace is also read
+  // back outside the reconfiguration guard
+  save_item(NAME(m_vdp1_legacy.framebuffer_mode));
+  save_item(NAME(m_vdp1_legacy.framebuffer_double_interlace));
+  save_item(NAME(m_vdp1_legacy.framebuffer_width));
+  save_item(NAME(m_vdp1_legacy.framebuffer_height));
+
+  // clipping programmed by the System/User Clipping commands and applied to
+  // every subsequent draw; rectangle is not an atom so save the bounds directly
+  save_item(NAME(m_vdp1_legacy.system_cliprect.min_x));
+  save_item(NAME(m_vdp1_legacy.system_cliprect.max_x));
+  save_item(NAME(m_vdp1_legacy.system_cliprect.min_y));
+  save_item(NAME(m_vdp1_legacy.system_cliprect.max_y));
+  save_item(NAME(m_vdp1_legacy.user_cliprect.min_x));
+  save_item(NAME(m_vdp1_legacy.user_cliprect.max_x));
+  save_item(NAME(m_vdp1_legacy.user_cliprect.min_y));
+  save_item(NAME(m_vdp1_legacy.user_cliprect.max_y));
   machine().save().register_postload(save_prepost_delegate(
       FUNC(saturn_state::vdp1_state_save_postload), this));
   return 0;
