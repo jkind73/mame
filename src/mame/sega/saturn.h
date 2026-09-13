@@ -268,6 +268,7 @@ protected:
   inline int vdp2_window_process(int x, int y);
   int vdp2_window_process_pixel(int x, int y);
   uint32_t vdp2_window_config() const;
+  int vdp2_window_all_disabled() const;
   uint32_t vdp2_read_rotation_coefficient(uint32_t address);
   void vdp2_window_cache_line(int y);
   void vdp2_window_cache_invalidate() {
@@ -400,6 +401,7 @@ protected:
       uint8_t logic = 0;
       uint8_t enabled[2]{};
       uint8_t area[2]{};
+      uint8_t sprite_window = 0;
     } window_control;
 
     uint8_t line_screen_enabled = 0;
