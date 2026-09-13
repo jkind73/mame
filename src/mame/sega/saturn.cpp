@@ -5672,10 +5672,6 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
 
   gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
 
-  if (current_tilemap.window_control.enabled[0] ||
-      current_tilemap.window_control.enabled[1])
-    popmessage("Window Enabled for RGB555 Zoom");
-
   if (!scalex || !scaley)
     return;
 
@@ -5782,7 +5778,8 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
                 vdp2_compute_color_offset(&r, &g, &b,
                                           current_tilemap.fade_control & 2);
 
-              if ((transparency & STV_TRANSPARENCY_NONE) || (data & 0x8000))
+              if (vdp2_window_process(x, y) &&
+                  ((transparency & STV_TRANSPARENCY_NONE) || (data & 0x8000)))
                 dest[x] = alpha_blend_r32(dest[x], rgb_t(r, g, b), alpha);
 
               x_index += dx;
@@ -5807,7 +5804,8 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
                 vdp2_compute_color_offset(&r, &g, &b,
                                           current_tilemap.fade_control & 2);
 
-              if ((transparency & STV_TRANSPARENCY_NONE) || (data & 0x8000))
+              if (vdp2_window_process(x, y) &&
+                  ((transparency & STV_TRANSPARENCY_NONE) || (data & 0x8000)))
                 dest[x] = add_blend_r32(dest[x], rgb_t(r, g, b));
 
               x_index += dx;
@@ -5832,7 +5830,8 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
                 vdp2_compute_color_offset(&r, &g, &b,
                                           current_tilemap.fade_control & 2);
 
-              if ((transparency & STV_TRANSPARENCY_NONE) || (data & 0x8000))
+              if (vdp2_window_process(x, y) &&
+                  ((transparency & STV_TRANSPARENCY_NONE) || (data & 0x8000)))
                 dest[x] = rgb_t(r, g, b);
 
               x_index += dx;
@@ -5856,10 +5855,6 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
 
   gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
   sprite_screen_width = sprite_screen_height = 8;
-
-  if (current_tilemap.window_control.enabled[0] ||
-      current_tilemap.window_control.enabled[1])
-    popmessage("Window Enabled for RGB555 tiles");
 
   // force clip to bitmap boundary
   myclip = clip;
@@ -5922,7 +5917,8 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
         for (int x = sx; x < ex; x++) {
           uint16_t data = (source[(x_index >> 16) * 2] << 8) |
                           source[(x_index >> 16) * 2 + 1];
-          if ((data & 0x8000) || (transparency & STV_TRANSPARENCY_NONE)) {
+          if (vdp2_window_process(x, y) &&
+              ((data & 0x8000) || (transparency & STV_TRANSPARENCY_NONE))) {
             int b = pal5bit((data & 0x7c00) >> 10);
             int g = pal5bit((data & 0x03e0) >> 5);
             int r = pal5bit(data & 0x001f);
@@ -5954,10 +5950,6 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
 
   gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
   sprite_screen_width = sprite_screen_height = 8;
-
-  if (current_tilemap.window_control.enabled[0] ||
-      current_tilemap.window_control.enabled[1])
-    popmessage("Window Enabled for RGB888 tiles");
 
   // force clip to bitmap boundary
   myclip = clip;
@@ -6023,7 +6015,8 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
                           (source[(x_index >> 16) * 4 + 1] << 16) |
                           (source[(x_index >> 16) * 4 + 2] << 8) |
                           (source[(x_index >> 16) * 4 + 3] << 0);
-          if ((data & 0x80000000) || (transparency & STV_TRANSPARENCY_NONE)) {
+          if (vdp2_window_process(x, y) &&
+              ((data & 0x80000000) || (transparency & STV_TRANSPARENCY_NONE))) {
             int b = (data & 0xff0000) >> 16;
             int g = (data & 0x00ff00) >> 8;
             int r = (data & 0x0000ff);
