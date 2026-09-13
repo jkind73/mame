@@ -1074,9 +1074,21 @@ void saturn_cd_hle_device::cmd_seek_disc() {
 void saturn_cd_hle_device::cmd_ffwd_rew_disc() {
   // FFWD / REW
   // cr1 bit 0 determines if this is a Fast Forward (0) or a Rewind (1) command
-  // TODO: unemulated, can be triggered thru Multiplayer by holding on relevant
-  // keys
-  // ...
+  // TODO: the pickup is not actually moved, can be triggered thru Multiplayer
+  // by holding on relevant keys
+  LOGCMD("%s: %s disc\n", machine().describe_context(),
+         (cr1 & 1) ? "Rewind" : "Fast forward");
+
+  /* the drive reports scanning for as long as the command is in effect and
+     stays there until the program asks for something else, so this is the
+     status to move to even though the read position does not change yet.
+     Without it the command also never completed: the handler returned
+     without raising CMOK, leaving anything waiting on the interrupt stuck */
+  cd_change_status(CD_STAT_SCAN);
+
+  hirqreg |= CMOK;
+  update_hirq();
+  cr_standard_return(cd_stat);
 }
 
 void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
