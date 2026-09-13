@@ -268,7 +268,18 @@ protected:
   inline int vdp2_window_process(int x, int y);
   int vdp2_window_process_pixel(int x, int y);
   uint32_t vdp2_window_config() const;
-  int vdp2_window_all_disabled() const;
+  // Per the manual, when the W0, W1 and SW enable bits of a screen are all zero
+  // the logic bit alone decides the outcome: OR (0) leaves the whole screen
+  // outside of the window effective area, AND (1) puts the whole screen inside
+  // of it. The sprite window is not emulated as a window source, so when it is
+  // the only window in use keep drawing the screen instead of blanking it.
+  // Inline: this is the common case, most layers run without any window.
+  int vdp2_window_all_disabled() const {
+    if (current_tilemap.window_control.sprite_window)
+      return 1;
+
+    return (current_tilemap.window_control.logic & 1) ? 0 : 1;
+  }
   uint32_t vdp2_read_rotation_coefficient(uint32_t address);
   void vdp2_window_cache_line(int y);
   void vdp2_window_cache_invalidate() {
