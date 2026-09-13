@@ -1442,9 +1442,14 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       transpen = 0;
       endcode = 0x7fff;
       break;
-    case 0x0038: // invalid
+    case 0x0030: // mode 6 invalid
+    case 0x0038: // mode 7 invalid
       // game tengoku uses this on hi score screen (tate mode)
       // according to Charles, reads from VRAM address 0
+      /* both illegal colour modes behave the same way: the dot data comes from
+         VRAM word 0 instead of from the character data (mednafen does the same,
+         and its VRAM usage counter attributes the access to address 0 as well)
+       */
       raw = pix =
           m_vdp1_legacy.gfx_decode[1] | (m_vdp1_legacy.gfx_decode[0] << 8);
       // TODO: check transpen
