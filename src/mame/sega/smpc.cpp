@@ -810,28 +810,35 @@ void smpc_hle_device::read_saturn_ports() {
   uint8_t ctrl2_offset =
       0; // this is used when there is segatap or multitap connected
 
+  // the report has to fit in the 32 OREG bytes. A single multitap can already
+  // ask for more than that - six sub-peripherals, each an ID byte plus up to
+  // six data bytes - so stop filling when the register file is full instead of
+  // writing past it (mamedev MT06893 has two multitaps inserted at once)
+  constexpr size_t oreg_max = sizeof(m_oreg);
+
   m_oreg[reg_offset++] = status1;
 
   // read ctrl1
-  for (int i = 0; i < (status1 & 0xf); i++) {
+  for (int i = 0; (i < (status1 & 0xf)) && (reg_offset < oreg_max); i++) {
     uint8_t id = m_ctrl1->read_id(i);
 
     m_oreg[reg_offset++] = id;
-    for (int j = 0; j < (id & 0xf); j++)
+    for (int j = 0; (j < (id & 0xf)) && (reg_offset < oreg_max); j++)
       m_oreg[reg_offset++] = m_ctrl1->read_ctrl(j + ctrl1_offset);
 
     ctrl1_offset += (id & 0xf);
   }
 
-  m_oreg[reg_offset++] = status2;
+  if (reg_offset < oreg_max)
+    m_oreg[reg_offset++] = status2;
 
   // read ctrl2
-  for (int i = 0; i < (status2 & 0xf); i++) {
+  for (int i = 0; (i < (status2 & 0xf)) && (reg_offset < oreg_max); i++) {
     uint8_t id = m_ctrl2->read_id(i);
 
     m_oreg[reg_offset++] = id;
 
-    for (int j = 0; j < (id & 0xf); j++)
+    for (int j = 0; (j < (id & 0xf)) && (reg_offset < oreg_max); j++)
       m_oreg[reg_offset++] = m_ctrl2->read_ctrl(j + ctrl2_offset);
 
     ctrl2_offset += (id & 0xf);
