@@ -1501,6 +1501,14 @@ void saturn_cd_hle_device::cmd_get_buffer_partition_sector_number() {
 
   uint32_t bufnum = cr3 >> 8;
 
+  if (bufnum >= MAX_FILTERS) {
+    LOGWARN("CD: invalid buffer number\n");
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= (CMOK);
+    update_hirq();
+    return;
+  }
+
   cr1 = cd_stat;
   cr2 = 0;
   cr3 = 0;
@@ -1529,6 +1537,14 @@ void saturn_cd_hle_device::cmd_calculate_actual_data_size() {
   uint32_t bufnum = cr3 >> 8;
   uint32_t sectoffs = cr2;
   uint32_t numsect = cr4;
+
+  if (bufnum >= MAX_FILTERS) {
+    LOGWARN("CD: invalid buffer number\n");
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= (CMOK | ESEL);
+    update_hirq();
+    return;
+  }
 
   LOGCMD("%s: Calculate actual size: buf %x offs %x numsect %x\n",
          machine().describe_context(), bufnum, sectoffs, numsect);
@@ -1782,6 +1798,14 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
   LOGCMD("%s: Put sector data (SN %d SO %d BN %d)\n",
          machine().describe_context(), sectnum, sectofs, bufnum);
 
+  if (bufnum >= MAX_FILTERS) {
+    LOGWARN("CD: invalid buffer number\n");
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= (CMOK | EHST);
+    update_hirq();
+    return;
+  }
+
   xfertype32 = XFERTYPE32_PUTSECTOR;
 
   /*TODO: eventual errors? */
@@ -1823,6 +1847,21 @@ void saturn_cd_hle_device::cmd_copy_sector_data() {
   uint32_t src_filter = (cr3 >> 8) & 0xff;
   uint32_t dst_filter = cr1 & 0xff;
   uint32_t sectnum = cr4 & 0xff;
+
+  if (src_filter >= MAX_FILTERS) {
+    LOGWARN("CD: invalid buffer number\n");
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= (CMOK | ECPY);
+    update_hirq();
+    return;
+  }
+  if (dst_filter >= MAX_FILTERS) {
+    LOGWARN("CD: invalid buffer number\n");
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= (CMOK | ECPY);
+    update_hirq();
+    return;
+  }
 
   // cd_stat |= CD_STAT_TRANS;
   // transpart = &partitions[dst_filter];
