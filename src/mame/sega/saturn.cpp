@@ -4623,6 +4623,8 @@ N2CHCN   | N2CHSZ   |
 #define VDP2_CCW0E ((VDP2_WCTLD & 0x0200) >> 9)
 #define VDP2_CCW0A ((VDP2_WCTLD & 0x0100) >> 8)
 #define VDP2_RPLOG ((VDP2_WCTLD & 0x0080) >> 7)
+#define VDP2_RPSWE ((VDP2_WCTLD & 0x0020) >> 5)
+#define VDP2_RPSWA ((VDP2_WCTLD & 0x0010) >> 4)
 #define VDP2_RPW1E ((VDP2_WCTLD & 0x0008) >> 3)
 #define VDP2_RPW1A ((VDP2_WCTLD & 0x0004) >> 2)
 #define VDP2_RPW0E ((VDP2_WCTLD & 0x0002) >> 1)
@@ -8044,7 +8046,7 @@ inline bool saturn_state::vdp2_roz_window(int x, int y) {
   uint8_t w1_area = VDP2_R0W1A;
 
   if (w0_enable == 0 && w1_enable == 0)
-    return true;
+    return VDP2_R0SWE ? true : !(logic & 1);
 
   vdp2_roz_window_prepare(y);
 
@@ -8078,7 +8080,8 @@ inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
   uint8_t w1_area = VDP2_RPW1A;
 
   if (w0_enable == 0 && w1_enable == 0)
-    return rot_parameter ^ 1;
+    return VDP2_RPSWE ? (rot_parameter ^ 1)
+                      : ((logic & 1) ? rot_parameter : (rot_parameter ^ 1));
 
   vdp2_roz_window_prepare(y);
 
@@ -8197,7 +8200,7 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   current_tilemap.window_control.logic = VDP2_N0LOG;
   current_tilemap.window_control.enabled[0] = VDP2_N0W0E;
   current_tilemap.window_control.enabled[1] = VDP2_N0W1E;
-  //  current_tilemap.window_control.? = VDP2_N0SWE;
+  current_tilemap.window_control.sprite_window = VDP2_N0SWE;
   current_tilemap.window_control.area[0] = VDP2_N0W0A;
   current_tilemap.window_control.area[1] = VDP2_N0W1A;
   //  current_tilemap.window_control.? = VDP2_N0SWA;
@@ -8297,7 +8300,7 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   current_tilemap.window_control.logic = VDP2_N1LOG;
   current_tilemap.window_control.enabled[0] = VDP2_N1W0E;
   current_tilemap.window_control.enabled[1] = VDP2_N1W1E;
-  //  current_tilemap.window_control.? = VDP2_N1SWE;
+  current_tilemap.window_control.sprite_window = VDP2_N1SWE;
   current_tilemap.window_control.area[0] = VDP2_N1W0A;
   current_tilemap.window_control.area[1] = VDP2_N1W1A;
   //  current_tilemap.window_control.? = VDP2_N1SWA;
@@ -8397,7 +8400,7 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
   current_tilemap.window_control.logic = VDP2_N2LOG;
   current_tilemap.window_control.enabled[0] = VDP2_N2W0E;
   current_tilemap.window_control.enabled[1] = VDP2_N2W1E;
-  //  current_tilemap.window_control.? = VDP2_N2SWE;
+  current_tilemap.window_control.sprite_window = VDP2_N2SWE;
   current_tilemap.window_control.area[0] = VDP2_N2W0A;
   current_tilemap.window_control.area[1] = VDP2_N2W1A;
   //  current_tilemap.window_control.? = VDP2_N2SWA;
@@ -8499,7 +8502,7 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
   current_tilemap.window_control.logic = VDP2_N3LOG;
   current_tilemap.window_control.enabled[0] = VDP2_N3W0E;
   current_tilemap.window_control.enabled[1] = VDP2_N3W1E;
-  //  current_tilemap.window_control.? = VDP2_N3SWE;
+  current_tilemap.window_control.sprite_window = VDP2_N3SWE;
   current_tilemap.window_control.area[0] = VDP2_N3W0A;
   current_tilemap.window_control.area[1] = VDP2_N3W1A;
   //  current_tilemap.window_control.? = VDP2_N3SWA;
@@ -8640,7 +8643,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     current_tilemap.window_control.logic = VDP2_R0LOG;
     current_tilemap.window_control.enabled[0] = VDP2_R0W0E;
     current_tilemap.window_control.enabled[1] = VDP2_R0W1E;
-    //      current_tilemap.window_control.? = VDP2_R0SWE;
+    current_tilemap.window_control.sprite_window = VDP2_R0SWE;
     current_tilemap.window_control.area[0] = VDP2_R0W0A;
     current_tilemap.window_control.area[1] = VDP2_R0W1A;
     //      current_tilemap.window_control.? = VDP2_R0SWA;
@@ -8805,7 +8808,7 @@ void saturn_state::vdp2_draw_RBG0(bitmap_rgb32 &bitmap,
   current_tilemap.window_control.logic = 0;      // VDP2_R0LOG;
   current_tilemap.window_control.enabled[0] = 0; // VDP2_R0W0E;
   current_tilemap.window_control.enabled[1] = 0; // VDP2_R0W1E;
-  //  current_tilemap.window_control.? = VDP2_R0SWE;
+  current_tilemap.window_control.sprite_window = 0;
   current_tilemap.window_control.area[0] = 0; // VDP2_R0W0A;
   current_tilemap.window_control.area[1] = 0; // VDP2_R0W1A;
   //  current_tilemap.window_control.? = VDP2_R0SWA;
@@ -9403,7 +9406,7 @@ int saturn_state::vdp2_window_process_pixel(int x, int y) {
 
   if (current_tilemap.window_control.enabled[0] == 0 &&
       current_tilemap.window_control.enabled[1] == 0)
-    return 1;
+    return vdp2_window_all_disabled();
 
   // a disabled window must not influence the result, so start from the
   // neutral value of the selected logic: inside for AND, outside for OR
@@ -9431,7 +9434,20 @@ uint32_t saturn_state::vdp2_window_config() const {
 
   return (win.enabled[0] ? 0x01u : 0x00u) | (win.enabled[1] ? 0x02u : 0x00u) |
          (win.area[0] ? 0x04u : 0x00u) | (win.area[1] ? 0x08u : 0x00u) |
-         ((win.logic & 1) ? 0x10u : 0x00u);
+         ((win.logic & 1) ? 0x10u : 0x00u) |
+         (win.sprite_window ? 0x20u : 0x00u);
+}
+
+// Per the manual, when the W0, W1 and SW enable bits of a screen are all zero
+// the logic bit alone decides the outcome: OR (0) leaves the whole screen
+// outside of the window effective area, AND (1) puts the whole screen inside
+// of it. The sprite window is not emulated, so when it is the only window in
+// use keep drawing the screen instead of blanking it.
+int saturn_state::vdp2_window_all_disabled() const {
+  if (current_tilemap.window_control.sprite_window)
+    return 1;
+
+  return (current_tilemap.window_control.logic & 1) ? 0 : 1;
 }
 
 void saturn_state::vdp2_window_cache_line(int y) {
@@ -9443,10 +9459,10 @@ void saturn_state::vdp2_window_cache_line(int y) {
 }
 
 inline int saturn_state::vdp2_window_process(int x, int y) {
-  // no window at all on this layer, everything is inside
+  // no W0/W1 window at all on this layer, the logic bit decides the outcome
   if (current_tilemap.window_control.enabled[0] == 0 &&
       current_tilemap.window_control.enabled[1] == 0)
-    return 1;
+    return vdp2_window_all_disabled();
 
   if (unsigned(x) >= unsigned(WINDOW_CACHE_WIDTH))
     return vdp2_window_process_pixel(x, y);
@@ -9622,7 +9638,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
   current_tilemap.window_control.logic = VDP2_SPLOG;
   current_tilemap.window_control.enabled[0] = VDP2_SPW0E;
   current_tilemap.window_control.enabled[1] = VDP2_SPW1E;
-  //  current_tilemap.window_control.? = VDP2_SPSWE;
+  current_tilemap.window_control.sprite_window = VDP2_SPSWE;
   current_tilemap.window_control.area[0] = VDP2_SPW0A;
   current_tilemap.window_control.area[1] = VDP2_SPW1A;
   //  current_tilemap.window_control.? = VDP2_SPSWA;
