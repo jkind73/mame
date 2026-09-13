@@ -1429,6 +1429,11 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       // mode = 4;
       break;
     case 0x0028: // mode 5 32,768 colour RGB mode (16bits)
+      /* character data is fetched two bytes at a time in this mode and the
+         hardware forces the character address onto a 16 byte boundary first,
+         so an odd CMDSRCA loses its low bit here - mednafen (tex_base &= ~0x7
+         on a word address) and Ymir (charAddr &= ~0xF) do the same */
+      patterndata &= ~0xf;
       raw = m_vdp1_legacy
                 .gfx_decode[(patterndata + offsetcnt * 2 + 1) & 0xfffff] |
             (m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt * 2) & 0xfffff]
