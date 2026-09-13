@@ -107,6 +107,9 @@ DASM notes:
 DEFINE_DEVICE_TYPE(SATURN_CD_HLE, saturn_cd_hle_device, "saturn_cd_hle",
                    "Sega Saturn/ST-V CD Block HLE")
 
+ALLOW_SAVE_TYPE(saturn_cd_hle_device::transT);
+ALLOW_SAVE_TYPE(saturn_cd_hle_device::trans32T);
+
 saturn_cd_hle_device::saturn_cd_hle_device(const machine_config &mconfig,
                                            const char *tag, device_t *owner,
                                            uint32_t clock)
@@ -166,6 +169,10 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(m_status_change_in_progress));
   save_item(NAME(numfiles));
   save_item(NAME(firstfile));
+  // the transfer type gives the saved xfercount/xferoffs/xfersect* positions
+  // their meaning, so it has to travel with them
+  save_item(NAME(xfertype));
+  save_item(NAME(xfertype32));
 }
 
 void saturn_cd_hle_device::device_reset() {
