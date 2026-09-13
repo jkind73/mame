@@ -117,6 +117,7 @@ by introdon in ST-V ("SG0000000"), and according to the manual it's even wrong.
 #include "stv.h"
 #include "emu.h"
 
+
 #include "saturn_cd_hle.h"
 
 #include "cpu/m68000/m68000.h"
@@ -1191,39 +1192,51 @@ void stv_state::init_stv_us() {
 void stv_state::stv_mem(address_map &map) {
   map(0x00000000, 0x0007ffff)
       .rom()
-      .mirror(0x20000000)
-      .region("bios", 0); // bios
+      .mirror(0x20080000)
+      .region("bios", 0); // bios, mirrored across the 1MB CS0 window
   map(0x00100000, 0x0010007f)
       .mirror(0x2007ff80)
       .m(m_smpc_hle, FUNC(smpc_hle_device::io_map));
   map(0x00180000, 0x0018ffff)
       .rw(FUNC(stv_state::backupram_r), FUNC(stv_state::backupram_w))
-      .share("share1");
+      .mirror(0x20070000)
+      .share("share1"); // mirrored across the 512KB window
   map(0x00200000, 0x002fffff).ram().mirror(0x20100000).share("workram_l");
   //	map(0x00400000, 0x0040003f).rw(FUNC(stv_state::ioga_r),
-  // FUNC(stv_state::ioga_w)).umask32(0x00ff00ff);
+  //FUNC(stv_state::ioga_w)).umask32(0x00ff00ff);
   map(0x00400000, 0x0040001f)
       .mirror(0x20)
       .rw("ioga", FUNC(sega_315_5649_device::read),
           FUNC(sega_315_5649_device::write))
       .umask32(0x00ff00ff);
-  map(0x01000000, 0x017fffff).w("dcc", FUNC(saturn_dcc_device::minit_w));
-  map(0x01800000, 0x01ffffff).w("dcc", FUNC(saturn_dcc_device::sinit_w));
+  // the FRT init windows read back 0xffff and pass writes straight to the FRT
+  map(0x01000000, 0x017fffff)
+      .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
+      .w("dcc", FUNC(saturn_dcc_device::minit_w));
+  map(0x01800000, 0x01ffffff)
+      .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
+      .w("dcc", FUNC(saturn_dcc_device::sinit_w));
   map(0x02000000, 0x04ffffff)
       .rom()
       .mirror(0x20000000)
       .region("abus", 0); // cartridge
   /* Sound */
-  map(0x05a00000, 0x05afffff)
-      .rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w));
+  map(0x05a00000, 0x05a7ffff)
+      .rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w))
+      .mirror(0x80000); // the SCSP has 512KB of sound RAM; the top of the 1MB
+                        // window mirrors it
   map(0x05b00000, 0x05b00fff)
-      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
+      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write))
+      .mirror(0xfff000); // SCSP registers are mirrored across the 1MB window
   /* VDP1 */
   map(0x05c00000, 0x05c7ffff)
       .rw(FUNC(stv_state::vdp1_vram_r), FUNC(stv_state::vdp1_vram_w));
   map(0x05c80000, 0x05cbffff)
+      .mirror(0x40000)
       .rw(FUNC(stv_state::vdp1_framebuffer0_r),
-          FUNC(stv_state::vdp1_framebuffer0_w));
+          FUNC(stv_state::vdp1_framebuffer0_w)); // only the back buffer is
+                                                 // visible, mirrored across the
+                                                 // 512KB window
   map(0x05d00000, 0x05d0001f)
       .rw(FUNC(stv_state::vdp1_regs_r), FUNC(stv_state::vdp1_regs_w));
   /* VDP2 */
@@ -1236,11 +1249,14 @@ void stv_state::stv_mem(address_map &map) {
       .rw(FUNC(stv_state::vdp2_regs_r), FUNC(stv_state::vdp2_regs_w));
   map(0x05f80000, 0x05fbffff).m(m_vdp2, FUNC(saturn_vdp2_device::regs_map));
   /* SCU */
+  map(0x05fc0000, 0x05fdffff).lr32(NAME([](offs_t offset, u32 mem_mask) {
+    return u32(0x000e0000);
+  })); // unused part of the SCU window reads a constant
   map(0x05fe0000, 0x05fe00cf).m(m_scu, FUNC(saturn_scu_device::regs_map));
 
   map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
   map(0x60000000, 0x600003ff).nopw();
-  map(0xc0000000, 0xc00007ff).ram(); // cache RAM
+  map(0xc0000000, 0xc0000fff).ram(); // cache data array, 4KiB on the SH-2
 }
 
 void stv_state::critcrsh_mem(address_map &map) {
@@ -1272,17 +1288,19 @@ void stv_state::stvcd_mem(address_map &map) {
 
 // same as base saturn
 void stv_state::sound_mem(address_map &map) {
-  map(0x000000, 0x0fffff)
+  map(0x000000, 0x07ffff)
       .before_delay(NAME([](offs_t) { return 1; }))
       .ram()
+      .mirror(0x80000)
       .share("sound_ram");
   map(0x100000, 0x100fff)
       .before_delay(NAME([](offs_t) { return 1; }))
-      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
+      .rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write))
+      .mirror(0xfff000);
 }
 
 void stv_state::scsp_mem(address_map &map) {
-  map(0x000000, 0x0fffff).ram().share("sound_ram");
+  map(0x000000, 0x07ffff).ram().mirror(0x80000).share("sound_ram");
 }
 
 /********************************************
@@ -1623,8 +1641,7 @@ void stv_state::machine_start() {
 
 #define STV_PLAYER_INPUTS(_n_, _b1_, _b2_, _b3_, _b4_)                         \
   PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_##_b1_)                                    \
-  PORT_PLAYER(_n_)                                                             \
-  PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_##_b2_) PORT_PLAYER(_n_)                   \
+  PORT_PLAYER(_n_) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_##_b2_) PORT_PLAYER(_n_)  \
       PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_##_b3_) PORT_PLAYER(_n_)               \
           PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_##_b4_) PORT_PLAYER(_n_) PORT_BIT( \
               0x10, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN) PORT_PLAYER(_n_)         \
@@ -1930,36 +1947,34 @@ static INPUT_PORTS_START(stv) PORT_START("PDR1")
                                                             0x80, IP_ACTIVE_LOW,
                                                             IPT_MAHJONG_L) PORT_PLAYER(2)
 
-                                                            PORT_START(
-                                                                "P2_"
-                                                                "KEY4") PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNUSED)
-                                                                PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(
-                                                                    0x04,
+                                                            PORT_START("P2_"
+                                                                       "KEY4") PORT_BIT(
+                                                                0x01,
+                                                                IP_ACTIVE_LOW,
+                                                                IPT_UNUSED) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED)
+                                                                PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(
+                                                                    0x08,
                                                                     IP_ACTIVE_LOW,
                                                                     IPT_UNUSED)
                                                                     PORT_BIT(
-                                                                        0x08,
+                                                                        0x10,
                                                                         IP_ACTIVE_LOW,
                                                                         IPT_UNUSED)
                                                                         PORT_BIT(
-                                                                            0x10,
+                                                                            0x20,
                                                                             IP_ACTIVE_LOW,
                                                                             IPT_UNUSED)
                                                                             PORT_BIT(
-                                                                                0x20,
+                                                                                0x40,
                                                                                 IP_ACTIVE_LOW,
-                                                                                IPT_UNUSED)
-                                                                                PORT_BIT(
-                                                                                    0x40,
-                                                                                    IP_ACTIVE_LOW,
-                                                                                    IPT_MAHJONG_FLIP_FLOP)
-                                                                                    PORT_PLAYER(
-                                                                                        2)
-                                                                                        PORT_BIT(
-                                                                                            0x80,
-                                                                                            IP_ACTIVE_LOW,
-                                                                                            IPT_UNUSED)
-                                                                                            INPUT_PORTS_END
+                                                                                IPT_MAHJONG_FLIP_FLOP)
+                                                                                PORT_PLAYER(
+                                                                                    2)
+                                                                                    PORT_BIT(
+                                                                                        0x80,
+                                                                                        IP_ACTIVE_LOW,
+                                                                                        IPT_UNUSED)
+                                                                                        INPUT_PORTS_END
 
     /* Micronet layout, routes joystick port to the mux! */
     static INPUT_PORTS_START(myfairld) PORT_INCLUDE(stv)
@@ -1984,170 +1999,157 @@ static INPUT_PORTS_START(stv) PORT_START("PDR1")
 
                                 PORT_START("P1_KEY0") PORT_BIT(
                                     0x01, IP_ACTIVE_LOW,
-                                    IPT_MAHJONG_KAN) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00)
-                                    PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_START1) PORT_CONDITION(
-                                        "IO_TYPE", 0x01, EQUALS,
-                                        0x00) PORT_BIT(0x04, IP_ACTIVE_LOW,
-                                                       IPT_UNUSED)
+                                    IPT_MAHJONG_KAN)
+                                    PORT_CONDITION(
+                                        "IO_TYPE",
+                                        0x01, EQUALS,
+                                        0x00) PORT_BIT(0x02, IP_ACTIVE_LOW,
+                                                       IPT_START1)
                                         PORT_CONDITION(
                                             "IO_TYPE",
                                             0x01, EQUALS,
-                                            0x00) PORT_BIT(0x08, IP_ACTIVE_LOW,
+                                            0x00) PORT_BIT(0x04, IP_ACTIVE_LOW,
                                                            IPT_UNUSED)
                                             PORT_CONDITION(
                                                 "IO_TYPE",
                                                 0x01, EQUALS,
-                                                0x00) PORT_BIT(0x10,
+                                                0x00) PORT_BIT(0x08,
                                                                IP_ACTIVE_LOW,
-                                                               IPT_MAHJONG_E)
+                                                               IPT_UNUSED)
                                                 PORT_CONDITION(
                                                     "IO_TYPE",
                                                     0x01, EQUALS,
-                                                    0x00) PORT_BIT(0x20,
+                                                    0x00) PORT_BIT(0x10,
                                                                    IP_ACTIVE_LOW,
-                                                                   IPT_MAHJONG_A)
+                                                                   IPT_MAHJONG_E)
                                                     PORT_CONDITION(
                                                         "IO_TYPE",
                                                         0x01, EQUALS,
-                                                        0x00) PORT_BIT(0x40,
+                                                        0x00) PORT_BIT(0x20,
                                                                        IP_ACTIVE_LOW,
-                                                                       IPT_MAHJONG_M)
+                                                                       IPT_MAHJONG_A)
                                                         PORT_CONDITION(
-                                                            "IO_TYPE", 0x01,
-                                                            EQUALS,
-                                                            0x00) PORT_BIT(0x80,
-                                                                           IP_ACTIVE_LOW,
-                                                                           IPT_MAHJONG_I)
-                                                            PORT_CONDITION(
-                                                                "IO"
-                                                                "_T"
-                                                                "YP"
-                                                                "E",
-                                                                0x01, EQUALS,
-                                                                0x00) PORT_BIT(0xff,
-                                                                               IP_ACTIVE_LOW,
-                                                                               IPT_UNUSED)
+                                                            "IO_TYPE",
+                                                            0x01, EQUALS, 0x00)
+                                                            PORT_BIT(
+                                                                0x40,
+                                                                IP_ACTIVE_LOW,
+                                                                IPT_MAHJONG_M)
                                                                 PORT_CONDITION(
                                                                     "IO_TYPE",
                                                                     0x01,
                                                                     EQUALS,
-                                                                    0x01)
-
-                                                                    PORT_START(
-                                                                        "P1_"
-                                                                        "KEY1")
-                                                                        PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_MAHJONG_REACH) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_MAHJONG_BET) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                     0x01,
-                                                                                                                                                                                                                                     EQUALS, 0x00) PORT_BIT(0x04,
-                                                                                                                                                                                                                                                            IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                            IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
-                                                                                                                                                                                                                                                                                       0x00) PORT_BIT(0x08,
-                                                                                                                                                                                                                                                                                                      IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x10,
-                                                                                                                                                                                                                                                                                                                                                                                        IP_ACTIVE_LOW, IPT_MAHJONG_F) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                                                                                                     0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                                                     EQUALS, 0x00) PORT_BIT(0x20,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                            IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                            IPT_MAHJONG_B) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          EQUALS, 0x00) PORT_BIT(0x40,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 IP_ACTIVE_LOW, IPT_MAHJONG_N) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00)
+                                                                    0x00)
+                                                                    PORT_BIT(
+                                                                        0x80,
+                                                                        IP_ACTIVE_LOW,
+                                                                        IPT_MAHJONG_I)
+                                                                        PORT_CONDITION(
+                                                                            "IO"
+                                                                            "_T"
+                                                                            "YP"
+                                                                            "E",
+                                                                            0x01,
+                                                                            EQUALS,
+                                                                            0x00)
                                                                             PORT_BIT(
-                                                                                0x80,
+                                                                                0xff,
                                                                                 IP_ACTIVE_LOW,
-                                                                                IPT_MAHJONG_J)
+                                                                                IPT_UNUSED)
                                                                                 PORT_CONDITION(
                                                                                     "IO_TYPE",
                                                                                     0x01,
-                                                                                    EQUALS,
-                                                                                    0x00)
-                                                                                    PORT_BIT(
-                                                                                        0xff,
-                                                                                        IP_ACTIVE_LOW,
-                                                                                        IPT_UNUSED)
-                                                                                        PORT_CONDITION(
-                                                                                            "IO_TYPE",
-                                                                                            0x01,
-                                                                                            EQUALS,
-                                                                                            0x01)
+                                                                                    EQUALS, 0x01)
 
-                                                                                            PORT_START(
-                                                                                                "P1_KEY2")
-                                                                                                PORT_BIT(
-                                                                                                    0x01,
-                                                                                                    IP_ACTIVE_LOW,
-                                                                                                    IPT_MAHJONG_RON)
-                                                                                                    PORT_CONDITION(
-                                                                                                        "IO_TYPE",
-                                                                                                        0x01,
-                                                                                                        EQUALS, 0x00)
-                                                                                                        PORT_BIT(
-                                                                                                            0x02,
-                                                                                                            IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                              0x01,
-                                                                                                                                                                                                                                              EQUALS,
-                                                                                                                                                                                                                                              0x00) PORT_BIT(0x08,
-                                                                                                                                                                                                                                                             IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                             IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
-                                                                                                                                                                                                                                                                                        0x00) PORT_BIT(0x10,
-                                                                                                                                                                                                                                                                                                       IP_ACTIVE_LOW, IPT_MAHJONG_G) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                    0x01,
-                                                                                                                                                                                                                                                                                                                                                    EQUALS,
-                                                                                                                                                                                                                                                                                                                                                    0x00) PORT_BIT(0x20,
-                                                                                                                                                                                                                                                                                                                                                                   IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                                                                                                                                   IPT_MAHJONG_C) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                                                                 0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                 EQUALS,
-                                                                                                                                                                                                                                                                                                                                                                                                 0x00) PORT_BIT(0x40,
-                                                                                                                                                                                                                                                                                                                                                                                                                IP_ACTIVE_LOW, IPT_MAHJONG_CHI)
-                                                                                                            PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_MAHJONG_K) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
-                                                                                                                                                                                                                      0x00) PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                     0x01,
-                                                                                                                                                                                                                                                                                     EQUALS,
-                                                                                                                                                                                                                                                                                     0x01)
+                                                                                    PORT_START(
+                                                                                        "P1_KEY1") PORT_BIT(0x01,
+                                                                                                            IP_ACTIVE_LOW, IPT_MAHJONG_REACH) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_MAHJONG_BET) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x10,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  IP_ACTIVE_LOW,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  IPT_MAHJONG_F) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                0x01, EQUALS, 0x00) PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_MAHJONG_B) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_MAHJONG_N) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_MAHJONG_J) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      0x01, EQUALS, 0x00)
+                                                                                        PORT_BIT(
+                                                                                            0xff,
+                                                                                            IP_ACTIVE_LOW,
+                                                                                            IPT_UNUSED)
+                                                                                            PORT_CONDITION(
+                                                                                                "IO_TYPE",
+                                                                                                0x01,
+                                                                                                EQUALS, 0x01)
 
-                                                                                                                PORT_START("P1_KEY3") PORT_BIT(0x01,
-                                                                                                                                               IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                         0x01, EQUALS, 0x00) PORT_BIT(0x02,
-                                                                                                                                                                                                                      IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                0x01,
-                                                                                                                                                                                                                                                                EQUALS,
-                                                                                                                                                                                                                                                                0x00) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x08,
-                                                                                                                                                                                                                                                                                                                                                                       IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                                                                                 0x01, EQUALS, 0x00) PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_MAHJONG_H) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x20,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         IPT_MAHJONG_D) PORT_CONDITION("IO_TYPE", 0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       EQUALS,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       0x00) PORT_BIT(0x40,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      IP_ACTIVE_LOW, IPT_MAHJONG_PON) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x80,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             IPT_MAHJONG_L) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   IP_ACTIVE_LOW, IPT_BUTTON1) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             EQUALS,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             0x01) PORT_BIT(0x02,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            IP_ACTIVE_LOW, IPT_BUTTON2) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE", 0x01,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      EQUALS, 0x01) PORT_BIT(0x04,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x01) PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               0x01, EQUALS, 0x01) PORT_BIT(0x10,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x01) PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_JOYSTICK_UP) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x01) PORT_BIT(0x40,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                IP_ACTIVE_LOW,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                IPT_JOYSTICK_RIGHT) PORT_PLAYER(1)
-                                                                                                                    PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x01) PORT_BIT(
-                                                                                                                        0x80,
-                                                                                                                        IP_ACTIVE_LOW,
-                                                                                                                        IPT_JOYSTICK_LEFT)
-                                                                                                                        PORT_PLAYER(1) PORT_CONDITION(
-                                                                                                                            "IO_TYPE",
-                                                                                                                            0x01,
-                                                                                                                            EQUALS,
-                                                                                                                            0x01)
+                                                                                                PORT_START(
+                                                                                                    "P1_KEY2") PORT_BIT(0x01,
+                                                                                                                        IP_ACTIVE_LOW, IPT_MAHJONG_RON) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x02,
+                                                                                                                                                                                                               IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                         0x01, EQUALS, 0x00) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
+                                                                                                                                                                                                                                                                                                                                      0x00) PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                     EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                     0x00) PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_MAHJONG_G) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x20,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               IP_ACTIVE_LOW, IPT_MAHJONG_C) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            0x00) PORT_BIT(0x40,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           IP_ACTIVE_LOW,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           IPT_MAHJONG_CHI) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           EQUALS, 0x00) PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_MAHJONG_K) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0xff,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       0x01)
 
-                                                                                                                            PORT_START(
-                                                                                                                                "P1_KEY4")
-                                                                                                                                PORT_BIT(
-                                                                                                                                    0xff,
-                                                                                                                                    IP_ACTIVE_LOW,
-                                                                                                                                    IPT_UNUSED) /* F/F is there, but these two games are single player so it isn't connected */
+                                                                                                    PORT_START("P1_KEY3") PORT_BIT(0x01,
+                                                                                                                                   IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
+                                                                                                                                                                                                                                                                     0x00) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x00) PORT_BIT(0x10,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                    IP_ACTIVE_LOW, IPT_MAHJONG_H) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 0x00) PORT_BIT(0x20,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                IP_ACTIVE_LOW,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                IPT_MAHJONG_D) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              0x00) PORT_BIT(0x40,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             IP_ACTIVE_LOW, IPT_MAHJONG_PON) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            EQUALS, 0x00) PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_MAHJONG_L) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      0x01, EQUALS, 0x00) PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_BUTTON1) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   0x01, EQUALS, 0x01) PORT_BIT(0x02,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                IP_ACTIVE_LOW,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                IPT_BUTTON2) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           0x01) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_CONDITION("IO_TYPE", 0x01, EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          0x01) PORT_BIT(0x08,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         IP_ACTIVE_LOW,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         IPT_UNUSED) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    EQUALS,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    0x01) PORT_BIT(0x10,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   0x01,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   EQUALS, 0x01) PORT_BIT(0x20,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          IP_ACTIVE_LOW, IPT_JOYSTICK_UP) PORT_PLAYER(1) PORT_CONDITION("IO_TYPE", 0x01, EQUALS, 0x01)
+                                                                                                        PORT_BIT(0x40,
+                                                                                                                 IP_ACTIVE_LOW,
+                                                                                                                 IPT_JOYSTICK_RIGHT) PORT_PLAYER(1)
+                                                                                                            PORT_CONDITION(
+                                                                                                                "IO_TYPE",
+                                                                                                                0x01,
+                                                                                                                EQUALS,
+                                                                                                                0x01) PORT_BIT(0x80,
+                                                                                                                               IP_ACTIVE_LOW,
+                                                                                                                               IPT_JOYSTICK_LEFT)
+                                                                                                                PORT_PLAYER(1) PORT_CONDITION(
+                                                                                                                    "IO_TYPE",
+                                                                                                                    0x01,
+                                                                                                                    EQUALS,
+                                                                                                                    0x01)
+
+                                                                                                                    PORT_START(
+                                                                                                                        "P1_KEY4")
+                                                                                                                        PORT_BIT(
+                                                                                                                            0xff,
+                                                                                                                            IP_ACTIVE_LOW,
+                                                                                                                            IPT_UNUSED) /* F/F is there, but these two games are single player so it isn't connected */
 
     PORT_START("P2_KEY0") PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
 
@@ -2204,44 +2206,39 @@ static INPUT_PORTS_START(stv) PORT_START("PDR1")
                                                     0x40, IP_ACTIVE_LOW,
                                                     IPT_MAHJONG_N) PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_MAHJONG_J)
 
-                                                    PORT_START("P1_KEY2") PORT_BIT(
-                                                        0x01, IP_ACTIVE_LOW,
-                                                        IPT_MAHJONG_RON) PORT_BIT(0x02, IP_ACTIVE_LOW,
-                                                                                  IPT_UNUSED)
-                                                        PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_MAHJONG_G) PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_MAHJONG_C) PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_MAHJONG_CHI) PORT_BIT(
-                                                            0x80, IP_ACTIVE_LOW,
-                                                            IPT_MAHJONG_K)
+                                                    PORT_START("P1_KEY2") PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_MAHJONG_RON) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_MAHJONG_G) PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_MAHJONG_C) PORT_BIT(
+                                                        0x40, IP_ACTIVE_LOW,
+                                                        IPT_MAHJONG_CHI) PORT_BIT(0x80, IP_ACTIVE_LOW,
+                                                                                  IPT_MAHJONG_K)
 
-                                                            PORT_START("P1_"
-                                                                       "KEY3") PORT_BIT(
-                                                                0x01,
+                                                        PORT_START("P1_KEY3") PORT_BIT(
+                                                            0x01, IP_ACTIVE_LOW,
+                                                            IPT_UNUSED) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED)
+                                                            PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(
+                                                                0x08,
                                                                 IP_ACTIVE_LOW,
-                                                                IPT_UNUSED) PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED)
-                                                                PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED) PORT_BIT(
-                                                                    0x08,
+                                                                IPT_UNUSED) PORT_BIT(0x10,
+                                                                                     IP_ACTIVE_LOW,
+                                                                                     IPT_MAHJONG_H)
+                                                                PORT_BIT(
+                                                                    0x20,
                                                                     IP_ACTIVE_LOW,
-                                                                    IPT_UNUSED) PORT_BIT(0x10,
-                                                                                         IP_ACTIVE_LOW,
-                                                                                         IPT_MAHJONG_H)
+                                                                    IPT_MAHJONG_D)
                                                                     PORT_BIT(
-                                                                        0x20,
+                                                                        0x40,
                                                                         IP_ACTIVE_LOW,
-                                                                        IPT_MAHJONG_D)
+                                                                        IPT_MAHJONG_PON)
                                                                         PORT_BIT(
-                                                                            0x40,
+                                                                            0x80,
                                                                             IP_ACTIVE_LOW,
-                                                                            IPT_MAHJONG_PON)
-                                                                            PORT_BIT(
-                                                                                0x80,
-                                                                                IP_ACTIVE_LOW,
-                                                                                IPT_MAHJONG_L)
+                                                                            IPT_MAHJONG_L)
 
-                                                                                PORT_START(
-                                                                                    "P1_KEY4")
-                                                                                    PORT_BIT(
-                                                                                        0xff,
-                                                                                        IP_ACTIVE_LOW,
-                                                                                        IPT_UNUSED) /* F/F is there, but these two games are single player so it isn't connected */
+                                                                            PORT_START(
+                                                                                "P1_KEY4")
+                                                                                PORT_BIT(
+                                                                                    0xff,
+                                                                                    IP_ACTIVE_LOW,
+                                                                                    IPT_UNUSED) /* F/F is there, but these two games are single player so it isn't connected */
 
     PORT_START("P2_KEY0") PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
 
@@ -2996,8 +2993,8 @@ ROM_LOAD16_BYTE(
     "fr18541a.13", 0x0000001, 0x0100000,
     CRC(8c61a17c) SHA1(
         a8aef27b53482923a506f7daa4b7a38653b4d8a4)) //(header is read from here,
-                                                   // not ic7 even if both are
-                                                   // populated on this board)
+                                                   //not ic7 even if both are
+                                                   //populated on this board)
 
 ROM_LOAD16_WORD_SWAP("mpr18538.7", 0x0200000, 0x0200000,
                      CRC(7b5230c5)
@@ -3041,8 +3038,8 @@ ROM_LOAD16_BYTE(
     "epr20424.13", 0x0000001, 0x0100000,
     CRC(4e61fa46) SHA1(
         e34624d98cbdf2dd04d997167d3c4decd2f208f7)) //(header is read from here,
-                                                   // not ic7 even if both are
-                                                   // populated on this board)
+                                                   //not ic7 even if both are
+                                                   //populated on this board)
 
 ROM_LOAD16_WORD_SWAP("mpr20431.7", 0x0200000, 0x0200000,
                      CRC(ea656ced)
@@ -4699,9 +4696,8 @@ ROM_LOAD16_WORD_SWAP("ic32", 0x0c00000, 0x0200000,
                          SHA1(a01125eb4bca7823eb12d4e03d93612e09dcddda))
 ROM_LOAD16_WORD_SWAP(
     "ic34", 0x0e00000, 0x0200000,
-    CRC(e157cd99)
-        SHA1(52c976540157cc63c599ee34ec5bade7e489599d)) // 111xxxxxxxxxxxxxxxxxx
-                                                        // = 0xFF
+    CRC(e157cd99) SHA1(52c976540157cc63c599ee34ec5bade7e489599d)) // 111xxxxxxxxxxxxxxxxxx
+                                                                  // = 0xFF
 ROM_LOAD16_WORD_SWAP(
     "ic36", 0x1000000, 0x0200000,
     CRC(9a4109e5) SHA1(
@@ -5327,9 +5323,8 @@ ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x0200000,
                          SHA1(11869edff6b63d33eeca06589bd64b70e2306896))
 ROM_LOAD16_WORD_SWAP(
     "ic24.bin", 0x0400000, 0x0200000,
-    CRC(67eba65e)
-        SHA1(9d78d667ebf32264fedcf4e502c8a919223fea37)) // 0xxxxxxxxxxxxxxxxxxxx
-                                                        // = 0x00
+    CRC(67eba65e) SHA1(9d78d667ebf32264fedcf4e502c8a919223fea37)) // 0xxxxxxxxxxxxxxxxxxxx
+                                                                  // = 0x00
 ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x0200000,
                      CRC(05f5e4ff)
                          SHA1(bfb2c54514caa135cc382a09af36d8206a9d1486))
@@ -5338,9 +5333,8 @@ ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x0200000,
                          SHA1(e91b4a8a7892ec7cdc3b3c75ea5b926cb2c3d5df))
 ROM_LOAD16_WORD_SWAP(
     "ic30.bin", 0x0a00000, 0x0200000,
-    CRC(7de3ee3c)
-        SHA1(0e16fb27280b717c1e74e23e09985dbc2143edc8)) // 11xxxxxxxxxxxxxxxxxxx
-                                                        // = 0x00
+    CRC(7de3ee3c) SHA1(0e16fb27280b717c1e74e23e09985dbc2143edc8)) // 11xxxxxxxxxxxxxxxxxxx
+                                                                  // = 0x00
 
 // TODO: add 1p eeprom default
 ROM_REGION16_BE(0x80, "eeprom",
@@ -5662,9 +5656,8 @@ ROM_LOAD16_WORD_SWAP("lh28f016sut-10.ic30", 0x0a00000, 0x0200000,
                          SHA1(d69c10f7613d9f52042dd6cce64e74e2b1ecc2d8))
 ROM_LOAD16_WORD_SWAP(
     "lh28f016sut-10.ic32", 0x0c00000, 0x0200000,
-    CRC(3438c564)
-        SHA1(8da287c22290bd82d7d7a1a2b55ed82711934d3c)) // 11xxxxxxxxxxxxxxxxxxx
-                                                        // = 0x00
+    CRC(3438c564) SHA1(8da287c22290bd82d7d7a1a2b55ed82711934d3c)) // 11xxxxxxxxxxxxxxxxxxx
+                                                                  // = 0x00
 ROM_LOAD16_WORD_SWAP(
     "lh28f016sut-10.ic34", 0x0e00000, 0x0200000,
     CRC(8d89877e)
