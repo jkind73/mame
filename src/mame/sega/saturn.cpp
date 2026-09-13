@@ -5434,11 +5434,11 @@ void saturn_state::vdp2_compute_color_offset(int *r, int *g, int *b, int cor) {
     *b = (VDP2_COAB & 0x100) ? (*b - (0x100 - (VDP2_COAB & 0xff)))
                              : ((VDP2_COAB & 0xff) + *b);
   } else {
-    *r = (VDP2_COBR & 0x100) ? (*r - (0xff - (VDP2_COBR & 0xff)))
+    *r = (VDP2_COBR & 0x100) ? (*r - (0x100 - (VDP2_COBR & 0xff)))
                              : ((VDP2_COBR & 0xff) + *r);
-    *g = (VDP2_COBG & 0x100) ? (*g - (0xff - (VDP2_COBG & 0xff)))
+    *g = (VDP2_COBG & 0x100) ? (*g - (0x100 - (VDP2_COBG & 0xff)))
                              : ((VDP2_COBG & 0xff) + *g);
-    *b = (VDP2_COBB & 0x100) ? (*b - (0xff - (VDP2_COBB & 0xff)))
+    *b = (VDP2_COBB & 0x100) ? (*b - (0x100 - (VDP2_COBB & 0xff)))
                              : ((VDP2_COBB & 0xff) + *b);
   }
   if (*r < 0) {
@@ -5473,11 +5473,11 @@ void saturn_state::vdp2_compute_color_offset_UINT32(rgb_t *rgb, int cor) {
     _b = (VDP2_COAB & 0x100) ? (_b - (0x100 - (VDP2_COAB & 0xff)))
                              : ((VDP2_COAB & 0xff) + _b);
   } else {
-    _r = (VDP2_COBR & 0x100) ? (_r - (0xff - (VDP2_COBR & 0xff)))
+    _r = (VDP2_COBR & 0x100) ? (_r - (0x100 - (VDP2_COBR & 0xff)))
                              : ((VDP2_COBR & 0xff) + _r);
-    _g = (VDP2_COBG & 0x100) ? (_g - (0xff - (VDP2_COBG & 0xff)))
+    _g = (VDP2_COBG & 0x100) ? (_g - (0x100 - (VDP2_COBG & 0xff)))
                              : ((VDP2_COBG & 0xff) + _g);
-    _b = (VDP2_COBB & 0x100) ? (_b - (0xff - (VDP2_COBB & 0xff)))
+    _b = (VDP2_COBB & 0x100) ? (_b - (0x100 - (VDP2_COBB & 0xff)))
                              : ((VDP2_COBB & 0xff) + _b);
   }
   if (_r < 0) {
@@ -9201,11 +9201,11 @@ void saturn_state::vdp2_fade_effects() {
 
     /*Fade B*/
     color = m_palette->pen_color(i);
-    t_r = (VDP2_COBR & 0x100) ? (color.r() - (0xff - (VDP2_COBR & 0xff)))
+    t_r = (VDP2_COBR & 0x100) ? (color.r() - (0x100 - (VDP2_COBR & 0xff)))
                               : ((VDP2_COBR & 0xff) + color.r());
-    t_g = (VDP2_COBG & 0x100) ? (color.g() - (0xff - (VDP2_COBG & 0xff)))
+    t_g = (VDP2_COBG & 0x100) ? (color.g() - (0x100 - (VDP2_COBG & 0xff)))
                               : ((VDP2_COBG & 0xff) + color.g());
-    t_b = (VDP2_COBB & 0x100) ? (color.b() - (0xff - (VDP2_COBB & 0xff)))
+    t_b = (VDP2_COBB & 0x100) ? (color.b() - (0x100 - (VDP2_COBB & 0xff)))
                               : ((VDP2_COBB & 0xff) + color.b());
     if (t_r < 0) {
       t_r = 0;
