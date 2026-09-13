@@ -1836,6 +1836,19 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
   // allocate the blocks
   for (int i = xfersectpos; i < xfersectpos + xfersectnum; i++) {
     transpart->blocks[i] = cd_alloc_block(&transpart->bnum[i]);
+
+    /* cd_alloc_block() returns null once every block is in use. Both the host
+       transfer and the deallocation that follows it walk xfersectnum blocks, so
+       shorten the transfer instead of dereferencing it - cd_filterdata() gives
+       up the same way when the buffer fills up while the disc is being read */
+    if (transpart->blocks[i] == nullptr) {
+      transpart->bnum[i] = 0xff;
+      xfersectnum = i - xfersectpos;
+      LOGWARN("CD: put sector data, buffer full after %d sectors\n",
+              xfersectnum);
+      break;
+    }
+
     if (transpart->size == -1)
       transpart->size = 0;
     transpart->size += transpart->blocks[i]->size;
@@ -1878,10 +1891,34 @@ void saturn_cd_hle_device::cmd_copy_sector_data() {
   // cd_stat |= CD_STAT_TRANS;
   // transpart = &partitions[dst_filter];
 
+  /* the count comes from CR4 but a partition only holds MAX_BLOCKS sectors */
+  if (sectnum > MAX_BLOCKS) {
+    LOGWARN("CD: copy sector data, count %d truncated to %d\n", sectnum,
+            MAX_BLOCKS);
+    sectnum = MAX_BLOCKS;
+  }
+
   for (int i = 0; i < sectnum; i++) {
+    blockT *const srcblock = partitions[src_filter].blocks[i];
+
+    // the source partition can hold fewer sectors than we were asked to copy
+    if (srcblock == nullptr) {
+      LOGWARN("CD: copy sector data, no source block %d in partition %02x\n", i,
+              src_filter);
+      break;
+    }
+
     // allocate the dst blocks
     partitions[dst_filter].blocks[i] =
         cd_alloc_block(&partitions[dst_filter].bnum[i]);
+
+    // cd_alloc_block() returns null once every block is in use
+    if (partitions[dst_filter].blocks[i] == nullptr) {
+      partitions[dst_filter].bnum[i] = 0xff;
+      LOGWARN("CD: copy sector data, buffer full after %d sectors\n", i);
+      break;
+    }
+
     if (partitions[dst_filter].size == -1)
       partitions[dst_filter].size = 0;
     partitions[dst_filter].size += partitions[dst_filter].blocks[i]->size;
@@ -1889,8 +1926,7 @@ void saturn_cd_hle_device::cmd_copy_sector_data() {
 
     // copy data
     for (int j = 0; j < sectlenin; j++)
-      partitions[dst_filter].blocks[i]->data[j] =
-          partitions[src_filter].blocks[i]->data[j];
+      partitions[dst_filter].blocks[i]->data[j] = srcblock->data[j];
 
     // deallocate the src blocks
     // partitions[src_filter].size -= partitions[src_filter].blocks[i]->size;
@@ -2452,6 +2488,20 @@ void saturn_cd_hle_device::cd_getsectoroffsetnum(uint32_t bufnum,
     LOGWARN("CD: Don't know how to handle offset ffff\n");
   } else if (*sectnum == 0xffff) {
     *sectnum = partitions[bufnum].numblks - *sectoffs;
+  }
+
+  /* both values come straight out of the command registers and every caller
+     walks blocks[] with them, so keep them inside the array - note that the
+     calculation above also underflows when the offset is past the end of the
+     partition */
+  if (*sectoffs >= MAX_BLOCKS) {
+    LOGWARN("CD: sector offset %04x out of range, ignoring the request\n",
+            *sectoffs);
+    *sectnum = 0;
+  } else if (*sectnum > MAX_BLOCKS - *sectoffs) {
+    LOGWARN("CD: sector count %04x truncated to %d\n", *sectnum,
+            MAX_BLOCKS - *sectoffs);
+    *sectnum = MAX_BLOCKS - *sectoffs;
   }
 }
 
