@@ -44,7 +44,6 @@ DASM notes:
 #include "saturn_cd_hle.h"
 #include "emu.h"
 
-
 #include "coreutil.h"
 #include "multibyte.h"
 
@@ -1729,7 +1728,9 @@ void saturn_cd_hle_device::cmd_delete_sector_data() {
     // pstarcol PS2 tries to delete partial partitions,
     // need to guard against it (otherwise it would crash after first attract
     // cycle)
-    if (partitions[bufnum].size > 0) {
+    // a partition can also hold holes, so check the block pointer as well
+    if ((partitions[bufnum].size > 0) &&
+        (partitions[bufnum].blocks[i] != nullptr)) {
       partitions[bufnum].size -= partitions[bufnum].blocks[i]->size;
       cd_free_block(partitions[bufnum].blocks[i]);
       partitions[bufnum].blocks[i] = (blockT *)nullptr;
@@ -1861,9 +1862,75 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
 }
 
 void saturn_cd_hle_device::cmd_move_sector_data() {
-  popmessage("saturn_cd_hle.cpp: cmd_move_sector_data() (unemulated)");
-  hirqreg |= (CMOK);
+  // Move Sector Data
+  // swordsor and riglord2 use the copy variant of this command
+  uint32_t src_filter = (cr3 >> 8) & 0xff;
+  uint32_t dst_filter = cr1 & 0xff;
+  uint32_t sectnum = cr4 & 0xff;
+
+  LOGCMD("%s: Move sector data (SN %d SO %d BN %d -> %d)\n",
+         machine().describe_context(), sectnum, cr2, src_filter, dst_filter);
+
+  if ((src_filter >= MAX_FILTERS) || (dst_filter >= MAX_FILTERS)) {
+    LOGWARN("CD: invalid buffer number\n");
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= (CMOK | ECPY);
+    update_hirq();
+    return;
+  }
+
+  /* the count comes from CR4 but a partition only holds MAX_BLOCKS sectors */
+  if (sectnum > MAX_BLOCKS) {
+    LOGWARN("CD: move sector data, count %d truncated to %d\n", sectnum,
+            MAX_BLOCKS);
+    sectnum = MAX_BLOCKS;
+  }
+
+  for (int i = 0; i < sectnum; i++) {
+    blockT *const srcblock = partitions[src_filter].blocks[i];
+
+    // the source partition can hold fewer sectors than we were asked to move
+    if (srcblock == nullptr) {
+      LOGWARN("CD: move sector data, no source block %d in partition %02x\n", i,
+              src_filter);
+      break;
+    }
+
+    // allocate the dst blocks
+    partitions[dst_filter].blocks[i] =
+        cd_alloc_block(&partitions[dst_filter].bnum[i]);
+
+    // cd_alloc_block() returns null once every block is in use
+    if (partitions[dst_filter].blocks[i] == nullptr) {
+      partitions[dst_filter].bnum[i] = 0xff;
+      LOGWARN("CD: move sector data, buffer full after %d sectors\n", i);
+      break;
+    }
+
+    if (partitions[dst_filter].size == -1)
+      partitions[dst_filter].size = 0;
+    partitions[dst_filter].size += srcblock->size;
+    partitions[dst_filter].numblks++;
+
+    /* unlike cmd_copy_sector_data(), which only copies the sector payload and
+       leaves the block's FAD and subheader at whatever the recycled block held,
+       move the whole block across: Get Sector Information reports those fields
+       and the hardware relocates the block rather than re-reading it */
+    *partitions[dst_filter].blocks[i] = *srcblock;
+
+    // release the source block, which is what makes this a move and not a copy
+    partitions[src_filter].size -= srcblock->size;
+    cd_free_block(srcblock);
+    partitions[src_filter].blocks[i] = (blockT *)nullptr;
+    partitions[src_filter].bnum[i] = 0xff;
+    partitions[src_filter].numblks--;
+  }
+
+  cd_defragblocks(&partitions[src_filter]);
+
+  hirqreg |= (CMOK | ECPY);
   update_hirq();
+  cr_standard_return(cd_stat);
 }
 
 void saturn_cd_hle_device::cmd_copy_sector_data() {
