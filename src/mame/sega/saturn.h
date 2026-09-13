@@ -270,7 +270,11 @@ protected:
   uint32_t vdp2_window_config() const;
   uint32_t vdp2_read_rotation_coefficient(uint32_t address);
   void vdp2_window_cache_line(int y);
-  void vdp2_window_cache_invalidate() { m_window_cache_y = -1; }
+  void vdp2_window_cache_invalidate() {
+    m_window_cache_y = -1;
+    m_roz_window_cache_y = -1;
+  }
+  void vdp2_roz_window_prepare(int y);
   void vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y, int *e_y,
                                     int y);
   void vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y, int *e_y,
@@ -417,6 +421,11 @@ protected:
   // once per pixel, per layer and per priority pass.
   static constexpr int WINDOW_CACHE_WIDTH = 1024;
   int m_window_cache_y = -1;
+  int m_roz_window_cache_y = -1;
+  int m_roz_win_s_x[2]{};
+  int m_roz_win_e_x[2]{};
+  int m_roz_win_s_y[2]{};
+  int m_roz_win_e_y[2]{};
   uint32_t m_window_cache_cfg = 0;
   uint8_t m_window_cache_line[WINDOW_CACHE_WIDTH]{};
 

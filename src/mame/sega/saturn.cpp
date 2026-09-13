@@ -8019,8 +8019,23 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   }
 }
 
+// The rotation screen tests its window once per destination pixel, but the
+// window rectangles only depend on the line: fetch them once per line and let
+// the pixel test be a few integer compares. Both the RBG0 window and the
+// rotation parameter window share window 0 and window 1, so one memo serves
+// both.
+void saturn_state::vdp2_roz_window_prepare(int y) {
+  if (m_roz_window_cache_y == y)
+    return;
+
+  m_roz_window_cache_y = y;
+  vdp2_get_window0_coordinates(&m_roz_win_s_x[0], &m_roz_win_e_x[0],
+                               &m_roz_win_s_y[0], &m_roz_win_e_y[0], y);
+  vdp2_get_window1_coordinates(&m_roz_win_s_x[1], &m_roz_win_e_x[1],
+                               &m_roz_win_s_y[1], &m_roz_win_e_y[1], y);
+}
+
 inline bool saturn_state::vdp2_roz_window(int x, int y) {
-  int s_x = 0, e_x = 0, s_y = 0, e_y = 0;
   int res;
   uint8_t logic = VDP2_R0LOG;
   uint8_t w0_enable = VDP2_R0W0E;
@@ -8031,20 +8046,22 @@ inline bool saturn_state::vdp2_roz_window(int x, int y) {
   if (w0_enable == 0 && w1_enable == 0)
     return true;
 
+  vdp2_roz_window_prepare(y);
+
   const int logic_or = logic & 1;
   res = logic_or ? 0 : 1;
 
   if (w0_enable) {
-    vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-    const int w0_pix =
-        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w0_enable, w0_area);
+    const int w0_pix = get_roz_window_pixel(m_roz_win_s_x[0], m_roz_win_e_x[0],
+                                            m_roz_win_s_y[0], m_roz_win_e_y[0],
+                                            x, y, w0_enable, w0_area);
     res = logic_or ? (res | w0_pix) : (res & w0_pix);
   }
 
   if (w1_enable) {
-    vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-    const int w1_pix =
-        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w1_enable, w1_area);
+    const int w1_pix = get_roz_window_pixel(m_roz_win_s_x[1], m_roz_win_e_x[1],
+                                            m_roz_win_s_y[1], m_roz_win_e_y[1],
+                                            x, y, w1_enable, w1_area);
     res = logic_or ? (res | w1_pix) : (res & w1_pix);
   }
 
@@ -8053,7 +8070,6 @@ inline bool saturn_state::vdp2_roz_window(int x, int y) {
 
 inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
                                                 int rot_parameter) {
-  int s_x = 0, e_x = 0, s_y = 0, e_y = 0;
   int res;
   uint8_t logic = VDP2_RPLOG;
   uint8_t w0_enable = VDP2_RPW0E;
@@ -8064,20 +8080,22 @@ inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
   if (w0_enable == 0 && w1_enable == 0)
     return rot_parameter ^ 1;
 
+  vdp2_roz_window_prepare(y);
+
   const int logic_or = logic & 1;
   res = logic_or ? 0 : 1;
 
   if (w0_enable) {
-    vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-    const int w0_pix =
-        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w0_enable, w0_area);
+    const int w0_pix = get_roz_window_pixel(m_roz_win_s_x[0], m_roz_win_e_x[0],
+                                            m_roz_win_s_y[0], m_roz_win_e_y[0],
+                                            x, y, w0_enable, w0_area);
     res = logic_or ? (res | w0_pix) : (res & w0_pix);
   }
 
   if (w1_enable) {
-    vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-    const int w1_pix =
-        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w1_enable, w1_area);
+    const int w1_pix = get_roz_window_pixel(m_roz_win_s_x[1], m_roz_win_e_x[1],
+                                            m_roz_win_s_y[1], m_roz_win_e_y[1],
+                                            x, y, w1_enable, w1_area);
     res = logic_or ? (res | w1_pix) : (res & w1_pix);
   }
 
