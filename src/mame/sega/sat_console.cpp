@@ -594,16 +594,17 @@ uint32_t sat_console_state::abus_dummy_r(offs_t offset) {
 void sat_console_state::saturn_mem(address_map &map) {
   map(0x00000000, 0x0007ffff)
       .rom()
-      .mirror(0x20000000)
+      .mirror(0x20080000)
       .region("bios", 0)
-      .nopw(); // bios
+      .nopw(); // bios, mirrored across the 1MB CS0 window
   map(0x00100000, 0x0010007f)
       .mirror(0x2007ff80)
       .m(m_smpc_hle, FUNC(smpc_hle_device::io_map));
   map(0x00180000, 0x0018ffff)
       .rw(FUNC(sat_console_state::backupram_r),
           FUNC(sat_console_state::backupram_w))
-      .share("share1");
+      .mirror(0x20070000)
+      .share("share1"); // mirrored across the 512KB window
   map(0x00200000, 0x002fffff).ram().mirror(0x20100000).share("workram_l");
   map(0x00400000, 0x00400001).lr16(NAME([this](offs_t offset, u16 mem_mask) {
     // avoid trying to test an unknown device in A-Bus CS2 area with -bios 1
@@ -635,8 +636,11 @@ void sat_console_state::saturn_mem(address_map &map) {
       .rw(FUNC(sat_console_state::vdp1_vram_r),
           FUNC(sat_console_state::vdp1_vram_w));
   map(0x05c80000, 0x05cbffff)
+      .mirror(0x40000)
       .rw(FUNC(sat_console_state::vdp1_framebuffer0_r),
-          FUNC(sat_console_state::vdp1_framebuffer0_w));
+          FUNC(sat_console_state::
+                   vdp1_framebuffer0_w)); // only the back buffer is visible,
+                                          // mirrored across the 512KB window
   map(0x05d00000, 0x05d0001f)
       .rw(FUNC(sat_console_state::vdp1_regs_r),
           FUNC(sat_console_state::vdp1_regs_w));
