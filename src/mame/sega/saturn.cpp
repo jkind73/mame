@@ -5425,6 +5425,13 @@ uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
   return access_command_ok == 3 ? 1 : 0;
 }
 
+/* The colour calculation ratio register (CCRSx/CCRNA/CCRNB/CCRR) holds a 5-bit
+   value whose top image : second image weights are (31 - ratio) : (ratio + 1)
+   out of 32, which maps exactly onto alpha_blend_r32()'s 256 level blend. */
+static constexpr uint8_t vdp2_cc_blend_level(uint8_t ratio) {
+  return uint8_t((0x1f - ratio) * 8);
+}
+
 void saturn_state::vdp2_compute_color_offset(int *r, int *g, int *b, int cor) {
   if (cor == 0) {
     *r = (VDP2_COAR & 0x100) ? (*r - (0x100 - (VDP2_COAR & 0xff)))
@@ -8146,7 +8153,7 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   // current_tilemap.trans_enabled = VDP2_N0TPON;
   if (VDP2_N0CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = ((uint16_t)(0x1f - VDP2_N0CCRT) * 0xff) / 0x1f;
+    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N0CCRT);
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -8246,7 +8253,7 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   // current_tilemap.trans_enabled = VDP2_N1TPON;
   if (VDP2_N1CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = ((uint16_t)(0x1f - VDP2_N1CCRT) * 0xff) / 0x1f;
+    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N1CCRT);
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -8347,7 +8354,7 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
   // current_tilemap.trans_enabled = VDP2_N2TPON;
   if (VDP2_N2CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = ((uint16_t)(0x1f - VDP2_N2CCRT) * 0xff) / 0x1f;
+    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N2CCRT);
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -8449,7 +8456,7 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
   // current_tilemap.trans_enabled = VDP2_N3TPON;
   if (VDP2_N3CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = ((uint16_t)(0x1f - VDP2_N3CCRT) * 0xff) / 0x1f;
+    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N3CCRT);
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -8773,7 +8780,7 @@ void saturn_state::vdp2_draw_RBG0(bitmap_rgb32 &bitmap,
   // current_tilemap.trans_enabled = VDP2_R0TPON;
   if (VDP2_R0CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = ((uint16_t)(0x1f - VDP2_R0CCRT) * 0xff) / 0x1f;
+    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_R0CCRT);
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -9763,9 +9770,8 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
             if (VDP2_CCMD) {
               bitmap_line[x] = add_blend_r32(bitmap_line[x], rgb_t(r, g, b));
             } else {
-              bitmap_line[x] =
-                  alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
-                                  ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+              bitmap_line[x] = alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
+                                               vdp2_cc_blend_level(ccr));
             }
           } else {
             priority = sprite_priorities[(pix >> sprite_priority_shift) &
@@ -9805,7 +9811,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
                   } else {
                     bitmap_line[x] =
                         alpha_blend_r32(bitmap_line[x], m_palette->pen(pix),
-                                        ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                        vdp2_cc_blend_level(ccr));
                   }
                 } else
                   bitmap_line[x] = m_palette->pen(pix);
@@ -9899,26 +9905,25 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
               if (double_x) {
                 bitmap_line[x * 2] =
                     alpha_blend_r32(bitmap_line[x * 2], rgb_t(r, g, b),
-                                    ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                    vdp2_cc_blend_level(ccr));
                 if (interlace_framebuffer == 1)
                   bitmap_line2[x * 2] =
                       alpha_blend_r32(bitmap_line2[x * 2], rgb_t(r, g, b),
-                                      ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                      vdp2_cc_blend_level(ccr));
                 bitmap_line[x * 2 + 1] =
                     alpha_blend_r32(bitmap_line[x * 2 + 1], rgb_t(r, g, b),
-                                    ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                    vdp2_cc_blend_level(ccr));
                 if (interlace_framebuffer == 1)
                   bitmap_line2[x * 2 + 1] =
                       alpha_blend_r32(bitmap_line2[x * 2 + 1], rgb_t(r, g, b),
-                                      ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                      vdp2_cc_blend_level(ccr));
               } else {
-                bitmap_line[x] =
-                    alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
-                                    ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                bitmap_line[x] = alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
+                                                 vdp2_cc_blend_level(ccr));
                 if (interlace_framebuffer == 1)
                   bitmap_line2[x] =
                       alpha_blend_r32(bitmap_line2[x], rgb_t(r, g, b),
-                                      ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                      vdp2_cc_blend_level(ccr));
               }
             }
           }
@@ -10001,26 +10006,26 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
                   if (double_x) {
                     bitmap_line[x * 2] =
                         alpha_blend_r32(bitmap_line[x * 2], m_palette->pen(pix),
-                                        ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                        vdp2_cc_blend_level(ccr));
                     if (interlace_framebuffer == 1)
                       bitmap_line2[x * 2] = alpha_blend_r32(
                           bitmap_line2[x * 2], m_palette->pen(pix),
-                          ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                          vdp2_cc_blend_level(ccr));
                     bitmap_line[x * 2 + 1] = alpha_blend_r32(
                         bitmap_line[x * 2 + 1], m_palette->pen(pix),
-                        ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                        vdp2_cc_blend_level(ccr));
                     if (interlace_framebuffer == 1)
                       bitmap_line2[x * 2 + 1] = alpha_blend_r32(
                           bitmap_line2[x * 2 + 1], m_palette->pen(pix),
-                          ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                          vdp2_cc_blend_level(ccr));
                   } else {
                     bitmap_line[x] =
                         alpha_blend_r32(bitmap_line[x], m_palette->pen(pix),
-                                        ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                                        vdp2_cc_blend_level(ccr));
                     if (interlace_framebuffer == 1)
-                      bitmap_line2[x] = alpha_blend_r32(
-                          bitmap_line2[x], m_palette->pen(pix),
-                          ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
+                      bitmap_line2[x] =
+                          alpha_blend_r32(bitmap_line2[x], m_palette->pen(pix),
+                                          vdp2_cc_blend_level(ccr));
                   }
                 }
               }
