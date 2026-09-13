@@ -9214,6 +9214,9 @@ void saturn_state::vdp2_vram_w(offs_t offset, uint32_t data,
 }
 
 uint16_t saturn_state::vdp2_regs_r(offs_t offset) {
+  // the register file is 0x200 bytes and repeats across the whole 4MB window
+  offset &= 0xff;
+
   return m_vdp2_regs[offset];
 }
 
@@ -9329,6 +9332,9 @@ void saturn_state::refresh_palette_data() {
 
 void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
                                uint16_t mem_mask) {
+  // as above, the 4MB window mirrors the 0x200 byte register file
+  offset &= 0xff;
+
   COMBINE_DATA(&m_vdp2_regs[offset]);
 
   // window coordinates may have changed
