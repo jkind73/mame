@@ -8021,7 +8021,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
 
 inline bool saturn_state::vdp2_roz_window(int x, int y) {
   int s_x = 0, e_x = 0, s_y = 0, e_y = 0;
-  int w0_pix, w1_pix;
+  int res;
   uint8_t logic = VDP2_R0LOG;
   uint8_t w0_enable = VDP2_R0W0E;
   uint8_t w1_enable = VDP2_R0W1E;
@@ -8031,19 +8031,30 @@ inline bool saturn_state::vdp2_roz_window(int x, int y) {
   if (w0_enable == 0 && w1_enable == 0)
     return true;
 
-  vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-  w0_pix = get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w0_enable, w0_area);
+  const int logic_or = logic & 1;
+  res = logic_or ? 0 : 1;
 
-  vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-  w1_pix = get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w1_enable, w1_area);
+  if (w0_enable) {
+    vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
+    const int w0_pix =
+        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w0_enable, w0_area);
+    res = logic_or ? (res | w0_pix) : (res & w0_pix);
+  }
 
-  return (logic & 1 ? (w0_pix | w1_pix) : (w0_pix & w1_pix));
+  if (w1_enable) {
+    vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
+    const int w1_pix =
+        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w1_enable, w1_area);
+    res = logic_or ? (res | w1_pix) : (res & w1_pix);
+  }
+
+  return res;
 }
 
 inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
                                                 int rot_parameter) {
   int s_x = 0, e_x = 0, s_y = 0, e_y = 0;
-  int w0_pix, w1_pix;
+  int res;
   uint8_t logic = VDP2_RPLOG;
   uint8_t w0_enable = VDP2_RPW0E;
   uint8_t w1_enable = VDP2_RPW1E;
@@ -8053,13 +8064,24 @@ inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
   if (w0_enable == 0 && w1_enable == 0)
     return rot_parameter ^ 1;
 
-  vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-  w0_pix = get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w0_enable, w0_area);
+  const int logic_or = logic & 1;
+  res = logic_or ? 0 : 1;
 
-  vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-  w1_pix = get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w1_enable, w1_area);
+  if (w0_enable) {
+    vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
+    const int w0_pix =
+        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w0_enable, w0_area);
+    res = logic_or ? (res | w0_pix) : (res & w0_pix);
+  }
 
-  return (logic & 1 ? (w0_pix | w1_pix) : (w0_pix & w1_pix)) ^ rot_parameter;
+  if (w1_enable) {
+    vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
+    const int w1_pix =
+        get_roz_window_pixel(s_x, e_x, s_y, e_y, x, y, w1_enable, w1_area);
+    res = logic_or ? (res | w1_pix) : (res & w1_pix);
+  }
+
+  return res ^ rot_parameter;
 }
 
 inline int saturn_state::get_roz_window_pixel(int s_x, int e_x, int s_y,
@@ -9359,20 +9381,30 @@ int saturn_state::get_window_pixel(int s_x, int e_x, int s_y, int e_y, int x,
 
 int saturn_state::vdp2_window_process_pixel(int x, int y) {
   int s_x = 0, e_x = 0, s_y = 0, e_y = 0;
-  int w0_pix, w1_pix;
+  int res;
 
   if (current_tilemap.window_control.enabled[0] == 0 &&
       current_tilemap.window_control.enabled[1] == 0)
     return 1;
 
-  vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-  w0_pix = get_window_pixel(s_x, e_x, s_y, e_y, x, y, 0);
+  // a disabled window must not influence the result, so start from the
+  // neutral value of the selected logic: inside for AND, outside for OR
+  const int logic_or = current_tilemap.window_control.logic & 1;
+  res = logic_or ? 0 : 1;
 
-  vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
-  w1_pix = get_window_pixel(s_x, e_x, s_y, e_y, x, y, 1);
+  if (current_tilemap.window_control.enabled[0]) {
+    vdp2_get_window0_coordinates(&s_x, &e_x, &s_y, &e_y, y);
+    const int w0_pix = get_window_pixel(s_x, e_x, s_y, e_y, x, y, 0);
+    res = logic_or ? (res | w0_pix) : (res & w0_pix);
+  }
 
-  return current_tilemap.window_control.logic & 1 ? (w0_pix | w1_pix)
-                                                  : (w0_pix & w1_pix);
+  if (current_tilemap.window_control.enabled[1]) {
+    vdp2_get_window1_coordinates(&s_x, &e_x, &s_y, &e_y, y);
+    const int w1_pix = get_window_pixel(s_x, e_x, s_y, e_y, x, y, 1);
+    res = logic_or ? (res | w1_pix) : (res & w1_pix);
+  }
+
+  return res;
 }
 
 // window configuration of the layer currently being drawn
