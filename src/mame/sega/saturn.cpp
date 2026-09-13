@@ -1400,7 +1400,10 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       raw =
           m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0xfffff] & 0xff;
       // mode = 2;
-      pix = raw + (current_sprite.CMDCOLR & 0xffc0);
+      /* only the low six bits of the dot data select a colour here - the top
+         two are ignored (they still count for the 0xff end code and for the
+         transparent pen test below, which both use the unmasked value) */
+      pix = (raw & 0x3f) + (current_sprite.CMDCOLR & 0xffc0);
       transpen = 0;
       endcode = 0xff;
       // Notes of interest:
@@ -1411,7 +1414,8 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
                  // hanagumi use this mode)
       raw =
           m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0xfffff] & 0xff;
-      pix = raw + (current_sprite.CMDCOLR & 0xff80);
+      /* seven bits of colour data, see mode 2 */
+      pix = (raw & 0x7f) + (current_sprite.CMDCOLR & 0xff80);
       transpen = 0;
       endcode = 0xff;
       // mode = 3;
