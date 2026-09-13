@@ -1871,13 +1871,20 @@ void saturn_state::vdp1_fill_quad(const rectangle &cliprect, int patterndata,
     vdp1_fill_line(cliprect, patterndata, xsize, cury, x1, x2, u1, u2, v1, v2);
 }
 
-int saturn_state::x2s(int v) {
-  return (int32_t)(int16_t)v + m_vdp1_legacy.local_x;
+// VDP1 vertex and local coordinates are 13-bit signed fields, not 16-bit ones.
+// mednafen masks every coordinate it reads out of a command with 0x1fff and
+// uses bit 12 as the sign, and Ymir's notes record that the Virtua Fighter 2
+// fight intro writes vertices whose bits 13-15 are not a sign extension of bit
+// 12: the VDP1 ignores them, but taking all sixteen bits turned those into
+// polygons thousands of pixels across, which is what made the intro crawl.
+// For a correctly sign-extended value this is a no-op.
+static inline int vdp1_coord(int v) {
+  return (v & 0x1000) ? (v | ~0x1fff) : (v & 0x1fff);
 }
 
-int saturn_state::y2s(int v) {
-  return (int32_t)(int16_t)v + m_vdp1_legacy.local_y;
-}
+int saturn_state::x2s(int v) { return vdp1_coord(v) + m_vdp1_legacy.local_x; }
+
+int saturn_state::y2s(int v) { return vdp1_coord(v) + m_vdp1_legacy.local_y; }
 
 void saturn_state::vdp1_draw_line(const rectangle &cliprect) {
   struct spoint q[4];
@@ -2504,9 +2511,10 @@ void saturn_state::vdp1_process_list() {
               "Sprite List Set Command for User Clipping (%d,%d),(%d,%d)\n",
               current_sprite.CMDXA, current_sprite.CMDYA, current_sprite.CMDXC,
               current_sprite.CMDYC);
+        // clip coordinates are 13-bit fields as well, but unsigned
         m_vdp1_legacy.user_cliprect.set(
-            current_sprite.CMDXA, current_sprite.CMDXC, current_sprite.CMDYA,
-            current_sprite.CMDYC);
+            current_sprite.CMDXA & 0x1fff, current_sprite.CMDXC & 0x1fff,
+            current_sprite.CMDYA & 0x1fff, current_sprite.CMDYC & 0x1fff);
         break;
 
       case 0x0009:
@@ -2514,8 +2522,8 @@ void saturn_state::vdp1_process_list() {
           logerror(
               "Sprite List Set Command for System Clipping (0,0),(%d,%d)\n",
               current_sprite.CMDXC, current_sprite.CMDYC);
-        m_vdp1_legacy.system_cliprect.set(0, current_sprite.CMDXC, 0,
-                                          current_sprite.CMDYC);
+        m_vdp1_legacy.system_cliprect.set(0, current_sprite.CMDXC & 0x1fff, 0,
+                                          current_sprite.CMDYC & 0x1fff);
         break;
 
       case 0x000a:
@@ -2523,8 +2531,8 @@ void saturn_state::vdp1_process_list() {
           logerror("Sprite List Local Co-Ordinate Set (%d %d)\n",
                    (int16_t)current_sprite.CMDXA,
                    (int16_t)current_sprite.CMDYA);
-        m_vdp1_legacy.local_x = (int16_t)current_sprite.CMDXA;
-        m_vdp1_legacy.local_y = (int16_t)current_sprite.CMDYA;
+        m_vdp1_legacy.local_x = vdp1_coord(current_sprite.CMDXA);
+        m_vdp1_legacy.local_y = vdp1_coord(current_sprite.CMDYA);
         break;
 
       default:
