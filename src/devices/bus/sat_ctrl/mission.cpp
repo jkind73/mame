@@ -102,9 +102,27 @@ void saturn_mission_device::device_reset() {}
 uint8_t saturn_mission_device::read_ctrl(uint8_t offset) {
   uint8_t res = 0;
   switch (offset) {
-  case 0:
+  case 0: {
     res = m_joy->read() >> 8;
+
+    // the stick is analog: the four direction bits are derived from the
+    // A/D converter output, with the thresholds given in the SMPC manual
+    // (right/down turn on at 170 and off at 149, left/up turn on at 86
+    // and off at 107). Only force them on, MAME also exposes the
+    // directions as digital inputs for keyboard users.
+    const uint8_t x = m_anx->read();
+    const uint8_t y = m_any->read();
+
+    if (x >= 170)
+      res &= ~0x80;
+    if (x <= 86)
+      res &= ~0x40;
+    if (y >= 170)
+      res &= ~0x20;
+    if (y <= 86)
+      res &= ~0x10;
     break;
+  }
   case 1:
     res = m_joy->read() & 0xff;
     break;
