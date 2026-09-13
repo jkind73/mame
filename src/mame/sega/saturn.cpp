@@ -9983,13 +9983,13 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
                     bitmap_line[x * 2] =
                         add_blend_r32(bitmap_line[x * 2], m_palette->pen(pix));
                     if (interlace_framebuffer == 1)
-                      bitmap_line2[x * 2] =
-                          add_blend_r32(bitmap_line2[x], m_palette->pen(pix));
+                      bitmap_line2[x * 2] = add_blend_r32(bitmap_line2[x * 2],
+                                                          m_palette->pen(pix));
                     bitmap_line[x * 2 + 1] = add_blend_r32(
                         bitmap_line[x * 2 + 1], m_palette->pen(pix));
                     if (interlace_framebuffer == 1)
-                      bitmap_line2[x * 2 + 1] =
-                          add_blend_r32(bitmap_line2[x], m_palette->pen(pix));
+                      bitmap_line2[x * 2 + 1] = add_blend_r32(
+                          bitmap_line2[x * 2 + 1], m_palette->pen(pix));
                   } else {
                     bitmap_line[x] =
                         add_blend_r32(bitmap_line[x], m_palette->pen(pix));
@@ -10004,14 +10004,14 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
                                         ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
                     if (interlace_framebuffer == 1)
                       bitmap_line2[x * 2] = alpha_blend_r32(
-                          bitmap_line2[x], m_palette->pen(pix),
+                          bitmap_line2[x * 2], m_palette->pen(pix),
                           ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
                     bitmap_line[x * 2 + 1] = alpha_blend_r32(
                         bitmap_line[x * 2 + 1], m_palette->pen(pix),
                         ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
                     if (interlace_framebuffer == 1)
                       bitmap_line2[x * 2 + 1] = alpha_blend_r32(
-                          bitmap_line2[x], m_palette->pen(pix),
+                          bitmap_line2[x * 2 + 1], m_palette->pen(pix),
                           ((uint16_t)(0x1f - ccr) * 0xff) / 0x1f);
                   } else {
                     bitmap_line[x] =
