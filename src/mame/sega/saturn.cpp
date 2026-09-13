@@ -149,6 +149,7 @@ Framebuffer TODO:
 #include "saturn.h"
 #include "emu.h"
 
+
 #include "cpu/scudsp/scudsp.h"
 
 #include "input.h" // for video debug keys
@@ -5851,6 +5852,198 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
   }
 }
 
+void saturn_state::vdp2_drawgfxzoom_rgb888(
+    bitmap_rgb32 &dest_bmp, const rectangle &clip, uint32_t code,
+    uint32_t color, int flipx, int flipy, int sx, int sy, int transparency,
+    int scalex, int scaley, int sprite_screen_width, int sprite_screen_height,
+    int alpha) {
+  rectangle myclip;
+  uint8_t *gfxdata;
+
+  gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
+
+  if (!scalex || !scaley)
+    return;
+
+#if 0
+	if (gfx->has_pen_usage() && !(transparency & STV_TRANSPARENCY_NONE))
+	{
+		int transmask = 0;
+
+		transmask = 1 << (0 & 0xff);
+
+		if ((gfx->pen_usage(code) & ~transmask) == 0)
+			/* character is totally transparent, no need to draw */
+			return;
+		else if ((gfx->pen_usage(code) & transmask) == 0)
+			/* character is totally opaque, can disable transparency */
+			transparency |= STV_TRANSPARENCY_NONE;
+	}
+#endif
+
+  /*
+  scalex and scaley are 16.16 fixed point numbers
+  1<<15 : shrink to 50%
+  1<<16 : uniform scale
+  1<<17 : double to 200%
+  */
+
+  // force clip to bitmap boundary
+  myclip = clip;
+  myclip &= dest_bmp.cliprect();
+
+  //  if( gfx )
+  {
+    //      const uint8_t *source_base = gfx->get_data(code % gfx->elements());
+
+    // int sprite_screen_height = (scaley*gfx->height()+0x8000)>>16;
+    // int sprite_screen_width = (scalex*gfx->width()+0x8000)>>16;
+
+    if (sprite_screen_width && sprite_screen_height) {
+      /* compute sprite increment per screen pixel */
+      // int dx = (gfx->width()<<16)/sprite_screen_width;
+      // int dy = (gfx->height()<<16)/sprite_screen_height;
+      int dx = current_tilemap.incx;
+      int dy = current_tilemap.incy;
+
+      int ex = sx + sprite_screen_width;
+      int ey = sy + sprite_screen_height;
+
+      int x_index_base;
+      int y_index;
+
+      if (flipx) {
+        x_index_base = (sprite_screen_width - 1) * dx;
+        dx = -dx;
+      } else {
+        x_index_base = 0;
+      }
+
+      if (flipy) {
+        y_index = (sprite_screen_height - 1) * dy;
+        dy = -dy;
+      } else {
+        y_index = 0;
+      }
+
+      if (sx < myclip.left()) {
+        // clip left
+        int pixels = myclip.left() - sx;
+        sx += pixels;
+        x_index_base += pixels * dx;
+      }
+      if (sy < myclip.top()) {
+        // clip top
+        int pixels = myclip.top() - sy;
+        sy += pixels;
+        y_index += pixels * dy;
+      }
+      if (ex > myclip.right() + 1) {
+        // clip right
+        int pixels = ex - myclip.right() - 1;
+        ex -= pixels;
+      }
+      if (ey > myclip.bottom() + 1) {
+        // clip bottom
+        int pixels = ey - myclip.bottom() - 1;
+        ey -= pixels;
+      }
+
+      // skip if inner loop doesn't draw anything
+      if (ex > sx) {
+        if (transparency & STV_TRANSPARENCY_ALPHA) {
+          // case : STV_TRANSPARENCY_ALPHA
+          for (int y = sy; y < ey; y++) {
+            uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+            uint32_t *const dest = &dest_bmp.pix(y);
+
+            int x_index = x_index_base;
+            for (int x = sx; x < ex; x++) {
+              uint32_t data = (source[(x_index >> 16) * 4 + 0] << 24) |
+                              (source[(x_index >> 16) * 4 + 1] << 16) |
+                              (source[(x_index >> 16) * 4 + 2] << 8) |
+                              (source[(x_index >> 16) * 4 + 3] << 0);
+              int b = (data & 0xff0000) >> 16;
+              int g = (data & 0x00ff00) >> 8;
+              int r = (data & 0x0000ff) >> 0;
+              if (current_tilemap.fade_control & 1)
+                vdp2_compute_color_offset(&r, &g, &b,
+                                          current_tilemap.fade_control & 2);
+
+              if (vdp2_window_process(x, y) &&
+                  ((transparency & STV_TRANSPARENCY_NONE) ||
+                   (data & 0x80000000)))
+                dest[x] = alpha_blend_r32(dest[x], rgb_t(r, g, b), alpha);
+
+              x_index += dx;
+            }
+
+            y_index += dy;
+          }
+        } else if (transparency & STV_TRANSPARENCY_ADD_BLEND) {
+          // case : STV_TRANSPARENCY_ADD_BLEND
+          for (int y = sy; y < ey; y++) {
+            uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+            uint32_t *const dest = &dest_bmp.pix(y);
+
+            int x_index = x_index_base;
+            for (int x = sx; x < ex; x++) {
+              uint32_t data = (source[(x_index >> 16) * 4 + 0] << 24) |
+                              (source[(x_index >> 16) * 4 + 1] << 16) |
+                              (source[(x_index >> 16) * 4 + 2] << 8) |
+                              (source[(x_index >> 16) * 4 + 3] << 0);
+              int b = (data & 0xff0000) >> 16;
+              int g = (data & 0x00ff00) >> 8;
+              int r = (data & 0x0000ff) >> 0;
+              if (current_tilemap.fade_control & 1)
+                vdp2_compute_color_offset(&r, &g, &b,
+                                          current_tilemap.fade_control & 2);
+
+              if (vdp2_window_process(x, y) &&
+                  ((transparency & STV_TRANSPARENCY_NONE) ||
+                   (data & 0x80000000)))
+                dest[x] = add_blend_r32(dest[x], rgb_t(r, g, b));
+
+              x_index += dx;
+            }
+
+            y_index += dy;
+          }
+        } else {
+          // case : STV_TRANSPARENCY_PEN
+          for (int y = sy; y < ey; y++) {
+            uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+            uint32_t *const dest = &dest_bmp.pix(y);
+
+            int x_index = x_index_base;
+            for (int x = sx; x < ex; x++) {
+              uint32_t data = (source[(x_index >> 16) * 4 + 0] << 24) |
+                              (source[(x_index >> 16) * 4 + 1] << 16) |
+                              (source[(x_index >> 16) * 4 + 2] << 8) |
+                              (source[(x_index >> 16) * 4 + 3] << 0);
+              int b = (data & 0xff0000) >> 16;
+              int g = (data & 0x00ff00) >> 8;
+              int r = (data & 0x0000ff) >> 0;
+              if (current_tilemap.fade_control & 1)
+                vdp2_compute_color_offset(&r, &g, &b,
+                                          current_tilemap.fade_control & 2);
+
+              if (vdp2_window_process(x, y) &&
+                  ((transparency & STV_TRANSPARENCY_NONE) ||
+                   (data & 0x80000000)))
+                dest[x] = rgb_t(r, g, b);
+
+              x_index += dx;
+            }
+
+            y_index += dy;
+          }
+        }
+      }
+    }
+  }
+}
+
 void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
                                        const rectangle &clip, uint32_t code,
                                        int flipx, int flipy, int sx, int sy,
@@ -7026,6 +7219,9 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
            dot, so the four cells of a 16x16 character sit four character
            numbers apart - the same step the unzoomed path hardcodes */
         tilecodespacing = 4;
+      } else if (current_tilemap.colour_depth == 4) {
+        /* 16M colour: four bytes per dot, so eight character numbers */
+        tilecodespacing = 8;
       }
       /* TILES ARE NOW DECODED */
 
@@ -7043,8 +7239,34 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
   (((drawypos + (starty) + tilesizey) >> 16) - ((drawypos + (starty)) >> 16))
         if (current_tilemap.tile_size == 1) {
           if (current_tilemap.colour_depth == 4) {
-            popmessage(
-                "Unsupported tilemap gfx zoom color depth = 4, tile size = 1");
+            /* RGB888 */
+            vdp2_drawgfxzoom_rgb888(
+                bitmap, cliprect,
+                tilecode + (0 + (flipyx & 1) + (flipyx & 2)) * tilecodespacing,
+                pal, flipyx & 1, flipyx & 2, drawxpos >> 16, drawypos >> 16,
+                current_tilemap.transparency, scalex, scaley, SCR_TILESIZE_X,
+                SCR_TILESIZE_Y, current_tilemap.alpha);
+            vdp2_drawgfxzoom_rgb888(
+                bitmap, cliprect,
+                tilecode + (1 - (flipyx & 1) + (flipyx & 2)) * tilecodespacing,
+                pal, flipyx & 1, flipyx & 2, (drawxpos + tilesizex) >> 16,
+                drawypos >> 16, current_tilemap.transparency, scalex, scaley,
+                SCR_TILESIZE_X1(tilesizex), SCR_TILESIZE_Y,
+                current_tilemap.alpha);
+            vdp2_drawgfxzoom_rgb888(
+                bitmap, cliprect,
+                tilecode + (2 + (flipyx & 1) - (flipyx & 2)) * tilecodespacing,
+                pal, flipyx & 1, flipyx & 2, drawxpos >> 16,
+                (drawypos + tilesizey) >> 16, current_tilemap.transparency,
+                scalex, scaley, SCR_TILESIZE_X, SCR_TILESIZE_Y1(tilesizey),
+                current_tilemap.alpha);
+            vdp2_drawgfxzoom_rgb888(
+                bitmap, cliprect,
+                tilecode + (3 - (flipyx & 1) - (flipyx & 2)) * tilecodespacing,
+                pal, flipyx & 1, flipyx & 2, (drawxpos + tilesizex) >> 16,
+                (drawypos + tilesizey) >> 16, current_tilemap.transparency,
+                scalex, scaley, SCR_TILESIZE_X1(tilesizex),
+                SCR_TILESIZE_Y1(tilesizey), current_tilemap.alpha);
           } else if (current_tilemap.colour_depth == 3) {
             /* RGB555 */
             vdp2_drawgfxzoom_rgb555(
@@ -7105,10 +7327,13 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
                 SCR_TILESIZE_Y1(tilesizey), current_tilemap.alpha);
           }
         } else {
-          if (current_tilemap.colour_depth == 4)
-            popmessage(
-                "Unsupported tilemap gfx zoom color depth = 4, tile size = 0");
-          else if (current_tilemap.colour_depth == 3) {
+          if (current_tilemap.colour_depth == 4) {
+            vdp2_drawgfxzoom_rgb888(bitmap, cliprect, tilecode, pal, flipyx & 1,
+                                    flipyx & 2, drawxpos >> 16, drawypos >> 16,
+                                    current_tilemap.transparency, scalex,
+                                    scaley, SCR_TILESIZE_X, SCR_TILESIZE_Y,
+                                    current_tilemap.alpha);
+          } else if (current_tilemap.colour_depth == 3) {
             vdp2_drawgfxzoom_rgb555(bitmap, cliprect, tilecode, pal, flipyx & 1,
                                     flipyx & 2, drawxpos >> 16, drawypos >> 16,
                                     current_tilemap.transparency, scalex,
@@ -7492,9 +7717,8 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
 
   //	if (current_tilemap.vertical_cell_scroll_enable)
   //		popmessage("%d %d %d %d", current_tilemap.linescroll_enable,
-  // current_tilemap.vertical_linescroll_enable,
-  // current_tilemap.linezoom_enable,
-  // current_tilemap.vertical_cell_scroll_enable);
+  //current_tilemap.vertical_linescroll_enable, current_tilemap.linezoom_enable,
+  //current_tilemap.vertical_cell_scroll_enable);
 
   // check for vertical cell scroll enable (sonicjamj)
   // TODO: it is unknown how this works with vertical linescroll enable too (it
@@ -9669,7 +9893,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
   // if (VDP2_SPWINEN)
   //	popmessage("(%d %d) enable mask %d type %d | color %d alpha %d shadow
   //%d", interlace_framebuffer, double_x,	sprite_window, sprite_type,
-  // sprite_color_mode, alpha_enabled, sprite_shadow);
+  //sprite_color_mode, alpha_enabled, sprite_shadow);
 
   // TODO: reminder that this is an unfollowable snippet ...
   if (interlace_framebuffer == 0 && double_x == 0) {
