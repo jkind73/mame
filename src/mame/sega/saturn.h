@@ -313,6 +313,11 @@ protected:
                                int flipy, int sx, int sy, int transparency,
                                int scalex, int scaley, int sprite_screen_width,
                                int sprite_screen_height, int alpha);
+  void vdp2_drawgfxzoom_rgb888(bitmap_rgb32 &dest_bmp, const rectangle &clip,
+                               uint32_t code, uint32_t color, int flipx,
+                               int flipy, int sx, int sy, int transparency,
+                               int scalex, int scaley, int sprite_screen_width,
+                               int sprite_screen_height, int alpha);
   void vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp, const rectangle &clip,
                            uint32_t code, int flipx, int flipy, int sx, int sy,
                            int transparency, int alpha);
