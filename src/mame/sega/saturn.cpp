@@ -9438,18 +9438,6 @@ uint32_t saturn_state::vdp2_window_config() const {
          (win.sprite_window ? 0x20u : 0x00u);
 }
 
-// Per the manual, when the W0, W1 and SW enable bits of a screen are all zero
-// the logic bit alone decides the outcome: OR (0) leaves the whole screen
-// outside of the window effective area, AND (1) puts the whole screen inside
-// of it. The sprite window is not emulated, so when it is the only window in
-// use keep drawing the screen instead of blanking it.
-int saturn_state::vdp2_window_all_disabled() const {
-  if (current_tilemap.window_control.sprite_window)
-    return 1;
-
-  return (current_tilemap.window_control.logic & 1) ? 0 : 1;
-}
-
 void saturn_state::vdp2_window_cache_line(int y) {
   m_window_cache_y = y;
   m_window_cache_cfg = vdp2_window_config();
