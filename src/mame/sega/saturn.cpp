@@ -5801,8 +5801,8 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
 
             int x_index = x_index_base;
             for (int x = sx; x < ex; x++) {
-              int data = (source[(x_index * 2 + 0) >> 16] << 0) |
-                         (source[(x_index * 2 + 1) >> 16] << 8);
+              int data = (source[(x_index >> 16) * 2] << 8) |
+                         source[(x_index >> 16) * 2 + 1];
               int b = pal5bit((data & 0x7c00) >> 10);
               int g = pal5bit((data & 0x03e0) >> 5);
               int r = pal5bit(data & 0x001f);
