@@ -226,6 +226,9 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_abus_pending_ack));
   save_item(NAME(m_t0c));
   save_item(NAME(m_t1s));
+  save_item(NAME(m_dma_status));
+  save_item(NAME(m_current_vector));
+  save_item(NAME(m_timer0_counter));
   save_item(NAME(m_t1md));
 
   save_item(NAME(m_dma[0].src));
@@ -238,6 +241,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[0].enable_mask));
   save_item(NAME(m_dma[0].indirect_mode));
   save_item(NAME(m_dma[0].indirect_fetch_phase));
+  save_item(NAME(m_dma[0].indirect_end_flag));
   save_item(NAME(m_dma[0].rup));
   save_item(NAME(m_dma[0].wup));
   save_item(NAME(m_dma[0].mode));
@@ -259,6 +263,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[1].enable_mask));
   save_item(NAME(m_dma[1].indirect_mode));
   save_item(NAME(m_dma[1].indirect_fetch_phase));
+  save_item(NAME(m_dma[1].indirect_end_flag));
   save_item(NAME(m_dma[1].rup));
   save_item(NAME(m_dma[1].wup));
   save_item(NAME(m_dma[1].mode));
@@ -280,6 +285,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[2].enable_mask));
   save_item(NAME(m_dma[2].indirect_mode));
   save_item(NAME(m_dma[2].indirect_fetch_phase));
+  save_item(NAME(m_dma[2].indirect_end_flag));
   save_item(NAME(m_dma[2].rup));
   save_item(NAME(m_dma[2].wup));
   save_item(NAME(m_dma[2].mode));
@@ -308,19 +314,39 @@ void saturn_scu_device::device_reset() {
   m_ist = 0;
   m_abus_pending_ack = 0;
 
+  // every dma_channel_t member has to be given a value here: the device
+  // constructor leaves them indeterminate, and the DMA logic reads the flags
+  // as soon as a channel leaves DMA_MODE_RESET, so an unset bool was being
+  // loaded with a non-0/1 value (UBSAN invalid-bool-load, see mamedev/mame
+  // issue 15773)
   for (int i = 0; i < 3; i++) {
+    m_dma[i].src = 0;
+    m_dma[i].dst = 0;
     m_dma[i].src_add = 4;
     m_dma[i].dst_add = 2;
+    m_dma[i].size = 0;
+    m_dma[i].index = 0;
+    m_dma[i].live_src = 0;
+    m_dma[i].live_dst = 0;
+    m_dma[i].live_size = 0;
+    m_dma[i].live_count = 0;
     m_dma[i].start_factor = DMA_EVENT_TRIGGER;
+    m_dma[i].mode = DMA_MODE_RESET;
     m_dma[i].enable_mask = false;
+    m_dma[i].indirect_mode = false;
+    m_dma[i].indirect_fetch_phase = false;
+    m_dma[i].indirect_end_flag = false;
+    m_dma[i].rup = false;
+    m_dma[i].wup = false;
     m_dma[i].done = false;
     m_dma[i].bbus_sound_access = false;
-    m_dma[i].mode = DMA_MODE_RESET;
+    m_dma[i].transfer_penalty = 0;
   }
 
   m_dma_tick_timer->adjust(attotime::never);
   m_dma_status = 0;
   m_current_irq_level = 0;
+  m_current_vector = 0;
 
   // Nope until we have a proper DTACK instead of an HALT,
   // SMPC triggers this thru dotsel (2 credits meme ...)
@@ -330,6 +356,10 @@ void saturn_scu_device::device_reset() {
   m_tenb = false;
   m_t1md = false;
   m_timer0_counter = 0;
+  // timer 0 compares against m_t0c and timer 1 is armed for m_t1s ticks, so
+  // both latches need a defined value before anything enables the timers
+  m_t0c = 0;
+  m_t1s = 0;
   m_timer1->adjust(attotime::never);
 }
 
