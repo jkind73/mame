@@ -44,6 +44,8 @@ void saturn_vdp2_device::device_start() {
   save_item(NAME(m_hdisplay));
   save_item(NAME(m_vdisplay));
   save_item(NAME(m_dotsel_352));
+  // VRAMSZ is writable through VRSIZE, so it is live machine state
+  save_item(NAME(m_vramsz));
 
   save_item(NAME(m_exten));
   save_item(NAME(m_exlten));
