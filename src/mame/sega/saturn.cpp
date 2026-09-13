@@ -149,7 +149,6 @@ Framebuffer TODO:
 #include "saturn.h"
 #include "emu.h"
 
-
 #include "cpu/scudsp/scudsp.h"
 
 #include "input.h" // for video debug keys
@@ -6510,7 +6509,9 @@ void saturn_state::vdp2_draw_basic_bitmap(bitmap_rgb32 &bitmap,
     case 1:
       draw_8bpp_bitmap(bitmap, cliprect);
       return;
-      //  case 2: draw_11bpp_bitmap(bitmap,cliprect); return;
+    case 2:
+      draw_11bpp_bitmap(bitmap, cliprect);
+      return;
     case 3:
       draw_rgb15_bitmap(bitmap, cliprect);
       return;
@@ -7479,8 +7480,9 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
 
   //	if (current_tilemap.vertical_cell_scroll_enable)
   //		popmessage("%d %d %d %d", current_tilemap.linescroll_enable,
-  //current_tilemap.vertical_linescroll_enable, current_tilemap.linezoom_enable,
-  //current_tilemap.vertical_cell_scroll_enable);
+  // current_tilemap.vertical_linescroll_enable,
+  // current_tilemap.linezoom_enable,
+  // current_tilemap.vertical_cell_scroll_enable);
 
   // check for vertical cell scroll enable (sonicjamj)
   // TODO: it is unknown how this works with vertical linescroll enable too (it
@@ -9642,7 +9644,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
   // if (VDP2_SPWINEN)
   //	popmessage("(%d %d) enable mask %d type %d | color %d alpha %d shadow
   //%d", interlace_framebuffer, double_x,	sprite_window, sprite_type,
-  //sprite_color_mode, alpha_enabled, sprite_shadow);
+  // sprite_color_mode, alpha_enabled, sprite_shadow);
 
   // TODO: reminder that this is an unfollowable snippet ...
   if (interlace_framebuffer == 0 && double_x == 0) {
