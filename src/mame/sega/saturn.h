@@ -358,6 +358,7 @@ protected:
   void vdp2_check_fade_control_for_layer();
 
   void vdp2_draw_line(bitmap_rgb32 &bitmap, const rectangle &cliprect);
+  rgb_t vdp2_back_screen_color(uint8_t const *gfxdata, uint32_t base_offs);
   void vdp2_draw_back(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void vdp2_draw_NBG0(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void vdp2_draw_NBG1(bitmap_rgb32 &bitmap, const rectangle &cliprect);

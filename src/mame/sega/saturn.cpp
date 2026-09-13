@@ -8859,6 +8859,18 @@ void saturn_state::vdp2_draw_RBG0(bitmap_rgb32 &bitmap,
   }
 }
 
+rgb_t saturn_state::vdp2_back_screen_color(uint8_t const *gfxdata,
+                                           uint32_t base_offs) {
+  uint16_t const dot = (gfxdata[base_offs + 0] << 8) | gfxdata[base_offs + 1];
+  int b = pal5bit((dot & 0x7c00) >> 10);
+  int g = pal5bit((dot & 0x03e0) >> 5);
+  int r = pal5bit(dot & 0x001f);
+  if (VDP2_BKCOEN)
+    vdp2_compute_color_offset(&r, &g, &b, VDP2_BKCOSL);
+
+  return rgb_t(r, g, b);
+}
+
 void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
                                   const rectangle &cliprect) {
   uint8_t const *const gfxdata = m_vdp2_legacy.gfx_decode.get();
@@ -8873,21 +8885,19 @@ void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
     bitmap.fill(m_palette->black_pen(), cliprect);
   else {
     uint32_t base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
+    uint32_t base_offs = ((VDP2_BKTA)&base_mask) << 1;
 
-    for (int y = cliprect.top(); y <= cliprect.bottom(); y++) {
-      uint32_t base_offs = ((VDP2_BKTA)&base_mask) << 1;
-      if (VDP2_BKCLMD)
-        base_offs += ((y / interlace) << 1);
+    /* the back screen is either a single colour or one colour per line, so
+       decode (and apply the colour offset to) each dot only once */
+    if (!VDP2_BKCLMD) {
+      bitmap.fill(vdp2_back_screen_color(gfxdata, base_offs), cliprect);
+    } else {
+      for (int y = cliprect.top(); y <= cliprect.bottom(); y++) {
+        rgb_t const color =
+            vdp2_back_screen_color(gfxdata, base_offs + ((y / interlace) << 1));
 
-      for (int x = cliprect.left(); x <= cliprect.right(); x++) {
-        uint16_t dot = (gfxdata[base_offs + 0] << 8) | gfxdata[base_offs + 1];
-        int b = pal5bit((dot & 0x7c00) >> 10);
-        int g = pal5bit((dot & 0x03e0) >> 5);
-        int r = pal5bit(dot & 0x001f);
-        if (VDP2_BKCOEN)
-          vdp2_compute_color_offset(&r, &g, &b, VDP2_BKCOSL);
-
-        bitmap.pix(y, x) = rgb_t(r, g, b);
+        for (int x = cliprect.left(); x <= cliprect.right(); x++)
+          bitmap.pix(y, x) = color;
       }
     }
   }
