@@ -95,8 +95,10 @@ private:
     uint8_t numblks;
   };
 
-  // 16-bit transfer types
-  enum transT {
+public:
+  // 16-bit transfer types - fixed underlying type so the save state system can
+  // serialise them, see ALLOW_SAVE_TYPE in the .cpp
+  enum transT : u8 {
     XFERTYPE_INVALID,
     XFERTYPE_TOC,
     XFERTYPE_FILEINFO_1,
@@ -106,7 +108,7 @@ private:
   };
 
   // 32-bit transfer types
-  enum trans32T {
+  enum trans32T : u8 {
     XFERTYPE32_INVALID,
     XFERTYPE32_GETSECTOR,
     XFERTYPE32_GETDELETESECTOR,
@@ -114,6 +116,7 @@ private:
     XFERTYPE32_MOVESECTOR
   };
 
+private:
   int get_track_index(uint32_t fad);
   int sega_cdrom_get_adr_control(int track);
   void cr_standard_return(uint16_t cur_status);
