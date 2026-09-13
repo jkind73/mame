@@ -44,6 +44,7 @@ DASM notes:
 #include "saturn_cd_hle.h"
 #include "emu.h"
 
+
 #include "coreutil.h"
 #include "multibyte.h"
 
@@ -321,15 +322,30 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
   case XFERTYPE32_GETDELETESECTOR:
     // make sure we have sectors left
     if (xfersect < xfersectnum) {
+      blockT *const blk = transpart->blocks[xfersectpos + xfersect];
+
+      // a hole in the partition has nothing to hand over; leave the port at
+      // its idle value and move on to the next sector rather than chasing a
+      // null pointer or running off a block with a nonsense size
+      if (blk == nullptr || blk->size < 0 ||
+          uint32_t(blk->size) > sizeof(blk->data)) {
+        LOGWARN("CD: Get Sector Data skipping invalid block %d of %d\n",
+                xfersect + 1, xfersectnum);
+
+        xferoffs = 0;
+        xfersect++;
+        break;
+      }
+
       // get next longword
-      rv =
-          get_u32be(&transpart->blocks[xfersectpos + xfersect]->data[xferoffs]);
+      rv = get_u32be(&blk->data[xferoffs]);
 
       xferdnum += 4;
       xferoffs += 4;
 
-      // did we run out of sector?
-      if (xferoffs >= transpart->blocks[xfersect]->size) {
+      // did we run out of sector? (this tested blocks[xfersect], missing the
+      // partition offset the data read above uses)
+      if (xferoffs >= blk->size) {
         LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
 
         xferoffs = 0;
@@ -377,15 +393,27 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
   case XFERTYPE32_PUTSECTOR:
     // make sure we have sectors left
     if (xfersect < xfersectnum) {
+      blockT *const blk = transpart->blocks[xfersectpos + xfersect];
+
+      // as above: skip anything we cannot safely write into
+      if (blk == nullptr || blk->size < 0 ||
+          uint32_t(blk->size) > sizeof(blk->data)) {
+        LOGWARN("CD: Put Sector Data skipping invalid block %d of %d\n",
+                xfersect + 1, xfersectnum);
+
+        xferoffs = 0;
+        xfersect++;
+        break;
+      }
+
       // get next longword
-      put_u32be(&transpart->blocks[xfersectpos + xfersect]->data[xferoffs],
-                data);
+      put_u32be(&blk->data[xferoffs], data);
 
       xferdnum += 4;
       xferoffs += 4;
 
       // did we run out of sector?
-      if (xferoffs >= transpart->blocks[xfersectpos + xfersect]->size) {
+      if (xferoffs >= blk->size) {
         LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
 
         xferoffs = 0;
@@ -415,7 +443,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     xfercount += 2;
     xferdnum += 2;
 
-    if (xfercount > 102 * 4) {
+    if (xfercount >= 102 * 4) {
       xfercount = 0;
       xfertype = XFERTYPE_INVALID;
     }
@@ -463,7 +491,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     xfercount += 2;
     xferdnum += 2;
 
-    if (xfercount > 5 * 2) {
+    if (xfercount >= 5 * 2) {
       xfercount = 0;
       xfertype = XFERTYPE_INVALID;
     }
@@ -475,7 +503,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     xfercount += 2;
     xferdnum += 2;
 
-    if (xfercount > 12 * 2) {
+    if (xfercount >= 12 * 2) {
       xfercount = 0;
       xfertype = XFERTYPE_INVALID;
     }
@@ -1727,8 +1755,8 @@ void saturn_cd_hle_device::cmd_delete_sector_data() {
   for (i = sectofs; i < (sectofs + sectnum); i++) {
     // pstarcol PS2 tries to delete partial partitions,
     // need to guard against it (otherwise it would crash after first attract
-    // cycle)
-    // a partition can also hold holes, so check the block pointer as well
+    // cycle) a partition can also hold holes, so check the block pointer as
+    // well
     if ((partitions[bufnum].size > 0) &&
         (partitions[bufnum].blocks[i] != nullptr)) {
       partitions[bufnum].size -= partitions[bufnum].blocks[i]->size;
