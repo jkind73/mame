@@ -613,8 +613,13 @@ void sat_console_state::saturn_mem(address_map &map) {
              mem_mask);
     return 0xffff;
   }));
-  map(0x01000000, 0x017fffff).w("dcc", FUNC(saturn_dcc_device::minit_w));
-  map(0x01800000, 0x01ffffff).w("dcc", FUNC(saturn_dcc_device::sinit_w));
+  // the FRT init windows read back 0xffff and pass writes straight to the FRT
+  map(0x01000000, 0x017fffff)
+      .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
+      .w("dcc", FUNC(saturn_dcc_device::minit_w));
+  map(0x01800000, 0x01ffffff)
+      .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
+      .w("dcc", FUNC(saturn_dcc_device::sinit_w));
   //  map(0x02000000, 0x023fffff).rom().mirror(0x20000000); // Cartridge area
   //  map(0x02400000, 0x027fffff).ram(); // External Data RAM area
   //  map(0x04000000, 0x047fffff).ram(); // External Battery RAM area
@@ -657,6 +662,9 @@ void sat_console_state::saturn_mem(address_map &map) {
           FUNC(sat_console_state::vdp2_regs_w));
   map(0x05f80000, 0x05fbffff).m(m_vdp2, FUNC(saturn_vdp2_device::regs_map));
   /* SCU */
+  map(0x05fc0000, 0x05fdffff).lr32(NAME([](offs_t offset, u32 mem_mask) {
+    return u32(0x000e0000);
+  })); // unused part of the SCU window reads a constant
   map(0x05fe0000, 0x05fe00cf).m(m_scu, FUNC(saturn_scu_device::regs_map));
 
   map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
