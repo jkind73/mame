@@ -158,6 +158,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(cd_fad_seek));
   save_item(NAME(fadstoplay));
   save_item(NAME(buffull));
+  save_item(NAME(m_seek_ticks_left));
   save_item(NAME(sectorstore));
   save_item(NAME(freeblocks));
   save_item(NAME(cur_track));
@@ -199,6 +200,7 @@ void saturn_cd_hle_device::device_reset() {
   buffull_temp_pause = false;
   m_status_change_in_progress = false;
   m_seek_in_progress = false;
+  m_seek_ticks_left = 0;
 
   curdir.clear();
 
@@ -707,6 +709,8 @@ void saturn_cd_hle_device::cd_change_status(u16 new_status) {
   cd_stat = CD_STAT_BUSY;
   cd_next_stat = new_status;
   m_status_change_in_progress = true;
+  if (new_status == CD_STAT_SEEK)
+    m_seek_ticks_left = 0; // retarget: re-measure the travel on the next tick
   // we are changing the status, definitely don't want PERI to interfere
   cd_stat &= ~CD_STAT_PERI;
 }
@@ -1063,14 +1067,11 @@ void saturn_cd_hle_device::cmd_seek_disc() {
     // cd_curfad = temp;
 
     if (temp == 0xffffff) {
-      // TODO: understand the exact condition for pause to standby transition
-      // if (cd_stat == CD_STAT_PAUSE)
-      //{
-      //	cd_fad_seek = 150;
-      //	cd_change_status(CD_STAT_SEEK);
-      //	cd_seek_stat = CD_STAT_STANDBY;
-      //}
-      // else
+      /* A seek to 0xFFFFFF is a pause, not a stop: mednafen's command
+         decode ("0xFFFFFF=pause, 0=stop") and its DRIVEPHASE_STOPPED ->
+         STATUS_STANDBY path put the pause-to-standby transition on a
+         seek to 0 instead, which is why the standby variant sketched
+         here never shipped and is now removed. */
       {
         // chain a seek over the same position for delaying pausing a bit
         // - amagishi
@@ -1082,6 +1083,13 @@ void saturn_cd_hle_device::cmd_seek_disc() {
         cd_seek_stat = CD_STAT_PAUSE;
         m_cdda->pause_audio(1);
       }
+    } else if (temp == 0) {
+      // a seek to 0 stops the drive, which leaves it in standby
+      cd_fad_seek = 150;
+      cd_change_status(CD_STAT_SEEK);
+      cd_seek_stat = CD_STAT_STANDBY;
+      m_cdda->stop_audio();
+      LOGCMD("\tdisc seek to 0: stop\n");
     } else {
       // Area 51 sets this up (TODO: retest me out)
       cd_fad_seek = ((cr1 & 0x7f) << 16) | cr2;
@@ -3365,8 +3373,12 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
 
   cd_playdata();
 
-  if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
-      cdrom_file::CD_TRACK_AUDIO)
+  // pickup travel is physical, so a SEEK always ticks at the real sector
+  // rate; only streaming follows the cd_speed multiplier
+  if ((cd_stat & 0x0f00) == CD_STAT_SEEK)
+    m_sector_timer->adjust(attotime::from_hz(75));
+  else if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
+           cdrom_file::CD_TRACK_AUDIO)
     m_sector_timer->adjust(
         attotime::from_hz(75)); // 75 sectors / second = 150kBytes/second (cdda
                                 // track ignores cd_speed setting)
@@ -3374,21 +3386,14 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
     m_sector_timer->adjust(attotime::from_hz(
         75 * cd_speed)); // 75 / 150 sectors / second = 150 / 300kBytes/second
 
-  // TODO: Saturn refuses to boot with this if a disk isn't in and condition is
-  // applied!?
-  // TODO: Check out actual timing of SCDQ acquisition.
-  // (daytonau definitely wants it to be on).
-  // if(m_cdrom_image->exists())
-  // if(((cd_stat & 0x0f00) != CD_STAT_NODISC) && ((cd_stat & 0x0f00) !=
-  // CD_STAT_OPEN))
-  {
-    if (!buffull)
-      hirqreg |= SCDQ;
-    else
-      hirqreg &= ~SCDQ;
-
-    update_hirq();
-  }
+  /* The subcode Q buffer is refreshed and SCDQ raised on every periodic
+     update, exactly as mednafen's CDB does at the end of its periodic
+     handler; it is not gated on the data buffer having room (daytonau needs
+     the flag while the buffer is full, and clearing a pending SCDQ could
+     drop an update the host has not read yet).  The existence guard stays
+     out: with no disc the status reports NODISC and the host masks SCDQ. */
+  hirqreg |= SCDQ;
+  update_hirq();
 
   if (cd_stat & CD_STAT_PERI) {
     cr_standard_return(cd_stat);
@@ -4021,41 +4026,45 @@ void saturn_cd_hle_device::cd_playdata() {
     if (!m_cdrom_image->exists())
       return;
 
-    int32_t fad_diff;
-    // zdivide
-    // TODO: timings, may be too fast
-    const int32_t seek_time = 75 * 10 * cd_speed;
     m_seek_in_progress = true;
-    // cd_stat &= ~CD_STAT_PERI;
 
-    LOGSEEK("PRE %08x %08x %08x %d\n", cd_curfad, cd_fad_seek, cd_stat,
-            cd_fad_seek - cd_curfad);
-
-    fad_diff = (cd_fad_seek - cd_curfad);
-
-    if (fad_diff > seek_time) {
-      LOGSEEK("PRE FFWD %08x %08x %08x %d %d\n", cd_curfad, cd_fad_seek,
-              cd_stat, cd_fad_seek - cd_curfad, seek_time);
-      cd_curfad += (seek_time);
-      LOGSEEK("POST FFWD %08x %08x %08x %d %d\n", cd_curfad, cd_fad_seek,
-              cd_stat, cd_fad_seek - cd_curfad, seek_time);
-    } else if (fad_diff < -seek_time) {
-      LOGSEEK("PRE REW %08x %08x %08x %d %d\n", cd_curfad, cd_fad_seek, cd_stat,
-              cd_fad_seek - cd_curfad, -seek_time);
-      cd_curfad -= seek_time;
-      LOGSEEK("POST REW %08x %08x %08x %d %d\n", cd_curfad, cd_fad_seek,
-              cd_stat, cd_fad_seek - cd_curfad, -seek_time);
-    } else {
-      cur_track = m_cdrom_image->get_track(cd_fad_seek);
-      LOGSEEK("Ready (track %d)\n", cur_track + 1);
-      cd_curfad = cd_fad_seek;
-      cd_change_status(cd_seek_stat);
-      if (cd_seek_stat == CD_STAT_PLAY &&
-          m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
-              cdrom_file::CD_TRACK_AUDIO)
-        m_cdda->pause_audio(0);
-      m_seek_in_progress = false;
+    /* The pickup travel budget is measured once, on the first tick of
+       this SEEK, with mednafen's approximation (ss/cdb.cpp,
+       DRIVEPHASE_SEEK_START3): a fixed 12-sector startup latency, then
+       26 units per sector of forward travel or 28 per sector backwards
+       against the 75296 units of one sector period, plus one extra
+       sector period when moving backwards or jumping 150 sectors or
+       more.  The startup latency is what makes back-to-back Play
+       commands discard the first request (Digital Dance Mix vol.1
+       seeks away from a resume point and immediately re-plays), and
+       the distance term is what keeps long FMV seeks from completing
+       in a couple of sector ticks. */
+    if (m_seek_ticks_left == 0) {
+      int32_t const fad_delta = int32_t(cd_fad_seek - cd_curfad);
+      int64_t units = 12 * 75296 + int64_t(std::abs(fad_delta)) *
+                                       ((fad_delta < 0) ? 28 : 26);
+      if (fad_delta < 0 || fad_delta >= 150)
+        units += 75296;
+      m_seek_ticks_left = int32_t(units / 75296) + 1;
+      LOGSEEK("PRE %08x %08x %08x %d -> %d sector periods\n", cd_curfad,
+              cd_fad_seek, cd_stat, fad_delta, m_seek_ticks_left);
     }
+
+    if (--m_seek_ticks_left > 0) {
+      // still travelling; position reports already come from the
+      // seek target while the status is SEEK (cr_standard_return)
+      break;
+    }
+
+    cur_track = m_cdrom_image->get_track(cd_fad_seek);
+    LOGSEEK("Ready (track %d)\n", cur_track + 1);
+    cd_curfad = cd_fad_seek;
+    cd_change_status(cd_seek_stat);
+    if (cd_seek_stat == CD_STAT_PLAY &&
+        m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
+            cdrom_file::CD_TRACK_AUDIO)
+      m_cdda->pause_audio(0);
+    m_seek_in_progress = false;
 
     break;
   }
