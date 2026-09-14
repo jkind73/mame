@@ -174,9 +174,14 @@ void saturn_vdp2_device::regs_map(address_map &map) {
     const bool odd_flag = m_odd_bit | BIT(m_hreso, 2);
 
     // if DISP off then return '1'
+    // Sega Saturn Technical Bulletin #12 ("SCU DMA, Boot ROM, and Vblank
+    // Precautions", item 3) scopes this to the VBLANK bit alone: "VBLANK bit of
+    // the screen status register (TVSTAT: 180004H) becomes valid, only when
+    // DISP bit of TV screen mode register (TVMD: 180000H) is 1. When DISP bit
+    // is 0, VBLANK bit will always be 1."  HBLANK is deliberately not
+    // mentioned, so it keeps reporting the real horizontal state while DISP is
+    // off.
     const bool vblank_flag = get_vblank() | (!m_disp);
-
-    // TODO: is hblank supposed to return '1' on DISP off as well?
 
     const u16 res = ((m_exltfg << 9) | (m_exsyfg << 8) | (vblank_flag << 3) |
                      (get_hblank() << 2) | (odd_flag << 1) | m_is_pal);
