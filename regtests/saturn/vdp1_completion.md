@@ -1,5 +1,44 @@
 # VDP1 completion audit — 2026-09-14
 
+## Pre-clipping disabled traversal — 2026-09-14
+
+Pclp=1 now preserves normal/scaled row traversal and native line/quad spans instead
+of applying advance clipping/rejection. Pixel writers continue enforcing system,
+user, mesh and physical framebuffer bounds. Normal sprites consequently count END
+markers encountered before the visible window; those markers can terminate a row
+without drawing any pixels. Queued offscreen work remains interruptible and cannot
+prematurely fetch END. Scaled synchronous sampling now indexes temporary source
+coordinates relative to the span, safely handling negative/offscreen X.
+
+The queue allows 8192 spans (416 KiB of descriptors): two signed 13-bit scaled
+endpoints can be that far apart with clipping disabled. Native quad traversal is
+still bounded by its 4096-row recurrence. Reset retains the constant-time active
+index/cursor reset, not a bulk descriptor clear. No new persistent cursor fields
+were necessary; fetched PMOD, coordinates and normal END count were already saved.
+
+Validation adds **10,681 cases**: 10,560 literal normal-sprite images across texture
+formats, packed storage, direction, END enable, mesh, user clipping and offscreen
+origins; eight offscreen cursor/END-count state copies, with CPU edits to a future
+END marker and pending ENDR, also using Gouraud; 112 scaled/native images and one
+8192-row interruption/capacity case. Physical packed words are checked independently
+of derived line pointers. Three forced-preclip mutations fail queue assertions;
+a hidden-END-skipping mutation fails the image oracle. All 18 regression scripts
+and nine production object compilations pass.
+
+Primary [ST-013-R3](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf)
+p.83 explicitly distinguishes disabled pre-clipping from per-dot clipping, and
+pp.86–87 describes END termination/read direction. Cross-checks: pinned
+[MiSTer](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP1/VDP1.sv)
+gates separated-line rejection and boundary stopping on `!PCLP`, separately from
+END detection; pinned [Mednafen](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp1.cpp)
+likewise distinguishes `PCD` in `SetupDrawLine`. No reference renderer was imported.
+
+This does **not** complete pre-clipping: Pclp=0 horizontal/vertical start reversal
+and its END ordering, exact setup/VRAM costs, extreme/degenerate qualification and
+native/scaled source-prefetch timing remain open. Existing texture cutoff caches
+are not a hardware FIFO model. Active-display erase and linked game/save-manager
+acceptance also remain unfinished; the prior dependency-fetch blocker is unchanged.
+
 ## Rectangular Gouraud endpoint and interpolation correction — 2026-09-14
 
 Normal/scaled sprites now prepare integer edge-then-row Gouraud values, matching
