@@ -30,6 +30,7 @@ public:
   auto hint_cb() { return m_hint_cb.bind(); }
 
   // TODO: follows stuff that eventually needs to be privatized
+  bool is_pal() const { return m_is_pal; }
   u8 get_hreso() { return m_hreso; }
   u8 get_vreso() { return m_vreso; }
   bool get_disp() { return m_disp; }
