@@ -756,9 +756,12 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
 
         m_dma[level].live_src = indirect_src & 0x07ff'ffff;
         m_dma[level].live_dst = indirect_dst & 0x07ff'ffff;
-        // TODO: why guardherj sets up a 0x23000 transfer for the FMV?
-        m_dma[level].live_size =
-            indirect_size & ((level == 0) ? 0xf'ffff : 0x3'ffff);
+        // Indirect descriptors carry a 20-bit count on every DMA level,
+        // unlike the level 1/2 direct count registers. Zero encodes 1 MiB
+        // (Ymir DMAReadIndirectTransfer / Mednafen NextIndirect).
+        m_dma[level].live_size = indirect_size & 0xf'ffff;
+        if (m_dma[level].live_size == 0)
+          m_dma[level].live_size = 0x10'0000;
         m_dma[level].live_count = 0;
         m_dma[level].transfer_penalty = src_penalty + dst_penalty;
 
