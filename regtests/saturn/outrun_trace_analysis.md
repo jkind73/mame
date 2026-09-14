@@ -1,5 +1,39 @@
 # OutRun trace analysis and manual-erase ordering fix
 
+## Follow-up: flashing resolved in the user's run
+
+The user confirmed after uploading commit
+[822d45ac](https://github.com/jkind73/mame/commit/822d45ac1a5ce7509993ace32d9000eb57b138e4)
+that the flashing sprites are gone. This is runtime confirmation from the user of
+the manual-erase fix, not a locally performed game test or whole-chip acceptance.
+The earlier request for flashing confirmation below is superseded by this result.
+
+The new console description includes an OutRun run (56 seconds), followed by
+After Burner II (`saturn:aburner2`, 91 seconds). The uploaded `newerror.log` is
+3,230,668 bytes / 18,519 lines, SHA-256
+`2288b3f5c73cd4fb0d00c98b003fcdebece80cbbe27a1531ed51cf14838df374`.
+Its emulated timestamps extend to 92.097 seconds and it has no scaled records;
+this is consistent with the later run replacing the earlier machine's error log.
+Do not attribute its geometry to OutRun without further identification.
+
+It contains 2,336 normal-sprite records (eight distinct command/bounds records),
+all with equal source and destination dimensions and local coordinates (158,107).
+All timestamped modes are TVMR=0, HRESO=0, LSMD=0. There are 331 manual-erase
+begin/end pairs. None of this establishes the cause of the reported logo offset.
+No speculative coordinate or display-mode change was made from this capture.
+
+For any size/offset defect still present, capture only the affected game per
+process. For OutRun, the Windows command is:
+
+```bat
+mame saturnjp outrun -verbose -log
+copy error.log outrun-error.log
+```
+
+Exit MAME completely before the copy and before launching another game. Save a
+screenshot of the remaining defect alongside the log, identifying the game/scene.
+The diagnostic code already exists; this follow-up changes documentation only.
+
 ## Supplied evidence
 
 User upload: [commit c4ae255c](https://github.com/jkind73/mame/commit/c4ae255c6fcc0447f704826ff13b2262b7c554ab).
