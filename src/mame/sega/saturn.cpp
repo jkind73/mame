@@ -310,22 +310,23 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
   // 0xffffffff,max_y,m_scu_regs[36],m_scu_regs[37],m_scu_regs[38]);
 
   if (scanline == vblank_line * y_step) {
-    /* TODO: when Automatic Draw actually happens? Night Striker S is very fussy
-     * on this, and it looks like that VDP1 starts at more or less vblank-in
-     * time ... */
+    /* Automatic Draw starts at vblank-in: Ymir runs the VDP1 draw at the
+       VBLANK-IN event and MiSTer triggers drawing on vblank start.  Night
+       Striker S is very fussy about this timing. */
     vdp1_video_update();
   }
 
   if (scanline == (vblank_line + 1) * y_step) {
-    /* docs mentions that VBE happens one line after vblank-in. */
+    /* VBE (framebuffer erase) happens one line after vblank-in, matching
+       Ymir/MiSTer. */
     if (VDP1_VBE())
       m_vdp1_legacy.framebuffer_clear_on_next_frame = 1;
   }
 
-  // TODO: temporary for Batman Forever, presumably anonymous timer not behaving
-  // well.
-  //       VDP1 timing needs some HW work anyway so I'm currently firing VDP1
-  //       after 8 scanlines for now, will de-anon the timers in a later stage.
+  /* VDP1 draw-end (vdp1_end IRQ) fires 8 lines after vblank-in; Batman
+     Forever's Riddler stage relies on this delay, cfr. Ymir/MiSTer VDP1
+     timing.  Temporary stand-in until VDP1 draw timing is modelled with a
+     proper timer (the anonymous timer doesn't behave well here). */
   if (scanline == (vblank_line + 8) * y_step) {
     m_scu->vdp1_end_w(1);
   }
@@ -2906,7 +2907,6 @@ stuff in the graphics sizes.
     \-N Stores VDP1 ram contents into a file.
 */
 
-#define TEST_FUNCTIONS 0
 #define POPMESSAGE_DEBUG 0
 
 enum {
@@ -7865,8 +7865,10 @@ void saturn_state::vdp2_draw_mosaic(bitmap_rgb32 &bitmap,
     for (int x = cliprect.left(); x <= cliprect.right(); x += h_size) {
       uint32_t pix = bitmap.pix(y, x);
 
-      for (int yi = 0; yi < v_size; yi++)
-        for (int xi = 0; xi < h_size; xi++)
+      /* clamp the block to the cliprect: the trailing block would otherwise
+         write past the right/bottom edges of a screen-sized bitmap */
+      for (int yi = 0; yi < v_size && y + yi <= cliprect.bottom(); yi++)
+        for (int xi = 0; xi < h_size && x + xi <= cliprect.right(); xi++)
           bitmap.pix(y + yi, x + xi) = pix;
     }
   }
@@ -7923,14 +7925,19 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
     // base_incx = current_tilemap.incx;
     // base_incy = current_tilemap.incy;
 
+    /* vertical cell scroll assigns one scroll value per character column;
+       columns are 16 dots wide when the layer uses 16x16 characters */
+    int const vcsc_shift = current_tilemap.tile_size ? 4 : 3;
+    int const vcsc_width = 1 << vcsc_shift;
+
     while (cur_char <= cliprect.right()) {
-      mycliprect.setx(cur_char, cur_char + 8 - 1);
+      mycliprect.setx(cur_char, cur_char + vcsc_width - 1);
 
       uint32_t cur_address;
       int16_t char_scroll;
 
       cur_address = vcsc_address;
-      cur_address += ((cur_char >> 3) * base_multiplier) + base_offset;
+      cur_address += ((cur_char >> vcsc_shift) * base_multiplier) + base_offset;
 
       /* vcsc_address is (VCSTA & base_mask) * 2 >> 2, so it can already be
          the last word of VRAM before the per-character offset is added;
@@ -7946,8 +7953,7 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
 
       vdp2_check_tilemap_with_linescroll(bitmap, mycliprect);
 
-      // TODO: + 16 for tilemap and char size = 16?
-      cur_char += 8;
+      cur_char += vcsc_width;
     }
 
     return;
@@ -7967,12 +7973,15 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
     vdp2_draw_basic_tilemap(bitmap, mycliprect);
   }
 
-  /* post-processing functions */
-  // (TODO: needs layer bitmaps to be individual planes to work correctly)
-  if (current_tilemap.line_screen_enabled && TEST_FUNCTIONS)
+  /* per-layer post-processing: line screen and mosaic.  NOTE: normal layers
+     share the destination bitmap, so these also touch already-drawn lower
+     layers beneath transparent dots; fully correct scoping needs per-layer
+     planes.  Rotation layers render into their private roz_bitmap, where the
+     effect is exact. */
+  if (current_tilemap.line_screen_enabled)
     vdp2_draw_line(bitmap, cliprect);
 
-  if (current_tilemap.mosaic_screen_enabled && TEST_FUNCTIONS)
+  if (current_tilemap.mosaic_screen_enabled)
     vdp2_draw_mosaic(bitmap, cliprect, current_tilemap.layer_name & 0x80);
 
   {
@@ -8068,6 +8077,54 @@ static inline uint32_t coef_delta(int32_t delta, int32_t count) {
   return uint32_t(s64(delta) * count);
 }
 
+/* Fetch one screen-over-pattern dot: the fixed over-pattern tile repeats over
+   the area outside the rotation plane (tx = x & tile_mask).  Returns false
+   when the dot is transparent.  Mirrors the tile decode in
+   vdp2_draw_basic_tilemap: paletted depths go through the decoded gfx, direct
+   colour depths read VRAM straight out of the decode buffer. */
+static inline bool vdp2_over_pattern_pixel(
+    int x, int y, int tilecode, int flipyx, int tile_mask, int spacing,
+    int tile_size, int colour_depth, gfx_element *gfxe, const pen_t *palptr,
+    uint8_t const *gfxdata, int transparency, rgb_t &pix) {
+  int tx = x & tile_mask;
+  int ty = y & tile_mask;
+  if (flipyx & 1)
+    tx = tile_mask - tx;
+  if (flipyx & 2)
+    ty = tile_mask - ty;
+  uint32_t code = tilecode;
+  if (tile_size)
+    code += (((ty >> 3) << 1) | (tx >> 3)) * spacing;
+  int const px = tx & 7;
+  int const py = ty & 7;
+
+  if (colour_depth <= 2) {
+    uint8_t const *const src = gfxe->get_data(code % gfxe->elements());
+    int const c = src[py * gfxe->rowbytes() + px];
+    if (!(transparency & STV_TRANSPARENCY_NONE) && c == 0)
+      return false;
+    pix = palptr[c];
+    return true;
+  }
+  if (colour_depth == 3) {
+    uint8_t const *const src = gfxdata + code * 0x20 + py * 16;
+    uint16_t const data = (src[px * 2] << 8) | src[px * 2 + 1];
+    if (!(transparency & STV_TRANSPARENCY_NONE) && !(data & 0x8000))
+      return false;
+    pix = rgb_t(pal5bit(data & 0x001f), pal5bit((data & 0x03e0) >> 5),
+                pal5bit((data & 0x7c00) >> 10));
+    return true;
+  }
+  /* colour_depth == 4 */
+  uint8_t const *const src = gfxdata + code * 0x20 + py * 32;
+  uint32_t const data = (src[px * 4] << 24) | (src[px * 4 + 1] << 16) |
+                        (src[px * 4 + 2] << 8) | src[px * 4 + 3];
+  if (!(transparency & STV_TRANSPARENCY_NONE) && !(data & 0x80000000))
+    return false;
+  pix = rgb_t(data & 0xff, (data >> 8) & 0xff, (data >> 16) & 0xff);
+  return true;
+}
+
 void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                                         bitmap_rgb32 &roz_bitmap,
                                         const rectangle &cliprect, int iRP,
@@ -8088,6 +8145,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   rgb_t pix;
   // uint32_t coeff_line_color_screen_data;
   int32_t clipxmask = 0, clipymask = 0;
+
+  /* screen over pattern tile, decoded once when RAOVR/RBOVR selects it */
+  int over_tilecode = 0, over_flipyx = 0, over_pal = 0;
+  int over_gfx = 0, over_spacing = 1, over_tile_mask = 7;
+  gfx_element *over_gfxe = nullptr;
+  const pen_t *over_palptr = nullptr;
 
   vcnt_shift = m_vdp2->get_lsmd() == 3;
   hcnt_shift = BIT(m_vdp2->get_hreso(), 1);
@@ -8155,9 +8218,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     clipxmask = clipymask = 0;
     break;
   case 1:
-    /* screen over pattern */
-    // TODO: not supported, cfr. VDP2_OVPNRA / VDP2_OVPNRB
-    // D-Xhird uses this on practice stage
+    /* screen over pattern: outside dots repeat the OVPNRA/B tile, decoded
+       below.  D-Xhird uses this on the practice stage */
     clipxmask = ~planesizex;
     clipymask = ~planesizey;
     break;
@@ -8171,6 +8233,80 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     clipxmask = ~511;
     clipymask = ~511;
     break;
+  }
+
+  if (screen_over_process == 1) {
+    /* The over pattern name (OVPNRA for rotation parameter A, OVPNRB for B)
+       is a 16-bit pattern name in 1-word format; the supplementary character
+       and palette bits come from the layer's pattern name control register
+       (PNCN0/PNCN1 for RBG1, PNCR for RBG0), already latched in
+       current_tilemap by the layer setup.  Decoded exactly like the 1-word
+       path in vdp2_draw_basic_tilemap. */
+    uint16_t const over_data = (iRP == 1) ? VDP2_OVPNRA : VDP2_OVPNRB;
+    if (current_tilemap.character_number_supplement == 1) {
+      /* 12-bit character number, no flip */
+      over_flipyx = 0;
+      if (current_tilemap.tile_size == 0)
+        over_tilecode =
+            (over_data & 0x0fff) +
+            ((current_tilemap.supplementary_character_bits & 0x1c) << 10);
+      else
+        over_tilecode =
+            ((over_data & 0x0fff) << 2) +
+            (current_tilemap.supplementary_character_bits & 0x03) +
+            ((current_tilemap.supplementary_character_bits & 0x10) << 10);
+    } else {
+      /* 10-bit character number + flip bits */
+      over_flipyx = (over_data & 0x0c00) >> 10;
+      if (current_tilemap.tile_size == 0)
+        over_tilecode =
+            (over_data & 0x03ff) +
+            (current_tilemap.supplementary_character_bits << 10);
+      else
+        over_tilecode =
+            ((over_data & 0x03ff) << 2) +
+            (current_tilemap.supplementary_character_bits & 0x03) +
+            ((current_tilemap.supplementary_character_bits & 0x1c) << 10);
+    }
+
+    if (current_tilemap.colour_depth != 0)
+      over_pal = (over_data & 0x7000) >> 8;
+    else
+      over_pal = ((over_data & 0xf000) >> 12) +
+                 (current_tilemap.supplementary_palette_bits << 4);
+    over_pal += current_tilemap.colour_ram_address_offset << 4;
+    /* no fade-bank offset here: like the pre-rendered plane dots,
+       over-pattern dots run through vdp2_compute_color_offset_UINT32() in
+       the loops below when fading is enabled */
+
+    if (current_tilemap.colour_depth == 1) {
+      over_gfx = 2;
+      over_pal >>= 4;
+      over_tilecode &= 0x7fff;
+      if (over_tilecode == 0x7fff)
+        over_tilecode--;
+      over_spacing = 2;
+    } else if (current_tilemap.colour_depth == 0) {
+      over_gfx = 0;
+      over_tilecode &= 0x7fff;
+      over_spacing = 1;
+    } else if (current_tilemap.colour_depth == 3) {
+      over_spacing = 4;
+    } else if (current_tilemap.colour_depth == 4) {
+      over_spacing = 8;
+    }
+
+    if (!m_vdp2->get_vramsz())
+      over_tilecode &= 0x3fff;
+
+    over_tile_mask = current_tilemap.tile_size ? 0xf : 0x7;
+
+    if (current_tilemap.colour_depth <= 2) {
+      over_gfxe = m_gfxdecode->gfx(over_gfx);
+      over_palptr = &m_palette->pen(
+          over_gfxe->colorbase() +
+          over_gfxe->granularity() * (over_pal % over_gfxe->colors()));
+    }
   }
 
   // dx  = (RP.A * RP.dx) + (RP.B * RP.dy);
@@ -8285,17 +8421,33 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         x = xs >> 16;
         y = ys >> 16;
 
-        if (x & clipxmask || y & clipymask)
-          continue;
-        if (vdp2_roz_window(hcnt, vcnt) == false)
-          continue;
-
-        if (current_tilemap.roz_mode3 == true) {
-          if (vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1) == false)
+        if (x & clipxmask || y & clipymask) {
+          /* outside the plane: only the screen over pattern draws here */
+          if (screen_over_process != 1)
             continue;
-        }
+          if (vdp2_roz_window(hcnt, vcnt) == false)
+            continue;
+          if (current_tilemap.roz_mode3 == true &&
+              vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1) == false)
+            continue;
+          if (!vdp2_over_pattern_pixel(
+                  x, y, over_tilecode, over_flipyx, over_tile_mask,
+                  over_spacing, current_tilemap.tile_size,
+                  current_tilemap.colour_depth, over_gfxe, over_palptr,
+                  m_vdp2_legacy.gfx_decode.get(), current_tilemap.transparency,
+                  pix))
+            continue;
+        } else {
+          if (vdp2_roz_window(hcnt, vcnt) == false)
+            continue;
 
-        pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
+          if (current_tilemap.roz_mode3 == true) {
+            if (vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1) == false)
+              continue;
+          }
+
+          pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
+        }
         if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
           if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
               (pix & 0xffffff)) {
@@ -8396,10 +8548,25 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         x >>= 16;
         y >>= 16;
 
-        if (x & clipxmask || y & clipymask)
-          continue;
-
-        pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
+        if (x & clipxmask || y & clipymask) {
+          /* outside the plane: only the screen over pattern draws here */
+          if (screen_over_process != 1)
+            continue;
+          if (vdp2_roz_window(hcnt, vcnt) == false)
+            continue;
+          if (current_tilemap.roz_mode3 == true &&
+              vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1) == false)
+            continue;
+          if (!vdp2_over_pattern_pixel(
+                  x, y, over_tilecode, over_flipyx, over_tile_mask,
+                  over_spacing, current_tilemap.tile_size,
+                  current_tilemap.colour_depth, over_gfxe, over_palptr,
+                  m_vdp2_legacy.gfx_decode.get(), current_tilemap.transparency,
+                  pix))
+            continue;
+        } else {
+          pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
+        }
         if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
           if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
               (pix & 0xffffff)) {
@@ -8623,9 +8790,9 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
 
   current_tilemap.layer_name = (VDP2_R1ON) ? 0x81 : 0;
 
-  if (current_tilemap.enabled &&
-      (!(VDP2_R1ON))) /* TODO: check cycle pattern for RBG1 */
-  {
+  /* RBG1 shares NBG0's VRAM cycle pattern access commands (PNMDR/CPDR), so
+     the pattern check applies whether or not rotation is enabled */
+  if (current_tilemap.enabled) {
     current_tilemap.enabled = vdp2_check_vram_cycle_pattern_registers(
         VDP2_CP_NBG0_PNMDR, VDP2_CP_NBG0_CPDR, current_tilemap.bitmap_enable);
   }
@@ -9392,11 +9559,16 @@ uint32_t saturn_state::vdp2_cram_r(offs_t offset) {
   return m_vdp2_cram[offset];
 }
 
-// TODO: byte writes are goofy
 void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
                                uint32_t mem_mask) {
   int r, g, b;
   uint8_t cmode0;
+
+  /* VDP2 manual 1.2: colour RAM is accessed by the CPU/DMA in word/longword
+     units only, so byte-wide writes are ignored (cfr. Nova 0.5 changelog) */
+  if (mem_mask == 0x000000ff || mem_mask == 0x0000ff00 ||
+      mem_mask == 0x00ff0000 || mem_mask == 0xff000000)
+    return;
 
   cmode0 = (VDP2_CRMD & 3) == 0;
 
