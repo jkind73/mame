@@ -1,5 +1,15 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Interruptible VDP1 lines/polylines — 2026-09-14
+
+Added saved, bounded pixel slices for line/polyline commands, ENDR cancellation,
+fetch/END ordering, short-slice scheduling and restart handling. 748 image/lifecycle
+cases pass; unlimited-quantum and lost-cursor mutations fail. All 18 scripts/nine
+objects pass. Sprite/polygon paths remain atomic; bus timing, hardware pre-clipping
+and linked runtime/save-manager validation remain unfinished. Details are in
+`regtests/saturn/vdp1_completion.md` and `regtests/saturn/official_specs.md`.
+
+
 ## Bounded VBlank erase — 2026-09-14
 
 Implemented Sega's field-limited erase capacity, captured erase ownership/data,

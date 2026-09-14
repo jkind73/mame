@@ -1,5 +1,16 @@
 # Sega SDK hardware-document audit
 
+## VDP1 line execution across scheduler boundaries — 2026-09-14
+
+- Primary [ST-013-R3](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf), printed p.20: drawing is synchronized to the CPU operating clock, with one pixel's data drawn in sync. This supports a nominal pixel progression model, **not** proof that every color operation takes one clock.
+- Printed p.51: ENDR terminates current drawing within approximately 30 clocks, and interrupted drawing cannot be resumed. The line/polyline cursor is now canceled by the existing 30-clock timer, not left waiting until the whole primitive completes. PTMR starts anew at command zero.
+- Printed pp.52–56: END fetch produces completion; COPR identifies the interrupted command and pseudo-continuation uses a new command-list start. The command engine now blocks the next fetch while a line cursor is active, so a queued END cannot finish an incomplete line.
+- Geometry and Gouraud progression reuse the native integer model cross-checked against [Ymir's steppers](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/vdp/renderer/common/vdp1_steppers.hpp). No reference scheduler or renderer code was imported.
+- Printed p.20 also defines drawing bank 0/display bank 1 after power-on or reset. Startup, machine reset and SMPC system reset now share a bank-view reset helper, without adding a RAM clear. The old startup assignment reversed the roles. The test checks pointer/CPU ownership and data preservation.
+- A 16-dot host quantum bounds work; partial final quanta use their actual dot count. Writes become visible in batches. Exact Gouraud/setup/VRAM costs and partial-quantum bus visibility are not modeled. Sprite/polygon execution remains atomic.
+- 748 tests exercise actual queued line/polyline entry points and pixel writers, cancellation at each phase, END-before-stop ordering, CPU framebuffer writes, restart and manual state-copy/postload reconstruction (also with pending ENDR). Real save-manager and linked runtime acceptance remain pending.
+
+
 ## VDP1 finite VBlank erase capacity — 2026-09-14
 
 - Primary [ST-013-R3 pp.46–50](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf): EWDR stores a word (two dots in 8-bit); X registers use eight-word groups; excess blank erase work is interrupted and must be filled with polygons. Table 4.5 gives the capacity as `(clocks_per_raster - 200) * blank_rasters`. All 12 published capacities are tested literally.
