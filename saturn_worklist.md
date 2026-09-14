@@ -1,5 +1,25 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## OutRun log received: manual erase presentation ordering
+
+Analyzed the user's `c4ae255c` upload: Saturn Japan/OutRun, 44,945 scaled commands,
+2,265 completed lists and 1,647 idle bank swaps. No busy swaps or mode-dependent
+sprite doubling occur in the capture. A car-sized command maps 88x41 source to
+88x41 destination. These findings supersede the unconfirmed hypotheses below.
+
+The trace alternates manual erase/change. The existing manual-erase path blanked
+the displayed bank at the start of its presentation field. It now captures the
+erase and commits after that field, before the following bank exchange, retaining
+the visible image for both fields. Pending bank/data/bounds are saved and canceled
+on reset. This is coarse read-before-erase ordering, not a per-HBlank bus model.
+24 new presentation/restore cases pass; early-erase and wrong-bank mutations fail.
+All 18 regression scripts and nine production objects pass.
+
+See `regtests/saturn/outrun_trace_analysis.md` for exact timestamps, provenance,
+primary/reference support and acceptance limits. Normal-sprite trace records were
+added to investigate the earlier logo scene. **The flashing fix needs a game rerun;
+the size/displacement defect remains unresolved.** No wholesale X/Y swap was made.
+
 ## OutRun visual regression report — investigation, not fixed
 
 The user reports sprites flashing on/off and an oversized, off-center image,
