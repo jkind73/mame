@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -26,7 +26,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
-functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
+functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_draw_rectangle_slice(', 'void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
  ('framebuffer',['void saturn_state::vdp1_framebuffer0_w(', 'uint32_t saturn_state::vdp1_framebuffer0_r(']),
@@ -50,6 +50,8 @@ for name in ('line','poly_line'):
     functions+=extract(current,'void saturn_state::vdp1_draw_'+name+'(').replace('saturn_state::vdp1_draw_'+name,'saturn_state::raster_'+name)+'\n'
 if a.render_mutation:
     mutations = {
+        'rectangle_end': ('const bool scaled = data[10] == -2;', 'm_vdp1_raster.end_codes = 0; const bool scaled = data[10] == -2;'),
+        'rectangle_resume': ('texel = data[11] + m_vdp1_raster.dot * data[4];', 'texel = data[11] + (m_vdp1_raster.dot % 16) * data[4];'),
         'mon': ('line[word] |= 0x8000;', 'vdp1_write_pixel(x, y, src | 0x8000);'),
         'round': ('(src & dst & 0x0421)', '0'),
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
@@ -96,9 +98,11 @@ for name in ('pending','active','bank','stride','data','left','right','top','bot
     assert f'save_item(NAME(m_vdp1_legacy.vblank_erase_{name}));' in current
 for signature in ('void saturn_state::machine_reset()', 'void saturn_state::system_reset_w('):
     assert 'vdp1_cancel_erase();' in extract(current,signature)
-for field in ('segments','count','index','dot','x','y','error','extra'):
+for field in ('segments','count','index','dot','x','y','error','extra','end_codes'):
     assert f'save_item(NAME(m_vdp1_raster.{field}));' in current
 assert 'save_item(NAME(m_vdp1_texture_end));' in current
+for field in ('x','r','g','b','dr','dg','db'):
+    assert f'save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, {field}));' in current
 for field in ('CMDCTRL','CMDPMOD','CMDCOLR','ispoly'):
     assert f'save_item(NAME(current_sprite.{field}));' in current
 for signature in ('void saturn_state::machine_reset()', 'void saturn_state::system_reset_w(', 'int saturn_state::vdp1_start()'):
@@ -169,6 +173,7 @@ struct saturn_state {
  void vdp1_vram_w(offs_t,uint32_t,uint32_t);
  void vdp1_reset_raster_queue();
  void vdp1_draw_raster_slice();
+ void vdp1_draw_rectangle_slice(const int32_t*);
  timer timer_,terminate_;cpu cpu_;scu scu_;cpu *m_maincpu=&cpu_;scu *m_scu=&scu_;
  struct legacy {
   timer *draw_end_timer=nullptr,*terminate_timer=nullptr;
@@ -213,7 +218,7 @@ struct saturn_state {
  void raster_scaled(const rectangle&);
  static int vdp1_scaled_coordinate(int,int,int,bool);
  void raster_scaled_pixels(const rectangle&,int,int,int,const spoint*);
- void vdp1_draw_scaled_pixels(const rectangle &r,int a,int w,int,const spoint *q){vdp1_fill_quad(r,a,w,q);}
+ void vdp1_draw_scaled_pixels(const rectangle &r,int a,int w,int h,const spoint *q){if(execute_quads)raster_scaled_pixels(r,a,w,h,q);else vdp1_fill_quad(r,a,w,q);}
  std::array<int16_t,256> m_vdp1_texture_end{};
  bool vdp1_texture_sample_visible(int,int,int);
  void vdp1_fill_line(const rectangle&,int,int,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t);
@@ -236,8 +241,8 @@ struct saturn_state {
  SHADER_PROTOTYPES
  void(saturn_state::*drawpixel)(int,int,int,int)=&saturn_state::drawpixel_generic;
  auto &machine(){return *this;} int rand(){assert(false);return 0;}
- void vdp1_draw_normal_sprite(const rectangle &clip,int){last_clip=&clip;++draws;}
- void vdp1_draw_scaled_sprite(const rectangle&){++draws;}
+ void vdp1_draw_normal_sprite(const rectangle &clip,int){last_clip=&clip;++draws;if(execute_quads)raster_normal(clip,0);}
+ void vdp1_draw_scaled_sprite(const rectangle &r){++draws;if(execute_quads)raster_scaled(r);}
  void vdp1_draw_distorted_sprite(const rectangle &r){++draws;if(execute_quads)raster_distorted(r);}
  void vdp1_draw_poly_line(const rectangle &r){++draws;if(execute_lines)raster_poly_line(r);}
  void vdp1_draw_line(const rectangle &r){++draws;if(execute_lines)raster_line(r);}
@@ -649,7 +654,7 @@ int main(){
   for(int y=0;y<32;++y)for(int x=0;x<32;++x)assert(l.framebuffer[0][y*512+x]==expected[y][x]);++line_cases;
  }
  std::cout<<line_cases<<" integer line coverage/shading/mesh images passed\n";
- unsigned quad_cases=0,queued_quad_cases=0;
+ unsigned quad_cases=0,queued_quad_cases=0,rectangle_cases=0;
  auto quad_engine=std::make_unique<saturn_state>();
  auto load_quad=[](saturn_state &target,const saturn_state &source){
   target.vdp1_abort_draw();target.execute_quads=true;target.tvm=source.tvm;
@@ -753,9 +758,10 @@ int main(){
   }++quad_cases;
  }
  std::cout<<quad_cases<<" native quad coverage/texture/color images passed\n";
+ s->execute_quads=true;
  // Texture mode/format coverage through the command engine, including spans
  // that change from HSS reduction to enlargement within the same primitive.
- for(int format : {0,1,3})for(int mode=0;mode<6;++mode)for(bool ecd : {false,true})
+ for(int primitive : {0,1,2})for(int format : {0,1,3})for(int mode=0;mode<6;++mode)for(bool ecd : {false,true})
  for(bool hss : {false,true})for(int eos=0;eos<2;++eos)for(int direction=0;direction<4;++direction){
   if(format&&mode==5)continue;
   auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=format;s->m_vdp1_regs[0]=format;
@@ -763,7 +769,7 @@ int main(){
   l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.draw_eos=eos;l.local_x=l.local_y=0;
   l.system_cliprect.set(0,127,0,127);l.user_cliprect=l.system_cliprect;s->vdp1_prepare_framebuffers();
   std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0xffff);
-  c.CMDCTRL=2|(direction<<4);c.CMDPMOD=(mode<<3)|(ecd?0x80:0)|(hss?0x1000:0);
+  c.CMDCTRL=primitive|(direction<<4);c.CMDPMOD=(mode<<3)|(ecd?0x80:0)|(hss?0x1000:0);
   c.CMDCOLR=mode==1?0x300:0x8000;c.CMDSRCA=0x400;c.CMDSIZE=0x0104;c.CMDGRDA=0x200;c.ispoly=0;
   c.CMDXA=8;c.CMDYA=8;c.CMDXB=10;c.CMDYB=10;c.CMDXC=70;c.CMDYC=60;c.CMDXD=0;c.CMDYD=65;
   std::fill(l.gfx_decode.begin()+0x2000,l.gfx_decode.begin()+0x2040,0);
@@ -773,11 +779,12 @@ int main(){
    else if(mode<5)l.gfx_decode[0x2000+index]=end?255:value;
    else {l.gfx_decode[0x2000+index*2]=end?0x7f:0x80;l.gfx_decode[0x2001+index*2]=end?0xff:value;}
   }
-  s->vdp1_set_drawpixel();s->raster_distorted(l.system_cliprect);
+  s->vdp1_set_drawpixel();if(primitive==0)s->raster_normal(l.system_cliprect,0);else if(primitive==1)s->raster_scaled(l.system_cliprect);else s->raster_distorted(l.system_cliprect);
   load_quad(*quad_engine,*s);quad_engine->vdp1_process_list();quad_engine->fire();
   for(unsigned ticks=0;quad_engine->m_vdp1_legacy.drawing;++ticks){assert(ticks<4096);quad_engine->fire();}
-  assert(quad_engine->cef&&quad_engine->scu_.irqs==1&&quad_engine->m_vdp1_legacy.framebuffer[0]==l.framebuffer[0]);++queued_quad_cases;
+  assert(quad_engine->cef&&quad_engine->scu_.irqs==1&&quad_engine->m_vdp1_legacy.framebuffer[0]==l.framebuffer[0]);if(primitive==2)++queued_quad_cases;else ++rectangle_cases;
  }
+ s->execute_quads=false;
  // A sloped first span has an outstanding extra-coverage pixel when the
  // first 16-position slice ends. Preserve it, its texture row and END cutoff.
  for(int kind : {1,2,3,4})for(bool stop : {false,true}){
@@ -813,6 +820,48 @@ int main(){
   if(stop){assert(quad_engine->m_vdp1_raster.count==0&&a.framebuffer[0][70*512+70]==0xffff);}
   ++queued_quad_cases;
  }
+ for(int primitive : {0,1})for(int kind : {1,2,3,4})for(bool stop : {false,true}){
+  auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=0;
+  l.framebuffer_double_interlace=0;l.framebuffer_width=512;l.framebuffer_height=256;l.draw_eos=0;
+  l.system_cliprect.set(0,127,0,127);l.user_cliprect=l.system_cliprect;
+  c.CMDCTRL=primitive;c.CMDPMOD=kind==1?0xa3:kind==2?0xa4:kind==3?0xa0:0x20;
+  c.CMDCOLR=kind>=3?0x8000:0xc210;c.CMDSRCA=0x400;c.CMDSIZE=0x0402;c.CMDGRDA=0x200;
+  c.CMDXA=8;c.CMDYA=8;c.CMDXB=72;c.CMDYB=40;c.CMDXC=72;c.CMDYC=72;c.CMDXD=8;c.CMDYD=40;
+  s->m_vdp1_vram[0x400]=0x001f7c00;s->m_vdp1_vram[0x401]=0x03e04210;
+  for(int v=0;v<2;++v)for(int u=0;u<32;++u)l.gfx_decode[0x2000+v*32+u]=(kind==4&&(u==1||u==20))?255:u+1;
+  load_quad(*quad_engine,*s);quad_engine->vdp1_process_list();quad_engine->fire();quad_engine->fire();
+  assert(quad_engine->m_vdp1_raster.dot==16&&!quad_engine->m_vdp1_raster.extra);
+  if(kind==4&&primitive==0)assert(quad_engine->m_vdp1_raster.end_codes==1);
+  if(kind==4&&primitive==1)assert(quad_engine->m_vdp1_texture_end[0]==20);
+  // A later RAM edit must not make a restored cutoff cache differ from the
+  // uninterrupted model's already-computed cutoff. This is not FIFO proof.
+  if(kind==2)quad_engine->vdp1_vram_w(0x400,0x7fff7fff,0xffffffff);
+  if(stop)quad_engine->vdp1_regs_w(6,0,0xffff);
+  auto restored=std::make_unique<saturn_state>();restored->execute_quads=true;restored->tvm=quad_engine->tvm;
+  *restored->vdp1_shading_data=*quad_engine->vdp1_shading_data;
+  restored->m_vdp1_raster=quad_engine->m_vdp1_raster;restored->current_sprite=quad_engine->current_sprite;
+  restored->m_vdp1_texture_end=quad_engine->m_vdp1_texture_end;restored->m_vdp1_vram=quad_engine->m_vdp1_vram;
+  auto &a=quad_engine->m_vdp1_legacy;auto &b=restored->m_vdp1_legacy;
+  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;
+  b.framebuffer_current_draw=0;b.framebuffer_current_display=1;b.framebuffer_width=512;b.framebuffer_height=256;
+  b.system_cliprect=a.system_cliprect;b.user_cliprect=a.user_cliprect;
+  for(int i=0;i<2;++i)b.framebuffer[i]=a.framebuffer[i];
+  restored->timer_.delay=quad_engine->timer_.delay;restored->terminate_.delay=quad_engine->terminate_.delay;
+  restored->vdp1_state_save_postload();
+  for(unsigned i=0;i<2048&&a.drawing;++i){quad_engine->advance(16);restored->advance(16);}
+  assert(!a.drawing&&!b.drawing&&quad_engine->cef==!stop&&restored->cef==!stop);
+  assert(quad_engine->scu_.irqs==unsigned(!stop)&&restored->scu_.irqs==unsigned(!stop));
+  assert(a.framebuffer[0]==b.framebuffer[0]);
+  if(!stop){
+   std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0xffff);s->vdp1_prepare_framebuffers();
+   c.ispoly=0;s->execute_quads=true;s->vdp1_set_drawpixel();
+   if(primitive==0)s->raster_normal(l.system_cliprect,0);else s->raster_scaled(l.system_cliprect);
+   s->execute_quads=false;assert(a.framebuffer[0]==l.framebuffer[0]);
+  }
+  if(stop){assert(quad_engine->m_vdp1_raster.count==0&&a.framebuffer[0][70*512+70]==0xffff);}
+  ++rectangle_cases;
+ }
+ std::cout<<rectangle_cases<<" queued rectangle image/texture/shading/lifecycle cases passed\n";
  // Bound storage by the 12-bit outer-edge count, including hostile clip data.
  {
   auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;c.CMDCTRL=4;c.CMDPMOD=0xc0;c.CMDCOLR=0x801f;
