@@ -1312,6 +1312,11 @@ void saturn_state::drawpixel_8bpp_trans(int x, int y, int patterndata,
                                         int offsetcnt) {
   uint16_t pix;
 
+  // the user clip rectangle comes from 13-bit command fields and can be far
+  // larger than the framebuffer, so bound the pixel like the other variants do
+  if (x >= 1024 || y >= 512)
+    return;
+
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
   if (pix != 0) {
     m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
@@ -1322,6 +1327,11 @@ void saturn_state::drawpixel_4bpp_notrans(int x, int y, int patterndata,
                                           int offsetcnt) {
   uint16_t pix;
 
+  // the user clip rectangle comes from 13-bit command fields and can be far
+  // larger than the framebuffer, so bound the pixel like the other variants do
+  if (x >= 1024 || y >= 512)
+    return;
+
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
   pix = offsetcnt & 1 ? (pix & 0x0f) : ((pix & 0xf0) >> 4);
   m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
@@ -1330,6 +1340,11 @@ void saturn_state::drawpixel_4bpp_notrans(int x, int y, int patterndata,
 void saturn_state::drawpixel_4bpp_trans(int x, int y, int patterndata,
                                         int offsetcnt) {
   uint16_t pix;
+
+  // the user clip rectangle comes from 13-bit command fields and can be far
+  // larger than the framebuffer, so bound the pixel like the other variants do
+  if (x >= 1024 || y >= 512)
+    return;
 
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
   pix = offsetcnt & 1 ? (pix & 0x0f) : ((pix & 0xf0) >> 4);
@@ -1608,6 +1623,9 @@ void saturn_state::vdp1_fill_slope(const rectangle &cliprect, int patterndata,
 
   if (y2 > cliprect.max_y)
     y2 = cliprect.max_y + 1;
+  // the framebuffer is 1024x512, the clip rectangle is not
+  if (y2 > 512)
+    y2 = 512;
 
   if (_y1 < cliprect.min_y) {
     int delta = cliprect.min_y - _y1;
@@ -1674,6 +1692,9 @@ void saturn_state::vdp1_fill_slope(const rectangle &cliprect, int patterndata,
         }
         if (xx2 > cliprect.max_x)
           xx2 = cliprect.max_x;
+        // the framebuffer is 1024x512, the clip rectangle is not
+        if (xx2 >= 1024)
+          xx2 = 1023;
 
         while (xx1 <= xx2) {
           (this->*drawpixel)(xx1, _y1, patterndata,
@@ -1708,7 +1729,7 @@ void saturn_state::vdp1_fill_line(const rectangle &cliprect, int patterndata,
   int xx1 = x1 >> FRAC_SHIFT;
   int xx2 = x2 >> FRAC_SHIFT;
 
-  if (y > cliprect.max_y || y < cliprect.min_y)
+  if (y >= 512 || y > cliprect.max_y || y < cliprect.min_y)
     return;
 
   if (xx1 <= cliprect.max_x || xx2 >= cliprect.min_x) {
@@ -1728,6 +1749,9 @@ void saturn_state::vdp1_fill_line(const rectangle &cliprect, int patterndata,
     }
     if (xx2 > cliprect.max_x)
       xx2 = cliprect.max_x;
+    // the framebuffer is 1024x512, the clip rectangle is not
+    if (xx2 >= 1024)
+      xx2 = 1023;
 
     while (xx1 <= xx2) {
       (this->*drawpixel)(xx1, y, patterndata,
@@ -2243,8 +2267,10 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
     xsize -= (cliprect.min_x - x);
     x = cliprect.min_x;
   }
-  maxdrawypos = std::min(y + ysize - 1, cliprect.max_y);
-  maxdrawxpos = std::min(x + xsize - 1, cliprect.max_x);
+  // bound by the framebuffer as well as the clip rectangle, which comes from
+  // 13-bit command fields and can be far larger
+  maxdrawypos = std::min({y + ysize - 1, cliprect.max_y, 511});
+  maxdrawxpos = std::min({x + xsize - 1, cliprect.max_x, 1023});
   for (drawypos = y; drawypos <= maxdrawypos; drawypos++) {
     // destline = m_vdp1_legacy.framebuffer_draw_lines[drawypos];
     su = u;
