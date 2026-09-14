@@ -481,7 +481,12 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
 
   // stv:vmahjong loads game IPL twice at startup, one with cache the other
   // without.
-  if (m_dma_status & 0x30 << level) {
+  /* each level's status field is the two bits at 4 + level * 4 - see the
+     DMA_LVn_MOVE/WAIT values in dma_status_t, update_dma_status() and
+     check_dma_level_round_robin() - so shifting the pair mask by level
+     rather than by level * 4 tested DMA0's wait bit for level 1 and two
+     bits nothing ever sets for level 2. */
+  if (m_dma_status & (0x30 << (level * 4))) {
     LOG("In-flight DMA%d attempt!\n", level);
     return;
   }
@@ -558,7 +563,12 @@ void saturn_scu_device::trigger_dma_indirect(uint8_t level) {
   LOGMASKED(LOG_DMA_MOVE, "DMA%d indirect W %08x RA %d WA %d\n", level,
             m_dma[level].dst, m_dma[level].src_add, m_dma[level].dst_add);
 
-  if (m_dma_status & 0x30 << level) {
+  /* each level's status field is the two bits at 4 + level * 4 - see the
+     DMA_LVn_MOVE/WAIT values in dma_status_t, update_dma_status() and
+     check_dma_level_round_robin() - so shifting the pair mask by level
+     rather than by level * 4 tested DMA0's wait bit for level 1 and two
+     bits nothing ever sets for level 2. */
+  if (m_dma_status & (0x30 << (level * 4))) {
     LOG("In-flight DMA%d attempt!\n", level);
     return;
   }
