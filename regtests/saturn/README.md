@@ -1,0 +1,251 @@
+# Saturn / ST-V reference audit — 2026-09-14
+
+## Scope and evidence policy
+
+This pass starts from `868d72fc669765f8a0b9af6503a59642d293cbae`, the inherited
+Saturn work, and inspects selected files from all six requested repositories.
+It is **not** an exhaustive audit or a claim of hardware-perfect emulation.
+Behavior is implemented in MAME's existing callbacks; no external source code
+has been imported. GitHub license metadata is only a starting point: inspect
+actual file licenses before any future code reuse, especially SDK material and
+repositories without a declared license. Agreement between emulators is useful
+evidence, not a substitute for hardware traces.
+
+## Pinned references
+
+### Ymir
+
+- Revision: `6d779960127ced72087a418c1daefc637d0aaa80`
+- Inspected: [libs/ymir-core/src/ymir/hw/scu/scu.cpp](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+- Finding: `SCU::UpdateHBlank` sends SCU HBlank/timer/DMA events regardless of VB, but gates slave interrupt assertion and clearing with `!vb`. Primary reference for separating these signals.
+
+### Saturn_MiSTer
+
+- Revision: `a95b085038ace57fa621558d60a7adc7a3c53f78`
+- Inspected: [rtl/Saturn/VDP2/VDP2.sv](https://github.com/jkind73/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP2/VDP2.sv)
+- Finding: `HB_INT` is set/cleared by horizontal counter comparisons, independently of the adjacent `VB_INT` logic. Supports continuing horizontal edges through vertical blanking; not proof of every downstream SCU rule.
+
+### mednafen-git
+
+- Revision: `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`
+- Inspected: [src/ss/vdp2.cpp](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp2.cpp)
+- Finding: `VDP2_Update` advances horizontal phases and passes horizontal and vertical states separately to `SCU_SetHBVB`. Supports independent phase scheduling; downstream SCU interrupt/timer semantics still need review.
+
+### yabause
+
+- Revision: `82cb29171ebe61cf0129682794af5ceb5acaa0f2`
+- Inspected: [yabause/src/vdp2.cpp](https://github.com/jkind73/yabause/blob/82cb29171ebe61cf0129682794af5ceb5acaa0f2/yabause/src/vdp2.cpp)
+- Finding: This fork gates `Vdp2HBlankIN` and `ScuSendHBlankIN` by the active vertical area. This disagrees with the Ymir model; it is not counted as corroboration for the fix.
+
+### SaturnRecomp
+
+- Revision: `26c9715e5493054b8a205aa31d73d8f125fdd8f5`
+- Inspected: [runner/src/vdp2.c](https://github.com/jkind73/SaturnRecomp/blob/26c9715e5493054b8a205aa31d73d8f125fdd8f5/runner/src/vdp2.c)
+- Finding: Background renderer useful for future pixel-format/compositing comparisons. Not used as evidence for scanline interrupt timing.
+
+### saturnsdk
+
+- Revision: `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`
+- Inspected: [SBL6/SEGALIB/MAN/MANVDP2.TXT](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/SBL6/SEGALIB/MAN/MANVDP2.TXT)
+- Finding: SBL scroll-library API documentation, not an electrical timing specification. Useful for future guest-side rendering tests; no timing claim inferred from it.
+
+## Implemented: preserve horizontal edges during VBlank
+
+The inherited `sync_timer_cb` scheduled only line starts whenever `vsync` was
+true. At those positions HBlank is false, so SCU HBlank events disappeared
+throughout VBlank despite the work list claiming timer 0 continued to run.
+
+- Schedule line start and HBlank start on every logical line, not just active
+  display lines. SCU HBlank-driven timer and DMA logic now receives those edges.
+- Wrap only after the final HBlank edge; toggle ODD once at that boundary.
+- Keep slave SH-2 HBlank assertion/clearing suppressed during VBlank, separately
+  from the SCU path. `vint_callback` updates `m_prev_vint` before `hint_callback`.
+- The callbacks are shared by Saturn and ST-V. No game-specific bypass added.
+
+This deliberately preserves the current HBlank position, VBlank position,
+vertical step calculation, and approximate interlace/exclusive geometry. It does
+not claim those positions are hardware-accurate. The corrected scheduler adds
+one callback per blanked logical line; this is an accuracy fix, not a measured
+speed optimization. No extra per-pixel work or new saved state is introduced.
+
+## Validation
+
+Run from repository root:
+
+```sh
+python3 regtests/saturn/test_sync.py
+```
+
+The test compiles the **actual two callback bodies** with recording stand-ins for
+the screen, timer, SCU and slave CPU, using C++17, warnings-as-errors and UBSan.
+It checks 72 combinations (263/313/526/626/525/561 total rows; 224/240/256 active
+lines; 320/352/640/704 widths), two fields each: every horizontal edge including
+VBlank, wrapping, ODD changes, VBlank transitions, slave gating, and repeated
+level suppression. These combinations are control-flow stress cases, not a
+claim that every combination is a valid hardware mode. **All passed.** Running
+the same harness against the inherited `HEAD` callback bodies fails at the first
+missing VBlank HBlank event (negative control).
+
+The stand-ins do not test MAME's timer implementation, real interrupt delivery,
+SCU timer values, DMA transfers, save/load, rendering, or game compatibility.
+A targeted build was attempted with:
+
+```sh
+make SUBTARGET=saturn SOURCES=src/mame/sega/saturn.cpp,src/mame/sega/sat_console.cpp,src/mame/sega/stv.cpp -j2 REGENIE=1
+```
+
+It stopped during project generation: `pkg-config`, Qt `moc`/`qmake6` are absent.
+No full MAME compilation or ROM boot was completed. The ROM directory contains
+no test ROMs. `git diff --check` passed.
+
+## Next work, in priority order
+
+1. Complete a targeted build in a configured MAME build environment; boot Saturn
+   NTSC/PAL and ST-V (including Die Hard Arcade and games using HBlank DMA).
+   Trace SCU timer 0 matches in active display and VBlank; check slave IRQ levels,
+   save/load across VBlank, and baseline/candidate performance with identical input.
+2. Audit V counter table generation and double-density lookup. The current table
+   has 313 rows while double-density lookup masks a screen position to 9 bits;
+   bounds and field-coordinate conversion require dedicated tests before changes.
+   Simplify the contradictory table-generation comments only alongside verified
+   NTSC/PAL breakpoint/field rules.
+3. Resolve timer semantics against SCU specifications and hardware tests: Ymir
+   increments before compare and schedules timer 1 differently from this branch.
+   Do not label timer accuracy complete solely because the timers now receive edges.
+4. Audit B-bus DMA transfer width, forbidden bus pairs, and wait-state accounting
+   against pinned SCU implementations/RTL and SCU manual errata. Test transfer
+   results and IRQ ordering, not only game boot success.
+5. Compare rendering behavior using SaturnRecomp, Ymir, Mednafen and Yabause,
+   with SDK-generated test patterns where redistribution permits. Prioritize
+   line scroll/zoom, VDP1 erase/draw ordering and VDP2 window/rotation edge cases.
+6. Profile before optimizing. Keep optimizations separate from timing changes;
+   preserve callback order and deterministic output, and record measured deltas.
+
+### Additional syntax validation
+
+Using the recovered previous-session C++20 syntax-check recipe exposed an
+inherited include-order error in `saturn_vdp2.cpp`: `emu.h` must precede the
+device header, which includes `screen.h`. Corrected that order; the complete
+VDP2 translation unit now passes `g++ -fsyntax-only` with the MAME include paths
+and `MAME_NOASM`. All 72 callback configurations still pass. This does not
+replace the pending full build or validate the complete Saturn driver.
+
+## Mosaic clipping follow-up
+
+Extracted only the bounds fix from the user-supplied rendering patch. The final
+mosaic block is truncated to the clip rectangle in both axes; block sizes are
+computed once per block rather than adding clip comparisons per output pixel.
+The existing sampling origin, unit-size bypass, rotation handling, and interlace
+ordering are unchanged. No speedup is claimed without profiling.
+
+```sh
+python3 regtests/saturn/test_mosaic.py
+python3 regtests/saturn/test_mosaic.py --baseline  # expected failure on inherited HEAD
+```
+
+The test compiles the actual mosaic function with AddressSanitizer and UBSan.
+A bounds-checked bitmap catches coordinate overruns; an independent per-pixel
+oracle checks every output pixel, including unchanged pixels outside the clip.
+All **16,384 configurations passed**: every 1–16 horizontal/vertical block size,
+all four LSMD values, rotation/non-rotation, whole-bitmap and offset clips,
+single pixels/rows/columns, and empty rectangles. The inherited HEAD version
+fails the bitmap bounds assertion as expected. Existing 72 sync cases also pass.
+
+A standalone C++20 syntax check of the complete `saturn.cpp` initially exposed
+the same inherited include-order issue as VDP2 (`emu.h` must come first).
+Corrected that order; the complete translation unit now passes syntax checking.
+
+The mosaic/line-screen `TEST_FUNCTIONS` gates remain disabled: correct per-layer
+compositing is still missing. This is a tested safety fix to the helper, **not**
+a newly enabled game-visible mosaic implementation. Screen-over-pattern support,
+CRAM byte-write behavior, RBG1 access rules, and cell-scroll width changes from
+the pasted patch are not integrated. Full build, ROM-based comparisons, hardware
+mosaic alignment, and save/load validation remain pending.
+
+
+## V counter safety and table initialization follow-up
+
+`get_vblank_duration()` doubles the screen height for LSMD=3, and the sync
+scheduler advances by two screen rows per logical line. The V counter rollback
+table contains 313 **field lines**, however the inherited getter indexed it with
+`vpos & 0x1ff`. This reads outside the table at screen positions 313–511 and
+incorrectly wraps subsequent screen positions to the start of the table.
+
+The getter now divides the screen position by two before the double-density
+lookup and asserts the resulting table bound. Exclusive-mode early return,
+VRESO masking, non-double-density lookup, and the inherited approximate ODD-bit
+encoding are unchanged. No saved-state members or layouts changed. This is a
+correction to MAME's coordinate conversion, not a new hardware counter model.
+
+The table builder now fills each entry once using region/mode jump arrays.
+Existing values (including unused NTSC rows and columns) are preserved exactly.
+This removes redundant startup loops and conflicting comments; it does not
+provide a measured emulation speedup or validate the underlying timing values.
+
+```sh
+python3 regtests/saturn/test_vcounter.py
+python3 regtests/saturn/test_vcounter.py --baseline  # expected sanitizer failure
+```
+
+The test extracts the production initializer and getter. The inherited initializer
+from pinned base `868d72fc669765f8a0b9af6503a59642d293cbae` supplies the comparison
+table; that commit must be available locally. The baseline option replaces only
+the getter with its inherited version to reproduce the invalid access.
+
+**42,920 checks passed** under AddressSanitizer/UBSan, including all 2,504 table
+entries across both regions, every screen row for every VRESO/LSMD/ODD combination
+in normal modes, and exclusive-mode bypass checks. The baseline run reports an
+AddressSanitizer out-of-bounds read in `get_vcounter()`. The test uses stand-ins
+for the device and screen, not the full register-latch path or MAME scheduler.
+
+Both complete changed C++ translation units pass standalone syntax checks;
+72 sync and 16,384 mosaic configurations still pass. Full build/ROM tests remain
+pending. Next timing work must verify actual interlace counter encoding and
+rollback positions against specifications/hardware rather than treating these
+preserved values as a correctness oracle for real hardware.
+
+## Vertical cell-scroll clipping follow-up
+
+The existing vertical cell-scroll path replaced the caller's horizontal clip
+with full 8-dot columns starting at X=0. Consequently partial updates could
+modify pixels to the left of their clip and the final column could extend past
+the right edge, including a bitmap boundary.
+
+- Begin at the 8-dot column containing the clip's left edge, keeping scroll-table
+  addresses anchored to screen X=0 (not rebased to the clip).
+- Intersect each column with the caller's horizontal limits, preserving its
+  vertical limits. Empty rectangles return without table reads or rendering.
+- Retain the existing table stride for NBG0/NBG1, 11-bit signed offsets, address
+  masking, and eight-dot column width. The proposed 16-dot rule from the supplied
+  patch remains unverified and is not included.
+
+```sh
+python3 regtests/saturn/test_cell_scroll.py
+python3 regtests/saturn/test_cell_scroll.py --baseline  # expected clip assertion failure
+```
+
+**21,312 configurations passed** with AddressSanitizer/UBSan: both VRAM-size
+settings, table addresses near wrap boundaries, NBG0/NBG1/interleaved tables,
+positive/negative scroll values, all left-edge alignments in a 37-pixel-wide
+bitmap, clipped trailing columns, single-pixel width, and empty rectangles.
+The harness compiles the production cell-scroll branch and records the nested
+renderer calls. It checks table addresses, exact call counts, no duplicate pixel
+coverage, expected signed scroll per pixel, and untouched pixels outside the
+clip. It does not execute the nested line-scroll renderer or prove hardware
+cell-scroll width/phase. The pinned inherited branch fails clip containment.
+
+Skipping columns wholly left of a partial clip reduces table reads and nested
+renderer calls; the test verifies the exact intersecting-column count. No
+wall-clock speedup is claimed and full-width rendering is not accelerated.
+The complete `saturn.cpp` and `saturn_vdp2.cpp` syntax checks, plus all existing
+sync/mosaic/V-counter tests, still pass. ROM-based visual validation is pending.
+
+
+## Primary-document reference update
+
+The earlier limited SDK review is superseded by
+[official_specs.md](official_specs.md), which records selected hardware-manual
+and bulletin sections actually read, plus [sdk_documents.csv](sdk_documents.csv)
+with 103 PDF entries. These findings reopen timer and rendering correctness
+questions that the callback and safety tests do not answer. No runtime code was
+changed during the documentation audit.

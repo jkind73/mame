@@ -1,5 +1,41 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Primary-document audit update — 2026-09-14
+
+[`regtests/saturn/official_specs.md`](regtests/saturn/official_specs.md) now records
+exact sections/pages read from the SDK hardware manuals and technical bulletins.
+It reopens timer-0 compare ordering, timer-1 running/reload semantics, interlaced
+counter encoding, and fractional/combined cell scroll. These are not resolved by
+the safety fixes below. The linked manifest indexes 103 PDFs; it is not a claim
+that all documents were read.
+
+## Current-branch follow-up — 2026-09-14
+
+The historical DONE labels below describe prior implementation work, not proof
+of hardware accuracy. See `regtests/saturn/README.md` for reproducible tests and
+pinned reference notes. Line numbers below belong to the inherited snapshot.
+
+- **VDP2/SCU HBlank delivery:** corrected missing horizontal edges during VBlank;
+  the slave SH-2 HBlank IRQ remains VBlank-gated. 72 callback configurations pass.
+- **Mosaic safety:** bounded partial blocks to the clip rectangle; 16,384
+  sanitizer-backed configurations pass. Mosaic/line-screen compositing is still
+  gated and is **not** marked implemented.
+- **Vertical cell-scroll clipping:** preserve caller limits, skip wholly clipped
+  columns and empty clips, retain screen-based table indices. 21,312 sanitizer
+  configurations pass; inherited code fails clip containment. The eight-dot
+  width remains unchanged pending hardware verification.
+- **V counter double-density safety:** convert doubled screen rows to field
+  lines before the 313-row table lookup. The inherited getter produces an
+  AddressSanitizer out-of-bounds read; the corrected getter passes exhaustive
+  configured-frame lookup checks. Existing field-bit encoding remains approximate.
+- **V counter table cleanup:** removed redundant fills and contradictory comments;
+  all 2,504 table entries match the inherited implementation. This does not
+  validate rollback thresholds against hardware.
+- Complete `saturn.cpp` and `saturn_vdp2.cpp` translation units pass standalone
+  syntax checks after correcting inherited include order. Full build/ROM testing
+  and exact hardware timing validation remain pending.
+
+
 Generated after SCSP 0-outputs regression fix. Tree boots saturnjp + aburner2 at 100% (28s). SCSP now has 0 TODO/FIXME.
 
 ## How to read
