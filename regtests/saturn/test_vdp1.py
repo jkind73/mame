@@ -178,6 +178,7 @@ struct saturn_state {
  bool m_vdp1_raster_building=false,m_vdp1_raster_running=false,execute_lines=false,execute_quads=false;
  int m_vdp1_raster_budget=0;
  int vdp1_raster_slice_cycles() const;
+ void vdp1_trace(const char*,int=-1,const spoint *bounds=nullptr){}
  void vdp1_vram_w(offs_t,uint32_t,uint32_t);
  void vdp1_reset_raster_queue();
  void vdp1_draw_raster_slice();
