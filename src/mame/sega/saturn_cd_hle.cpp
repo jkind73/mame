@@ -2732,7 +2732,15 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
       curroot.firstfad += 150;
       curroot.length = get_u32le(&sect[166]);
       curroot.flags = sect[181];
-      for (i = 0; i < sect[188]; i++) {
+      /* the identifier length comes off the disc and ISO 9660 allows up to
+         255 bytes there - a Joliet name of 64 UCS-2 characters plus its
+         ";1" version suffix is already 132 - so clamp it to what name[]
+         holds, leaving room for the terminator that follows the loop.
+         Unclamped this overran curroot, a device member, by up to 128
+         bytes. */
+      int const idlen =
+          std::min<int>(sect[188], int(std::size(curroot.name)) - 1);
+      for (i = 0; i < idlen; i++) {
         curroot.name[i] = sect[189 + i];
       }
       curroot.name[i] = '\0'; // terminate
@@ -2852,7 +2860,17 @@ void saturn_cd_hle_device::make_dir_current(uint32_t fad) {
     curentry->interleave_gap_size = sect[nextent + 27];
     curentry->volume_sequencer_number = get_u16le(&sect[nextent + 28]);
 
-    for (i = 0; i < sect[nextent + 32]; i++) {
+    /* as above, and also stop the source read at the end of sect[] - a record
+       starting in the last bytes of a maximum size directory would otherwise
+       read up to 287 bytes past the allocation.  Unclamped, the copy overran
+       name[] into the fields of the next curdir element, or past the end of
+       the vector's allocation for the last one. */
+    uint32_t const nameroom =
+        (nextent + 33 < MAX_DIR_SIZE) ? (MAX_DIR_SIZE - (nextent + 33)) : 0;
+    uint32_t const idlen = std::min<uint32_t>(
+        sect[nextent + 32],
+        std::min<uint32_t>(uint32_t(std::size(curentry->name)) - 1, nameroom));
+    for (i = 0; i < idlen; i++) {
       curentry->name[i] = sect[nextent + 33 + i];
     }
     curentry->name[i] = '\0'; // terminate
