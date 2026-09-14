@@ -279,3 +279,11 @@ TriggerImmediateDMA and Mednafen's masked control writes. Existing handlers pass
 Four test-only mutations fail. Dispatch endpoints are recorders, so full MMIO-to-
 transfer/IRQ integration, active-register restrictions and bus-specific increment
 behavior remain outside this test.
+
+## Build coverage update (no hardware behavior change)
+
+Validation now compiles six core/driver translation units, adding Saturn console,
+ST-V and DCC. Corrected emu.h include ordering in DCC/ST-V; pre-fix files fail with
+otherwise complete shared/layout include paths. Layout headers are generated with
+MAME's own tool in temporary storage. All thirteen scripts/six objects pass.
+This is build evidence only, not additional primary-document or runtime validation.
