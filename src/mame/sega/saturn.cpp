@@ -197,8 +197,7 @@ void saturn_state::reset_halt_state() {
 }
 
 void saturn_state::machine_reset() {
-  m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
-  m_vdp1_legacy.draw_field = 0;
+  vdp1_reset_framebuffers();
   vdp1_abort_draw();
   vdp1_cancel_erase();
   reset_halt_state();
@@ -443,8 +442,7 @@ void saturn_state::system_reset_w(int state) {
   m_scu->reset();
   vdp1_abort_draw();
   vdp1_cancel_erase();
-  m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
-  m_vdp1_legacy.draw_field = 0;
+  vdp1_reset_framebuffers();
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
@@ -710,6 +708,17 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
              m_vdp1_legacy.framebuffer_current_draw);
   //  memset( m_vdp1_legacy.framebuffer[ which_framebuffer ],
   //  m_vdp1_legacy.ewdr, 1024 * 256 * sizeof(uint16_t) * 2 );
+}
+
+void saturn_state::vdp1_reset_framebuffers() {
+  // ST-013 p.20 defines bank zero as drawing and bank one as display after
+  // reset. Reset ownership/views without inventing a framebuffer RAM clear.
+  m_vdp1_legacy.framebuffer_current_draw = 0;
+  m_vdp1_legacy.framebuffer_current_display = 1;
+  m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
+  m_vdp1_legacy.draw_field = 0;
+  if (m_vdp1_legacy.framebuffer_draw_lines && m_vdp1_legacy.framebuffer_display_lines)
+    vdp1_prepare_framebuffers();
 }
 
 void saturn_state::vdp1_prepare_framebuffers() {
@@ -2056,6 +2065,13 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
       std::min(a.x, b.x) > cliprect.max_x + 1 || std::max(a.y, b.y) < cliprect.min_y - 1 ||
       std::min(a.y, b.y) > cliprect.max_y + 1))
     return;
+  if (m_vdp1_line_building) {
+    assert(!edge_coverage && texture_row < 0 && m_vdp1_line.count < 4);
+    const std::array<int32_t, 10> segment = {a.x, a.y, b.x, b.y, color_a, color_b,
+        cliprect.min_x, cliprect.max_x, cliprect.min_y, cliprect.max_y};
+    std::copy(segment.begin(), segment.end(), m_vdp1_line.segments.begin() + 10 * m_vdp1_line.count++);
+    return;
+  }
   // The line error datapath is signed 13-bit. Unlike textured/polygon lines,
   // standalone lines do not emit the extra edge-coverage pixel.
   const auto wrap = [](int v) { return int((unsigned(v) & 0x1fff) ^ 0x1000) - 0x1000; };
@@ -2069,7 +2085,14 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
   const int address = (current_sprite.CMDSRCA & 0xffff) * 8;
   bool extra = false;
   int x = a.x, y = a.y;
-  for (int dot = 0; dot <= major; ++dot) {
+  if (m_vdp1_line_running && m_vdp1_line.dot) {
+    x = m_vdp1_line.x;
+    y = m_vdp1_line.y;
+    error = m_vdp1_line.error;
+  }
+  for (int dot = m_vdp1_line_running ? m_vdp1_line.dot : 0; dot <= major; ++dot) {
+    if (m_vdp1_line_running && !m_vdp1_line_budget)
+      break;
     int texel = 0;
     if (textured) {
       int u = vdp1_scaled_coordinate(std::max(1, hss ? texture_width / 2 : texture_width),
@@ -2110,8 +2133,49 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
       if (horizontal) y += sy; else x += sx;
       extra = edge_coverage;
     }
+    if (m_vdp1_line_running) {
+      --m_vdp1_line_budget;
+      m_vdp1_line.dot = dot + 1;
+      m_vdp1_line.x = x;
+      m_vdp1_line.y = y;
+      m_vdp1_line.error = error;
+    }
   }
   current_sprite.CMDPMOD = mode;
+}
+
+int saturn_state::vdp1_line_slice_cycles() const {
+  if (m_vdp1_line.index == m_vdp1_line.count)
+    return 16; // Next command fetch, not another raster slice.
+  int dots = 0;
+  for (int i = m_vdp1_line.index; i < m_vdp1_line.count && dots < 16; ++i) {
+    const int32_t *const data = m_vdp1_line.segments.data() + 10 * i;
+    dots += std::max(std::abs(data[2] - data[0]), std::abs(data[3] - data[1])) + 1;
+    if (i == m_vdp1_line.index)
+      dots -= m_vdp1_line.dot;
+  }
+  return std::min(16, dots);
+}
+
+void saturn_state::vdp1_draw_line_slice() {
+  // Bound host work and yield to ENDR/CPU events within a primitive. ST-013
+  // describes nominal one-dot-per-clock drawing; this 16-dot quantum is not
+  // a complete Gouraud/framebuffer-bus wait-state model.
+  m_vdp1_line_budget = 16;
+  m_vdp1_line_running = true;
+  vdp1_set_drawpixel(); // Reconstruct the dispatch pointer, including postload.
+  while (m_vdp1_line.index < m_vdp1_line.count && m_vdp1_line_budget) {
+    const int32_t *const data = m_vdp1_line.segments.data() + 10 * m_vdp1_line.index;
+    const spoint a{data[0], data[1], 0, 0}, b{data[2], data[3], 0, 0};
+    const rectangle cliprect(data[6], data[7], data[8], data[9]);
+    vdp1_draw_segment(cliprect, a, b, data[4], data[5]);
+    const int length = std::max(std::abs(b.x - a.x), std::abs(b.y - a.y)) + 1;
+    if (m_vdp1_line.dot >= length) {
+      ++m_vdp1_line.index;
+      m_vdp1_line.dot = 0;
+    }
+  }
+  m_vdp1_line_running = false;
 }
 
 void saturn_state::vdp1_draw_line(const rectangle &cliprect) {
@@ -2473,6 +2537,9 @@ void saturn_state::vdp1_abort_draw() {
   // Cancel both command dispatch and any delayed ENDR request. No completion
   // IRQ is manufactured; COPR remains at the last fetched command.
   m_vdp1_legacy.drawing = false;
+  m_vdp1_line = {};
+  m_vdp1_line_building = m_vdp1_line_running = false;
+  m_vdp1_line_budget = 0;
   if (m_vdp1_legacy.draw_end_timer)
     m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
   if (m_vdp1_legacy.terminate_timer)
@@ -2482,7 +2549,7 @@ void saturn_state::vdp1_abort_draw() {
 void saturn_state::vdp1_request_termination() {
   // ST-013 section 4.5 specifies approximately 30 VDP1 clocks. Keep command
   // execution live during that interval rather than stopping at the write.
-  // Individual primitives still need resumable pixel-level execution.
+  // Lines/polylines yield in pixel slices; other primitive paths remain atomic.
   if (m_vdp1_legacy.drawing)
     m_vdp1_legacy.terminate_timer->adjust(m_maincpu->cycles_to_attotime(30));
 }
@@ -2499,8 +2566,8 @@ void saturn_state::vdp1_process_list() {
   m_vdp1_legacy.drawing = true;
   clear_gouraud_shading();
   CEF_0();
-  // Fetch cost only, as in Ymir VDP1ProcessCommand. Rasterization still needs
-  // pixel/VRAM costs and subdivision within a primitive.
+  // Fetch cost as in Ymir VDP1ProcessCommand. Lines/polylines then advance
+  // in bounded pixel slices. Other primitive and VRAM costs remain incomplete.
   m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
 }
 
@@ -2510,6 +2577,12 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
   // scheduler and see CPU VRAM edits on the next fetch, with no host list cap.
   if (!m_vdp1_legacy.drawing)
     return;
+
+  if (m_vdp1_line.index < m_vdp1_line.count) {
+    vdp1_draw_line_slice();
+    m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_line_slice_cycles()));
+    return; // Never fetch END or another command while a segment is pending.
+  }
 
   int &position = m_vdp1_legacy.command_position;
   int &vdp1_nest = m_vdp1_legacy.command_return;
@@ -2701,14 +2774,20 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
         if (VDP1_LOG)
           logerror("Sprite List Polyline\n");
         current_sprite.ispoly = 1;
+        m_vdp1_line = {};
+        m_vdp1_line_building = true;
         vdp1_draw_poly_line(*cliprect);
+        m_vdp1_line_building = false;
         break;
 
       case 0x0006:
         if (VDP1_LOG)
           logerror("Sprite List Line\n");
         current_sprite.ispoly = 1;
+        m_vdp1_line = {};
+        m_vdp1_line_building = true;
         vdp1_draw_line(*cliprect);
+        m_vdp1_line_building = false;
         break;
 
       case 0x0008:
@@ -2757,7 +2836,7 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
     }
   }
 
-  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
+  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_line_slice_cycles()));
   return;
 
 end:
@@ -2839,8 +2918,7 @@ int saturn_state::vdp1_start() {
   m_vdp1_legacy.framebuffer_mode = -1;
   m_vdp1_legacy.framebuffer_double_interlace = -1;
   m_vdp1_legacy.fbcr_accessed = 0;
-  m_vdp1_legacy.framebuffer_current_display = 0;
-  m_vdp1_legacy.framebuffer_current_draw = 1;
+  vdp1_reset_framebuffers();
   vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
 
   m_vdp1_legacy.system_cliprect.set(0, 0, 0, 0);
@@ -2853,6 +2931,29 @@ int saturn_state::vdp1_start() {
   m_vdp1_legacy.terminate_timer =
       timer_alloc(FUNC(saturn_state::vdp1_terminate), this);
   // save state
+  save_item(NAME(m_vdp1_line.segments));
+  save_item(NAME(m_vdp1_line.count));
+  save_item(NAME(m_vdp1_line.index));
+  save_item(NAME(m_vdp1_line.dot));
+  save_item(NAME(m_vdp1_line.x));
+  save_item(NAME(m_vdp1_line.y));
+  save_item(NAME(m_vdp1_line.error));
+  save_item(NAME(current_sprite.CMDCTRL));
+  save_item(NAME(current_sprite.CMDLINK));
+  save_item(NAME(current_sprite.CMDPMOD));
+  save_item(NAME(current_sprite.CMDCOLR));
+  save_item(NAME(current_sprite.CMDSRCA));
+  save_item(NAME(current_sprite.CMDSIZE));
+  save_item(NAME(current_sprite.CMDXA));
+  save_item(NAME(current_sprite.CMDYA));
+  save_item(NAME(current_sprite.CMDXB));
+  save_item(NAME(current_sprite.CMDYB));
+  save_item(NAME(current_sprite.CMDXC));
+  save_item(NAME(current_sprite.CMDYC));
+  save_item(NAME(current_sprite.CMDXD));
+  save_item(NAME(current_sprite.CMDYD));
+  save_item(NAME(current_sprite.CMDGRDA));
+  save_item(NAME(current_sprite.ispoly));
   save_pointer(NAME(m_vdp1_legacy.framebuffer[0]), 0x20000);
   save_pointer(NAME(m_vdp1_legacy.framebuffer[1]), 0x20000);
   save_pointer(NAME(m_vdp1_legacy.field_framebuffer[0]), 0x20000);
