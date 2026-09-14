@@ -346,3 +346,44 @@ still gates timer-1 loading; other emulators qualify its expiry differently.
 All six regression scripts and standalone syntax checks of `saturn.cpp`,
 `saturn_vdp2.cpp`, and `saturn_scu.cpp` pass. Full build and ROM testing remain
 pending; next prioritize that validation and interlace counter encoding.
+
+## Reproducible object/full-build validation
+
+```sh
+python3 regtests/saturn/validate_build.py
+```
+
+This runs all six regression scripts, then compiles the complete changed
+translation units (`saturn.cpp`, `saturn_vdp2.cpp`, `saturn_scu.cpp`) to objects
+with C++20, `-O1`, `MAME_NOASM` and the recorded include paths. This exercises
+code generation as well as parsing; it does **not** resolve external symbols or
+link MAME. Object files are temporary and deleted automatically. Set `CXX` to
+select the compiler for the object/regression checks.
+
+**Result on 2026-09-14:** all regressions and all three object compilations passed
+with GCC 12.2.0. There were no emulation behavior changes in this validation pass.
+
+For a Debian/Ubuntu machine with package access, the intended focused-build path
+is:
+
+```sh
+sudo apt-get update
+sudo apt-get install build-essential python3 git pkg-config libsdl2-dev libsdl2-ttf-dev libfontconfig-dev
+python3 regtests/saturn/validate_build.py --full --jobs 2
+```
+
+The full mode checks required pkg-config modules, runs regressions and object
+checks, then invokes MAME's makefile with a Saturn/ST-V source filter. It disables
+Qt debugging, X11, OpenGL and optional MIDI/PortAudio/PulseAudio/PipeWire backends
+to reduce build dependencies. After linking it attempts `mamesaturn -validate`,
+which checks machine configurations without booting ROMs. These reduced-backend
+options are for build validation, not recommended final desktop performance
+settings. Use `--jobs 1` on memory-constrained machines.
+
+**Full path remains unverified:** this sandbox has neither pkg-config nor SDL
+development packages. Attempts to install them via both HTTP and HTTPS Debian
+repositories failed (connection/TLS errors); full-mode preflight correctly stops
+at missing pkg-config. No executable was linked or configuration validation run.
+The package list/build recipe may need adjustment for the target environment.
+No usable ROMs are present here, so no Saturn or ST-V boot, audio, frame output,
+save/load or performance comparison was performed.

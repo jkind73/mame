@@ -141,3 +141,12 @@ alongside these reopened items.
 - Physical CRTC phase, immediate register-write effects, full T1MD IRQ semantics,
   save/load and runtime compatibility remain unverified. No blanket timer DONE.
 - Next priorities: full build/runtime validation and interlaced counter encoding.
+
+### Build-validation follow-up
+
+- All six regression scripts and object-code compilation of the three changed
+  C++ translation units pass using `regtests/saturn/validate_build.py`.
+- Full-build preflight fails because pkg-config/SDL development dependencies are
+  missing; sandbox package downloads failed over HTTP and HTTPS. No linked MAME
+  executable or ROM boot validated. A documented `--full` recipe is preserved
+  for a machine with dependencies; it is not yet verified end-to-end.
