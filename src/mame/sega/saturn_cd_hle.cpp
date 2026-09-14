@@ -2164,6 +2164,23 @@ void saturn_cd_hle_device::cmd_read_file() {
   file_offset = ((cr1 & 0xff) << 8) | (cr2 & 0xff); /* correct? */
   file_filter = cr3 >> 8;
   file_id = ((cr3 & 0xff) << 16) | (cr4);
+
+  /* curdir is only ever sized by make_dir_current(), so a Read File issued
+     before a directory has been parsed - the vector is cleared on reset and
+     on stop - or with a file ID beyond the parsed one has no entry to read.
+     The index comes straight from CR3/CR4 and curdir is read with unchecked
+     operator[], so validate it here; file_filter is validated the same way
+     just below.  Acknowledge the command either way, so that software
+     waiting on HIRQ is not left hanging, but start no bogus playback. */
+  if (size_t(file_id) >= curdir.size()) {
+    LOGWARN("CD: Read File %04x beyond directory (%u entries)\n", file_id,
+            unsigned(curdir.size()));
+    cr_standard_return(cd_stat);
+    hirqreg |= (CMOK | EHST);
+    update_hirq();
+    return;
+  }
+
   file_size =
       ((curdir[file_id].length + sectlenin - 1) / sectlenin) - file_offset;
 
