@@ -61,6 +61,17 @@ protected:
     int32_t u, v;
   };
 
+  // Up to four independent segments belong to one line/polyline command.
+  // Flat integer storage is save-manager friendly: xa,ya,xb,yb,ca,cb,clip[4].
+  struct vdp1_line_state {
+    std::array<int32_t, 40> segments{};
+    int count = 0, index = 0, dot = 0;
+    int x = 0, y = 0, error = 0;
+  } m_vdp1_line;
+  // Host dispatch guards only; never live across an emulated timer boundary.
+  bool m_vdp1_line_building = false, m_vdp1_line_running = false;
+  int m_vdp1_line_budget = 0;
+
   struct {
     std::unique_ptr<uint16_t *[]> framebuffer_display_lines;
     int framebuffer_mode = 0;
@@ -188,6 +199,7 @@ protected:
   /* VDP1 */
   void vdp1_latch_framebuffer_config();
   void vdp1_set_framebuffer_config();
+  void vdp1_reset_framebuffers();
   void vdp1_prepare_framebuffers();
   void vdp1_change_framebuffers();
   void vdp1_video_update();
@@ -209,6 +221,8 @@ protected:
   void vdp1_draw_poly_line(const rectangle &cliprect);
   void vdp1_draw_segment(const rectangle &cliprect, const spoint &a, const spoint &b, uint16_t color_a, uint16_t color_b,
                          bool edge_coverage = false, int texture_row = -1, int texture_width = 0);
+  int vdp1_line_slice_cycles() const;
+  void vdp1_draw_line_slice();
   void vdp1_draw_line(const rectangle &cliprect);
   int x2s(int v);
   int y2s(int v);

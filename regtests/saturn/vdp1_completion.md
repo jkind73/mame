@@ -1,5 +1,37 @@
 # VDP1 completion audit — 2026-09-14
 
+## Interruptible line/polyline execution — 2026-09-14
+
+Line and polyline commands now enqueue up to four segments and execute in at most
+16-dot timer slices. Completed segments share the remaining slice budget. The last
+short slice uses its actual dot count instead of adding a full 16 clocks. The next
+command/END fetch is blocked until queued pixels finish; COPR stays on the active
+command. ENDR discards the unfinished cursor and cancels scheduling without an IRQ;
+PTMR restart and automatic field restart also discard old work. Reset now restores
+the defined bank roles (drawing 0, display 1), rebuilding views without clearing
+framebuffer RAM; the old initialization had reversed these roles.
+
+Coordinates, error accumulator, dot index, segment colors, clip bounds and fetched
+command fields are saved. Pixel dispatch is reconstructed for each slice, so it is
+not a saved host pointer. Gouraud uses the original dot index after resumption;
+half-transparent pixels are not replayed. CPU framebuffer writes between slices
+are visible to subsequent blends. A state load resumes emulation state; ENDR itself
+does not support hardware continuation.
+
+Validation adds **748 cases**: sliced versus synchronous images across octants,
+line/polyline commands, mesh, color operations and packed storage; every ENDR slice
+phase; short-slice/END ordering; CPU framebuffer writes; PTMR/automatic restart;
+and state copies inside segments and between edges, including a pending ENDR.
+Unlimited-quantum, lost-cursor and wrong-reset-bank mutations fail assertions. All 18 scripts/nine
+objects pass. No real MAME save/load or linked BIOS/game test is claimed.
+
+This is a nominal one-dot-per-clock model with batched visibility, not exact bus
+arbitration. Gouraud/setup/VRAM wait costs remain unqualified. **Normal/scaled/
+distorted sprites and polygons remain atomic** and still need resumable execution.
+The existing native pixel model is reused rather than replaying completed work or
+pre-rendering framebuffer writes.
+
+
 ## Bounded VBlank erase — 2026-09-14
 
 VBlank erase now captures the displayed bank, word layout, latched bounds/data,
@@ -294,14 +326,14 @@ The full validator passes **18 scripts and nine object compilations**.
 
 | Area | Current gap | Required implementation/verification |
 |---|---|---|
-| Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR schedules a 30-clock stop. | Subdivide primitive execution and qualify pipeline termination; real save/load during primitives. |
-| Timing / transfer-over | Each command fetch gets 16 SH-2 cycles; lists may cross frames, but pixel/bus costs are absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
+| Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR schedules a 30-clock stop; line/polyline raster work now yields within commands. | Extend saved pixel cursors to sprites/polygons and qualify pipeline termination; real save/load during primitives. |
+| Timing / transfer-over | Command fetches use 16 cycles; lines/polylines have nominal pixel slices. Other primitive and bus costs remain absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
 | PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. BEF now latches on bank change. Field-start changes, deferred register latches and bounded blank-only erase are implemented; sub-scanline timing and active-display erase remain incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
 | Command control | Valid eight jump controls, persistent fetch state and scheduler-yielding loops are implemented. Prohibited/undocumented commands still use fallback behavior. | Hardware investigation of illegal opcodes/aliases and prohibited flow; do not invent a primary-defined result for them. |
 | Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Rotation, DIE/DIL and EOS are implemented; mismatched formats and hardware timing qualification remain. |
 | Rasterization | Native integer line/quad and scaled texture walkers are implemented and image-tested. | Hardware pre-clipping, interpolation precision and silicon-image qualification; resumable pixel execution. |
 | Texture / color | Normal-sprite second-END termination, destination MON and Gouraud/color combinations are implemented and tested. | Scaled/distorted END and HSS/EOS are implemented above; pre-clipping and hardware interpolation/rounding qualification remain. |
-| Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Physical banks, field caches and pending VBlank erase are saved; intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
+| Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Physical banks, field caches and pending VBlank erase are saved; line/polyline cursors and fetched command fields are saved; other intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
 | Runtime | No linked executable in this sandbox. | Install documented SDL/pkg-config dependencies, link and `-validate`, then BIOS and legally available Saturn/ST-V smoke/pixel comparisons (including prior workaround titles). |
 
 Do not mark this table complete from standalone tests or an absence of TODOs.
