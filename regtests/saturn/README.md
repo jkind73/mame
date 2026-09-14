@@ -768,3 +768,54 @@ trigger setup/hold timing. Real scheduler/IRQ delivery, DxGO writes, reset/save-
 load while a trigger is held, continuous event streams, illegal configurations,
 DSP overlaps and BIOS/game behavior still require further validation. The existing
 recording-endpoint and GCC warning-exception limitations remain unchanged.
+
+## A-Bus refresh register reset and write mask
+
+Corrected AREF reset to **0x10** (ARFEN set, ARWT zero), and constrained stored
+writes to bits **4:0**. Byte/halfword/longword masked writes preserve untouched
+implemented bits. ARFEN is not forced high on every write: a software prohibition
+on changing a bit does not itself establish that the hardware ignores writes.
+
+Evidence and reference differences:
+- [ST-097-R5-072694](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-097-R5-072694.pdf),
+  printed p.72 / PDF p.88, figure 3.30 and table 3.24: ARFEN is bit 4, ARWT is
+  bits 3:0. This older figure prints an initial value of zero.
+- [ST-210-110194](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-210-110194.pdf),
+  printed p.10 / PDF p.14, item 33, explicitly **changes** the power-on reset
+  value to ARFEN=1 and says software should not change that bit. This supersedes
+  the older figure; ARWT remains zero.
+- [MiSTer SCU_PKG.sv](https://github.com/jkind73/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/SCU/SCU_PKG.sv)
+  gives `AREF_WMASK = 0x1f`; SCU.sv applies that mask on writes. However,
+  `AREF_INIT = 0` still follows the older reset value, not item 33.
+- [Mednafen scu.inc](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  masks AREF writes to `0x1f`, but also resets AREF to zero.
+- [Ymir scu.cpp](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  ignores the AREF write cases. It does not independently establish a reset value.
+  The reset correction follows the explicit Sega erratum, not implementation consensus.
+
+```sh
+python3 regtests/saturn/test_scu_abus.py
+python3 regtests/saturn/test_scu_abus.py --baseline-reset  # expected reset assertion failure
+python3 regtests/saturn/test_scu_abus.py --baseline-write  # expected stored-value assertion failure
+```
+
+The harness extracts the **complete production device_reset**, AREF/ASR write
+handlers, address classifier, and header bus/channel/enum definitions. It passes
+32 dirty-state resets, **32,768 refresh writes**, 288 ASR writes and 24,576 static
+wait classifications with ASan/UBSan. Refresh writes cover all 32 initial and input
+low-bit patterns, all 16 byte-enable combinations, and reserved bits zero/all-one.
+ASR tests protect the other register and existing preread-bit filtering; classifier
+tests cover all combinations of the three four-bit wait fields in both directions.
+Each negative control independently substitutes the corresponding body from
+`0d7e9fe416ef866951290d2816211eff0ffc32c4` and fails its intended assertion.
+
+**Scope:** AREF is stored/saved but is not currently consumed by MAME's bus timing.
+This is a register-state correction, not actual refresh emulation or a demonstrated
+performance/game fix. The existing `AnNW+3` decoder is checked for regression,
+not validated as cycle-accurate. Tests call handlers directly with recording timers;
+MMIO routing, actual CPU halt/reset interactions, physical refresh pulses, power-
+on versus SMPC reset wiring, and save/load round trips remain untested. No ASR
+mask/timing change or permanent-ARFEN write protection was inferred from this audit.
+
+All **eleven** Saturn regression scripts and three object compilations pass.
+Full linking and BIOS/game runtime validation remain pending.

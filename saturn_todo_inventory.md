@@ -1,5 +1,13 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## A-Bus refresh register update — 2026-09-14
+
+AREF now resets to 0x10 per Sega's later erratum and stores only defined bits 4:0.
+New register/reset/static-decoder coverage passes with two failing pre-fix controls.
+This corrects stored configuration, not physical refresh timing: AREF is not yet
+consumed by the bus model. Existing static wait approximations remain unvalidated
+against hardware; no game/performance benefit is claimed.
+
 ## Held DMA trigger audit — 2026-09-14
 
 Existing external-event hold behavior passed 924 new scenarios, including one-slot
