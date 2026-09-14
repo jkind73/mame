@@ -471,14 +471,25 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     if ((xfercount % (6 * 2)) == 0) {
       uint32_t temp = 2 + (xfercount / (0x6 * 2));
 
+      /* this transfer promises 254 records no matter how many entries
+         make_dir_current() actually parsed, so temp runs past the end of
+         curdir on any disc with fewer than 257 of them - and curdir is empty
+         until a directory has been read at all.  Report the entries that are
+         not there as an absent file, which is how this protocol already
+         spells "not found", instead of reading past the allocation.
+         Deliberately no warning here: this is the normal case, so one would
+         fire per record on every title that asks for the whole directory. */
+      direntryT const entry =
+          (size_t(temp) < curdir.size()) ? curdir[temp] : direntryT{};
+
       // first 4 bytes = FAD
-      put_u32be(&finfbuf[0], curdir[temp].firstfad);
+      put_u32be(&finfbuf[0], entry.firstfad);
       // second 4 bytes = length of file
-      put_u32be(&finfbuf[4], curdir[temp].length);
-      finfbuf[8] = curdir[temp].interleave_gap_size;
-      finfbuf[9] = curdir[temp].file_unit_size;
+      put_u32be(&finfbuf[4], entry.length);
+      finfbuf[8] = entry.interleave_gap_size;
+      finfbuf[9] = entry.file_unit_size;
       finfbuf[10] = temp;
-      finfbuf[11] = curdir[temp].flags;
+      finfbuf[11] = entry.flags;
     }
 
     rv = get_u16be(&finfbuf[xfercount % (6 * 2)]);
@@ -2138,17 +2149,30 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     cr3 = 0;
     cr4 = 0;
 
-    if (curdir[temp].firstfad == 0 || curdir[temp].length == 0)
+    /* temp is the 24-bit value from CR3/CR4 while curdir only ever holds
+       as many entries as make_dir_current() parsed, so validate it before
+       indexing: an out-of-range read here lands hundreds of megabytes past
+       the allocation.  An ID beyond the directory is reported as an absent
+       file rather than joining the not-found path below, because the ISO
+       9660 parser here is incomplete and a real title can legitimately ask
+       for an ID past it; killing the machine over that would be worse than
+       what the unchecked read used to return. */
+    bool const found = size_t(temp) < curdir.size();
+    direntryT const entry = found ? curdir[temp] : direntryT{};
+    if (!found)
+      LOGWARN("CD: Get File Info %06x beyond directory (%u entries)\n", temp,
+              unsigned(curdir.size()));
+    else if (entry.firstfad == 0 || entry.length == 0)
       throw emu_fatalerror("File ID not found in XFERTYPE_FILEINFO_1");
     //      LOGWARN("%08x %08x\n",curdir[temp].firstfad,curdir[temp].length);
     // first 4 bytes = FAD
-    put_u32be(&finfbuf[0], curdir[temp].firstfad);
+    put_u32be(&finfbuf[0], entry.firstfad);
     // second 4 bytes = length of file
-    put_u32be(&finfbuf[4], curdir[temp].length);
-    finfbuf[8] = curdir[temp].interleave_gap_size;
-    finfbuf[9] = curdir[temp].file_unit_size;
+    put_u32be(&finfbuf[4], entry.length);
+    finfbuf[8] = entry.interleave_gap_size;
+    finfbuf[9] = entry.file_unit_size;
     finfbuf[10] = temp;
-    finfbuf[11] = curdir[temp].flags;
+    finfbuf[11] = entry.flags;
 
     xfertype = XFERTYPE_FILEINFO_1;
     xfercount = 0;
@@ -2710,6 +2734,17 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
       make_dir_current(curroot.firstfad);
     }
   } else {
+    /* fileno is the 24-bit value from CR3/CR4 while curdir only ever holds
+       as many entries as make_dir_current() parsed, so an out-of-range one
+       would read hundreds of megabytes past the allocation.  Leave the
+       current directory alone: cmd_change_directory() has already reported
+       CMOK|EFLS and calls cr_standard_return() on the way out. */
+    if (size_t(fileno) >= curdir.size()) {
+      LOGWARN("CD: Change Directory %06x beyond directory (%u entries)\n",
+              fileno, unsigned(curdir.size()));
+      return;
+    }
+
     if (curdir[fileno].length > MAX_DIR_SIZE) {
       LOGWARN("ERROR: new directory too big (%d)!\n", curdir[fileno].length);
     }
