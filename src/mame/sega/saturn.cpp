@@ -5229,84 +5229,113 @@ void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
     address |= 0x00000080;
   }
 
+  /* RPTA is masked to 19 bits and doubled, so address/4 can already be the last
+     word of VRAM before the 24-word table is stepped through, and selecting
+     parameter B by forcing bit 7 of the byte address can push it over on its
+     own; wrap each access inside VRAM, as the other table reads do and as the
+     address lines do on the hardware. */
   current_rotation_table.xst =
-      (m_vdp2_vram[address / 4] & 0x1fffffc0) |
-      ((m_vdp2_vram[address / 4] & 0x10000000) ? 0xe0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4) & 0x3ffff] & 0x1fffffc0) |
+      ((m_vdp2_vram[(address / 4) & 0x3ffff] & 0x10000000) ? 0xe0000000
+                                                           : 0x00000000);
   current_rotation_table.yst =
-      (m_vdp2_vram[address / 4 + 1] & 0x1fffffc0) |
-      ((m_vdp2_vram[address / 4 + 1] & 0x10000000) ? 0xe0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 1) & 0x3ffff] & 0x1fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 1) & 0x3ffff] & 0x10000000) ? 0xe0000000
+                                                               : 0x00000000);
   current_rotation_table.zst =
-      (m_vdp2_vram[address / 4 + 2] & 0x1fffffc0) |
-      ((m_vdp2_vram[address / 4 + 2] & 0x10000000) ? 0xe0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 2) & 0x3ffff] & 0x1fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 2) & 0x3ffff] & 0x10000000) ? 0xe0000000
+                                                               : 0x00000000);
   current_rotation_table.dxst =
-      (m_vdp2_vram[address / 4 + 3] & 0x0007ffc0) |
-      ((m_vdp2_vram[address / 4 + 3] & 0x00040000) ? 0xfff80000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 3) & 0x3ffff] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 3) & 0x3ffff] & 0x00040000) ? 0xfff80000
+                                                               : 0x00000000);
   current_rotation_table.dyst =
-      (m_vdp2_vram[address / 4 + 4] & 0x0007ffc0) |
-      ((m_vdp2_vram[address / 4 + 4] & 0x00040000) ? 0xfff80000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 4) & 0x3ffff] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 4) & 0x3ffff] & 0x00040000) ? 0xfff80000
+                                                               : 0x00000000);
   current_rotation_table.dx =
-      (m_vdp2_vram[address / 4 + 5] & 0x0007ffc0) |
-      ((m_vdp2_vram[address / 4 + 5] & 0x00040000) ? 0xfff80000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 5) & 0x3ffff] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 5) & 0x3ffff] & 0x00040000) ? 0xfff80000
+                                                               : 0x00000000);
   current_rotation_table.dy =
-      (m_vdp2_vram[address / 4 + 6] & 0x0007ffc0) |
-      ((m_vdp2_vram[address / 4 + 6] & 0x00040000) ? 0xfff80000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 6) & 0x3ffff] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 6) & 0x3ffff] & 0x00040000) ? 0xfff80000
+                                                               : 0x00000000);
   current_rotation_table.A =
-      (m_vdp2_vram[address / 4 + 7] & 0x000fffc0) |
-      ((m_vdp2_vram[address / 4 + 7] & 0x00080000) ? 0xfff00000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 7) & 0x3ffff] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 7) & 0x3ffff] & 0x00080000) ? 0xfff00000
+                                                               : 0x00000000);
   current_rotation_table.B =
-      (m_vdp2_vram[address / 4 + 8] & 0x000fffc0) |
-      ((m_vdp2_vram[address / 4 + 8] & 0x00080000) ? 0xfff00000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 8) & 0x3ffff] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 8) & 0x3ffff] & 0x00080000) ? 0xfff00000
+                                                               : 0x00000000);
   current_rotation_table.C =
-      (m_vdp2_vram[address / 4 + 9] & 0x000fffc0) |
-      ((m_vdp2_vram[address / 4 + 9] & 0x00080000) ? 0xfff00000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 9) & 0x3ffff] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 9) & 0x3ffff] & 0x00080000) ? 0xfff00000
+                                                               : 0x00000000);
   current_rotation_table.D =
-      (m_vdp2_vram[address / 4 + 10] & 0x000fffc0) |
-      ((m_vdp2_vram[address / 4 + 10] & 0x00080000) ? 0xfff00000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 10) & 0x3ffff] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 10) & 0x3ffff] & 0x00080000) ? 0xfff00000
+                                                                : 0x00000000);
   current_rotation_table.E =
-      (m_vdp2_vram[address / 4 + 11] & 0x000fffc0) |
-      ((m_vdp2_vram[address / 4 + 11] & 0x00080000) ? 0xfff00000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 11) & 0x3ffff] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 11) & 0x3ffff] & 0x00080000) ? 0xfff00000
+                                                                : 0x00000000);
   current_rotation_table.F =
-      (m_vdp2_vram[address / 4 + 12] & 0x000fffc0) |
-      ((m_vdp2_vram[address / 4 + 12] & 0x00080000) ? 0xfff00000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 12) & 0x3ffff] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 12) & 0x3ffff] & 0x00080000) ? 0xfff00000
+                                                                : 0x00000000);
   current_rotation_table.px =
-      (m_vdp2_vram[address / 4 + 13] & 0x3fff0000) |
-      ((m_vdp2_vram[address / 4 + 13] & 0x30000000) ? 0xc0000000 : 0x00000000);
-  current_rotation_table.py = (m_vdp2_vram[address / 4 + 13] & 0x00003fff)
-                              << 16;
+      (m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x30000000) ? 0xc0000000
+                                                                : 0x00000000);
+  current_rotation_table.py =
+      (m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x00003fff) << 16;
   if (current_rotation_table.py & 0x20000000)
     current_rotation_table.py |= 0xc0000000;
   current_rotation_table.pz =
-      (m_vdp2_vram[address / 4 + 14] & 0x3fff0000) |
-      ((m_vdp2_vram[address / 4 + 14] & 0x20000000) ? 0xc0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 14) & 0x3ffff] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 14) & 0x3ffff] & 0x20000000) ? 0xc0000000
+                                                                : 0x00000000);
   current_rotation_table.cx =
-      (m_vdp2_vram[address / 4 + 15] & 0x3fff0000) |
-      ((m_vdp2_vram[address / 4 + 15] & 0x20000000) ? 0xc0000000 : 0x00000000);
-  current_rotation_table.cy = (m_vdp2_vram[address / 4 + 15] & 0x00003fff)
-                              << 16;
+      (m_vdp2_vram[(address / 4 + 15) & 0x3ffff] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 15) & 0x3ffff] & 0x20000000) ? 0xc0000000
+                                                                : 0x00000000);
+  current_rotation_table.cy =
+      (m_vdp2_vram[(address / 4 + 15) & 0x3ffff] & 0x00003fff) << 16;
   if (current_rotation_table.cy & 0x20000000)
     current_rotation_table.cy |= 0xc0000000;
   current_rotation_table.cz =
-      (m_vdp2_vram[address / 4 + 16] & 0x3fff0000) |
-      ((m_vdp2_vram[address / 4 + 16] & 0x20000000) ? 0xc0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 16) & 0x3ffff] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 16) & 0x3ffff] & 0x20000000) ? 0xc0000000
+                                                                : 0x00000000);
   current_rotation_table.mx =
-      (m_vdp2_vram[address / 4 + 17] & 0x3fffffc0) |
-      ((m_vdp2_vram[address / 4 + 17] & 0x20000000) ? 0xc0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 17) & 0x3ffff] & 0x3fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 17) & 0x3ffff] & 0x20000000) ? 0xc0000000
+                                                                : 0x00000000);
   current_rotation_table.my =
-      (m_vdp2_vram[address / 4 + 18] & 0x3fffffc0) |
-      ((m_vdp2_vram[address / 4 + 18] & 0x20000000) ? 0xc0000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 18) & 0x3ffff] & 0x3fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 18) & 0x3ffff] & 0x20000000) ? 0xc0000000
+                                                                : 0x00000000);
   current_rotation_table.kx =
-      (m_vdp2_vram[address / 4 + 19] & 0x00ffffff) |
-      ((m_vdp2_vram[address / 4 + 19] & 0x00800000) ? 0xff000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 19) & 0x3ffff] & 0x00ffffff) |
+      ((m_vdp2_vram[(address / 4 + 19) & 0x3ffff] & 0x00800000) ? 0xff000000
+                                                                : 0x00000000);
   current_rotation_table.ky =
-      (m_vdp2_vram[address / 4 + 20] & 0x00ffffff) |
-      ((m_vdp2_vram[address / 4 + 20] & 0x00800000) ? 0xff000000 : 0x00000000);
-  current_rotation_table.kast = (m_vdp2_vram[address / 4 + 21] & 0xffffffc0);
+      (m_vdp2_vram[(address / 4 + 20) & 0x3ffff] & 0x00ffffff) |
+      ((m_vdp2_vram[(address / 4 + 20) & 0x3ffff] & 0x00800000) ? 0xff000000
+                                                                : 0x00000000);
+  current_rotation_table.kast =
+      (m_vdp2_vram[(address / 4 + 21) & 0x3ffff] & 0xffffffc0);
   current_rotation_table.dkast =
-      (m_vdp2_vram[address / 4 + 22] & 0x03ffffc0) |
-      ((m_vdp2_vram[address / 4 + 22] & 0x02000000) ? 0xfc000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 22) & 0x3ffff] & 0x03ffffc0) |
+      ((m_vdp2_vram[(address / 4 + 22) & 0x3ffff] & 0x02000000) ? 0xfc000000
+                                                                : 0x00000000);
   current_rotation_table.dkax =
-      (m_vdp2_vram[address / 4 + 23] & 0x03ffffc0) |
-      ((m_vdp2_vram[address / 4 + 23] & 0x02000000) ? 0xfc000000 : 0x00000000);
+      (m_vdp2_vram[(address / 4 + 23) & 0x3ffff] & 0x03ffffc0) |
+      ((m_vdp2_vram[(address / 4 + 23) & 0x3ffff] & 0x02000000) ? 0xfc000000
+                                                                : 0x00000000);
 
   // check rotation parameter read control, override if specific bits are
   // disabled (Batman Forever The Riddler stage relies on this)
