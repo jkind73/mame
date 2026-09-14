@@ -593,3 +593,59 @@ test. No broad DMA-accuracy completion claim or measured speedup.
 
 All **nine** regression scripts and three object compilations pass. Full linking
 and BIOS/game runtime validation remain pending.
+
+## Indirect DMA descriptor count and chain execution
+
+Indirect descriptor counts now use twenty bits on all three channels, with a
+masked count of zero representing 1 MiB. The inherited path used eighteen bits
+on channels 1/2 and left zero as zero, causing short or maximum-size requests to
+finish after the first word. The direct register masks/default sizes are unchanged.
+
+Evidence is separated by source:
+- ST-097 §2.1 (printed pp.19–20 / PDF pp.35–36) describes three-longword descriptor
+  execution and repeated transfers; §3.2 (printed p.42 / PDF p.58) describes the
+  different **direct register** count widths. ST-210 item 25 (printed p.8 / PDF
+  p.12) specifies the count/destination/source order and final source bit 31.
+  The inspected manual sections do not explicitly establish the all-channel
+  descriptor count width or zero encoding.
+- [Ymir DMAReadIndirectTransfer](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  normalizes every channel's descriptor count into 1..0x100000 with a 20-bit mask.
+- [Mednafen NextIndirect](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  explicitly masks to 20 bits and converts zero to 0x100000 without a channel split.
+- [MiSTer SCU.sv](https://github.com/jkind73/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/SCU/SCU.sv)
+  uses 20-bit DMA_RTN/WTN and loads descriptor bits 19:0 in both indirect-read
+  paths, corroborating the width. This audit did not simulate the RTL countdown.
+
+```sh
+python3 regtests/saturn/test_dma_indirect.py
+python3 regtests/saturn/test_dma_indirect.py --baseline       # expected zero-count failure
+python3 regtests/saturn/test_dma_indirect.py --baseline-wide  # expected channel-1 width failure
+```
+
+**54 two-descriptor chains passed through completion**, executing actual production
+start, wait/move selection, descriptor fetch, word transfers, pointer update,
+completion IRQ, and return-to-idle code with ASan/UBSan. Cases cover all channels,
+WUP both ways, sizes 0, 4, 0x1004, 0x23000, 0x40000, 0x80000, 0xffffe, and reserved
+high-bit encodings. Full 1 MiB requests are transferred word-by-word, not fast-
+forwarded. The second descriptor exercises C-Bus-to-SCSP following A-Bus-to-C-Bus,
+using an upper RAM mirror for table/data. Tests check source end-bit stripping,
+six ordered descriptor reads, no fetch past the final entry, word addresses/data,
+no premature completion interrupt, final status, bus-steal callback counts,
+WUP pointer changes and unchanged direct-only source/count registers.
+
+The negative controls use DMA ticks from `e718c19335be7944e183b3746966a82a518eb959`.
+The GCC test wrapper locally suppresses `-Wmaybe-uninitialized` around extracted
+production definitions because GCC 12 diagnoses an anonymous temporary in the
+sanitized pointer-to-member dispatch; ASan/UBSan remain enabled and the assertion/
+setup code remains warning-checked. Other tests retain their existing flags.
+
+Memory endpoints record requests and return deterministic test data rather than
+implementing MAME address-space/RAM alias resolution. Timers are recording stubs;
+ticks run sequentially, not in a CPU scheduler. Single-channel legal word-aligned
+chains are covered; concurrency, held triggers, illegal transfers, odd-byte
+counts, unusual source increments, descriptor boundary wrapping, save/load and
+real bus timing are not established. This expands the previous direct-only DMA
+coverage without claiming complete indirect DMA hardware accuracy.
+
+All **ten** regression scripts and three object compilations pass. Full linking
+and BIOS/game runtime tests remain pending.

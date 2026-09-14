@@ -198,3 +198,14 @@ alongside these reopened items.
   All nine regression scripts and three object compilations pass.
 - Full indirect DMA execution, bus timings and exact official mirror-aperture
   documentation remain unverified. This does not complete the wider DMA audit.
+
+### Indirect DMA count decoding — implemented and chain-tested
+
+- Use twenty-bit descriptor counts on all channels; masked zero means 1 MiB.
+  Ymir/Mednafen agree; MiSTer corroborates descriptor width. ST-097/ST-210 support
+  the descriptor format, not an explicit all-channel count-width claim here.
+- 54 two-entry chains execute through completion with ASan/UBSan, including full
+  1 MiB requests, upper C-Bus mirrors, WUP and source end flags. Both pre-fix zero
+  and narrow-count negative controls fail. Direct-register limits unchanged.
+- All ten regression scripts and three object compilations pass. Simultaneous
+  DMA, held triggers, unusual alignments/increments and runtime remain open.

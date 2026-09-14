@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Indirect DMA count update — 2026-09-14
+
+Corrected indirect counts to twenty bits on every channel, with zero meaning
+1 MiB, cross-checked against Ymir/Mednafen and MiSTer width. 54 legal two-descriptor
+chains pass through completion. This extends the earlier direct-only coverage;
+full DMA arbitration/timing and unusual descriptor/transfer cases remain open.
+
 ## C-Bus mirror decode update — 2026-09-14
 
 SCU now recognizes `0x07xxxxxx` high work-RAM mirrors, consistent with Saturn/ST-V
