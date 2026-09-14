@@ -387,3 +387,33 @@ at missing pkg-config. No executable was linked or configuration validation run.
 The package list/build recipe may need adjustment for the target environment.
 No usable ROMs are present here, so no Saturn or ST-V boot, audio, frame output,
 save/load or performance comparison was performed.
+
+## User-supplied firmware reference
+
+The user supplied commit
+[`8578abbe02220ae4d174d364b4544997cb61a2cd`](https://github.com/jkind73/mame/commit/8578abbe02220ae4d174d364b4544997cb61a2cd),
+which adds eight ZIP archives under `regtests/`. Copies were inspected in an
+external disposable cache. The remote branch already includes the user's BIOS
+commit, which was preserved when reconciling the restored sandbox history; this
+audit adds no further firmware binaries. [firmware_manifest.json](firmware_manifest.json) preserves source
+commit/path, archive SHA-256, entry metadata and relevant firmware SHA-1 checks.
+
+- `saturnjp.zip`, `saturneu.zip`, `saturnkr.zip`: console firmware candidates.
+- `satcdb.zip`: CD-block firmware; `stvbios.zip`: ST-V BIOS variants.
+- `segabill.zip`: Sega bill-validator firmware, not an ST-V game cartridge.
+- `saturn2.zip` is Bell Games' Saturn 2 pinball (`by35.cpp`), and `saturnzi.zip`
+  is the Zilec/Jaleco arcade Saturn (`blueprnt.cpp`). Neither is Sega Saturn
+  firmware; exclude them from this project's boot matrix.
+
+ZIP integrity checks passed for all eight archives. All 35 entries in the six
+relevant archives have SHA-1 values present in the current Sega driver/device
+ROM declarations. This is a source/hash cross-check, not MAME `-verifyroms`,
+a completeness audit or a successful boot. In particular `saturnkr` currently
+uses a Japanese BIOS marked BAD_DUMP as a placeholder for undumped Korean
+firmware; the archive does not establish authentic Korean BIOS coverage.
+
+This supersedes the earlier "no firmware available" limitation: the supplied
+commit provides retrievable candidates for BIOS startup testing. The full-build
+blocker remains, and no game cartridge/disc validation has been performed.
+Availability on GitHub is not a redistribution license; this audit adds only
+metadata and notes. Cache loss can be recovered using the pinned source commit.
