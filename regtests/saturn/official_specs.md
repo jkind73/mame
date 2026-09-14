@@ -151,3 +151,11 @@ emulator comparison distinct from the official-document evidence.
 No emulation behavior changed in this documentation pass. All new findings are
 open until implemented and validated. Official Saturn documents establish shared
 chip behavior, but ST-V board-specific wiring still needs separate evidence.
+
+## Implementation update: timer-1 reload
+
+The stopped-only reload issue identified in finding 1 is now fixed and covered by
+`test_timer1.py`; see the [test report](README.md#scu-timer-1-stopped-only-reload-fix).
+The earlier findings describe the code as inspected during the document audit.
+Timer-0 ordering, T1MD interrupt qualification, hardware timer rate, and the other
+open findings are not resolved by this narrowly scoped fix.
