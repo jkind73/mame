@@ -40,6 +40,18 @@
 // fixed-width enum, safe to save/restore directly
 ALLOW_SAVE_TYPE(scsp_device::SCSP_STATE);
 
+/* Chip clocking (ST-077 chapter 2):
+   - the sound generator re-sampling frequency is fixed at 44.1 kHz, so one
+     output sample (1Fs) is 512 master clocks wide and drivers must feed the
+     device 512 * fs (22.5792 MHz on Saturn/ST-V, where the sound 68EC000
+     runs at half that)
+   - the eight timers count at fs divided by their prescaler (1, 2, 4, 8),
+     i.e. one tick per (512 << prescale) master clocks
+   - the envelope engine and LFO phase steps are driven by the output sample
+     counter (see EG_Update / LFO_ComputeStep), so both track any legal
+     master clock instead of assuming a 44100 Hz stream */
+static constexpr u32 SAMPLE_CLOCKS = 512;
+
 #define SHIFT 12
 #define LFO_SHIFT 8
 #define FIX(v) ((u32)((float)(1 << SHIFT) * (v)))
@@ -177,7 +189,7 @@ void scsp_device::device_start() {
   init();
 
   // Stereo output with EXTS0,1 Input (External digital audio output)
-  m_stream = stream_alloc(2, 2, clock() / 512);
+  m_stream = stream_alloc(2, 2, clock() / SAMPLE_CLOCKS);
 
   for (int slot = 0; slot < 32; slot++) {
     for (int i = 0; i < 0x10; i++)
@@ -303,9 +315,9 @@ void scsp_device::device_post_load() {
 //-------------------------------------------------
 
 void scsp_device::device_clock_changed() {
-  m_stream->set_sample_rate(clock() / 512);
+  m_stream->set_sample_rate(clock() / SAMPLE_CLOCKS);
   // LFO phase steps are per output sample, so they must be recomputed when
-  // the sample rate changes (512 = SAMPLE_CLOCKS, defined below)
+  // the sample rate changes
   for (int i = 0; i < 32; ++i)
     Compute_LFO(&m_Slots[i]);
 }
@@ -417,9 +429,6 @@ void scsp_device::ResetInterrupts() {
 
   CheckPendingIRQ();
 }
-
-// One output sample (1Fs) is 512 SCSP clocks wide
-static constexpr u32 SAMPLE_CLOCKS = 512;
 
 //-------------------------------------------------
 //  timer_sync - lazily advance a timer counter up
