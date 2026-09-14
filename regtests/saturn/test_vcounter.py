@@ -4,6 +4,7 @@
 """Check production V-counter table equivalence and field-line addressing.
 
 --baseline runs the inherited getter instead (expected sanitizer failure).
+--encoding-baseline runs the bounds-fixed, pre-encoding getter (assertion failure).
 Requires the inherited base commit to be available in local Git history.
 """
 import argparse
@@ -16,10 +17,15 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = "868d72fc669765f8a0b9af6503a59642d293cbae"
 PATH = "src/mame/sega/saturn_vdp2.cpp"
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--baseline", action="store_true")
+mode = parser.add_mutually_exclusive_group()
+mode.add_argument("--baseline", action="store_true")
+mode.add_argument("--encoding-baseline", action="store_true")
 args = parser.parse_args()
 old = subprocess.check_output(["git", "show", BASE + ":" + PATH], cwd=ROOT, text=True)
 new = (ROOT / PATH).read_text()
+encoding_base = (subprocess.check_output(
+    ["git", "show", "fa629f552c338136e9945eb409e7db10bedff491:" + PATH], cwd=ROOT, text=True)
+    if args.encoding_baseline else new)
 
 
 def extract(source, signature):
@@ -36,7 +42,8 @@ init = "void saturn_vdp2_device::init_vcounter_table()"
 getter = "int saturn_vdp2_device::get_vcounter()"
 functions = extract(old, init).replace("::init_vcounter_table()", "::baseline_table()")
 functions += "\n" + extract(new, init)
-functions += "\n" + extract(old if args.baseline else new, getter)
+functions += "\n" + extract(old if args.baseline else encoding_base, getter)
+functions += "\n" + extract(new, "void saturn_vdp2_device::external_latch()")
 harness = r'''
 #include <cassert>
 #include <cstdint>
@@ -58,10 +65,44 @@ struct saturn_vdp2_device {
   void init_vcounter_table();
   void baseline_table();
   int get_vcounter();
+  bool m_exlten = true;
+  unsigned m_exltfg = 0;
+  u16 m_hcounter_latch = 0, m_vcounter_latch = 0;
+  int get_hcounter() const { return 0x2aa; }
+  void external_latch();
 };
 // PRODUCTION_FUNCTIONS
 int main() {
   unsigned checks = 0;
+  // Test the documented encoding independently of the inherited timing table.
+  // Synthetic field counts cover every bit and both field polarities, including
+  // counts above 255 where a nine-bit result would lose information.
+  if (!baseline) {
+    saturn_vdp2_device encoded;
+    encoded.m_lsmd = 3; encoded.scr.line = 0;
+    for (int hreso = 0; hreso < 4; ++hreso)
+      for (bool odd : {false, true})
+        for (unsigned count = 0; count < 512; ++count) {
+          encoded.m_hreso = hreso; encoded.m_odd_bit = odd;
+          encoded.true_vcount[0][0] = count;
+          unsigned result = encoded.get_vcounter();
+          assert(result / 2 == count);
+          assert(result % 2 == unsigned(!odd));
+          assert(result <= 1023);
+          encoded.m_exltfg = 0;
+          encoded.external_latch();
+          assert(encoded.m_vcounter_latch == result);
+          assert(encoded.m_hcounter_latch == 0x2aa && encoded.m_exltfg == 1);
+          ++checks;
+        }
+    encoded.m_exlten = false;
+    encoded.m_vcounter_latch = 0x355;
+    encoded.m_hcounter_latch = 0x155;
+    encoded.m_exltfg = 0;
+    encoded.external_latch();
+    assert(encoded.m_vcounter_latch == 0x355 && encoded.m_hcounter_latch == 0x155);
+    assert(encoded.m_exltfg == 0);
+  }
   for (bool pal : {false, true}) {
     saturn_vdp2_device reference, d;
     reference.m_is_pal = d.m_is_pal = pal;
@@ -84,7 +125,7 @@ int main() {
           for (int y = 0; y < lines * scale; ++y) {
             d.scr.line = y;
             int expected = reference.true_vcount[y / scale][mode & (pal ? 3 : 1)];
-            if (lsmd == 3) expected = ((expected & ~1) | !odd) & 0x1ff;
+            if (lsmd == 3) expected = expected * 2 + int(!odd);
             int actual = d.get_vcounter();
             if (!baseline || lsmd != 3) assert(actual == expected);
             ++checks;

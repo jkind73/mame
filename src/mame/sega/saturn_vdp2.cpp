@@ -380,9 +380,10 @@ int saturn_vdp2_device::get_vcounter() {
     const unsigned field_line = unsigned(vcount) >> 1;
     assert(field_line < std::size(true_vcount));
     const int base = true_vcount[field_line][m_vreso & ((m_is_pal << 1) | 1)];
-    // Retain the existing approximate field-bit encoding. This bounds fix
-    // does not implement the hardware's full interlaced counter sequence.
-    return ((base & ~1) | (m_odd_bit ^ 1)) & 0x1ff;
+    // ST-058 table 2.4: VCT9..1 hold the nine-bit field count; VCT0 is
+    // 0 for an odd field, 1 for an even field. Keep all ten register bits.
+    // This encodes the current rollback table; it does not refine its timing.
+    return ((base << 1) | (m_odd_bit ^ 1)) & 0x3ff;
   }
 
   /* NTSC cannot select the 256 line modes, so mask VRESO exactly as

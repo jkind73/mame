@@ -169,3 +169,13 @@ scenarios and remaining limitations. Current CRTC phase, mid-line register-write
 behavior and full timer-1 mode qualification have not been hardware-validated.
 The original findings and next-work list above are the historical audit, not the
 current completion status; these implementation updates supersede them narrowly.
+
+## Implementation update: double-density V-counter encoding
+
+Finding 2's double-density bit-layout discrepancy is now corrected: nine field
+count bits in VCT9..1, inverse ODD in VCT0, ten bits retained. The ST-058 table 2.4
+interpretation was cross-checked with Ymir and Mednafen. Tests independently cover
+all count/field combinations and external-latch storage; see the README report.
+The non-interlace manual/hardware-note discrepancy, field geometry and rollback
+values remain unresolved. Earlier statements describing the approximate encoding
+refer to the pre-fix audit, not the current getter.
