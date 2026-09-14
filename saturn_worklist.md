@@ -251,3 +251,12 @@ alongside these reopened items.
   writes pass with ASan/UBSan. The pre-fix arbiter fails its IRQ-level assertion.
 - All twelve scripts and three object compilations pass. Physical bus handshake,
   multi-source external edge cases and SH-2/CD/game runtime remain open.
+
+### DMA programmed address registers — corrected 27-bit masks
+
+- DxR/DxW writes no longer retain SH-2 cache-alias bit 29. ST-097 §3.2 and
+  Ymir/Mednafen/MiSTer agree; bits 26:0 and direct count widths are preserved.
+- Actual register lambdas pass 15,360 address and 7,680 count readback cases,
+  with independent failing pre-fix source/destination controls.
+- All thirteen scripts and three object compilations pass. MMIO routing, DxGO,
+  address-update overflow and real CPU/cache/game execution remain open.
