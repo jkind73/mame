@@ -74,6 +74,9 @@ protected:
     rectangle system_cliprect;
     rectangle user_cliprect;
     std::unique_ptr<uint16_t[]> framebuffer[2];
+    std::unique_ptr<uint16_t[]> field_framebuffer[2];
+    bool field_valid[2] = {false, false};
+    uint8_t draw_field = 0;
     std::unique_ptr<uint16_t *[]> framebuffer_draw_lines;
     std::unique_ptr<uint8_t[]> gfx_decode;
     uint16_t lopr = 0;
@@ -87,6 +90,7 @@ protected:
     int command_position = 0;
     int command_return = -1;
     emu_timer *draw_end_timer = nullptr;
+    emu_timer *terminate_timer = nullptr;
   } m_vdp1_legacy;
 
   struct {
@@ -181,6 +185,8 @@ protected:
   void vdp1_video_update();
   void vdp1_process_list();
   void vdp1_abort_draw();
+  void vdp1_request_termination();
+  TIMER_CALLBACK_MEMBER(vdp1_terminate);
   void vdp1_set_drawpixel();
 
   bool vdp1_is_end_code(int address, int texel) const;
@@ -197,6 +203,9 @@ protected:
                       int32_t y, int32_t x1, int32_t x2, int32_t u1, int32_t u2,
                       int32_t v1, int32_t v2);
   void (saturn_state::*drawpixel)(int x, int y, int patterndata, int offsetcnt);
+  std::array<uint32_t, 6> vdp1_rotation_parameters() const;
+  static int vdp1_rotation_coordinate(uint32_t start, uint32_t line_step, uint32_t dot_step, int x, int y);
+  uint16_t vdp1_display_pixel(int x, int y, const std::array<uint32_t, 6> &rotation) const;
   uint16_t vdp1_read_pixel(const uint16_t *line, int x) const;
   void vdp1_write_pixel(int x, int y, uint16_t value);
   bool vdp1_pixel_visible(int x, int y) const;

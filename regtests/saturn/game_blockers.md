@@ -1,5 +1,36 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## Rotation, interlace and delayed ENDR — 2026-09-14
+
+Implemented six-parameter-A sprite framebuffer readout in both rotated formats,
+with signed Q9 accumulation, parameter-table masking/VRAM-size selection and
+transparent out-of-plane samples. All three sprite compositor paths use it.
+Double-interlace drawing selects the latched DIL parity and halves physical Y;
+full-frame display weaves completed-field snapshots, not a bank being redrawn.
+Physical banks are now 256 KiB, including CPU-window mirroring, physical erase
+rows and wrapped line views. Both physical payloads and field snapshots are
+save-registered. **Correction:** the old framebuffer payloads were not registered;
+previous pointer/postload tests did not establish framebuffer-content saving.
+
+ENDR now schedules termination after 30 modeled SH-2/VDP1 clocks instead of
+aborting immediately. Reset/restart/END cancels pending termination. Primitives
+remain atomic: this is not a completed pixel pipeline or measured bus timing.
+
+Validation: 18 scripts/nine objects pass; VDP1 has 92,420 color/shading, 2,689
+normal-END, 974 rotation, 32,832 command, 532 framebuffer, 24,500 clipping cases
+and two multi-step interlace lifecycle sequences (16-bit/high-resolution 8-bit).
+Rotation/parameter-B mutations and all four previous render mutations fail
+assertions. Field tests cover DIL latching, parity, snapshots during redraw,
+postload pointer reconstruction, physical erase rows and CPU mirroring.
+No linked BIOS/game run or actual save-manager round trip is claimed.
+
+Primary: ST-013-R3 pp.15,43,47–51; ST-58-R2 pp.159–160. Cross-checks: pinned
+MiSTer a95b085 (rotation datapath/physical banks), Ymir 6d77996 (affine readout),
+Mednafen f0ee9d5 (field parity/physical Y). MiSTer confirms Q9 truncation before
+accumulation; Ymir's Q10 differs. Rotation-8 byte selection follows transformed
+source X; MiSTer's output-X byte mux remains an unresolved reference difference.
+
+
 ## VDP1 rendering/status audit — 2026-09-14
 
 Implemented destination-preserving MON, coordinate-based Gouraud evaluation
