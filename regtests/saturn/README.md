@@ -1,5 +1,17 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## VDP1 implementation pass — 2026-09-14
+
+Fixed END-bit recognition, VRAM command wrap, completion-driven SCU IRQs (removed
+periodic scanline IRQ workaround), 8-bit CPU framebuffer byte lanes, and outside
+user clipping across fast/generic pixel writers. 32,775 command, 288 framebuffer
+and 24,500 clipping cases pass; three independent baseline substitutions fail.
+All 18 scripts/nine object builds pass. This is **not complete VDP1**: synchronous
+drawing, ENDR, exact draw/erase/swap timing, BEF/pointer details, full framebuffer
+formats, rasterization/texture/color edge cases and real save/load/runtime proof
+remain. See `regtests/saturn/vdp1_completion.md` for evidence and acceptance gates.
+
+
 ## Four-priority pass — 2026-09-14
 
 This is a bounded implementation in all four requested areas, **not completion
