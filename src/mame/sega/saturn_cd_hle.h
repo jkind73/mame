@@ -204,6 +204,12 @@ private:
   void cd_playdata();
 
   void cd_exec_command(void);
+  void trace_host_read(unsigned port, uint16_t value);
+  void trace_boot_state(const char *event, bool force = false);
+  // Host-only diagnostics, intentionally not emulated/save-state contents.
+  int64_t m_trace_second = -1;
+  uint64_t m_trace_reads[5]{};
+  uint16_t m_trace_last_read[5]{};
   // iso9660 utilities
   void make_dir_current(uint32_t fad);
   void read_new_dir(uint32_t fileno);
