@@ -192,6 +192,7 @@ protected:
                       int32_t y, int32_t x1, int32_t x2, int32_t u1, int32_t u2,
                       int32_t v1, int32_t v2);
   void (saturn_state::*drawpixel)(int x, int y, int patterndata, int offsetcnt);
+  bool vdp1_pixel_visible(int x, int y) const;
   void drawpixel_poly(int x, int y, int patterndata, int offsetcnt);
   void drawpixel_8bpp_trans(int x, int y, int patterndata, int offsetcnt);
   void drawpixel_4bpp_notrans(int x, int y, int patterndata, int offsetcnt);
