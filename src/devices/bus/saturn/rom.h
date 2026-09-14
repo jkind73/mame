@@ -1,32 +1,53 @@
 // license:BSD-3-Clause
 // copyright-holders:Fabio Priuli
-#ifndef MAME_BUS_SATURN_ROM_H
-#define MAME_BUS_SATURN_ROM_H
+/***********************************************************************************************************
 
-#include "sat_slot.h"
+ Saturn ROM cart emulation
 
+ ***********************************************************************************************************/
 
-// ======================> saturn_rom_device
+#include "emu.h"
+#include "rom.h"
 
-class saturn_rom_device : public device_t, public device_sat_cart_interface
-{
-public:
-	// construction/destruction
-	saturn_rom_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+//-------------------------------------------------
+//  saturn_rom_device - constructor
+//-------------------------------------------------
 
-	// reading and writing
-	virtual uint32_t read_rom(offs_t offset) override;
+DEFINE_DEVICE_TYPE(SATURN_ROM, saturn_rom_device, "sat_rom", "Saturn ROM Carts")
 
-protected:
-	saturn_rom_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cart_type);
+saturn_rom_device::saturn_rom_device(const machine_config &mconfig,
+                                     device_type type, const char *tag,
+                                     device_t *owner, uint32_t clock,
+                                     int cart_type)
+    : device_t(mconfig, type, tag, owner, clock),
+      device_sat_cart_interface(mconfig, *this, cart_type) {}
 
-	// device-level overrides
-	virtual void device_start() override ATTR_COLD;
-	virtual void device_reset() override ATTR_COLD;
-};
+saturn_rom_device::saturn_rom_device(const machine_config &mconfig,
+                                     const char *tag, device_t *owner,
+                                     uint32_t clock)
+    // Data (ROM) cartridges have no type ID in the 24FFFFFFh register that the
+    // DRAM (5Ah/5Ch) and battery RAM (21h-24h) carts report.  Technical
+    // Bulletin #47 says that address is shared with "Power Memory", and
+    // Technical Bulletin #46 identifies data cartridges by a System ID header
+    // inside the cart ROM instead, beginning "SEGASATURN DATA" at offset 00H.
+    // So 0xff is a "no ID" placeholder rather than a hardware value;
+    // machine_start() keys the ROM window off it, and saturn_cart_type_r()
+    // reporting it for a data cart is harmless because nothing identifies a
+    // data cart that way.
+    : saturn_rom_device(mconfig, SATURN_ROM, tag, owner, clock, 0xff) {}
 
+//-------------------------------------------------
+//  mapper specific start/reset
+//-------------------------------------------------
 
-// device type definition
-DECLARE_DEVICE_TYPE(SATURN_ROM, saturn_rom_device)
+void saturn_rom_device::device_start() {}
 
-#endif // MAME_BUS_SATURN_ROM_H
+void saturn_rom_device::device_reset() {}
+
+/*-------------------------------------------------
+ mapper specific handlers
+ -------------------------------------------------*/
+
+uint32_t saturn_rom_device::read_rom(offs_t offset) {
+  return m_rom[offset & (m_rom_size / 4 - 1)];
+}
