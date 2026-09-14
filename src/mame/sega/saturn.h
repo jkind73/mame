@@ -78,6 +78,12 @@ protected:
     uint8_t draw_field = 0;
     uint8_t draw_eos = 0;
     uint16_t erase_upper_left = 0, erase_lower_right = 0;
+    bool vblank_erase_pending = false, vblank_erase_active = false;
+    uint8_t vblank_erase_bank = 0;
+    uint16_t vblank_erase_stride = 512, vblank_erase_data = 0;
+    uint16_t vblank_erase_left = 0, vblank_erase_right = 0;
+    uint16_t vblank_erase_top = 0, vblank_erase_bottom = 0;
+    uint32_t vblank_erase_budget = 0;
     std::unique_ptr<uint16_t *[]> framebuffer_draw_lines;
     std::unique_ptr<uint8_t[]> gfx_decode;
     uint16_t lopr = 0;
@@ -249,6 +255,10 @@ protected:
   void clear_gouraud_shading();
 
   void vdp1_clear_framebuffer(int which_framebuffer);
+  uint32_t vdp1_vblank_erase_capacity() const;
+  void vdp1_begin_vblank_erase();
+  void vdp1_finish_vblank_erase();
+  void vdp1_cancel_erase();
   void vdp1_state_save_postload();
   int vdp1_start();
 

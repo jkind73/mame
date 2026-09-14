@@ -1,5 +1,14 @@
 # Sega SDK hardware-document audit
 
+## VDP1 finite VBlank erase capacity — 2026-09-14
+
+- Primary [ST-013-R3 pp.46–50](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf): EWDR stores a word (two dots in 8-bit); X registers use eight-word groups; excess blank erase work is interrupted and must be filled with polygons. Table 4.5 gives the capacity as `(clocks_per_raster - 200) * blank_rasters`. All 12 published capacities are tested literally.
+- [MiSTer VDP1](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP1/VDP1.sv): `VBERASE_PEND` routes rotated erase into blanking; erase word addressing advances while `VBLANK_ERASE` is active and stops at blank end. The RTL is a cross-check, not imported source.
+- [Mednafen VDP1](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp1.cpp), `SetHBVB`: captures blank entry, commits bounded erase at blank end before bank swap, and latches erase parameters on swap. Its coarse commit strategy supports this integration approach; its cycle accounting includes row overhead and eight-word chunks, unlike this implementation's primary-table word capacity. No claim of identical bus timing or three-way cycle agreement.
+- New implementation saves pending request, target bank, format stride, bounds, data and capacity; reset cancels without touching the bank. ENDR does not cancel erase. Per-slot/row overhead and active-display erasure remain future implementation work.
+- 154 cases validate full-bank images, all TVM layouts/banks, sparse windows and partial-row cutoffs, delayed writes, pending-state copy plus postload reconstruction, reset cancellation and blank-only scheduling. This is not a real save-manager round trip. Full 18-script/nine-object validation passes; unlimited-budget/wrong-bank/live-data mutations fail independently.
+
+
 ## Framebuffer field control and register latches — 2026-09-14
 
 - Bank changes and automatic PTMR drawing now occur at screen field start

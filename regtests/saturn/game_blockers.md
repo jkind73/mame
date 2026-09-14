@@ -1,5 +1,16 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## Bounded VBlank erase — 2026-09-14
+
+Implemented Sega's field-limited erase capacity, captured erase ownership/data,
+blank-only rotation/HDTV erase scheduling and save/reset handling. All 12 primary
+table capacities and 154 erase/lifecycle cases pass; three mutation controls fail.
+All 18 scripts/nine objects pass. Erase commits coarsely at blank end; per-clock
+arbitration, active-display erase, interruptible primitives and real runtime/save
+validation remain unfinished. See `regtests/saturn/vdp1_completion.md` and
+`regtests/saturn/official_specs.md` for the current evidence and acceptance limits.
+
+
 ## Framebuffer field control and register latches — 2026-09-14
 
 - Bank changes and automatic PTMR drawing now occur at screen field start
