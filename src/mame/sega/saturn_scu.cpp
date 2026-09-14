@@ -652,6 +652,16 @@ std::tuple<int, int> saturn_scu_device::check_dma_level_round_robin() {
   return std::make_tuple(move_level, wait_level);
 }
 
+/* Charge the bus masters for the access the DMA performs on the shared bus:
+   one cycle plus the wait-state penalty of the endpoints, capped at what the
+   8-bit steal callback can carry. */
+void saturn_scu_device::dma_hog_bus(uint8_t level) {
+  int const hog = std::min<int>(255, 1 + m_dma[level].transfer_penalty);
+  m_main_steal_cb(u8(hog));
+  if (m_dma[level].bbus_sound_access)
+    m_sound_steal_cb(u8(hog));
+}
+
 TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
   // guess: yield until DSP do its thing
   if (m_dma_status & DMA_DSP_MOVE) {
@@ -747,9 +757,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
 
       // in indirect mode we steal cycles from the CPUs
       // - stv:finlarch/smleague (where it sure checks the DMA status)
-      m_main_steal_cb(m_dma[level].transfer_penalty);
-      if (m_dma[level].bbus_sound_access)
-        m_sound_steal_cb(m_dma[level].transfer_penalty);
+      dma_hog_bus(level);
 
       if (m_dma[level].wup)
         m_dma[level].dst = m_dma[level].index;
@@ -774,6 +782,18 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       // - stv:gaxeduel
       // - sonicjamj Sonic 1 (at least)
       extra_penalty = m_dma[level].transfer_penalty;
+
+      /* ...but the DMA still owns the bus for the tick: steal the access
+         cost from the CPUs instead of hard-halting them.  Without this
+         the masters run at full speed alongside the transfer, which is
+         exactly what jungrythm (VDP2 NBG1 filled with garbage),
+         powerslave/Exhumed (uncleared VDP1 frame data flickering) and
+         virtualon (3D flicker) cannot tolerate - Ymir's scu-dma note
+         lists them as requiring the DMA to stall every other bus
+         master.  One SCU tick is ~0.8 SH-2 cycles, so a tick of steal
+         approximates the stall without the INPUT_LINE_HALT deadlock
+         liability the comment above describes. */
+      dma_hog_bus(level);
 
       if (m_dma[level].rup)
         m_dma[level].src = m_dma[level].live_src;
