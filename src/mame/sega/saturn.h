@@ -61,14 +61,15 @@ protected:
     int32_t u, v;
   };
 
-  // At most 4096 connecting spans are emitted by the 12-bit quad row count.
+  // Native quads emit at most 4096 spans. A scaled rectangle between signed
+  // 13-bit endpoints can span 8192 rows with pre-clipping disabled.
   // Native records: xa,ya,xb,yb,ca,cb,clip[4],coverage,texture row,width.
   // Rectangle kinds -1/-2 occupy coverage: normal uses ca=U step,row=first
   // texel; scaled uses ca=original X,cb=destination columns,row=source V.
   // Rectangle clip slots are unused; pixel writers enforce live clip state.
   struct vdp1_raster_state {
     static constexpr unsigned segment_words = 13;
-    static constexpr unsigned max_segments = 4096;
+    static constexpr unsigned max_segments = 8192;
     std::array<int32_t, segment_words * max_segments> segments{};
     int count = 0, index = 0, dot = 0;
     int x = 0, y = 0, error = 0, end_codes = 0;
