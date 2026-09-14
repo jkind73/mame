@@ -1,5 +1,35 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Scaled integer texture stepping / HSS / EOS — 2026-09-14
+
+Scaled sprites now use a dedicated integer texture walker instead of the affine
+quad sampler. A closed-form error accumulator preserves reduction/enlargement
+and directional tie behavior; horizontal coordinates are computed once and reused
+across rows. HSS decimates the source before sampling and EOS selects original
+source-X parity, independently of texture flips and geometry direction. Clipping
+does not restart the sampling phase. Source-row END limits still apply outside
+HSS reduction, including HSS-enabled enlargement. Zero-width patterns repeat their
+first texel; the zero-height legacy fallback remains explicitly unqualified.
+
+Added 593,920 recurrence/pixel cases covering both directions, source/destination
+sizes, vertical scaling, all six texture modes, ECD, HSS/EOS, clipping, 16-bit and
+both packed 8-bit layouts. The iterative oracle is separate from the production
+closed-form calculation. Wrong texture phase and ignored EOS mutations fail.
+All 18 scripts/nine objects pass; no linked runtime or save-manager proof.
+
+Primary: ST-013 pp.81–82 (HSS/EOS and sampling diagrams), p.86 HSS/ECD table.
+MiSTer a95b085 TEXT_ERROR and Ymir 6d77996 TextureStepper agree on the tested
+integer recurrence. **Disagreement:** primary p.86 says HSS-reduced end codes
+become colors even with ECD clear; the inspected Ymir/MiSTer pixel gates suppress
+them. This implementation follows the primary table, not a claimed three-way
+agreement. Sega recommends ECD=1 for HSS reduction. The blanket HSS wording on
+pp.81/159 also conflicts with the enlargement row of that table.
+
+Distorted sprites still use the affine fallback: their HSS/EOS/edge stepping,
+polygon/line coverage, precise Gouraud interpolation, pre-clipping, automatic
+swap/erase timing and a resumable pixel pipeline remain unfinished.
+
+
 ## Scaled traversal and line shading follow-up — 2026-09-14
 
 - Scaled-sprite endpoints now decode signed fields before anchor arithmetic,

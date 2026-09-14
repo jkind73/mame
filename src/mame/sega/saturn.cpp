@@ -2183,7 +2183,64 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
   }
 
   vdp1_setup_shading(q, cliprect);
-  vdp1_fill_quad(cliprect, patterndata, xsize, q);
+  vdp1_draw_scaled_pixels(cliprect, patterndata, xsize, ysize, q);
+}
+
+int saturn_state::vdp1_scaled_coordinate(int source, int destination, int pixel, bool reverse) {
+  if (source <= 1)
+    return 0;
+  // Closed form of the integer texture-error accumulator. Reduction advances
+  // over all source texels; enlargement repeats them. Direction affects ties.
+  // ST-013 pp.81-82, cross-checked with MiSTer TEXT_ERROR and Ymir's stepper.
+  const bool shrink = destination < source;
+  const int increment = 2 * (shrink ? source : source - 1);
+  const int adjustment = 2 * (shrink ? destination : destination - 1);
+  const int initial = shrink ? source - 2 * destination - int(reverse) : -destination + int(reverse);
+  const int64_t error = int64_t(initial) + int64_t(pixel) * increment;
+  const int steps = error < 0 ? 0 : int(error / adjustment) + 1;
+  return reverse ? source - 1 - steps : steps;
+}
+
+void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int address,
+                                            int width, int height, const spoint *q) {
+  if (height <= 0 && width > 0) {
+    // Preserve the legacy fallback for the unspecified zero-height pattern.
+    vdp1_fill_quad(cliprect, address, width, q);
+    return;
+  }
+  const int columns = std::abs(q[1].x - q[0].x) + 1;
+  const int rows = std::abs(q[3].y - q[0].y) + 1;
+  const int left = std::max({std::min(q[0].x, q[1].x), cliprect.min_x, 0});
+  const int right = std::min({std::max(q[0].x, q[1].x), cliprect.max_x, 1023});
+  const int top = std::max({std::min(q[0].y, q[3].y), cliprect.min_y, 0});
+  const int bottom = std::min({std::max(q[0].y, q[3].y), cliprect.max_y, 511});
+  if (left > right || top > bottom)
+    return;
+
+  const bool hss = (current_sprite.CMDPMOD & 0x1000) && columns < width;
+  const bool flip_x = current_sprite.CMDCTRL & 0x10;
+  const bool flip_y = current_sprite.CMDCTRL & 0x20;
+  const int source_columns = std::max(1, hss ? width / 2 : width);
+  std::array<int, 1024> source_x;
+  for (int x = left; x <= right; ++x) {
+    const int u = vdp1_scaled_coordinate(source_columns, columns, std::abs(x - q[0].x), flip_x);
+    source_x[x] = hss ? u * 2 + VDP1_EOS : u;
+  }
+
+  // Effective mode for this atomic primitive, not a write to guest VRAM.
+  // The p.86 table disables END only on HSS-reduced rows, not enlargement.
+  const uint16_t mode = current_sprite.CMDPMOD;
+  current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x80 : 0);
+  m_vdp1_texture_end.fill(-1);
+  for (int y = top; y <= bottom; ++y) {
+    const int v = width ? vdp1_scaled_coordinate(height, rows, std::abs(y - q[0].y), flip_y) : 0;
+    for (int x = left; x <= right; ++x) {
+      const int texel = v * width + source_x[x];
+      if (vdp1_texture_sample_visible(address, width, texel))
+        (this->*drawpixel)(x, y, address, texel);
+    }
+  }
+  current_sprite.CMDPMOD = mode;
 }
 
 bool saturn_state::vdp1_texture_sample_visible(int address, int width, int texel) {
