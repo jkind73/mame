@@ -61,8 +61,8 @@ linescroll effect when scrolling sideways looks dubious)
 
 ***************************************************************************************************/
 
-#include "stv.h"
 #include "emu.h"
+#include "stv.h"
 
 
 #include "saturn_cd_hle.h"
