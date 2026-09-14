@@ -649,3 +649,53 @@ coverage without claiming complete indirect DMA hardware accuracy.
 
 All **ten** regression scripts and three object compilations pass. Full linking
 and BIOS/game runtime tests remain pending.
+
+## Two-channel DMA priority and ownership handoff
+
+Corrected the preemption branch in `dma_tick_cb`: after promoting the waiting,
+higher-priority channel to MOVE, it must put the **previous moving channel** into
+WAIT. The old code put the newly promoted channel back into WAIT, leaving the
+lower-priority channel running. Live source/destination/count/descriptor state is
+retained while suspended. Resumption clears the existing background bit and
+continues from the saved transfer position.
+
+On selection and resumption, CPU halt callbacks are now set for the new owner
+rather than retaining the previous owner's state or leaving both deasserted after
+completion. This preserves the current MAME direct/indirect policy (direct halts,
+indirect steals cycles; sound halt depends on SCSP access). It is **not** evidence
+that this policy itself matches the hardware's bus-dependent arbitration.
+
+Evidence:
+- ST-097 §3.2, printed p.41 / PDF p.57: priority runs from level 2 (highest) to 0.
+- ST-210 item 20, printed p.7 / PDF p.11: only two simultaneous DMA channels
+  guarantee priority. Item 35, printed p.10 / PDF p.14: starting level 2 during
+  level 1 is prohibited. Tests use pairs 0/1 and 0/2, not the prohibited case.
+- [Ymir RecalcDMAChannel](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  selects from level 2 down to 0, keeping active channel state.
+- [Mednafen SCU_UpdateDMA](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  visits active channels in descending priority. Its RecalcDMAHalt uses bus-dependent
+  rules and contains its own overlap TODO; it does not verify MAME's halt policy.
+
+```sh
+python3 regtests/saturn/test_dma_indirect.py
+python3 regtests/saturn/test_dma_indirect.py --arbitration-baseline  # expected priority assertion failure
+```
+
+The DMA harness now passes **64 two-channel arbitration scenarios**, in addition
+to the previous 54 indirect chains. The matrix covers pairs 0/1 and 0/2, both
+arrival orders, every direct/indirect pairing, and both sound/non-sound destinations
+for each channel. Tests run production ticks and verify MOVE/WAIT/background
+bits, no progress in the suspended channel, correct halt callback handoff,
+resumption without restarting, final source/destination positions, exact word
+counts, completion IRQ order, descriptor-read count, and return to idle. The
+pre-fix ticks from `317dc6b785e4d675db89485914e0f2aea407da69` fail the priority
+assertion. Existing count-decoding negative controls remain available.
+
+Tests retain MAME's granularity: the current channel gets its existing transfer
+step before the tick performs arbitration. They do not establish exact preemption
+latency, simultaneous last-word/completion ordering, real CPU halts, three-way
+DMA, DSP overlap, illegal level-1/2 sequences or actual memory bus timing. The
+recording memory/scheduler and GCC warning exception documented above still apply.
+
+All ten regression scripts and three object compilations pass. Full MAME linking
+and BIOS/game runtime validation remain pending.

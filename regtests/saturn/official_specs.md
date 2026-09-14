@@ -215,3 +215,13 @@ width and zero-to-1-MiB rule are supported by Ymir/Mednafen, with MiSTer confirm
 the width, not explicitly by the inspected manual prose. Corrected the narrower
 channel-1/2 mask and zero handling; 54 legal two-entry chains now pass through
 completion. Runtime/clock/arbitration and unusual transfer cases remain open.
+
+## Two-channel DMA priority audit update
+
+Re-read ST-097 §3.2, printed p.41 / PDF p.57, and ST-210 items 20 and 35 (printed
+pp.7/10, PDF pp.11/14). Fixed the tick state update that suspended the new winner
+rather than the lower-priority previous owner. Ymir and Mednafen independently
+select active channels in descending priority. 64 supported two-channel scenarios
+cover preemption/resume; the separate halt handoff fix preserves MAME's existing
+approximate policy, not Mednafen's bus-dependent implementation or proven physical
+CPU-halt behavior. Exact latency and unsupported overlaps remain open.
