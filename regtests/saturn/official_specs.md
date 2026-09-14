@@ -179,3 +179,12 @@ all count/field combinations and external-latch storage; see the README report.
 The non-interlace manual/hardware-note discrepancy, field geometry and rollback
 values remain unresolved. Earlier statements describing the approximate encoding
 refer to the pre-fix audit, not the current getter.
+
+## Additional reset audit: EXTEN
+
+Read ST-058 §2.5, printed p.19 / PDF p.37, covering EXTEN reset and latch-source
+selection. Confirmed the all-zero reset against Ymir and Mednafen. Corrected the
+MAME reset's stale decoded control bits; register readback now agrees with the
+external-latch enable and other controls. See `test_exten.py` and README.md for
+64 tested scenarios and limits. This does not validate the whole VDP2 reset or
+TVMD initialization; those remain separate audit items.

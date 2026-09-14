@@ -1,5 +1,11 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## EXTEN reset update — 2026-09-14
+
+Fixed stale decoded EXTEN bits after reset, following ST-058 §2.5 and cross-checks
+with Ymir/Mednafen. 64 read/write/reset/latch scenarios pass. This is an EXTEN
+coherence fix, not completion of the wider VDP2 power-on/reset or lightgun audit.
+
 ## Double-density counter encoding update — 2026-09-14
 
 The documented double-density bit layout is now implemented and cross-checked
