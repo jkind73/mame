@@ -3824,12 +3824,20 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
       }
     }
 
+    /* The four subheader conditions combine into their own verdict which
+       mode bit 4 inverts; the frame-address range check above stays
+       outside the inversion ("Invert subheader conditions (all but frame
+       address range)" per Ymir's cdblock_filter).  Inverting the combined
+       match instead, as this used to, also flipped a range rejection into
+       an accept. */
     if ((trktype != cdrom_file::CD_TRACK_AUDIO) && (curblock.data[15] == 2)) {
+      int sh_match = 1;
+
       if (flt->mode & 1) // file number
       {
         if (curblock.fnum != flt->fid) {
           LOGWARN("fnum reject\n");
-          match = 0;
+          sh_match = 0;
         }
       }
 
@@ -3837,7 +3845,7 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
       {
         if (curblock.chan != flt->chan) {
           LOGWARN("channel number reject\n");
-          match = 0;
+          sh_match = 0;
         }
       }
 
@@ -3845,7 +3853,7 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
       {
         if ((curblock.subm & flt->smmask) != flt->smval) {
           LOGWARN("sub mode reject\n");
-          match = 0;
+          sh_match = 0;
         }
       }
 
@@ -3853,15 +3861,15 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
       {
         if ((curblock.cinf & flt->cimask) != flt->cival) {
           LOGWARN("coding information reject\n");
-          match = 0;
+          sh_match = 0;
         }
       }
 
       if (flt->mode & 0x10) // reverse subheader conditions
-      {
-        // TODO: this may not play well with curfad rejection
-        match ^= 1;
-      }
+        sh_match ^= 1;
+
+      if (!sh_match)
+        match = 0;
     }
 
     if (match) {
