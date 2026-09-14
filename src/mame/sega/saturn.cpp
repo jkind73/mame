@@ -2467,6 +2467,17 @@ void saturn_state::vdp1_process_list() {
 
     /* continue to draw this sprite only if the command wasn't to skip it */
     if (draw_this_sprite == 1) {
+      /* CMDPMOD bit 10 enables user clipping and bit 9 selects whether it is
+         applied inside or outside the user clipping coordinates.  Technical
+         Bulletin #15 corrects page 79 of the VDP1 User's Manual, where the
+         prose had those two swapped against the bit diagram; the bulletin rules
+         "the drawing is correct", i.e. Clip = bit 10, Cmod = bit 9.  The enable
+         is handled here but the inside/outside select is not: one rectangle
+         cannot express "everywhere except this area", so outside clipping (used
+         by the Bio Hazard inventory screen) needs per pixel rejection in the
+         draw loop. The disabled attempt below is wrong in any case -
+         substituting the system cliprect means "ignore user clipping", not
+         "invert it". */
       if (current_sprite.CMDPMOD & 0x0400) {
         // if(current_sprite.CMDPMOD & 0x0200) /* TODO: Bio Hazard inventory
         // screen uses outside cliprect */
