@@ -1,5 +1,11 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## CD component build validation — 2026-09-14
+
+Fixed CD HLE include order and added both CD translation units to routine checks.
+All thirteen scripts/eight objects pass. CD behavior is unchanged; actual disc
+access, authentication, audio and BIOS/game execution still need runtime validation.
+
 ## Wider driver/DCC build validation — 2026-09-14
 
 Normal validation now compiles six objects, including Saturn console, ST-V and

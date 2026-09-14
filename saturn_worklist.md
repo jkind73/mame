@@ -278,3 +278,11 @@ alongside these reopened items.
   include-order errors even with the correct layout/shared dependencies supplied.
 - All thirteen scripts/six objects pass. No emulation behavior change; full
   dependency linking, configuration validation and runtime remain pending.
+
+### CD component build validation — implemented
+
+- Added CD HLE and the CD block wrapper to routine object checks (eight total).
+  Fixed CD HLE including its device header before emu.h; the original file fails
+  on MAME's explicit include guard and incomplete device types.
+- All thirteen scripts/eight objects pass. No CD behavior changed; disc/BIOS/game
+  runtime, full linking and remaining transitive dependencies are still untested.

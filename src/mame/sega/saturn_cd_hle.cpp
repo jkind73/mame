@@ -41,8 +41,8 @@ DASM notes:
 
 **************************************************************************************************/
 
-#include "saturn_cd_hle.h"
 #include "emu.h"
+#include "saturn_cd_hle.h"
 
 
 #include "coreutil.h"
