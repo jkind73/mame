@@ -59,21 +59,18 @@ protected:
   virtual void rcv_complete() override;
 
 private:
-  enum SCSP_STATE { SCSP_ATTACK, SCSP_DECAY1, SCSP_DECAY2, SCSP_RELEASE };
+  enum SCSP_STATE : u32 { SCSP_ATTACK, SCSP_DECAY1, SCSP_DECAY2, SCSP_RELEASE };
 
   struct SCSP_EG_t {
-    int volume; //
+    // attenuation domain like the hardware: 0x000 loudest .. 0x3FF silent
+    u32 level;
+    // externally visible level of the previous sample; the attack formula
+    // and the deactivation test both use it
+    u32 prev_level;
     SCSP_STATE state;
-    int step;
-    // step vals
-    int AR;  // Attack
-    int D1R; // Decay1
-    int D2R; // Decay2
-    int RR;  // Release
-
-    int DL; // Decay level
-    u8 EGHOLD;
-    u8 LPLINK;
+    // hardware bug: with key rate scaling active, an attack rate plus the
+    // scaled KRS/octave adjustment of 0x20 or more stalls the attack ramp
+    bool attack_bug;
   };
 
   struct SCSP_LFO_t {
@@ -166,7 +163,9 @@ private:
   u16 m_mcieb;
   u16 m_mcipd;
 
-  int m_ARTABLE[64], m_DRTABLE[64];
+  // global EG sample counter: the envelope engine only advances on samples
+  // whose low counter bits are zero (rate-dependent), like the hardware
+  u64 m_eg_clock;
 
   SCSPDSP m_DSP;
 
@@ -193,10 +192,8 @@ private:
   void timer_write(int idx, u16 data, u16 mem_mask);
   u8 timer_read(int idx);
   void update_master_volume();
-  int Get_AR(int base, int R);
-  int Get_DR(int base, int R);
-  void Compute_EG(SCSP_SLOT *slot);
-  int EG_Update(SCSP_SLOT *slot);
+  int EG_Update(SCSP_SLOT *slot, u64 eg_clock);
+  void Check_Attack_Bug(SCSP_SLOT *slot);
   u32 Step(SCSP_SLOT *slot);
   void Compute_LFO(SCSP_SLOT *slot);
   void StartSlot(SCSP_SLOT *slot);
