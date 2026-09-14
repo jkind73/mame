@@ -1061,7 +1061,15 @@ void saturn_scu_device::hblank_in_w(int state) {
     // - Mode is 1 and timer 0 is hit
     const bool timer1_hit = (timer0_hit || !m_t1md);
     if (timer1_hit) {
-      m_timer1->adjust(attotime::from_ticks(m_t1s, this->clock() / 8));
+      // A count of 0 is specified to mean 512 (SCU Final Specifications:
+      // Precautions, No. 31), which also makes the 9 bit mask applied to
+      // m_t1s self consistent: a write of 512 masks down to 0 and has to
+      // come back out as 512.  512 is more counts than fit in one line
+      // (1AA H for 320 dots, 1C6 H for 352), so this is the case the
+      // manual describes as "Timer 1 interrupt no longer occurs for each
+      // line"; arming a zero duration timer instead fired it every line.
+      const uint32_t count = m_t1s ? m_t1s : 512;
+      m_timer1->adjust(attotime::from_ticks(count, this->clock() / 8));
     }
   }
   // NOTE: the counter still runs, it's the irq that fires if timer is enabled
