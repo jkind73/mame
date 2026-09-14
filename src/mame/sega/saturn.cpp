@@ -8010,6 +8010,18 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
   }
 }
 
+/* The rotation coefficient deltas are sign-extended from bit 25, so they reach
+   +/- 2^25, and the counters they are scaled by run into the hundreds, which
+   puts the product well past 32 bits.  Plain int32_t multiplication overflows
+   there, and that is undefined behaviour; multiply in 64 bits and truncate
+   instead.  The truncated result is the same value two's complement wrapping
+   produces, so nothing observable changes, and it matches the 32-bit
+   accumulator the hardware uses - vdp2_copy_roz_bitmap() already multiplies
+   its rotation matrix terms this way, through mul_fixed32(). */
+static inline uint32_t coef_delta(int32_t delta, int32_t count) {
+  return uint32_t(s64(delta) * count);
+}
+
 void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                                         bitmap_rgb32 &roz_bitmap,
                                         const rectangle &cliprect, int iRP,
@@ -8161,8 +8173,9 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       if (use_coeff_table) {
         switch (coeff_table_size) {
         case 0:
-          address = coeff_table_offset +
-                    ((RP.kast + RP.dkast * (vcnt >> vcnt_shift)) >> 16) * 4;
+          address =
+              coeff_table_offset +
+              ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift)) >> 16) * 4;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
           // coeff_line_color_screen_data = (coeff_table_val & 0x7f000000) >>
           // 24;
@@ -8174,8 +8187,9 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           }
           break;
         case 1:
-          address = coeff_table_offset +
-                    ((RP.kast + RP.dkast * (vcnt >> vcnt_shift)) >> 16) * 2;
+          address =
+              coeff_table_offset +
+              ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift)) >> 16) * 2;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
           if ((address & 2) == 0) {
             coeff_table_val >>= 16;
@@ -8270,11 +8284,11 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       for (hcnt = cliprect.left(); hcnt <= cliprect.right(); hcnt++) {
         switch (coeff_table_size) {
         case 0:
-          address =
-              coeff_table_offset +
-              ((RP.kast + RP.dkast * (vcnt >> vcnt_shift) + RP.dkax * hcnt) >>
-               16) *
-                  4;
+          address = coeff_table_offset +
+                    ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
+                      coef_delta(RP.dkax, hcnt)) >>
+                     16) *
+                        4;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
           // coeff_line_color_screen_data = (coeff_table_val & 0x7f000000) >>
           // 24;
@@ -8286,11 +8300,11 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           }
           break;
         case 1:
-          address =
-              coeff_table_offset +
-              ((RP.kast + RP.dkast * (vcnt >> vcnt_shift) + RP.dkax * hcnt) >>
-               16) *
-                  2;
+          address = coeff_table_offset +
+                    ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
+                      coef_delta(RP.dkax, hcnt)) >>
+                     16) *
+                        2;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
           if ((address & 2) == 0) {
             coeff_table_val >>= 16;
