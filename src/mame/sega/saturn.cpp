@@ -140,8 +140,8 @@ Please don't remove them if for no reason you truly want to mess with this.
 Framebuffer TODO:
 - finish manual erase
 - add proper framebuffer erase
-- 8 bpp support - now we always draw as 16 bpp, but this is not a problem since
-  VDP2 interprets framebuffer as 8 bpp in these cases
+- packed 8-bit storage, interlace fields and rotated readout are implemented;
+  verify remaining erase/transfer timing against hardware
 
 */
 
@@ -1146,8 +1146,7 @@ void saturn_state::vdp1_setup_shading_for_slope(
 }
 
 void saturn_state::vdp1_setup_shading(const struct spoint *q,
-                                      const rectangle &cliprect,
-                                      std::array<uint8_t, 4> vertices) {
+                                      const rectangle &cliprect) {
   int32_t x1, x2, delta, cury, limy;
   int32_t r1, g1, b1, r2, g2, b2;
   int32_t sl1, slg1, slb1, slr1;
@@ -1167,9 +1166,9 @@ void saturn_state::vdp1_setup_shading(const struct spoint *q,
   for (i = 0; i < 4; i++) {
     p[i].x = p[i + 4].x = q[i].x << FRAC_SHIFT;
     p[i].y = p[i + 4].y = q[i].y;
-    p[i].r = p[i + 4].r = RGB_R(gd[vertices[i]]) << FRAC_SHIFT;
-    p[i].g = p[i + 4].g = RGB_G(gd[vertices[i]]) << FRAC_SHIFT;
-    p[i].b = p[i + 4].b = RGB_B(gd[vertices[i]]) << FRAC_SHIFT;
+    p[i].r = p[i + 4].r = RGB_R(gd[i]) << FRAC_SHIFT;
+    p[i].g = p[i + 4].g = RGB_G(gd[i]) << FRAC_SHIFT;
+    p[i].b = p[i + 4].b = RGB_B(gd[i]) << FRAC_SHIFT;
   }
 
   pmin = pmax = 0;
@@ -1980,145 +1979,161 @@ int saturn_state::x2s(int v) { return vdp1_coord(v) + m_vdp1_legacy.local_x; }
 
 int saturn_state::y2s(int v) { return vdp1_coord(v) + m_vdp1_legacy.local_y; }
 
+void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
+                                      const spoint &b, uint16_t color_a, uint16_t color_b,
+                                      bool edge_coverage, int texture_row, int texture_width) {
+  const int dx = b.x - a.x, dy = b.y - a.y;
+  const int ax = std::abs(dx), ay = std::abs(dy);
+  const bool horizontal = ax >= ay;
+  const int major = std::max(ax, ay), minor = std::min(ax, ay);
+  const int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+  // Host-only rejection, with a one-dot margin for the extra coverage pixel.
+  // Do not assume straight bounds when the 13-bit error accumulator can wrap.
+  if (major < 2048 && (std::max(a.x, b.x) < cliprect.min_x - 1 ||
+      std::min(a.x, b.x) > cliprect.max_x + 1 || std::max(a.y, b.y) < cliprect.min_y - 1 ||
+      std::min(a.y, b.y) > cliprect.max_y + 1))
+    return;
+  // The line error datapath is signed 13-bit. Unlike textured/polygon lines,
+  // standalone lines do not emit the extra edge-coverage pixel.
+  const auto wrap = [](int v) { return int((unsigned(v) & 0x1fff) ^ 0x1000) - 0x1000; };
+  int error = wrap(major + (edge_coverage ? 0 : 1));
+  const int target = edge_coverage ? -1 : ((horizontal ? dx : dy) < 0 ? 1 : 0);
+  const bool textured = texture_row >= 0;
+  const bool hss = textured && (current_sprite.CMDPMOD & 0x1000) && major + 1 < texture_width;
+  const uint16_t mode = current_sprite.CMDPMOD;
+  if (textured)
+    current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x80 : 0);
+  const int address = (current_sprite.CMDSRCA & 0xffff) * 8;
+  bool extra = false;
+  int x = a.x, y = a.y;
+  for (int dot = 0; dot <= major; ++dot) {
+    int texel = 0;
+    if (textured) {
+      int u = vdp1_scaled_coordinate(std::max(1, hss ? texture_width / 2 : texture_width),
+                                      major + 1, dot, current_sprite.CMDCTRL & 0x10);
+      if (hss) u = u * 2 + VDP1_EOS;
+      texel = texture_row * texture_width + u;
+    }
+    const auto plot = [&](int x, int y) {
+    if (x >= cliprect.min_x && x <= cliprect.max_x && y >= cliprect.min_y &&
+        y <= cliprect.max_y && y >= 0 && y < 512) {
+      if (current_sprite.CMDPMOD & 4) {
+        const auto shade = [=](int ca, int cb) {
+          return (std::min(ca, cb) + vdp1_scaled_coordinate(std::abs(cb - ca) + 1,
+                                                             major + 1, dot, cb < ca)) << FRAC_SHIFT;
+        };
+        const int r = shade(RGB_R(color_a), RGB_R(color_b));
+        const int g = shade(RGB_G(color_a), RGB_G(color_b));
+        const int blue = shade(RGB_B(color_a), RGB_B(color_b));
+        vdp1_setup_shading_for_line(y, x * (1 << FRAC_SHIFT), x * (1 << FRAC_SHIFT),
+                                    r, g, blue, r, g, blue);
+      }
+      if (!textured || vdp1_texture_sample_visible(address, texture_width, texel))
+        (this->*drawpixel)(x, y, textured ? address : 0, texel);
+    }
+    };
+    plot(x, y);
+    if (extra) {
+      // VDP1's extra coverage dot shares the current texel and shade value.
+      // It is not filtered antialiasing and can blend a destination twice.
+      const bool same_sign = (dx < 0) == (dy < 0);
+      plot(x - (same_sign ? 0 : sx), y - (same_sign ? sy : 0));
+    }
+    extra = false;
+    if (horizontal) x += sx; else y += sy;
+    error = wrap(error - 2 * minor);
+    if (error <= target) {
+      error = wrap(error + 2 * major);
+      if (horizontal) y += sy; else x += sx;
+      extra = edge_coverage;
+    }
+  }
+  current_sprite.CMDPMOD = mode;
+}
+
 void saturn_state::vdp1_draw_line(const rectangle &cliprect) {
-  struct spoint q[4];
-
-  q[0].x = x2s(current_sprite.CMDXA);
-  q[0].y = y2s(current_sprite.CMDYA);
-  q[1].x = x2s(current_sprite.CMDXB);
-  q[1].y = y2s(current_sprite.CMDYB);
-  q[2].x = x2s(current_sprite.CMDXA);
-  q[2].y = y2s(current_sprite.CMDYA);
-  q[3].x = x2s(current_sprite.CMDXB);
-  q[3].y = y2s(current_sprite.CMDYB);
-
-  q[0].u = q[3].u = q[1].u = q[2].u = 0;
-  q[0].v = q[1].v = q[2].v = q[3].v = 0;
-
-  vdp1_setup_shading(q, cliprect, {0, 1, 0, 1});
-  vdp1_fill_quad(cliprect, 0, 1, q);
+  spoint a{}, b{};
+  a.x = x2s(current_sprite.CMDXA); a.y = y2s(current_sprite.CMDYA);
+  b.x = x2s(current_sprite.CMDXB); b.y = y2s(current_sprite.CMDYB);
+  read_gouraud_table();
+  vdp1_draw_segment(cliprect, a, b, gouraud_shading.GA, gouraud_shading.GB);
 }
 
 void saturn_state::vdp1_draw_poly_line(const rectangle &cliprect) {
-  struct spoint q[4];
+  spoint q[4]{};
+  q[0].x = x2s(current_sprite.CMDXA); q[0].y = y2s(current_sprite.CMDYA);
+  q[1].x = x2s(current_sprite.CMDXB); q[1].y = y2s(current_sprite.CMDYB);
+  q[2].x = x2s(current_sprite.CMDXC); q[2].y = y2s(current_sprite.CMDYC);
+  q[3].x = x2s(current_sprite.CMDXD); q[3].y = y2s(current_sprite.CMDYD);
+  read_gouraud_table();
+  const uint16_t colors[4] = {gouraud_shading.GA, gouraud_shading.GB, gouraud_shading.GC, gouraud_shading.GD};
+  for (int i = 0; i < 4; ++i)
+    vdp1_draw_segment(cliprect, q[i], q[(i + 1) & 3], colors[i], colors[(i + 1) & 3]);
+}
 
-  q[0].x = x2s(current_sprite.CMDXA);
-  q[0].y = y2s(current_sprite.CMDYA);
-  q[1].x = x2s(current_sprite.CMDXB);
-  q[1].y = y2s(current_sprite.CMDYB);
-  q[2].x = x2s(current_sprite.CMDXA);
-  q[2].y = y2s(current_sprite.CMDYA);
-  q[3].x = x2s(current_sprite.CMDXB);
-  q[3].y = y2s(current_sprite.CMDYB);
-
-  q[0].u = q[3].u = q[1].u = q[2].u = 0;
-  q[0].v = q[1].v = q[2].v = q[3].v = 0;
-
-  vdp1_setup_shading(q, cliprect, {0, 1, 0, 1});
-  vdp1_fill_quad(cliprect, 0, 1, q);
-
-  q[0].x = x2s(current_sprite.CMDXB);
-  q[0].y = y2s(current_sprite.CMDYB);
-  q[1].x = x2s(current_sprite.CMDXC);
-  q[1].y = y2s(current_sprite.CMDYC);
-  q[2].x = x2s(current_sprite.CMDXB);
-  q[2].y = y2s(current_sprite.CMDYB);
-  q[3].x = x2s(current_sprite.CMDXC);
-  q[3].y = y2s(current_sprite.CMDYC);
-
-  q[0].u = q[3].u = q[1].u = q[2].u = 0;
-  q[0].v = q[1].v = q[2].v = q[3].v = 0;
-
-  vdp1_setup_shading(q, cliprect, {1, 2, 1, 2});
-  vdp1_fill_quad(cliprect, 0, 1, q);
-
-  q[0].x = x2s(current_sprite.CMDXC);
-  q[0].y = y2s(current_sprite.CMDYC);
-  q[1].x = x2s(current_sprite.CMDXD);
-  q[1].y = y2s(current_sprite.CMDYD);
-  q[2].x = x2s(current_sprite.CMDXC);
-  q[2].y = y2s(current_sprite.CMDYC);
-  q[3].x = x2s(current_sprite.CMDXD);
-  q[3].y = y2s(current_sprite.CMDYD);
-
-  q[0].u = q[3].u = q[1].u = q[2].u = 0;
-  q[0].v = q[1].v = q[2].v = q[3].v = 0;
-
-  vdp1_setup_shading(q, cliprect, {2, 3, 2, 3});
-  vdp1_fill_quad(cliprect, 0, 1, q);
-
-  q[0].x = x2s(current_sprite.CMDXD);
-  q[0].y = y2s(current_sprite.CMDYD);
-  q[1].x = x2s(current_sprite.CMDXA);
-  q[1].y = y2s(current_sprite.CMDYA);
-  q[2].x = x2s(current_sprite.CMDXD);
-  q[2].y = y2s(current_sprite.CMDYD);
-  q[3].x = x2s(current_sprite.CMDXA);
-  q[3].y = y2s(current_sprite.CMDYA);
-
-  q[0].u = q[3].u = q[1].u = q[2].u = 0;
-  q[0].v = q[1].v = q[2].v = q[3].v = 0;
-
-  vdp1_setup_shading(q, cliprect, {3, 0, 3, 0});
-  vdp1_fill_quad(cliprect, 0, 1, q);
+void saturn_state::vdp1_draw_quad_pixels(const rectangle &cliprect, int width, int height, const spoint *q) {
+  const auto wrap = [](int v) { return int((unsigned(v) & 0x1fff) ^ 0x1000) - 0x1000; };
+  struct edge_state {
+    spoint point;
+    int dx, dy, length, phase, ex, ey, position = 0;
+  } edges[2];
+  int longest = 0;
+  for (int i = 0; i < 2; ++i) {
+    auto &e = edges[i];
+    e.point = q[i];
+    e.dx = wrap(q[3 - i].x - q[i].x);
+    e.dy = wrap(q[3 - i].y - q[i].y);
+    e.length = std::max(std::abs(e.dx), std::abs(e.dy));
+    longest = std::max(longest, e.length);
+    e.ex = e.ey = wrap(~e.length);
+  }
+  longest &= 0xfff;
+  for (auto &e : edges) e.phase = wrap(~longest);
+  read_gouraud_table();
+  const uint16_t colors[4] = {gouraud_shading.GA, gouraud_shading.GB, gouraud_shading.GC, gouraud_shading.GD};
+  m_vdp1_texture_end.fill(-1);
+  for (int row = 0; row <= longest; ++row) {
+    uint16_t edge_color[2]{};
+    if (current_sprite.CMDPMOD & 4) {
+      for (int i = 0; i < 2; ++i) {
+        for (int shift : {0, 5, 10}) {
+          const int a = (colors[i] >> shift) & 31, b = (colors[3 - i] >> shift) & 31;
+          const int value = std::min(a, b) + vdp1_scaled_coordinate(std::abs(b - a) + 1,
+                                         edges[i].length + 1, edges[i].position, b < a);
+          edge_color[i] |= value << shift;
+        }
+      }
+    }
+    const int v = current_sprite.ispoly ? -1 : width ?
+        vdp1_scaled_coordinate(std::max(1, height), longest + 1, row, current_sprite.CMDCTRL & 0x20) : 0;
+    vdp1_draw_segment(cliprect, edges[0].point, edges[1].point, edge_color[0], edge_color[1], true, v, width);
+    for (auto &e : edges) {
+      const int tx = e.dy < 0 ? -1 : 0, ty = e.dx < 0 ? -1 : 0;
+      const int target = std::abs(e.dx) >= std::abs(e.dy) ? ty : tx;
+      e.phase = wrap(e.phase + 2 * e.length);
+      if (e.phase >= target) {
+        e.phase = wrap(e.phase - 2 * longest);
+        ++e.position;
+        e.ex = wrap(e.ex + 2 * std::abs(e.dx));
+        e.ey = wrap(e.ey + 2 * std::abs(e.dy));
+        if (e.ex >= tx) { e.ex = wrap(e.ex - 2 * e.length); e.point.x += e.dx < 0 ? -1 : 1; }
+        if (e.ey >= ty) { e.ey = wrap(e.ey - 2 * e.length); e.point.y += e.dy < 0 ? -1 : 1; }
+      }
+    }
+  }
 }
 
 void saturn_state::vdp1_draw_distorted_sprite(const rectangle &cliprect) {
-  struct spoint q[4];
-
-  int xsize, ysize;
-  int direction;
-  int patterndata;
-
-  direction = (current_sprite.CMDCTRL & 0x0030) >> 4;
-
-  if (current_sprite.ispoly) {
-    xsize = ysize = 1;
-    patterndata = 0;
-  } else {
-    xsize = (current_sprite.CMDSIZE & 0x3f00) >> 8;
-    xsize = xsize * 8;
-
-    ysize = (current_sprite.CMDSIZE & 0x00ff);
-    if (ysize == 0)
-      return; /* setting prohibited */
-
-    patterndata = (current_sprite.CMDSRCA) & 0xffff;
-    patterndata = patterndata * 0x8;
-  }
-
-  q[0].x = x2s(current_sprite.CMDXA);
-  q[0].y = y2s(current_sprite.CMDYA);
-  q[1].x = x2s(current_sprite.CMDXB);
-  q[1].y = y2s(current_sprite.CMDYB);
-  q[2].x = x2s(current_sprite.CMDXC);
-  q[2].y = y2s(current_sprite.CMDYC);
-  q[3].x = x2s(current_sprite.CMDXD);
-  q[3].y = y2s(current_sprite.CMDYD);
-
-  if (xsize == 0) {
-    // CMDSIZE.H = 0 is not "setting prohibited" for a textured sprite: the
-    // character pattern has no width, so the VDP1 never fetches any texel
-    // but the first one. Policenauts draws its shooting range scorecard
-    // with such commands.
-    q[0].u = q[1].u = q[2].u = q[3].u = 0;
-  } else if (direction & 1) { // xflip
-    q[0].u = q[3].u = xsize - 1;
-    q[1].u = q[2].u = 0;
-  } else {
-    q[0].u = q[3].u = 0;
-    q[1].u = q[2].u = xsize - 1;
-  }
-  if (direction & 2) { // yflip
-    q[0].v = q[1].v = ysize - 1;
-    q[2].v = q[3].v = 0;
-  } else {
-    q[0].v = q[1].v = 0;
-    q[2].v = q[3].v = ysize - 1;
-  }
-
-  vdp1_setup_shading(q, cliprect);
-  vdp1_fill_quad(cliprect, patterndata, xsize, q);
+  const int width = current_sprite.ispoly ? 1 : ((current_sprite.CMDSIZE >> 8) & 0x3f) * 8;
+  const int height = current_sprite.ispoly ? 1 : current_sprite.CMDSIZE & 0xff;
+  if (!height)
+    return; // prohibited character height
+  spoint q[4]{};
+  q[0].x = x2s(current_sprite.CMDXA); q[0].y = y2s(current_sprite.CMDYA);
+  q[1].x = x2s(current_sprite.CMDXB); q[1].y = y2s(current_sprite.CMDYB);
+  q[2].x = x2s(current_sprite.CMDXC); q[2].y = y2s(current_sprite.CMDYC);
+  q[3].x = x2s(current_sprite.CMDXD); q[3].y = y2s(current_sprite.CMDYD);
+  vdp1_draw_quad_pixels(cliprect, width, height, q);
 }
 
 void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
