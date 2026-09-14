@@ -197,6 +197,8 @@ void saturn_state::reset_halt_state() {
 }
 
 void saturn_state::machine_reset() {
+  m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
+  m_vdp1_legacy.draw_field = 0;
   vdp1_abort_draw();
   reset_halt_state();
   m_scsp_last_line = 0;
@@ -443,6 +445,8 @@ void saturn_state::system_reset_w(int state) {
    * issued.*/
   m_scu->reset();
   vdp1_abort_draw();
+  m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
+  m_vdp1_legacy.draw_field = 0;
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
@@ -628,9 +632,11 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
   int start_x, end_x, start_y, end_y;
 
   start_x = VDP1_EWLR_X1 * ((VDP1_TVM() & 1) ? 16 : 8);
-  start_y = VDP1_EWLR_Y1 * (m_vdp1_legacy.framebuffer_double_interlace + 1);
+  // Erase Y registers address stored field rows. DIE doubles the logical
+  // coordinate but halves it again for the physical bank (ST-013 p.47-49).
+  start_y = VDP1_EWLR_Y1;
   end_x = VDP1_EWRR_X3 * ((VDP1_TVM() & 1) ? 16 : 8);
-  end_y = (VDP1_EWRR_Y3 + 1) * (m_vdp1_legacy.framebuffer_double_interlace + 1);
+  end_y = VDP1_EWRR_Y3 + 1;
   //  popmessage("%d %d %d %d
   //  %d",VDP1_EWLR_X1,VDP1_EWLR_Y1,VDP1_EWRR_X3,VDP1_EWRR_Y3,m_vdp1_legacy.framebuffer_double_interlace);
 
@@ -648,7 +654,7 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
     for (int y = start_y; y < end_y; y++)
       for (int x = start_x; x < end_x; x++)
         m_vdp1_legacy
-            .framebuffer[which_framebuffer][((x & 511) + (y & 511) * 512)] =
+            .framebuffer[which_framebuffer][((x & 511) + (y & 255) * 512)] =
             m_vdp1_legacy.ewdr;
   }
 
@@ -660,45 +666,31 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
 }
 
 void saturn_state::vdp1_prepare_framebuffers() {
-  int i, rowsize;
-
-  rowsize = m_vdp1_legacy.framebuffer_width >> (m_vdp1_legacy.framebuffer_mode & 1);
-  if (m_vdp1_legacy.framebuffer_current_draw == 0) {
-    for (i = 0; i < m_vdp1_legacy.framebuffer_height; i++) {
-      m_vdp1_legacy.framebuffer_draw_lines[i] =
-          &m_vdp1_legacy.framebuffer[0][i * rowsize];
-      m_vdp1_legacy.framebuffer_display_lines[i] =
-          &m_vdp1_legacy.framebuffer[1][i * rowsize];
-    }
-    for (; i < 512; i++) {
-      m_vdp1_legacy.framebuffer_draw_lines[i] =
-          &m_vdp1_legacy.framebuffer[0][0];
-      m_vdp1_legacy.framebuffer_display_lines[i] =
-          &m_vdp1_legacy.framebuffer[1][0];
-    }
-  } else {
-    for (i = 0; i < m_vdp1_legacy.framebuffer_height; i++) {
-      m_vdp1_legacy.framebuffer_draw_lines[i] =
-          &m_vdp1_legacy.framebuffer[1][i * rowsize];
-      m_vdp1_legacy.framebuffer_display_lines[i] =
-          &m_vdp1_legacy.framebuffer[0][i * rowsize];
-    }
-    for (; i < 512; i++) {
-      m_vdp1_legacy.framebuffer_draw_lines[i] =
-          &m_vdp1_legacy.framebuffer[1][0];
-      m_vdp1_legacy.framebuffer_display_lines[i] =
-          &m_vdp1_legacy.framebuffer[0][0];
-    }
-  }
-
-  for (; i < 512; i++) {
-    m_vdp1_legacy.framebuffer_draw_lines[i] = &m_vdp1_legacy.framebuffer[0][0];
-    m_vdp1_legacy.framebuffer_display_lines[i] =
-        &m_vdp1_legacy.framebuffer[1][0];
+  const unsigned stride = m_vdp1_legacy.framebuffer_width >> (m_vdp1_legacy.framebuffer_mode & 1);
+  const bool interlace = m_vdp1_legacy.framebuffer_double_interlace > 0;
+  for (unsigned y = 0; y < 512; ++y) {
+    // Each bank is 2 Mbit. Double interlace stores just one field, not an
+    // oversized 512-line bank; the other parity is drawn into the other bank.
+    const unsigned row = interlace ? y >> 1 : y;
+    const unsigned offset = (row * stride) & 0x1ffff;
+    m_vdp1_legacy.framebuffer_draw_lines[y] =
+        m_vdp1_legacy.framebuffer[m_vdp1_legacy.framebuffer_current_draw].get() + offset;
+    m_vdp1_legacy.framebuffer_display_lines[y] =
+        m_vdp1_legacy.framebuffer[m_vdp1_legacy.framebuffer_current_display].get() + offset;
   }
 }
 
 void saturn_state::vdp1_change_framebuffers() {
+  if (m_vdp1_legacy.framebuffer_double_interlace > 0) {
+    // Weave completed display fields for MAME's full-frame bitmap. Never read
+    // the bank currently being drawn to as though it were the previous field.
+    const unsigned field = m_vdp1_legacy.draw_field & 1;
+    std::copy_n(m_vdp1_legacy.framebuffer[m_vdp1_legacy.framebuffer_current_draw].get(),
+                0x20000, m_vdp1_legacy.field_framebuffer[field].get());
+    m_vdp1_legacy.field_valid[field] = true;
+  }
+  // ST-013 p.43: DIL selects drawing after the next framebuffer change.
+  m_vdp1_legacy.draw_field = VDP1_DIL;
   // BEF records the previous drawing bank, not every VBlank callback.
   // In manual mode a VBlank without a bank change must leave it latched.
   if (VDP1_CEF)
@@ -725,6 +717,8 @@ void saturn_state::vdp1_set_framebuffer_config() {
 
   if (VDP1_LOG)
     logerror("Setting framebuffer config\n");
+  m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
+  m_vdp1_legacy.draw_field = VDP1_DIL;
   m_vdp1_legacy.framebuffer_mode = VDP1_TVM();
   m_vdp1_legacy.framebuffer_double_interlace = VDP1_DIE;
   switch (m_vdp1_legacy.framebuffer_mode) {
@@ -805,7 +799,7 @@ void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
     break;
   case 0x0c / 2:
     if (mem_mask)
-      vdp1_abort_draw();
+      vdp1_request_termination();
     break;
   case 0x0e / 2: // unused halfword of a longword access at ENDR
     if (VDP1_LOG)
@@ -845,6 +839,7 @@ void saturn_state::vdp1_vram_w(offs_t offset, uint32_t data,
 
 void saturn_state::vdp1_framebuffer0_w(offs_t offset, uint32_t data,
                                        uint32_t mem_mask) {
+  offset &= 0xffff; // 2-Mbit drawing bank; the upper CPU window is a mirror.
   // popmessage ("STV VDP1 Framebuffer 0 WRITE offset %08x data %08x",offset,
   // data);
   if (VDP1_TVM() & 1) {
@@ -894,6 +889,7 @@ void saturn_state::vdp1_framebuffer0_w(offs_t offset, uint32_t data,
 }
 
 uint32_t saturn_state::vdp1_framebuffer0_r(offs_t offset, uint32_t mem_mask) {
+  offset &= 0xffff;
   uint32_t result = 0;
   // popmessage ("STV VDP1 Framebuffer 0 READ offset %08x",offset);
   if (VDP1_TVM() & 1) {
@@ -1325,10 +1321,74 @@ to the framebuffer we CAN'T frameskip the vdp1 drawing as the hardware can READ
 the framebuffer and if we skip the drawing the content could be incorrect when
 it reads it, although i have no idea why they would want to */
 
+std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters() const {
+  std::array<uint32_t, 6> result{};
+  if (VDP1_TVM() != 2 && VDP1_TVM() != 3)
+    return result;
+
+  // ST-058 section 6.3: sprite readout always uses parameter A; RPTA6 and
+  // RPTA0 are ignored. Addresses are words and VRAMSZ selects 512 KiB/1 MiB.
+  const uint32_t rpta = ((m_vdp2_regs[0xbc / 2] & 7) << 16) |
+                        (m_vdp2_regs[0xbe / 2] & 0xffbe);
+  const uint32_t mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
+  static constexpr unsigned offsets[6] = {0, 1, 3, 4, 5, 6};
+  for (unsigned i = 0; i < result.size(); ++i)
+    result[i] = m_vdp2_vram[((rpta >> 1) + offsets[i]) & mask];
+  return result;
+}
+
+int saturn_state::vdp1_rotation_coordinate(uint32_t start, uint32_t line_step,
+                                          uint32_t dot_step, int x, int y) {
+  // ST-058 p.159: 20-bit signed accumulator with 9 fractional bits; the
+  // increment has 12 bits. Discard input precision BEFORE accumulation.
+  // Preserve the start sign (bit28) separately from its low ten integer bits.
+  // This is also MiSTer's ScrnStartToRC/ScrnIncToRC bit selection.
+  const uint32_t origin = ((start >> 7) & 0x7ffff) | ((start >> 9) & 0x80000);
+  const auto increment = [](uint32_t raw) {
+    const int value = (raw >> 7) & 0xfff;
+    return (value ^ 0x800) - 0x800;
+  };
+  const uint32_t value = (int64_t(origin) + int64_t(y) * increment(line_step) +
+                           int64_t(x) * increment(dot_step)) & 0xfffff;
+  return ((int(value) ^ 0x80000) - 0x80000) >> 9;
+}
+
+uint16_t saturn_state::vdp1_display_pixel(int x, int y,
+                                         const std::array<uint32_t, 6> &rotation) const {
+  const unsigned mode = VDP1_TVM();
+  if (mode != 2 && mode != 3) {
+    if (m_vdp1_legacy.framebuffer_double_interlace > 0) {
+      if (m_vdp2->get_lsmd() != 3) {
+        const uint16_t *const row = m_vdp1_legacy.framebuffer[m_vdp1_legacy.framebuffer_current_display].get() +
+                                     (unsigned(y) & 255) * 512;
+        return vdp1_read_pixel(row, x);
+      }
+      const unsigned field = y & 1;
+      if (!m_vdp1_legacy.field_valid[field])
+        return 0;
+      const uint16_t *const row = m_vdp1_legacy.field_framebuffer[field].get() +
+                                   ((unsigned(y) >> 1) & 255) * 512;
+      return vdp1_read_pixel(row, x);
+    }
+    return vdp1_read_pixel(m_vdp1_legacy.framebuffer_display_lines[y], x);
+  }
+
+  const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);
+  const int sy = vdp1_rotation_coordinate(rotation[1], rotation[3], rotation[5], x, y);
+  // ST-013 section 1.2: out-of-plane coordinates are transparent, not wrapped.
+  if (sx < 0 || sx >= 512 || sy < 0 || sy >= (mode == 3 ? 512 : 256))
+    return 0;
+  const uint16_t *const row = m_vdp1_legacy.framebuffer[m_vdp1_legacy.framebuffer_current_display].get() +
+                               sy * (mode == 3 ? 256 : 512);
+  return vdp1_read_pixel(row, sx);
+}
+
 uint16_t saturn_state::vdp1_read_pixel(const uint16_t *line, int x) const {
-  if (VDP1_TVM() & 1)
+  if (VDP1_TVM() & 1) {
+    x &= (VDP1_TVM() == 3) ? 511 : 1023;
     return (line[x >> 1] >> ((x & 1) ? 0 : 8)) & 0xff;
-  return line[x];
+  }
+  return line[x & 511];
 }
 
 void saturn_state::vdp1_write_pixel(int x, int y, uint16_t value) {
@@ -1336,16 +1396,21 @@ void saturn_state::vdp1_write_pixel(int x, int y, uint16_t value) {
   if (VDP1_TVM() & 1) {
     // ST-013 section 1.1: an 8-bit dot occupies one byte, even X first.
     // Preserve the adjacent dot in the shared CPU-visible word.
+    x &= (VDP1_TVM() == 3) ? 511 : 1023;
     const unsigned shift = (x & 1) ? 0 : 8;
     line[x >> 1] = (line[x >> 1] & ~(0xff << shift)) | ((value & 0xff) << shift);
   } else {
-    line[x] = value;
+    line[x & 511] = value;
   }
 }
 
 bool saturn_state::vdp1_pixel_visible(int x, int y) const {
   if (x < 0 || y < 0 || x >= 1024 || y >= 512 ||
       !m_vdp1_legacy.system_cliprect.contains(x, y))
+    return false;
+
+  if (m_vdp1_legacy.framebuffer_double_interlace > 0 &&
+      unsigned(y & 1) != m_vdp1_legacy.draw_field)
     return false;
 
   // Technical Bulletin 15: Clip=bit10, Cmod=bit9 (corrected manual prose).
@@ -1431,7 +1496,9 @@ void saturn_state::vdp1_draw_color(int x, int y, uint16_t src) {
   if (current_sprite.CMDPMOD & 0x8000) {
     // MON changes the existing framebuffer, not the source color. In 8-bit
     // mode the word-aligned behavior follows Ymir; silicon detail is unverified.
-    line[(VDP1_TVM() & 1) ? (x >> 1) : x] |= 0x8000;
+    const unsigned word = (VDP1_TVM() & 1) ?
+        ((unsigned(x) >> 1) & (VDP1_TVM() == 3 ? 255 : 511)) : (x & 511);
+    line[word] |= 0x8000;
     return;
   }
   if (VDP1_TVM() & 1) {
@@ -2339,12 +2406,25 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
 }
 
 void saturn_state::vdp1_abort_draw() {
-  // Command-granular stop: no subsequent command or END IRQ may execute.
-  // Pixel-pipeline termination and the documented ~30-clock latency remain
-  // separate from this command sequencer.
+  // Cancel both command dispatch and any delayed ENDR request. No completion
+  // IRQ is manufactured; COPR remains at the last fetched command.
   m_vdp1_legacy.drawing = false;
   if (m_vdp1_legacy.draw_end_timer)
     m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
+  if (m_vdp1_legacy.terminate_timer)
+    m_vdp1_legacy.terminate_timer->adjust(attotime::never);
+}
+
+void saturn_state::vdp1_request_termination() {
+  // ST-013 section 4.5 specifies approximately 30 VDP1 clocks. Keep command
+  // execution live during that interval rather than stopping at the write.
+  // Individual primitives still need resumable pixel-level execution.
+  if (m_vdp1_legacy.drawing)
+    m_vdp1_legacy.terminate_timer->adjust(m_maincpu->cycles_to_attotime(30));
+}
+
+TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate) {
+  vdp1_abort_draw();
 }
 
 void saturn_state::vdp1_process_list() {
@@ -2378,6 +2458,7 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
     current_sprite.CMDCTRL = m_vdp1_vram[position * 8] >> 16;
     if (current_sprite.CMDCTRL & 0x8000) {
       m_vdp1_legacy.drawing = false;
+      m_vdp1_legacy.terminate_timer->adjust(attotime::never);
       CEF_1();
       m_scu->vdp1_end_w(1);
       return;
@@ -2731,9 +2812,11 @@ int saturn_state::vdp1_start() {
 
   vdp1_shading_data = std::make_unique<struct vdp1_poly_scanline_data>();
 
-  m_vdp1_legacy.framebuffer[0] = std::make_unique<uint16_t[]>(
-      1024 * 256 * 2); /* *2 is for double interlace */
-  m_vdp1_legacy.framebuffer[1] = std::make_unique<uint16_t[]>(1024 * 256 * 2);
+  // Two physical 2-Mbit banks, plus host-only completed-field weave caches.
+  for (unsigned bank = 0; bank < 2; ++bank) {
+    m_vdp1_legacy.framebuffer[bank] = std::make_unique<uint16_t[]>(0x20000);
+    m_vdp1_legacy.field_framebuffer[bank] = std::make_unique<uint16_t[]>(0x20000);
+  }
 
   m_vdp1_legacy.framebuffer_display_lines = std::make_unique<uint16_t *[]>(512);
   m_vdp1_legacy.framebuffer_draw_lines = std::make_unique<uint16_t *[]>(512);
@@ -2754,7 +2837,15 @@ int saturn_state::vdp1_start() {
 
   m_vdp1_legacy.draw_end_timer =
       timer_alloc(FUNC(saturn_state::vdp1_draw_end), this);
+  m_vdp1_legacy.terminate_timer =
+      timer_alloc(FUNC(saturn_state::vdp1_terminate), this);
   // save state
+  save_pointer(NAME(m_vdp1_legacy.framebuffer[0]), 0x20000);
+  save_pointer(NAME(m_vdp1_legacy.framebuffer[1]), 0x20000);
+  save_pointer(NAME(m_vdp1_legacy.field_framebuffer[0]), 0x20000);
+  save_pointer(NAME(m_vdp1_legacy.field_framebuffer[1]), 0x20000);
+  save_item(NAME(m_vdp1_legacy.draw_field));
+  save_item(NAME(m_vdp1_legacy.field_valid));
   save_pointer(NAME(m_vdp1_regs), 0x020 / 2);
   save_pointer(NAME(m_vdp1_vram), 0x100000 / 4);
   save_item(NAME(m_vdp1_legacy.fbcr_accessed));
@@ -9975,7 +10066,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
   int x, y, r, g, b;
   int i;
   uint16_t pix;
-  uint16_t *framebuffer_line;
+  const auto rotation = vdp1_rotation_parameters();
   uint32_t *bitmap_line, *bitmap_line2 = nullptr;
   uint8_t interlace_framebuffer;
   uint8_t double_x;
@@ -10129,14 +10220,13 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
             continue;
 
-        framebuffer_line = m_vdp1_legacy.framebuffer_display_lines[y];
         bitmap_line = &bitmap.pix(y);
 
         for (x = cliprect.left(); x <= cliprect.right(); x++) {
           if (!vdp2_window_process(x, y))
             continue;
 
-          pix = vdp1_read_pixel(framebuffer_line, x);
+          pix = vdp1_display_pixel(x, y, rotation);
           // pukunpa, no alpha no framebuffer bumps
           if (sprite_window && pix == 0x8000)
             continue;
@@ -10209,14 +10299,13 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
             continue;
 
-        framebuffer_line = m_vdp1_legacy.framebuffer_display_lines[y];
         bitmap_line = &bitmap.pix(y);
 
         for (x = cliprect.left(); x <= cliprect.right(); x++) {
           if (!vdp2_window_process(x, y))
             continue;
 
-          pix = vdp1_read_pixel(framebuffer_line, x);
+          pix = vdp1_display_pixel(x, y, rotation);
           // raymanj on FMV, alpha enabled (no noticeable difference?)
           if (sprite_window && pix == 0x8000)
             continue;
@@ -10304,7 +10393,6 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
           continue;
 
-      framebuffer_line = m_vdp1_legacy.framebuffer_display_lines[y];
       if (interlace_framebuffer == 0) {
         bitmap_line = &bitmap.pix(y);
       } else {
@@ -10316,7 +10404,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         if (!vdp2_window_process(x, y))
           continue;
 
-        pix = vdp1_read_pixel(framebuffer_line, x);
+        pix = vdp1_display_pixel(x, y, rotation);
         // amoudan, interlaced case
         if (sprite_window && pix == 0x8000)
           continue;
