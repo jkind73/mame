@@ -2105,9 +2105,10 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
   const bool horizontal = ax >= ay;
   const int major = std::max(ax, ay), minor = std::min(ax, ay);
   const int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
-  // Host-only rejection, with a one-dot margin for the extra coverage pixel.
-  // Do not assume straight bounds when the 13-bit error accumulator can wrap.
-  if (major < 2048 && (std::max(a.x, b.x) < cliprect.min_x - 1 ||
+  // Pre-clipping can reject a wholly separated span. Pclp=1 must retain
+  // its traversal, even when all pixel writes will be clipped. Keep a one-dot
+  // coverage margin and avoid assuming straight bounds if the error wraps.
+  if (!(current_sprite.CMDPMOD & 0x0800) && major < 2048 && (std::max(a.x, b.x) < cliprect.min_x - 1 ||
       std::min(a.x, b.x) > cliprect.max_x + 1 || std::max(a.y, b.y) < cliprect.min_y - 1 ||
       std::min(a.y, b.y) > cliprect.max_y + 1))
     return;
@@ -2455,12 +2456,13 @@ void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int addres
     vdp1_fill_quad(cliprect, address, width, q);
     return;
   }
+  const bool preclip_enabled = !(current_sprite.CMDPMOD & 0x0800);
   const int columns = std::abs(q[1].x - q[0].x) + 1;
   const int rows = std::abs(q[3].y - q[0].y) + 1;
-  const int left = std::max({std::min(q[0].x, q[1].x), cliprect.min_x, 0});
-  const int right = std::min({std::max(q[0].x, q[1].x), cliprect.max_x, 1023});
-  const int top = std::max({std::min(q[0].y, q[3].y), cliprect.min_y, 0});
-  const int bottom = std::min({std::max(q[0].y, q[3].y), cliprect.max_y, 511});
+  const int left = preclip_enabled ? std::max({std::min(q[0].x, q[1].x), cliprect.min_x, 0}) : std::min(q[0].x, q[1].x);
+  const int right = preclip_enabled ? std::min({std::max(q[0].x, q[1].x), cliprect.max_x, 1023}) : std::max(q[0].x, q[1].x);
+  const int top = preclip_enabled ? std::max({std::min(q[0].y, q[3].y), cliprect.min_y, 0}) : std::min(q[0].y, q[3].y);
+  const int bottom = preclip_enabled ? std::min({std::max(q[0].y, q[3].y), cliprect.max_y, 511}) : std::max(q[0].y, q[3].y);
   if (left > right || top > bottom)
     return;
 
@@ -2481,10 +2483,12 @@ void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int addres
   const bool flip_x = current_sprite.CMDCTRL & 0x10;
   const bool flip_y = current_sprite.CMDCTRL & 0x20;
   const int source_columns = std::max(1, hss ? width / 2 : width);
-  std::array<int, 1024> source_x;
+  // Synchronous reference/fallback only: queued execution returned above.
+  // Index relative to the span, since Pclp=1 permits negative/offscreen X.
+  std::vector<int> source_x(right - left + 1);
   for (int x = left; x <= right; ++x) {
     const int u = vdp1_scaled_coordinate(source_columns, columns, std::abs(x - q[0].x), flip_x);
-    source_x[x] = hss ? u * 2 + m_vdp1_legacy.draw_eos : u;
+    source_x[x - left] = hss ? u * 2 + m_vdp1_legacy.draw_eos : u;
   }
 
   // Effective mode for this atomic primitive, not a write to guest VRAM.
@@ -2495,7 +2499,7 @@ void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int addres
   for (int y = top; y <= bottom; ++y) {
     const int v = width ? vdp1_scaled_coordinate(height, rows, std::abs(y - q[0].y), flip_y) : 0;
     for (int x = left; x <= right; ++x) {
-      const int texel = v * width + source_x[x];
+      const int texel = v * width + source_x[x - left];
       if (vdp1_texture_sample_visible(address, width, texel))
         (this->*drawpixel)(x, y, address, texel);
     }
@@ -2559,6 +2563,10 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
   uint8_t shading;
   int su, u, dux, duy;
   int maxdrawypos, maxdrawxpos;
+  // ST-013 p.83: Pclp=1 disables advance rejection/skipping, not pixel
+  // clipping. Fetch/count END markers even before entering the drawing area.
+  // CMDSIZE bounds this traversal to 504 by 255 positions per command.
+  const bool preclip = !(current_sprite.CMDPMOD & 0x0800);
 
   x = x2s(current_sprite.CMDXA);
   y = y2s(current_sprite.CMDYA);
@@ -2578,9 +2586,9 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
              "patterndata %06x\n",
              x, y, xsize, ysize, patterndata);
 
-  if (x > cliprect.max_x)
+  if (preclip && x > cliprect.max_x)
     return;
-  if (y > cliprect.max_y)
+  if (preclip && y > cliprect.max_y)
     return;
 
   shading = read_gouraud_table();
@@ -2612,7 +2620,7 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
     duy = -xsize;
     u += xsize * (ysize - 1);
   }
-  if (y < cliprect.min_y) // clip y
+  if (preclip && y < cliprect.min_y) // clip y
   {
     // draculax user clips a 320x240 sprite for inverted castle map (obviously x
     // & y flipped) we need to adjust U calculation only to make it align
@@ -2624,16 +2632,16 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
     ysize -= (cliprect.min_y - y);
     y = cliprect.min_y;
   }
-  if (x < cliprect.min_x) // clip x
+  if (preclip && x < cliprect.min_x) // clip x
   {
     u += dux * (cliprect.min_x - x);
     xsize -= (cliprect.min_x - x);
     x = cliprect.min_x;
   }
-  // bound by the framebuffer as well as the clip rectangle, which comes from
-  // 13-bit command fields and can be far larger
-  maxdrawypos = std::min({y + ysize - 1, cliprect.max_y, 511});
-  maxdrawxpos = std::min({x + xsize - 1, cliprect.max_x, 1023});
+  // Only the pre-clipped path shortens traversal to visible bounds. Pixel
+  // writers still enforce framebuffer/system/user clipping in either mode.
+  maxdrawypos = preclip ? std::min({y + ysize - 1, cliprect.max_y, 511}) : y + ysize - 1;
+  maxdrawxpos = preclip ? std::min({x + xsize - 1, cliprect.max_x, 1023}) : x + xsize - 1;
   for (drawypos = y; drawypos <= maxdrawypos; drawypos++) {
     // destline = m_vdp1_legacy.framebuffer_draw_lines[drawypos];
     su = u;
