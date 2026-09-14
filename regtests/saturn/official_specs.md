@@ -159,3 +159,13 @@ The stopped-only reload issue identified in finding 1 is now fixed and covered b
 The earlier findings describe the code as inspected during the document audit.
 Timer-0 ordering, T1MD interrupt qualification, hardware timer rate, and the other
 open findings are not resolved by this narrowly scoped fix.
+
+## Implementation update: timer-0 event order
+
+The compare-zero and increment-order discrepancies in finding 1 are now fixed:
+TENB gates counting, zero is checked at VBlank-OUT, and positive compares follow
+the HBlank increment. See the timer-0 section in README.md for 8,192 tested
+scenarios and remaining limitations. Current CRTC phase, mid-line register-write
+behavior and full timer-1 mode qualification have not been hardware-validated.
+The original findings and next-work list above are the historical audit, not the
+current completion status; these implementation updates supersede them narrowly.

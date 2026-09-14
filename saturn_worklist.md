@@ -130,3 +130,14 @@ alongside these reopened items.
   fails repeated-HBlank deadline test. Existing tests and three syntax checks pass.
 - Timer-0 compare ordering remains next. Full timer accuracy, actual T1MD IRQ
   qualification, simultaneous event ordering and ROM compatibility remain open.
+
+### SCU timer-0 ordering — implemented and callback-tested
+
+- ST-210 item 30 / ST-097 §3.4, cross-checked with Ymir and Mednafen: compare zero
+  at VBlank-OUT; increment before HBlank compare; TENB gates counter operation.
+- 8,192 two-frame scenarios pass; pre-fix callbacks fail compare-zero regression.
+  All six regression scripts and three syntax checks pass. Use
+  `python3 regtests/saturn/run_all.py` to reproduce the complete ROM-free suite.
+- Physical CRTC phase, immediate register-write effects, full T1MD IRQ semantics,
+  save/load and runtime compatibility remain unverified. No blanket timer DONE.
+- Next priorities: full build/runtime validation and interlaced counter encoding.
