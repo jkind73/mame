@@ -68,17 +68,18 @@ saturn_scu_device::saturn_scu_device(const machine_config &mconfig,
 //**************************************************************************
 
 template <unsigned Level> void saturn_scu_device::dma_map(address_map &map) {
+  // ST-097 section 3.2: DxR/DxW store bits 26:0, not SH-2 cache aliases.
   map(0x00, 0x03)
       .lrw32(NAME([this](offs_t offset) { return m_dma[Level].src; }),
              NAME([this](offs_t offset, u32 data, u32 mem_mask) {
                COMBINE_DATA(&m_dma[Level].src);
-               m_dma[Level].src &= 0x27ff'ffff;
+               m_dma[Level].src &= 0x07ff'ffff;
              }));
   map(0x04, 0x07)
       .lrw32(NAME([this](offs_t offset) { return m_dma[Level].dst; }),
              NAME([this](offs_t offset, u32 data, u32 mem_mask) {
                COMBINE_DATA(&m_dma[Level].dst);
-               m_dma[Level].dst &= 0x27ff'ffff;
+               m_dma[Level].dst &= 0x07ff'ffff;
              }));
   map(0x08, 0x0b)
       .lrw32(NAME([this](offs_t offset) { return m_dma[Level].size; }),

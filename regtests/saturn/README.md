@@ -874,3 +874,49 @@ from the mask-polarity fix. CD/game effects still need runtime confirmation.
 
 All **twelve** regression scripts and three object compilations pass; full linking,
 BIOS boot and game validation remain pending.
+
+## DMA programmed address-register width
+
+Changed DxR/DxW write masks from `0x27ffffff` to **`0x07ffffff`** on all three
+channels. The old mask incorrectly retained the SH-2 cache-alias bit 29 in stored
+registers and readback. For example, writing `0x26012345` now programs `0x06012345`.
+Bits 26:0, including bit 0, are preserved; this is not an alignment restriction.
+Direct count-register masks and indirect descriptor decoding are unchanged.
+
+Evidence:
+- [ST-097-R5-072694](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-097-R5-072694.pdf),
+  §3.2, printed p.41 / PDF p.57, figures 3.1/3.2 and their field definitions:
+  all three DxR/DxW registers implement bits 26:0. Printed p.42 / PDF p.58
+  defines D0C bits 19:0 and D1C/D2C bits 11:0, retained in this change.
+- [Ymir WriteRegLong](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  writes both address fields using `bit::extract<0, 26>(value)` on every channel.
+- [Mednafen scu.inc](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  masks writes to StartReadAddr and StartWriteAddr with `0x07ffffff`.
+- [MiSTer SCU_PKG.sv](https://github.com/jkind73/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/SCU/SCU_PKG.sv)
+  specifies `0x07ffffff` for both read and write masks of DxR and DxW.
+
+```sh
+python3 regtests/saturn/test_dma_regs.py
+python3 regtests/saturn/test_dma_regs.py --baseline src  # expected source readback failure
+python3 regtests/saturn/test_dma_regs.py --baseline dst  # expected destination readback failure
+```
+
+The harness extracts the actual three register read/write lambdas from dma_map,
+instantiates them for levels 0/1/2, and uses the header's channel structure. It
+passes **15,360 address writes/readbacks and 7,680 direct count writes/readbacks**
+with ASan/UBSan. Cases cover 40 single-bit/alias/boundary/mixed data patterns, four
+valid initial values, all 16 byte-enable combinations, preserved untouched bits,
+and isolation from other registers/channels. Extra cache-alias checks retain
+odd addresses rather than silently imposing alignment. Each negative control
+substitutes only the named pre-fix register handler from
+`eca12b2a22c8448d76d38eaf6d8076b69a4d6b4d` and fails its readback assertion.
+
+This validates programmed register storage and readback, not the complete MAME
+MMIO dispatcher, live-register write restrictions, DxGO activation or real cache
+coherency. The existing transfer code already masks host memory accesses to 27
+bits; no changed transfer data or game/performance improvement is claimed here.
+Address-update overflow at the end of the 27-bit window, save/load normalization
+and whole-device execution from these writes are not tested or changed.
+
+All **thirteen** regression scripts and three object compilations pass. Full
+linking and BIOS/game runtime validation remain pending.

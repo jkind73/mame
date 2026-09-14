@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## DMA address-register width update — 2026-09-14
+
+Programmed DxR/DxW addresses now retain only bits 26:0, not cache-alias bit 29,
+per Sega and Ymir/Mednafen/MiSTer. Extracted lambdas pass address/count readback
+coverage with two failing pre-fix controls. Register-update overflow, full MMIO
+routing and runtime CPU/cache behavior are not established by this correction.
+
 ## A-Bus interrupt mask update — 2026-09-14
 
 Fixed reversed IMS15 polarity using ST-097 and Mednafen; the pinned Ymir condition
