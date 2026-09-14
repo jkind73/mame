@@ -353,9 +353,10 @@ pending; next prioritize that validation and interlace counter encoding.
 python3 regtests/saturn/validate_build.py
 ```
 
-This runs all thirteen regression scripts, then compiles six complete translation
+This runs all thirteen regression scripts, then compiles eight complete translation
 units: `saturn.cpp`, `saturn_vdp2.cpp`, `saturn_scu.cpp`, `saturn_dcc.cpp`,
-`sat_console.cpp` and `stv.cpp`. The flags use C++20, `-O1`, `MAME_NOASM` and
+`sat_console.cpp`, `stv.cpp`, `saturn_cd_hle.cpp` and `saturn_cdb.cpp`.
+The flags use C++20, `-O1`, `MAME_NOASM` and
 MAME/shared include paths. MAME's `scripts/build/complay.py` generates the three
 required ST-V layout headers (`critcrsh`, `segabill`, `segabillv`) in the temporary
 object directory. No generated headers or objects are checked into Git.
@@ -365,10 +366,10 @@ ST-V driver configurations; it does **not** resolve external symbols, link MAME,
 or validate those configurations at runtime. Temporary files are automatically
 deleted. Set `CXX` to select the compiler for the object/regression checks.
 
-**Latest result on 2026-09-14:** all thirteen scripts and six object compilations
-pass with GCC 12.2.0. This widened validation found and corrected `emu.h` include
-ordering in DCC/ST-V, without changing emulation behavior. Earlier sections below
-retain their historical three-object results.
+**Latest result on 2026-09-14:** all thirteen scripts and eight object compilations
+pass with GCC 12.2.0. Widened validation found and corrected `emu.h` include
+ordering in DCC, ST-V and CD HLE, without changing emulation behavior. Earlier
+sections below retain their historical three- and six-object results.
 
 For a Debian/Ubuntu machine with package access, the intended focused-build path
 is:
@@ -1009,3 +1010,21 @@ exercise the DRC at runtime, or establish DCC interrupt/handshake accuracy. Full
 linking, configuration validation, BIOS/game execution and performance measurements
 remain pending. No firmware, downloaded references or generated artifacts were
 added to Git in this increment.
+
+## CD component object validation
+
+Added `saturn_cd_hle.cpp` and `saturn_cdb.cpp` to routine object compilation.
+The original CD HLE translation unit at
+`186593db3cb90a90fbfe7464567d11fc7b7ddc7d` failed under the same standalone object
+flags: its header preceded `emu.h`, triggering `romentry.h`'s explicit include
+order error and incomplete `device_t` errors through the CD image headers.
+Moved `emu.h` first. The CD block wrapper already compiled and needed no source
+change. Both files now compile without forced includes or precompiled headers.
+
+All thirteen regression scripts and eight complete objects pass through
+`validate_build.py`. The change does not alter CD command processing, sector
+buffering, timing, audio, authentication or the disabled SH-1 in the CD block
+wrapper. This is build coverage only; CD emulation fidelity is not established by
+compilation. Linking, configuration validation, actual disc access and BIOS/game
+execution remain pending, as does validation of other transitive dependencies.
+Objects and generated layouts remain temporary and are not committed.
