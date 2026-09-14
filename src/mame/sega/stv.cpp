@@ -1370,9 +1370,8 @@ void stv_state::stv(machine_config &config) {
 
   SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
   m_scu->set_hostcpu(m_maincpu);
-  m_scu->main_dtack_cb().set_inputline(m_maincpu, INPUT_LINE_HALT);
-  m_scu->main_dtack_cb().append_inputline(m_slave, INPUT_LINE_HALT);
-  m_scu->sound_dtack_cb().set_inputline(m_audiocpu, INPUT_LINE_HALT);
+  m_scu->main_dtack_cb().set(FUNC(stv_state::main_dma_halt_w));
+  m_scu->sound_dtack_cb().set(FUNC(stv_state::sound_dma_halt_w));
   m_scu->main_steal_cb().set([this](u8 data) {
     m_maincpu->adjust_icount(-data);
     m_slave->adjust_icount(-data);

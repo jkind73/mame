@@ -57,6 +57,7 @@ for signature in ("std::tuple<u16, int> saturn_scu_device::get_address_flags(",
                   "inline void saturn_scu_device::dma_start_factor_ack(",
                   "void saturn_scu_device::trigger_dma_direct(",
                   "void saturn_scu_device::trigger_dma_indirect(",
+                  "uint16_t saturn_scu_device::dma_read_word(",
                   "void saturn_scu_device::dma_transfer_direct_default(",
                   "void saturn_scu_device::dma_transfer_direct_cbus_write(",
                   "void saturn_scu_device::dma_transfer_direct_cd(",
@@ -117,20 +118,22 @@ struct memory {
   unsigned words = 0;
   u16 last_read = 0;
   u32 read_dword(u32 address) {
-    descriptor_reads.push_back(address);
     auto it = descriptors.find(address);
-    assert(it != descriptors.end()); // catches reading beyond final descriptor
-    return it->second;
+    if (address >= 0x07000800 && address < 0x07000900) {
+      descriptor_reads.push_back(address);
+      assert(it != descriptors.end()); // catches reading beyond final descriptor
+      return it->second;
+    }
+    return (u32(u16((address >> 1) ^ 0x5a5a)) << 16) | u16(((address+2) >> 1) ^ 0x5a5a);
   }
   u16 read_word(u32 address) {
     assert(address == (expected_src & 0x07fffffe));
-    expected_src += 2;
     last_read = u16((address >> 1) ^ 0x5a5a);
     return last_read;
   }
   void write_word(u32 address, u16 data) {
-    assert(address == (expected_dst & 0x07fffffe) && data == last_read);
-    expected_dst += 2; ++words;
+    assert(address == (expected_dst & 0x07fffffe) && data == u16((expected_src >> 1) ^ 0x5a5a));
+    expected_src += 2; expected_dst += 2; ++words;
   }
   void write_dword(u32, u32) { assert(false); } // these scenarios do not use CD mode
 };
@@ -160,6 +163,7 @@ struct saturn_scu_device {
   void dma_start_factor_ack(dma_event_id_t);
   void trigger_dma_direct(uint8_t);
   void trigger_dma_indirect(uint8_t);
+  uint16_t dma_read_word(dma_channel_t &);
   void dma_transfer_direct_default(dma_channel_t &);
   void dma_transfer_direct_cbus_write(dma_channel_t &);
   void dma_transfer_direct_cd(dma_channel_t &);

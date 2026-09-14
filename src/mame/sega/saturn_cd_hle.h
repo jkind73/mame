@@ -278,6 +278,7 @@ private:
   void cmd_get_session_info();
   void cmd_init_cdsystem();
   void cmd_end_data_transfer();
+  void finish_get_delete();
   // 0x10
   void cmd_play_disc();
   void cmd_seek_disc();
