@@ -501,3 +501,48 @@ latch sentinels separately to observe each access. No saved-state layout changes
 
 All **seven** regression scripts and three object compilations pass through
 `validate_build.py`. Full linking, boot, save/load and game tests remain pending.
+
+## TVMD power-on and device-reset coherence
+
+ST-058 §2.4 (printed p.16 / PDF p.34) specifies that TVMD clears to zero after
+power-on or reset. Both [Ymir VDP2Regs::Reset](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/vdp/vdp2_regs.hpp)
+and [Mednafen VDP2::Reset](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp2.cpp)
+clear the register/display controls and interlace/resolution selections.
+
+The inherited MAME callback reset only `m_old_tvmd`, leaving TVMD and its decoded
+controls from the previous session. Also, only HRESO and VRESO were initialized
+in device_start, although device_t::start invokes notify_clock_changed before
+device reset, which calls VDP2 reconfigure_crtc and reads LSMD. Added in-class
+initializers for TVMD, its change latch and all five decoded fields; device reset
+now clears raw and decoded state before reconfiguration. Removed redundant
+startup assignments and misleading commented-out reset lines. No new saved
+members, change to region/DOTSEL configuration, or change to the register's
+existing masked-write/change-detection logic.
+
+```sh
+python3 regtests/saturn/test_tvmd.py
+python3 regtests/saturn/test_tvmd.py --baseline  # expected reset readback assertion failure
+```
+
+**3,072 startup/write/reset scenarios passed** under ASan/UBSan. The test compiles
+member initializers from the production header, TVMD read/write lambda bodies,
+reset callback, CRTC reconfiguration and timing helpers. A recording screen
+checks that startup and reset configure the current default 320x224 geometry
+with 427 horizontal total and 263/313 vertical total, and that raw/decoded state
+agrees. The matrix covers both regions, every LSMD/VRESO/HRESO bit combination,
+DISP/BDCLMD combinations, full writes and both half-register write orders,
+repeated reset, and the existing first-low-byte-write configuration behavior.
+This includes reserved-mode stress cases, not a claim they are valid hardware
+modes. Existing half-register mask behavior is not validation of physical byte
+accesses prohibited by the manual.
+
+The negative control uses the old reset from `f8b5cff9036f93c438a85083429277e73c9e6c92`
+with the new header initializers, isolating stale reset state rather than relying
+on undefined startup memory. Screen/timer behavior is mocked: no complete device
+startup, physical beam timing, live resolution-switch scheduling, SMPC-to-VDP2
+reset wiring or BIOS boot is executed. The geometry assertions preserve MAME's
+current conventions and are not hardware timing measurements. Other registers'
+reset values and status/latch flags remain separate audit work.
+
+All **eight** regression scripts and three object compilations pass through
+`validate_build.py`. Full build and BIOS/game execution remain pending.

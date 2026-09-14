@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## TVMD startup/reset update — 2026-09-14
+
+TVMD and decoded display/interlace/resolution controls now initialize before the
+startup clock notification and clear on device reset, following ST-058 §2.4 and
+Ymir/Mednafen. 3,072 scenarios pass; complete runtime/reset wiring and the wider
+register/status initialization audit remain pending.
+
 ## EXTEN reset update — 2026-09-14
 
 Fixed stale decoded EXTEN bits after reset, following ST-058 §2.5 and cross-checks
