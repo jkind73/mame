@@ -2638,17 +2638,29 @@ void saturn_cd_hle_device::cd_free_block(blockT *blktofree) {
 void saturn_cd_hle_device::cd_getsectoroffsetnum(uint32_t bufnum,
                                                  uint32_t *sectoffs,
                                                  uint32_t *sectnum) {
-  if (*sectoffs == 0xffff) {
-    // last sector
-    LOGWARN("CD: Don't know how to handle offset ffff\n");
-  } else if (*sectnum == 0xffff) {
-    *sectnum = partitions[bufnum].numblks - *sectoffs;
-  }
+  /* Two sentinel values are defined for the sector commands: a sector offset of
+     0xffff means "the last sector in the partition", and a sector count of
+     0xffff means "from the offset to the end of the partition".  Both are
+     resolved here so that every caller can walk blocks[] with plain indices.
+
+     They are independent rather than mutually exclusive, so the count has to be
+     expanded *after* the offset: a command asking for the last sector through
+     to the end then correctly resolves to a single sector instead of leaving
+     the 0xffff count to be truncated by the range check below.  Callers
+     validate the buffer number against MAX_FILTERS before getting here, and
+     numblks is capped at MAX_BLOCKS by cd_alloc_block(), so numblks - 1 is
+     always a valid index. */
+  const uint32_t numblks = partitions[bufnum].numblks;
+
+  if (*sectoffs == 0xffff)
+    *sectoffs = (numblks > 0) ? (numblks - 1) : 0;
+
+  if (*sectnum == 0xffff)
+    *sectnum = (numblks > *sectoffs) ? (numblks - *sectoffs) : 0;
 
   /* both values come straight out of the command registers and every caller
-     walks blocks[] with them, so keep them inside the array - note that the
-     calculation above also underflows when the offset is past the end of the
-     partition */
+     walks blocks[] with them, so keep them inside the array; an offset past the
+     end of the partition is out of range and the request is ignored */
   if (*sectoffs >= MAX_BLOCKS) {
     LOGWARN("CD: sector offset %04x out of range, ignoring the request\n",
             *sectoffs);
