@@ -555,7 +555,11 @@ private:
   uint8_t saturn_pdr2_direct_r();
   void saturn_pdr1_direct_w(uint8_t data);
   void saturn_pdr2_direct_w(uint8_t data);
-  uint8_t m_direct_mux[2];
+  // PDR1/PDR2 direct mode latches: direction, threshold and handshake bits
+  // read back by saturn_direct_port_read(). Nothing else initialises them and
+  // machine_reset does not touch them, so they were indeterminate until the
+  // guest first wrote a port.
+  uint8_t m_direct_mux[2]{};
   uint8_t saturn_direct_port_read(bool which);
   uint8_t smpc_direct_mode(uint16_t in_value, bool which);
   uint8_t smpc_th_control_mode(uint16_t in_value, bool which);
@@ -906,6 +910,10 @@ void sat_console_state::machine_start() {
   // save states
   save_item(NAME(m_en_68k));
   save_item(NAME(m_scsp_last_line));
+  // the guest programs these once and saturn_direct_port_read() keeps using
+  // them, so a state load has to restore them or input comes back in the
+  // wrong mode
+  save_item(NAME(m_direct_mux));
 }
 
 // diehardt tests RAM address $25e7ffe bit 2 with Slave during FRT minit irq
