@@ -11,7 +11,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -24,7 +24,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
-functions+='\n'.join(extract(current,s) for s in ('bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
+functions+='\n'.join(extract(current,s) for s in ('int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
  ('framebuffer',['void saturn_state::vdp1_framebuffer0_w(', 'uint32_t saturn_state::vdp1_framebuffer0_r(']),
@@ -37,6 +37,7 @@ functions += extract(current, 'void saturn_state::vdp1_draw_normal_sprite(').rep
     'saturn_state::vdp1_draw_normal_sprite', 'saturn_state::raster_normal') + '\n'
 functions += extract(current, 'void saturn_state::vdp1_draw_scaled_sprite(').replace(
     'saturn_state::vdp1_draw_scaled_sprite', 'saturn_state::raster_scaled') + '\n'
+functions+=extract(current,'void saturn_state::vdp1_draw_scaled_pixels(').replace('saturn_state::vdp1_draw_scaled_pixels','saturn_state::raster_scaled_pixels')+'\n'
 shader_signatures=('uint8_t saturn_state::read_gouraud_table()', 'void saturn_state::vdp1_setup_shading(', 'void saturn_state::vdp1_setup_shading_for_line(', 'void saturn_state::vdp1_setup_shading_for_slope(')
 functions+='\n'.join(extract(current,sig) for sig in shader_signatures)+'\n'
 for name in ('line','poly_line'):
@@ -48,6 +49,8 @@ if a.render_mutation:
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
         'endcode': ('if (++end_codes == 2)', 'if (++end_codes == 99)'),
         'rotation': ('const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);', 'const int sx = x;'),
+        'texture_step': ('const int initial = shrink ? source - 2 * destination - int(reverse) : -destination + int(reverse);', 'const int initial = 0;'),
+        'eos': ('u * 2 + VDP1_EOS', 'u * 2'),
         'line_gouraud': ('RGB_R(gd[vertices[i]])', 'RGB_R(gd[i])'),
         'scaled_end': ('return (reverse ? width - 1 - u : u) < limit;', 'return true;'),
         'scale_anchor': ('right = left + width;', 'left = vdp1_coord(left - m_vdp1_legacy.local_x) + m_vdp1_legacy.local_x; right = left + width;'),
@@ -92,6 +95,7 @@ constexpr uint16_t RGB_B(uint16_t c){return (c>>10)&31;}
 #define VDP1_PTM (m_vdp1_regs[2]&3)
 #define VDP1_FBCR (m_vdp1_regs[1])
 #define VDP1_CEF cef
+#define VDP1_EOS ((m_vdp1_regs[1]>>4)&1)
 #define VDP1_DIL ((m_vdp1_regs[1]>>2)&1)
 #define VDP1_DIE ((m_vdp1_regs[1]>>3)&1)
 #define VDP1_EWDR (m_vdp1_regs[3])
@@ -165,6 +169,9 @@ struct saturn_state {
  int x2s(int);int y2s(int);
  void raster_normal(const rectangle&,int);
  void raster_scaled(const rectangle&);
+ static int vdp1_scaled_coordinate(int,int,int,bool);
+ void raster_scaled_pixels(const rectangle&,int,int,int,const spoint*);
+ void vdp1_draw_scaled_pixels(const rectangle &r,int a,int w,int,const spoint *q){vdp1_fill_quad(r,a,w,q);}
  std::array<int16_t,256> m_vdp1_texture_end{};
  bool vdp1_texture_sample_visible(int,int,int);
  void vdp1_fill_line(const rectangle&,int,int,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t);
@@ -516,6 +523,60 @@ int main(){
   }
  }
  std::cout<<rotation_cases<<" rotated readout/parameter/precision scenarios passed\n";
+ unsigned texture_step_cases=0;
+ // Iterative error-accumulator oracle, independent of the production division.
+ auto texture_oracle=[](int source,int dots,int pixel,bool reverse){
+  if(source<=1)return 0;
+  int value=reverse?source-1:0,inc=reverse?-1:1;
+  int numerator=source-1,denominator=dots,err;
+  if(dots<=numerator){++numerator;err=source-1-2*dots+!reverse;}
+  else {--denominator;err=-dots+reverse;}
+  for(int i=0;i<=pixel;++i){
+   while(err>=0){value+=inc;err-=2*denominator;}
+   if(i==pixel)return value;err+=2*numerator;
+  }return value;
+ };
+ for(int source=1;source<=64;++source)for(int dots=1;dots<=80;++dots)for(bool reverse : {false,true})for(int i=0;i<dots;++i){
+  assert(s->vdp1_scaled_coordinate(source,dots,i,reverse)==texture_oracle(source,dots,i,reverse));++texture_step_cases;
+ }
+ // Primary p.82: eight-dot source reduced to three dots.
+ assert(s->vdp1_scaled_coordinate(8,3,0,false)==1);
+ assert(s->vdp1_scaled_coordinate(8,3,1,false)==4);
+ assert(s->vdp1_scaled_coordinate(8,3,2,false)==6);
+ // Actual scaled readout, both geometry directions, independent texture flips,
+ // HSS/EOS, source END values, all six modes, clipping and vertical scaling.
+ for(int format : {0,1,3})for(bool ecd : {false,true})for(int mode=0;mode<6;++mode)for(int dots : {1,3,8,13})for(bool hss : {false,true})for(int eos=0;eos<2;++eos)
+ for(int direction=0;direction<4;++direction)for(bool invert : {false,true}){
+  auto &l=s->m_vdp1_legacy;auto &c=s->current_sprite;
+  if(format&&mode==5)continue; // RGB texture mode is prohibited in 8-bit display.
+  s->tvm=format;l.framebuffer_double_interlace=0;l.framebuffer_current_draw=0;l.framebuffer_width=format==1?1024:512;l.framebuffer_height=format==3?512:256;
+  s->vdp1_prepare_framebuffers();l.system_cliprect.set(2,31,0,7);
+  std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0x5555);
+  std::fill(l.gfx_decode.begin(),l.gfx_decode.end(),0);
+  c.CMDPMOD=(mode<<3)|(hss?0x1000:0)|(ecd?0x80:0);c.CMDCTRL=(direction<<4)|1;c.CMDCOLR=mode==1?0x100:0x8000;c.ispoly=0;
+  s->m_vdp1_regs[1]=eos<<4;
+  if(mode==1)for(int i=0;i<16;++i){l.gfx_decode[0x800+i*2]=0x80;l.gfx_decode[0x801+i*2]=i;}
+  for(int v=0;v<4;++v)for(int u=0;u<8;++u){
+   int index=v*8+u;bool end=u==1||u==5;int color=1+v;
+   if(mode<2)l.gfx_decode[index/2]|=(end?15:color)<<((index&1)?0:4);
+   else if(mode<5)l.gfx_decode[index]=end?255:color;
+   else {l.gfx_decode[index*2]=end?0x7f:0x80;l.gfx_decode[index*2+1]=end?255:color;}
+  }
+  saturn_state::spoint q[4]{};q[0].x=invert?dots-1:0;q[1].x=invert?0:dots-1;q[0].y=invert?6:0;q[3].y=invert?0:6;
+  s->drawpixel=&saturn_state::drawpixel_generic;uint16_t saved_mode=c.CMDPMOD;
+  s->raster_scaled_pixels(l.system_cliprect,0,8,4,q);assert(c.CMDPMOD==saved_mode);
+  bool reduced=hss&&dots<8;
+  for(int y=0;y<7;++y)for(int x=0;x<dots;++x){
+   int u=texture_oracle(reduced?4:8,dots,invert?dots-1-x:x,direction&1);if(reduced)u=2*u+eos;
+   int v=texture_oracle(4,7,invert?6-y:y,direction&2);
+   bool end=u==1||u==5;bool visible=x>=2&&(reduced||ecd||(!end&&((direction&1)?u>1:u<5)));
+   uint16_t color=0x8000|uint16_t(1+v);
+   if(end&&(reduced||ecd))color=mode<2?0x800f:mode==2?0x803f:mode==3?0x807f:mode==4?0x80ff:0x7fff;
+   uint16_t expected=visible?color:0x5555;if(format)expected&=0xff;
+   assert(s->vdp1_read_pixel(l.framebuffer_draw_lines[y],x)==expected);++texture_step_cases;
+  }
+ }
+ std::cout<<texture_step_cases<<" texture-step/scaled HSS/EOS pixel cases passed\n";
  unsigned edge_cases=0;
  for(bool transpose : {false,true})for(int dx : {-8,8})for(int dy : {-8,8})for(int rotation=0;rotation<4;++rotation){
   auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;l.local_x=l.local_y=0;l.system_cliprect.set(0,63,0,63);
