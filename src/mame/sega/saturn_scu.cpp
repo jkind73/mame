@@ -154,7 +154,11 @@ void saturn_scu_device::regs_map(address_map &map) {
           FUNC(scudsp_cpu_device::ram_address_w));
   map(0x0090, 0x0093).w(FUNC(saturn_scu_device::t0_compare_w));
   map(0x0094, 0x0097).w(FUNC(saturn_scu_device::t1_setdata_w));
-  map(0x009a, 0x009b).w(FUNC(saturn_scu_device::t1_mode_w));
+  // T1MD is at $0098 (bit 8 T1MD, bit 0 TENB); it was mapped at $009a, which in
+  // this 32-bit space left $0098-$0099 unmapped and delivered the *upper* half
+  // of a longword write to $05fe0098 to the handler, so the SCU timers were
+  // never enabled
+  map(0x0098, 0x009b).w(FUNC(saturn_scu_device::t1_mode_w));
   map(0x00a0, 0x00a3)
       .rw(FUNC(saturn_scu_device::irq_mask_r),
           FUNC(saturn_scu_device::irq_mask_w));
@@ -226,10 +230,14 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_abus_pending_ack));
   save_item(NAME(m_t0c));
   save_item(NAME(m_t1s));
+  save_item(NAME(m_t1md_reg));
   save_item(NAME(m_dma_status));
   save_item(NAME(m_current_vector));
   save_item(NAME(m_timer0_counter));
   save_item(NAME(m_t1md));
+  // m_tenb is derived from m_t1md_reg but is not recomputed on load, so it has
+  // to be saved in its own right or the timers stay disabled after a restore
+  save_item(NAME(m_tenb));
 
   save_item(NAME(m_dma[0].src));
   save_item(NAME(m_dma[0].dst));
@@ -360,6 +368,7 @@ void saturn_scu_device::device_reset() {
   // both latches need a defined value before anything enables the timers
   m_t0c = 0;
   m_t1s = 0;
+  m_t1md_reg = 0;
   m_timer1->adjust(attotime::never);
 }
 
@@ -893,9 +902,11 @@ void saturn_scu_device::t1_setdata_w(offs_t offset, uint32_t data,
  * ---- ---x ---- ---- T1MD Timer 1 mode (0=each line, 1=only at timer 0 lines)
  * ---- ---- ---- ---x TENB Timers enable
  */
-void saturn_scu_device::t1_mode_w(uint16_t data) {
-  m_t1md = BIT(data, 8);
-  m_tenb = BIT(data, 0);
+void saturn_scu_device::t1_mode_w(offs_t offset, uint32_t data,
+                                  uint32_t mem_mask) {
+  COMBINE_DATA(&m_t1md_reg);
+  m_t1md = BIT(m_t1md_reg, 8);
+  m_tenb = BIT(m_t1md_reg, 0);
   if (!m_tenb) {
     m_timer0_counter = 0;
     m_timer1->adjust(attotime::never);

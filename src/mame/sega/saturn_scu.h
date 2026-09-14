@@ -154,6 +154,8 @@ private:
   uint32_t m_ist;
   uint32_t m_t0c;
   uint32_t m_t1s;
+  uint32_t m_t1md_reg; // raw T1MD (Timer 1 Mode) register; m_t1md/m_tenb are
+                       // derived from it
   uint32_t m_dma_status;
   bool m_t1md;
   bool m_tenb;
@@ -225,7 +227,7 @@ private:
   // Timers
   void t0_compare_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
   void t1_setdata_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
-  void t1_mode_w(uint16_t data);
+  void t1_mode_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
   // Interrupt
   uint32_t irq_mask_r();
   uint32_t irq_status_r();
