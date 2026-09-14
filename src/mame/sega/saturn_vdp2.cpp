@@ -59,8 +59,6 @@ void saturn_vdp2_device::device_start() {
   save_item(NAME(m_hcounter_latch));
   save_item(NAME(m_vcounter_latch));
 
-  m_hreso = 0;
-  m_vreso = 0;
   m_dotsel_352 = false;
 }
 
@@ -68,11 +66,15 @@ void saturn_vdp2_device::device_reset() {
   m_video_sync_timer->adjust(m_screen->time_until_pos(0), 0);
 
   m_odd_bit = 1;
-  // shouldn't really matter
-  m_old_tvmd = 0xffff;
-  //	m_hreso = 0;
-  //	m_vreso = 0;
-  //	m_dotsel_352 = true;
+  // ST-058 section 2.4: TVMD clears on reset. Reset both readback and
+  // decoded controls before configuring the CRTC, not just the change latch.
+  m_tvmd = 0;
+  m_disp = 0;
+  m_bdclmd = 0;
+  m_lsmd = 0;
+  m_vreso = 0;
+  m_hreso = 0;
+  m_old_tvmd = 0xffff; // retain forced configuration on the first low-byte write
 
   // VRAMSZ and EXSLT/EXTEN are only ever written when the guest programs
   // them, but both are read back - VRAMSZ also feeds get_vramsz() - so they

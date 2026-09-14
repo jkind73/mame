@@ -55,8 +55,9 @@ private:
   bool m_is_pal;
   bool m_dotsel_352;
 
-  u16 m_tvmd, m_old_tvmd;
-  u8 m_disp, m_bdclmd, m_lsmd, m_vreso, m_hreso;
+  // The startup clock notification can configure the CRTC before reset.
+  u16 m_tvmd = 0, m_old_tvmd = 0xffff;
+  u8 m_disp = 0, m_bdclmd = 0, m_lsmd = 0, m_vreso = 0, m_hreso = 0;
   bool m_odd_bit;
   u16 m_exten;
   bool m_exlten, m_exsyen, m_dasel, m_exbgen;
