@@ -1,5 +1,40 @@
 # VDP1 completion audit — 2026-09-14
 
+## Native line and quad coverage — 2026-09-14
+
+Lines/polylines now use a signed 13-bit integer line-error datapath with directional
+ties, inclusive endpoints and per-dot Gouraud progression. Polygon/distorted
+commands now walk A–D and B–C edges, resampling the shorter edge before drawing
+each connecting line. They no longer use the affine quad filler. Coverage pixels
+share the current texel/shade and can blend the destination again; they are not
+filtered antialiasing. Distorted spans now use integer texture stepping, HSS/EOS,
+per-source-row END limits and per-edge/per-span Gouraud colors. Safe host-only
+out-of-bounds rejection retains a margin for coverage pixels; this is not a model
+of the hardware pre-clipping optimization.
+
+Validation adds 2,500 complete line images (all small octants, mesh, clipping and
+Gouraud) and 3,840 complete quad images (regular/skewed/reversed/twisted/degenerate
+geometry, texture flips, HSS/EOS, END, clipping modes, mesh, translucency and
+Gouraud). The quad tests execute the actual distorted-command entry point. The
+pixel oracles use closed-form geometric rounding rather than the implementation's
+iterative edge/line accumulators. Removing coverage pixels or changing edge phase
+fails assertions; line direction and vertex-pair controls also fail. Full 18-script/
+nine-object validation passes, with no linked BIOS/game or real save/load run.
+
+Primary: ST-013 §§7.6–7.9 (distortion, polygons, line/polyline semantics), §§6.3/6.8
+(texture/color controls and Gouraud tables). Pinned Ymir 6d77996 line/edge/quad
+steppers and per-edge gradients cross-check the implemented integer model;
+MiSTer a95b085 supplies a separate texture-error datapath cross-check. This is
+not a claim that all their precision/timing choices agree with hardware.
+
+Still unfinished: interruptible pixel execution, pixel/VRAM timing, automatic
+swap/erase/transfer timing and latch qualification, hardware pre-clipping behavior,
+scaled/normal Gouraud precision qualification, and linked runtime/save-manager
+acceptance. The older affine filler survives only as the explicitly unqualified
+zero-height scaled-pattern fallback; its remaining presence is not the normal
+polygon/distorted rendering path.
+
+
 ## Scaled integer texture stepping / HSS / EOS — 2026-09-14
 
 Scaled sprites now use a dedicated integer texture walker instead of the affine
