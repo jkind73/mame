@@ -2954,8 +2954,15 @@ void saturn_cd_hle_device::cd_readTOC(void) {
   tocbuf[tocptr + 2] = 0;
   tocbuf[tocptr + 3] = 0;
 
-  tocbuf[tocptr + 4] = tocbuf[(ntrks - 1) * 4]; // ditto for last track
-  tocbuf[tocptr + 5] = ntrks;                   // last track's track #
+  /* get_last_track() returns a track count, so (ntrks-1)*4 is the last
+     track's entry - but the count is 0 with no disc present, and both
+     cmd_get_toc() and cmd_get_session_info() call this without checking for
+     one, which made the index -4 and read four bytes in front of tocbuf.
+     Report the 0xff filler this format already uses for unused track
+     entries, which is what every entry is when there are no tracks. */
+  tocbuf[tocptr + 4] =
+      (ntrks > 0) ? tocbuf[(ntrks - 1) * 4] : 0xff; // ditto for last track
+  tocbuf[tocptr + 5] = ntrks;                       // last track's track #
   tocbuf[tocptr + 6] = 0;
   tocbuf[tocptr + 7] = 0;
 
