@@ -30,6 +30,18 @@ claimed to have three-way agreement or hardware-trace proof. No external rendere
 code was imported. Preclip/degenerate qualification, exact timing, active-display
 erase, linked BIOS/game execution and real save-manager acceptance remain open.
 
+### Linked-build attempt after the Gouraud correction
+
+Retried dependency installation rather than treating the earlier missing tools as
+permanent. This workspace allows passwordless package installation, but Debian
+package indexes could not be fetched: HTTP connections failed and HTTPS terminated
+during TLS, including alternate mirror probes. Consequently `pkg-config`, SDL2 and
+SDL2_ttf development files remain unavailable. `validate_build.py --full` stops at
+its missing-`pkg-config` preflight. No linked binary, game boot or real save-manager
+round trip was produced. This is an environment blocker for linked acceptance,
+not evidence that the remaining VDP1 behavior is complete. Downloaded references
+and failed build/dependency logs remain outside Git.
+
 ## Interruptible normal/scaled sprites — 2026-09-14
 
 Normal and scaled sprite commands now enqueue rectangle rows and share the saved
