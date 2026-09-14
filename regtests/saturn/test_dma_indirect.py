@@ -5,7 +5,8 @@
 
 Records memory/timer/IRQ endpoints, not CPU or bus timing. --baseline substitutes
 pre-fix DMA ticks and must fail zero-count decoding; --baseline-wide isolates
-the level 1/2 count-width regression.
+the level 1/2 count-width regression. --arbitration-baseline uses pre-preemption
+fix ticks and must fail the two-channel priority test.
 """
 import argparse
 import os
@@ -19,11 +20,13 @@ parser = argparse.ArgumentParser(description=__doc__)
 mode = parser.add_mutually_exclusive_group()
 mode.add_argument("--baseline", action="store_true")
 mode.add_argument("--baseline-wide", action="store_true")
+mode.add_argument("--arbitration-baseline", action="store_true")
 args = parser.parse_args()
 path = "src/mame/sega/saturn_scu.cpp"
 source = (ROOT / path).read_text()
-old = (subprocess.check_output(["git", "show", BASE + ":" + path], cwd=ROOT, text=True)
-       if args.baseline or args.baseline_wide else source)
+baseline_revision = "317dc6b785e4d675db89485914e0f2aea407da69" if args.arbitration_baseline else BASE
+old = (subprocess.check_output(["git", "show", baseline_revision + ":" + path], cwd=ROOT, text=True)
+       if args.baseline or args.baseline_wide or args.arbitration_baseline else source)
 header = (ROOT / "src/mame/sega/saturn_scu.h").read_text()
 
 
@@ -206,7 +209,101 @@ int main() {
         assert(ch.src == 0x123456 && ch.size == 0x456); // no direct register clobber
         ++scenarios;
       }
-  std::cout << scenarios << " indirect DMA chains passed through completion\n";
+  unsigned arbitration_scenarios = 0;
+  // Use supported channel pairs only. ST-210 item 35 prohibits starting
+  // channel 2 while channel 1 runs; item 20 only guarantees two channels.
+  for (int higher : {1, 2})
+    for (bool preempt : {false, true})
+      for (bool first_indirect : {false, true})
+        for (bool second_indirect : {false, true})
+          for (bool first_sound : {false, true})
+            for (bool second_sound : {false, true}) {
+              if (arbitration_baseline && !preempt) continue;
+              saturn_scu_device s;
+              const int first = preempt ? 0 : higher;
+              const int second = preempt ? higher : 0;
+              bool indirect[3]{}, sound[3]{};
+              indirect[first] = first_indirect; indirect[second] = second_indirect;
+              sound[first] = first_sound; sound[second] = second_sound;
+              u32 size[3]{};
+              size[first] = 8; size[second] = 4;
+              auto setup = [&](int level) {
+                auto &ch = s.m_dma[level];
+                u32 src = 0x02000000 + level * 0x100;
+                u32 dst = (sound[level] ? 0x05a10000 : 0x07010000) + level * 0x1000;
+                ch.src_add = 4; ch.dst_add = 2;
+                ch.indirect_mode = indirect[level];
+                if (indirect[level]) {
+                  ch.dst = 0x07000800 + level * 0x20;
+                  s.mem.descriptors[ch.dst] = size[level];
+                  s.mem.descriptors[ch.dst+4] = dst;
+                  s.mem.descriptors[ch.dst+8] = src | 0x80000000;
+                  s.trigger_dma_indirect(level);
+                } else {
+                  ch.src = src; ch.dst = dst; ch.size = size[level];
+                  s.trigger_dma_direct(level);
+                }
+              };
+              auto step = [&](int level) {
+                assert(std::get<0>(s.check_dma_level_round_robin()) == level);
+                s.mem.expected_src = s.m_dma[level].live_src;
+                s.mem.expected_dst = s.m_dma[level].live_dst;
+                s.dma_tick_cb();
+              };
+              auto ownership = [&](int level) {
+                assert(s.m_main_dtack_cb.last == !indirect[level]);
+                assert(s.m_sound_dtack_cb.last == (!indirect[level] && sound[level]));
+              };
+              setup(first);
+              s.dma_tick_cb(); // start the first waiting channel
+              if (indirect[first]) step(first); // fetch its single descriptor
+              step(first); // first word
+              assert(s.m_dma[first].live_count == 2);
+              ownership(first);
+              setup(second);
+              step(first); // preserve current tick granularity, then arbitrate
+              assert(s.m_dma[first].live_count == 4);
+              const int winner = preempt ? second : first;
+              const int loser = preempt ? first : second;
+              auto [moving, waiting] = s.check_dma_level_round_robin();
+              assert(moving == winner && waiting == loser);
+              assert((s.m_dma_status & (0x30u << (first*4))) == ((preempt ? 0x20u : 0x10u) << (first*4)));
+              if (preempt) assert(s.m_dma_status & (1u << (16+first)));
+              ownership(winner);
+              u32 paused_count = s.m_dma[loser].live_count;
+              u32 paused_src = s.m_dma[loser].live_src;
+              u32 paused_dst = s.m_dma[loser].live_dst;
+              for (int ticks = 0; !s.m_dma[winner].done; ++ticks) {
+                assert(ticks < 8);
+                step(winner);
+                assert(s.m_dma[loser].live_count == paused_count);
+                assert(s.m_dma[loser].live_src == paused_src && s.m_dma[loser].live_dst == paused_dst);
+              }
+              assert(s.m_ist == 0); // no completion before final retirement tick
+              step(winner);
+              assert(s.m_ist == (1u << (11-winner)) && s.irq_checks == 1);
+              assert(std::get<0>(s.check_dma_level_round_robin()) == loser);
+              assert((s.m_dma_status & (7u << 16)) == 0);
+              assert(!s.tim.stopped);
+              ownership(loser); // restore direct halt or indirect cycle stealing
+              for (int ticks = 0; !s.m_dma[loser].done; ++ticks) {
+                assert(ticks < 8);
+                step(loser);
+              }
+              step(loser);
+              assert(s.m_ist == ((1u << (11-winner)) | (1u << (11-loser))));
+              assert(s.irq_checks == 2 && s.m_dma_status == 0 && s.tim.stopped);
+              assert(s.mem.words == 6 && s.m_main_steal_cb.calls == 6);
+              assert(s.m_main_dtack_cb.last == 0 && s.m_sound_dtack_cb.last == 0);
+              assert(s.mem.descriptor_reads.size() == unsigned(3 * (first_indirect + second_indirect)));
+              for (int level : {first, second}) {
+                assert(s.m_dma[level].live_src == 0x02000000u + level*0x100u + size[level]);
+                assert(s.m_dma[level].live_dst == (sound[level] ? 0x05a10000u : 0x07010000u) + level*0x1000u + size[level]);
+              }
+              ++arbitration_scenarios;
+            }
+  std::cout << scenarios << " indirect DMA chains passed through completion; "
+            << arbitration_scenarios << " two-channel arbitration scenarios passed\n";
 }
 '''
 with tempfile.TemporaryDirectory(prefix="saturn-dma-indirect-") as temp:
@@ -214,7 +311,8 @@ with tempfile.TemporaryDirectory(prefix="saturn-dma-indirect-") as temp:
     exe = Path(temp) / "dma"
     cpp.write_text(harness.replace("// PRODUCTION_TYPES", bus + enums + channel)
                    .replace("// PRODUCTION_FUNCTIONS", "constexpr bool wide_baseline = "
-                            + str(args.baseline_wide).lower() + ";\n" + functions))
+                            + str(args.baseline_wide).lower() + ";\nconstexpr bool arbitration_baseline = "
+                            + str(args.arbitration_baseline).lower() + ";\n" + functions))
     subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O1", "-g",
                     "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
                     "-fsanitize=address,undefined", "-fno-sanitize-recover=all",

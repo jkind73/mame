@@ -209,3 +209,13 @@ alongside these reopened items.
   and narrow-count negative controls fail. Direct-register limits unchanged.
 - All ten regression scripts and three object compilations pass. Simultaneous
   DMA, held triggers, unusual alignments/increments and runtime remain open.
+
+### Two-channel DMA arbitration — implemented and tested
+
+- Suspend the old lower-priority channel when promoting a new higher-priority
+  owner; restore halt callbacks on promotion/resumption using the existing policy.
+- ST-097 priority / ST-210 two-channel restrictions checked with Ymir/Mednafen.
+  64 direct/indirect, sound/non-sound, arrival-order scenarios pass alongside 54
+  indirect chains. Pre-fix ticks fail the priority assertion.
+- Exact cycle/bus halt policy, completion-boundary races, held triggers and DSP/
+  three-channel overlap remain open. All ten scripts and three object builds pass.
