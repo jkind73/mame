@@ -643,11 +643,17 @@ void sat_console_state::saturn_mem(address_map &map) {
              mem_mask);
     return 0xffff;
   }));
-  // the FRT init windows read back 0xffff and pass writes straight to the FRT
+  /* The FRT init windows read back 0xffff and pass writes straight to the FRT.
+     Both also have cache-through aliases at 21000000H / 21800000H, which matter
+     here rather than just for consistency: MINIT and SINIT are write-only
+     triggers, so a title that wants the write to reach the bus rather than sit
+     in the SH-2's write-back cache has to use the alias. */
   map(0x01000000, 0x017fffff)
+      .mirror(0x20000000)
       .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
       .w("dcc", FUNC(saturn_dcc_device::minit_w));
   map(0x01800000, 0x01ffffff)
+      .mirror(0x20000000)
       .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
       .w("dcc", FUNC(saturn_dcc_device::sinit_w));
   //  map(0x02000000, 0x023fffff).rom().mirror(0x20000000); // Cartridge area
