@@ -188,3 +188,13 @@ alongside these reopened items.
   All eight regression scripts and three object compilations pass.
 - No change to region/DOTSEL or saved-state layout. Full-device reset integration,
   other register/status initialization and BIOS/game runtime remain unverified.
+
+### SCU C-Bus mirror decode — implemented and tested
+
+- Recognize high work-RAM mirrors in `0x07000000..0x07ffffff`, matching both
+  machine maps and Ymir/Mednafen. Direct DMA no longer rejects these aliases;
+  the shared classifier also supplies C-Bus mode selection for indirect entries.
+- 768 address checks and 2,304 direct DMA scenarios pass; old classifier fails.
+  All nine regression scripts and three object compilations pass.
+- Full indirect DMA execution, bus timings and exact official mirror-aperture
+  documentation remain unverified. This does not complete the wider DMA audit.

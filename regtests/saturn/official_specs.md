@@ -197,3 +197,11 @@ before the startup clock callback and clear on device reset before CRTC setup.
 3,072 scenarios cover initializers, register handlers and reset/CRTC helpers.
 This supersedes the previous note that TVMD initialization remains unaddressed;
 other reset registers, actual screen scheduling and SMPC reset wiring remain open.
+
+## Address-map audit update: C-Bus mirrors
+
+The missing `0x07xxxxxx` C-Bus decode was corrected using the existing Saturn/ST-V
+memory maps plus Ymir GetBusID and Mednafen AddressToBus/DMA_ReadCBus. The README
+records 768 classification checks and 2,304 direct DMA scenarios. This is an
+explicit source/emulator cross-check: a precise official mirror-aperture section
+has not yet been established, and no hardware measurement is claimed.
