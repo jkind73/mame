@@ -2975,6 +2975,19 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
 
   filterprt = &partitions[lastbuf];
 
+  // a partition holds at most MAX_BLOCKS blocks, and blocks[]/bnum[] are
+  // indexed here before cd_alloc_block() gets any chance to report
+  // exhaustion - bnum[MAX_BLOCKS] is followed immediately by numblks, so an
+  // overfull partition would scribble on its own block count and then on the
+  // next partition. cmd_move_sector_data() and cmd_copy_sector_data() already
+  // bail out when the buffer fills, and software does get there: see the DRDY
+  // note at the top of this file.
+  if (filterprt->numblks >= MAX_BLOCKS) {
+    LOGWARN("CD: filter buffer full after %d blocks\n", MAX_BLOCKS);
+    *p_ok = 0;
+    return (partitionT *)nullptr;
+  }
+
   // try to allocate a block
   filterprt->blocks[filterprt->numblks] =
       cd_alloc_block(&filterprt->bnum[filterprt->numblks]);
