@@ -13,8 +13,10 @@ After Burner II (`saturn:aburner2`, 91 seconds). The uploaded `newerror.log` is
 3,230,668 bytes / 18,519 lines, SHA-256
 `2288b3f5c73cd4fb0d00c98b003fcdebece80cbbe27a1531ed51cf14838df374`.
 Its emulated timestamps extend to 92.097 seconds and it has no scaled records;
-this is consistent with the later run replacing the earlier machine's error log.
-Do not attribute its geometry to OutRun without further identification.
+the user explicitly confirms this is an intentional After Burner II boot-stall
+capture, not an OutRun scaling test. See [the boot investigation](afterburner2_boot_analysis.md)
+for analysis and the new focused CD diagnostics. Do not attribute its geometry to
+OutRun.
 
 It contains 2,336 normal-sprite records (eight distinct command/bounds records),
 all with equal source and destination dimensions and local coordinates (158,107).
@@ -32,7 +34,8 @@ copy error.log outrun-error.log
 
 Exit MAME completely before the copy and before launching another game. Save a
 screenshot of the remaining defect alongside the log, identifying the game/scene.
-The diagnostic code already exists; this follow-up changes documentation only.
+These OutRun instructions are conditional on a remaining visual defect; they are
+not a request to repeat the supplied After Burner II capture.
 
 ## Supplied evidence
 
@@ -103,6 +106,6 @@ erase paths are unchanged.
 cancellation. Early erase and wrong-bank mutations fail assertions. All 18
 regression scripts and nine production object compilations pass.
 
-**OutRun visual confirmation still requires a rerun.** No claim is made that the
+**OutRun flashing is user-confirmed fixed.** No claim is made that the
 oversized/displaced logo is fixed. Rebuild this branch and test the same scene;
 `-verbose -log` now also records normal-sprite source/destination bounds.
