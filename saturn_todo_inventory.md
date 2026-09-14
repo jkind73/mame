@@ -217,3 +217,11 @@ Mostly 0-2 refs, game-specific, long tail:
 5. **CD HLE MPEG ROM retrieval** — needs actual MPEG ROM.
 
 All above are Tier 2, high ref coverage.
+
+## Build-validation follow-up — 2026-09-14
+
+All six regression scripts plus actual object compilation of the three changed
+C++ files pass (`regtests/saturn/validate_build.py`). This is stronger than the
+syntax-only checks above, but still not a linked MAME build. Missing development
+packages and failed sandbox package access block full-build validation; ROM
+runtime/save-state/performance checks remain outstanding.
