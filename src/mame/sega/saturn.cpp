@@ -1111,11 +1111,54 @@ uint16_t saturn_state::vdp1_apply_gouraud_shading(int x, int y, uint16_t pix) {
   // Mesh, transparency and user clipping can suppress writes without stopping
   // the Gouraud interpolator (ST-013 section 6.3).
   const auto &line = vdp1_shading_data->scanline[y];
+  if (line.integer) {
+    const int origin = line.x[0] >> FRAC_SHIFT;
+    const int columns = std::abs((line.x[1] >> FRAC_SHIFT) - origin) + 1;
+    const auto channel = [&](int original, const int32_t *ends) {
+      const int a = ends[0] >> FRAC_SHIFT, b = ends[1] >> FRAC_SHIFT;
+      const int correction = std::min(a, b) + vdp1_scaled_coordinate(
+          std::abs(b - a) + 1, columns, std::abs(x - origin), b < a);
+      return std::clamp(original + correction - 16, 0, 31);
+    };
+    return (pix & 0x8000) | channel(RGB_R(pix), line.r) |
+        (channel(RGB_G(pix), line.g) << 5) | (channel(RGB_B(pix), line.b) << 10);
+  }
   const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);
   const int r = _shading(RGB_R(pix), line.r[0] + dx * line.dr);
   const int g = _shading(RGB_G(pix), line.g[0] + dx * line.dg);
   const int b = _shading(RGB_B(pix), line.b[0] + dx * line.db);
   return (pix & 0x8000) | (b << 10) | (g << 5) | r;
+}
+
+void saturn_state::vdp1_setup_rectangle_shading(const spoint *q, const rectangle &cliprect) {
+  if (!read_gouraud_table())
+    return;
+  // ST-013 sections 6.8 and 7.4/7.5: the table belongs to vertices A/B/C/D,
+  // independently of texture DIR. Include both scaled destination endpoints.
+  // Use the same quantized edge-then-span recurrence as native primitives;
+  // clipping skips positions rather than restarting the gradient.
+  const int rows = std::abs(q[3].y - q[0].y) + 1;
+  const int top = std::max({std::min(q[0].y, q[3].y), cliprect.min_y, 0});
+  const int bottom = std::min({std::max(q[0].y, q[3].y), cliprect.max_y, 511});
+  const uint16_t colors[4] = {gouraud_shading.GA, gouraud_shading.GB,
+                            gouraud_shading.GC, gouraud_shading.GD};
+  for (int y = top; y <= bottom; ++y) {
+    auto &line = vdp1_shading_data->scanline[y];
+    line = {};
+    line.integer = true;
+    // Multiplication is defined for negative offscreen coordinates as well.
+    line.x[0] = q[0].x * (1 << FRAC_SHIFT);
+    line.x[1] = q[1].x * (1 << FRAC_SHIFT);
+    for (int edge = 0; edge < 2; ++edge) {
+      int32_t *channels[3] = {line.r, line.g, line.b};
+      for (int component = 0; component < 3; ++component) {
+        const int a = (colors[edge] >> (component * 5)) & 31;
+        const int b = (colors[3 - edge] >> (component * 5)) & 31;
+        channels[component][edge] = (std::min(a, b) + vdp1_scaled_coordinate(
+            std::abs(b - a) + 1, rows, std::abs(y - q[0].y), b < a)) << FRAC_SHIFT;
+      }
+    }
+  }
 }
 
 void saturn_state::vdp1_setup_shading_for_line(int32_t y, int32_t x1,
@@ -1129,6 +1172,7 @@ void saturn_state::vdp1_setup_shading_for_line(int32_t y, int32_t x1,
   if (xx1 > xx2) {
     using std::swap;
     swap(xx1, xx2);
+    swap(x1, x2);
     swap(r1, r2);
     swap(g1, g2);
     swap(b1, b2);
@@ -1154,6 +1198,7 @@ void saturn_state::vdp1_setup_shading_for_line(int32_t y, int32_t x1,
         grd = -grd;
     }
 
+    vdp1_shading_data->scanline[y].integer = false;
     vdp1_shading_data->scanline[y].x[0] = x1;
     vdp1_shading_data->scanline[y].x[1] = x2;
 
@@ -2381,7 +2426,10 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
     q[2].v = q[3].v = ysize - 1;
   }
 
-  vdp1_setup_shading(q, cliprect);
+  if (ysize <= 0 && xsize > 0)
+    vdp1_setup_shading(q, cliprect);
+  else
+    vdp1_setup_rectangle_shading(q, cliprect);
   vdp1_draw_scaled_pixels(cliprect, patterndata, xsize, ysize, q);
 }
 
@@ -2540,14 +2588,15 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
     struct spoint q[4];
     q[0].x = x;
     q[0].y = y;
-    q[1].x = x + xsize;
+    q[1].x = x + xsize - 1;
     q[1].y = y;
-    q[2].x = x + xsize;
-    q[2].y = y + ysize;
+    q[2].x = x + xsize - 1;
+    q[2].y = y + ysize - 1;
     q[3].x = x;
-    q[3].y = y + ysize;
+    q[3].y = y + ysize - 1;
 
-    vdp1_setup_shading(q, cliprect);
+    if (xsize > 0 && ysize > 0)
+      vdp1_setup_rectangle_shading(q, cliprect);
   }
 
   u = 0;
@@ -3035,6 +3084,7 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_raster.end_codes));
   // Rectangular Gouraud interpolation is prepared at command fetch. Preserve
   // those coefficients, rather than re-reading a possibly edited VRAM table.
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, integer));
   save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, x));
   save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, r));
   save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, g));

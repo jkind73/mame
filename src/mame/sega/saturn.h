@@ -273,6 +273,7 @@ protected:
                                     int32_t _y1, int32_t y2);
   uint16_t vdp1_apply_gouraud_shading(int x, int y, uint16_t pix);
   void vdp1_setup_shading(const struct spoint *q, const rectangle &cliprect);
+  void vdp1_setup_rectangle_shading(const spoint *q, const rectangle &cliprect);
   uint8_t read_gouraud_table();
   void clear_gouraud_shading();
 
@@ -285,6 +286,7 @@ protected:
   int vdp1_start();
 
   struct vdp1_poly_scanline {
+    bool integer = false;
     int32_t x[2]{};
     int32_t b[2]{};
     int32_t g[2]{};
