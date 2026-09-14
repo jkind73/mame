@@ -166,11 +166,12 @@ void saturn_scu_device::regs_map(address_map &map) {
       .rw(FUNC(saturn_scu_device::irq_status_r),
           FUNC(saturn_scu_device::irq_status_w));
   map(0x00a8, 0x00ab).w(FUNC(saturn_scu_device::abus_irqack_w));
-  //  map(0x00b0, 0x00b7).rw(FUNC(saturn_scu_device::abus_set_r),
-  //  FUNC(saturn_scu_device::abus_set_w)); map(0x00b8,
-  //  0x00bb).rw(FUNC(saturn_scu_device::abus_refresh_r),
-  //  FUNC(saturn_scu_device::abus_refresh_w)); map(0x00c4,
-  //  0x00c7).rw(FUNC(saturn_scu_device::sdram_r),
+  // ASR0/ASR1 (A-Bus access settings) and AREF (A-Bus refresh): Sega's SCU
+  // register table and the memory-map notes both place them here, and TB47
+  // describes the wait-state fields they carry
+  map(0x00b0, 0x00b7).w(FUNC(saturn_scu_device::abus_set_w));
+  map(0x00b8, 0x00bb).w(FUNC(saturn_scu_device::abus_refresh_w));
+  //  map(0x00c4, 0x00c7).rw(FUNC(saturn_scu_device::sdram_r),
   //  FUNC(saturn_scu_device::sdram_w));
   map(0x00c8, 0x00cb).r(FUNC(saturn_scu_device::version_r));
 }
@@ -228,6 +229,8 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_ist));
   save_item(NAME(m_ism));
   save_item(NAME(m_abus_pending_ack));
+  save_item(NAME(m_abus_asr));
+  save_item(NAME(m_abus_aref));
   save_item(NAME(m_t0c));
   save_item(NAME(m_t1s));
   save_item(NAME(m_t1md_reg));
@@ -321,6 +324,9 @@ void saturn_scu_device::device_reset() {
   m_ism = 0xbfff;
   m_ist = 0;
   m_abus_pending_ack = 0;
+  m_abus_asr[0] = 0;
+  m_abus_asr[1] = 0;
+  m_abus_aref = 0;
 
   // every dma_channel_t member has to be given a value here: the device
   // constructor leaves them indeterminate, and the DMA logic reads the flags
@@ -425,20 +431,31 @@ std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address,
   // Also eventually needs to be in client address_maps as .before_delay
   int penalty = 0;
 
+  /* A-Bus wait counts come from the ASR0/ASR1 registers ($B0-$B7): A0NW is
+     bits 23-20 of ASR0, A1NW bits 7-4 of ASR0 and A3NW bits 7-4 of ASR1.  The
+     MiSTer core's A-Bus sequencer builds the wait counter as
+     "AnNW + 3 (+ ARWT when a refresh falls inside the access)"; the refresh
+     term is per-access and dynamic, so only the fixed part is modelled
+     here. */
+  int const a0nw = (m_abus_asr[0] >> 20) & 0x0f;
+  int const a1nw = (m_abus_asr[0] >> 4) & 0x0f;
+  int const a3nw = (m_abus_asr[1] >> 4) & 0x0f;
+
   switch (address & 0x0700'0000) {
-  // TODO: A-Bus penalties comes from $b0-$b7 registers and are fairly complex
   case 0x0200'0000:
   case 0x0300'0000:
     flags = saturn_scu_device::A_BUS_CS0;
+    penalty = a0nw + 3;
     break;
   case 0x0400'0000:
     flags = saturn_scu_device::A_BUS_CS1;
+    penalty = a1nw + 3;
     break;
   case 0x0500'0000: {
     switch (address & 0x00f0'0000) {
     case 0x0080'0000:
       flags = saturn_scu_device::A_BUS_CS2;
-      // penalty = 8;
+      penalty = a3nw + 3;
       break;
     case 0x00a0'0000:
     case 0x00b0'0000:
@@ -1154,6 +1171,22 @@ void saturn_scu_device::abus_irqack_w(offs_t offset, uint32_t data,
 //**************************************************************************
 //  Miscellanea
 //**************************************************************************
+
+//-------------------------------------------------
+//  A-Bus Set / Refresh registers (ASR0, ASR1, AREF)
+//
+//  Write-only configuration of the A-Bus chip-select timing; the wait
+//  counts they hold are picked up by get_address_flags().
+//-------------------------------------------------
+
+void saturn_scu_device::abus_set_w(offs_t offset, uint32_t data,
+                                   uint32_t mem_mask) {
+  COMBINE_DATA(&m_abus_asr[offset & 1]);
+}
+
+void saturn_scu_device::abus_refresh_w(uint32_t data, uint32_t mem_mask) {
+  COMBINE_DATA(&m_abus_aref);
+}
 
 uint32_t saturn_scu_device::version_r() {
   return 4; // correct for stock Saturn at least

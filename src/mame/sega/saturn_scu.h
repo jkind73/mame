@@ -162,6 +162,8 @@ private:
   int m_current_irq_level;
   uint8_t m_current_vector;
   uint16_t m_abus_pending_ack; // A-Bus interrupts waiting for an AIACK write
+  uint32_t m_abus_asr[2];      // ASR0/ASR1, A-Bus access settings ($B0-$B7)
+  uint32_t m_abus_aref;        // AREF, A-Bus refresh setting ($B8-$BB)
   uint16_t m_timer0_counter;
   uint32_t m_dma_clock_ref;
 
@@ -236,6 +238,8 @@ private:
   uint32_t version_r();
   // A-Bus section
   void abus_irqack_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+  void abus_set_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+  void abus_refresh_w(uint32_t data, uint32_t mem_mask = ~0);
 };
 
 // device type definition
