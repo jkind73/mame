@@ -290,3 +290,59 @@ compare ordering is still open.
 Complete `saturn.cpp`, `saturn_vdp2.cpp`, and `saturn_scu.cpp` syntax checks pass.
 SCU's inherited include order was corrected to include `emu.h` first. All four
 previous regression scripts pass. Full build and ROM testing remain pending.
+
+## SCU timer-0 compare ordering and TENB gating
+
+Implemented ST-097 §3.4 (printed pp.55–56 / PDF pp.71–72) and ST-210 item 30
+(printed p.9 / PDF p.13):
+
+- VBlank-OUT resets timer 0 and, when TENB is set and compare is zero, produces
+  timer-0 status and DMA trigger at that event. Both VBlank-OUT and timer-0 status
+  are present before pending IRQ evaluation. Timer 1 is not loaded by VBlank-OUT.
+- With TENB enabled, HBlank increments the nine-bit counter before comparing it
+  with the ten-bit compare register. Positive compare K matches HBlank number K
+  following VBlank-OUT. TENB-off HBlanks do not increment the counter; ordinary
+  HBlank IRQ/DMA processing is unaffected.
+- VBlank-IN does not reset timer 0; HBlank counting continues through blanking.
+  Existing register masks and TENB-off reset/cancellation behavior are retained.
+
+Cross-checked the same pinned Ymir `UpdateHBlank`, `UpdateVBlank`, `CheckTimer0`
+and Mednafen `SCU_SetHBVB`, `Timer0_Check` implementations linked in the timer-1
+section. Both gate HBlank increment with timer enable and compare after increment;
+both check the reset counter at VBlank-out when enabled. Their broader interrupt
+and timer-1 models are not imported.
+
+```sh
+python3 regtests/saturn/test_timer0.py
+python3 regtests/saturn/test_timer0.py --baseline  # expected compare-zero assertion failure
+python3 regtests/saturn/run_all.py               # all six regression scripts
+```
+
+**8,192 two-frame scenarios passed** with ASan/UBSan: 263/313 HBlank events per
+frame, all compare values 0–1023, TENB on/off and T1MD 0/1. Tests check the exact
+event of timer-0 status/DMA generation, unsupported compare values, counting
+through VBlank-IN, deasserted inputs, one-count timer-1 eligibility, no timer-1
+load at VBlank-OUT, disable/re-enable, masked writes and nine-bit counter wrap.
+The pre-fix callbacks from `c14588532ad776662aad5b05b65113598ea61fcf` fail the
+compare-zero regression. Timer-0 and timer-1 tests now share the recording
+stand-ins in `scu_timer_harness.h`; timer-1's next-match setup was updated to
+account for the corrected increment order.
+
+CRTC integration assessment: the current VDP2 sync callback dispatches VBlank
+before HBlank at each position. It clears HBlank at the line start, then sends
+one rising HBlank edge at `m_hdisplay`; after wrapping, VBlank-OUT occurs at line
+zero's start. Thus compare K is reached at screen row K-1's HBlank for normal
+modes, or row 2*(K-1) in MAME's doubled geometry. This mapping follows the current
+code, not a new hardware measurement. Existing VBlank-start active+1 positioning
+and approximate field geometry are unchanged and still need trace validation.
+
+These tests execute production SCU callback bodies, not a full CPU/SCU/VDP2
+machine. The IRQ stub records pending bits, not SH-2 delivery or priority arbitration;
+DMA stubs record triggers, not transfers. No physical blank-boundary timing,
+mid-line compare-write immediate behavior, full T1MD IRQ qualification, save/load,
+or game compatibility claim is made. In particular the inherited T1MD policy
+still gates timer-1 loading; other emulators qualify its expiry differently.
+
+All six regression scripts and standalone syntax checks of `saturn.cpp`,
+`saturn_vdp2.cpp`, and `saturn_scu.cpp` pass. Full build and ROM testing remain
+pending; next prioritize that validation and interlace counter encoding.

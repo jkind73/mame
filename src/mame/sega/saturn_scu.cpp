@@ -1112,8 +1112,14 @@ void saturn_scu_device::vblank_out_w(int state) {
   dma_start_factor_ack(DMA_EVENT_VBLANKOUT);
 
   m_ist |= IST_VBLANK_OUT;
-  test_pending_irqs();
   m_timer0_counter = 0;
+  // ST-210 precaution 30: compare zero occurs at VBlank-OUT, not at the
+  // following HBlank. Timer 1 is still loaded only by HBlank (precaution 31).
+  if (m_tenb && m_t0c == 0) {
+    dma_start_factor_ack(DMA_EVENT_TIMER0);
+    m_ist |= IST_TIMER_0;
+  }
+  test_pending_irqs();
 }
 
 void saturn_scu_device::vblank_in_w(int state) {
@@ -1135,6 +1141,9 @@ void saturn_scu_device::hblank_in_w(int state) {
 
   // check if timer enabled first (diehard cares for sound, sets T0C = 0)
   if (m_tenb) {
+    // ST-097 section 3.4 / ST-210 precaution 30: the first HBlank after
+    // VBlank-OUT compares against 1. TENB gates counting as well as matches.
+    m_timer0_counter = (m_timer0_counter + 1) & 0x1ff;
     const bool timer0_hit = m_timer0_counter == m_t0c;
     if (timer0_hit) {
       dma_start_factor_ack(DMA_EVENT_TIMER0);
@@ -1161,11 +1170,6 @@ void saturn_scu_device::hblank_in_w(int state) {
       m_timer1->adjust(attotime::from_ticks(count, this->clock() / 8));
     }
   }
-  // NOTE: the counter still runs, it's the irq that fires if timer is enabled
-  // also that this never fires if t0c & 0x200
-  m_timer0_counter++;
-  m_timer0_counter &= 0x1ff;
-
   test_pending_irqs();
 }
 
