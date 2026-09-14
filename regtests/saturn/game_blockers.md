@@ -1,5 +1,19 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## Runtime follow-up: OutRun flashing confirmed resolved
+
+The user confirms the flashing sprites are gone following the manual display-erase
+ordering fix. This is user-run validation, not a local game boot or full VDP1
+acceptance. The size/offset issue has not been confirmed resolved.
+
+Reviewed upload `822d45ac`: its console includes OutRun followed by After Burner
+II. `newerror.log` appears to contain the later ~92-second run, with 2,336 normal
+sprite records and no scaled records. Logged normal source/destination dimensions
+match; the file cannot establish an OutRun scaling cause. The earlier trace and
+new upload remain preserved. See `regtests/saturn/outrun_trace_analysis.md` for
+provenance and single-game capture instructions. No rendering changes or new
+regression-test claims were made in this documentation-only follow-up.
+
 ## OutRun log received: manual erase presentation ordering
 
 Analyzed the user's `c4ae255c` upload: Saturn Japan/OutRun, 44,945 scaled commands,
