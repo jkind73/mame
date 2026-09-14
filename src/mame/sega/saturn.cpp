@@ -436,9 +436,9 @@ void saturn_state::system_reset_w(int state) {
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
-  memset(m_vdp2_regs.get(), 0x00, 0x040000);
+  memset(m_vdp2_regs.get(), 0x00, 0x000200);
   memset(m_vdp2_vram.get(), 0x00, 0x100000);
-  memset(m_vdp2_cram.get(), 0x00, 0x080000);
+  memset(m_vdp2_cram.get(), 0x00, 0x001000);
   memset(m_vdp1_vram.get(), 0x00, 0x100000);
   // A-Bus
 
@@ -9540,9 +9540,17 @@ int saturn_state::vdp2_start() {
       MACHINE_NOTIFY_EXIT,
       machine_notify_delegate(&saturn_state::vdp2_exit, this));
 
-  m_vdp2_regs = make_unique_clear<uint16_t[]>(0x040000 / 2);
+  /* the VDP2 register file is 0x200 bytes and colour RAM is 4 KiB, each
+     mirrored across a much larger address window, so vdp2_regs_r/w() and
+     vdp2_cram_r/w() mask the offset down to the real size before indexing
+     (& 0xff and & 0x3ff words respectively).  These were allocated to cover
+     the whole window instead - 256 KiB and 512 KiB, of which only 0x100 and
+     0x400 words were reachable - and the unreachable part was zeroed at every
+     reset and carried in every save state.  Size them to what the hardware
+     has, as m_vdp1_regs and m_vdp2_vram already are. */
+  m_vdp2_regs = make_unique_clear<uint16_t[]>(0x000200 / 2);
   m_vdp2_vram = make_unique_clear<uint32_t[]>(0x100000 / 4);
-  m_vdp2_cram = make_unique_clear<uint32_t[]>(0x080000 / 4);
+  m_vdp2_cram = make_unique_clear<uint32_t[]>(0x001000 / 4);
   m_vdp2_legacy.gfx_decode = std::make_unique<uint8_t[]>(0x100000);
 
   //  m_gfxdecode->gfx(0)->granularity()=4;
@@ -9552,9 +9560,9 @@ int saturn_state::vdp2_start() {
   RBG0_cache_data.is_cache_dirty = 3;
   vdp2_layer_data = _vdp2_layer_data();
 
-  save_pointer(NAME(m_vdp2_regs), 0x040000 / 2);
+  save_pointer(NAME(m_vdp2_regs), 0x000200 / 2);
   save_pointer(NAME(m_vdp2_vram), 0x100000 / 4);
-  save_pointer(NAME(m_vdp2_cram), 0x080000 / 4);
+  save_pointer(NAME(m_vdp2_cram), 0x001000 / 4);
   machine().save().register_postload(save_prepost_delegate(
       FUNC(saturn_state::vdp2_state_save_postload), this));
 
