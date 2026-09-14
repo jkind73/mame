@@ -699,6 +699,12 @@ void saturn_state::vdp1_prepare_framebuffers() {
 }
 
 void saturn_state::vdp1_change_framebuffers() {
+  // BEF records the previous drawing bank, not every VBlank callback.
+  // In manual mode a VBlank without a bank change must leave it latched.
+  if (VDP1_CEF)
+    BEF_1();
+  else
+    BEF_0();
   // ST-013 section 4.7: latch the current command address on bank change.
   m_vdp1_legacy.lopr = m_vdp1_legacy.copr;
   m_vdp1_legacy.framebuffer_current_display ^= 1;
@@ -1020,7 +1026,7 @@ uint8_t saturn_state::read_gouraud_table() {
   }
 }
 
-static inline int32_t _shading(int32_t color, int32_t correction) {
+static inline int32_t _shading(int32_t color, int64_t correction) {
   correction = (correction >> 16) & 0x1f;
   color += (correction - 16);
 
@@ -1033,34 +1039,15 @@ static inline int32_t _shading(int32_t color, int32_t correction) {
 }
 
 uint16_t saturn_state::vdp1_apply_gouraud_shading(int x, int y, uint16_t pix) {
-  int32_t r, g, b, msb;
-
-  msb = pix & 0x8000;
-
-#ifdef MAME_DEBUG
-  if ((vdp1_shading_data->scanline[y].x[0] >> 16) != x) {
-    logerror(
-        "ERROR in computing x coordinates (line %d, x = %x, %d, xc = %x, %d)\n",
-        y, x, x, vdp1_shading_data->scanline[y].x[0],
-        vdp1_shading_data->scanline[y].x[0] >> 16);
-  };
-#endif
-
-  b = RGB_B(pix);
-  g = RGB_G(pix);
-  r = RGB_R(pix);
-
-  b = _shading(b, vdp1_shading_data->scanline[y].b[0]);
-  g = _shading(g, vdp1_shading_data->scanline[y].g[0]);
-  r = _shading(r, vdp1_shading_data->scanline[y].r[0]);
-
-  vdp1_shading_data->scanline[y].b[0] += vdp1_shading_data->scanline[y].db;
-  vdp1_shading_data->scanline[y].g[0] += vdp1_shading_data->scanline[y].dg;
-  vdp1_shading_data->scanline[y].r[0] += vdp1_shading_data->scanline[y].dr;
-
-  vdp1_shading_data->scanline[y].x[0] += 1 << FRAC_SHIFT;
-
-  return msb | b << 10 | g << 5 | r;
+  // Evaluate at the destination coordinate, not at the number of dots written.
+  // Mesh, transparency and user clipping can suppress writes without stopping
+  // the Gouraud interpolator (ST-013 section 6.3).
+  const auto &line = vdp1_shading_data->scanline[y];
+  const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);
+  const int r = _shading(RGB_R(pix), line.r[0] + dx * line.dr);
+  const int g = _shading(RGB_G(pix), line.g[0] + dx * line.dg);
+  const int b = _shading(RGB_B(pix), line.b[0] + dx * line.db);
+  return (pix & 0x8000) | (b << 10) | (g << 5) | r;
 }
 
 void saturn_state::vdp1_setup_shading_for_line(int32_t y, int32_t x1,
@@ -1422,6 +1409,42 @@ void saturn_state::drawpixel_4bpp_trans(int x, int y, int patterndata,
     vdp1_write_pixel(x, y, pix | m_sprite_colorbank);
 }
 
+uint16_t saturn_state::vdp1_color_calculate(uint16_t src, uint16_t dst, unsigned mode) {
+  // Gouraud saturation is applied to src before this operation. Mode 5 is
+  // prohibited; retain the component-bit interpretation for that setting.
+  switch (mode & 3) {
+  case 0: return src;
+  case 1: return (dst & 0x8000) ? ((dst & 0x7bde) >> 1) | 0x8000 : dst;
+  case 2: return ((src & 0x7bde) >> 1) | (src & 0x8000);
+  case 3:
+    if (!(dst & 0x8000))
+      return src;
+    // Per-component floor((source + background) / 2), including the carry
+    // when both inputs are odd. Background MSB remains set.
+    return 0x8000 | (((src & 0x7bde) >> 1) + ((dst & 0x7bde) >> 1) + (src & dst & 0x0421));
+  }
+  return src;
+}
+
+void saturn_state::vdp1_draw_color(int x, int y, uint16_t src) {
+  uint16_t *const line = m_vdp1_legacy.framebuffer_draw_lines[y];
+  if (current_sprite.CMDPMOD & 0x8000) {
+    // MON changes the existing framebuffer, not the source color. In 8-bit
+    // mode the word-aligned behavior follows Ymir; silicon detail is unverified.
+    line[(VDP1_TVM() & 1) ? (x >> 1) : x] |= 0x8000;
+    return;
+  }
+  if (VDP1_TVM() & 1) {
+    // Replace is the only supported 8-bit color calculation (ST-013 p.94).
+    vdp1_write_pixel(x, y, src);
+    return;
+  }
+  if (current_sprite.CMDPMOD & 4)
+    src = vdp1_apply_gouraud_shading(x, y, src);
+  const uint16_t dst = vdp1_read_pixel(line, x);
+  vdp1_write_pixel(x, y, vdp1_color_calculate(src, dst, current_sprite.CMDPMOD));
+}
+
 void saturn_state::drawpixel_generic(int x, int y, int patterndata,
                                      int offsetcnt) {
   int pix, transpen, spd = current_sprite.CMDPMOD & 0x40;
@@ -1473,16 +1496,11 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       // shienryu explosions (and some enemies) use this mode
       raw = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
       raw = offsetcnt & 1 ? (raw & 0x0f) : ((raw & 0xf0) >> 4);
-      pix =
-          raw & 1
-              ? ((((m_vdp1_vram[(((current_sprite.CMDCOLR & 0xffff) * 8) >> 2) +
-                                ((raw & 0xfffe) / 2)])) &
-                  0x0000ffff) >>
-                 0)
-              : ((((m_vdp1_vram[(((current_sprite.CMDCOLR & 0xffff) * 8) >> 2) +
-                                ((raw & 0xfffe) / 2)])) &
-                  0xffff0000) >>
-                 16);
+      {
+        const unsigned address = ((current_sprite.CMDCOLR * 8) + raw * 2) & 0x7ffff;
+        pix = (m_vdp1_legacy.gfx_decode[address] << 8) |
+              m_vdp1_legacy.gfx_decode[(address + 1) & 0x7ffff];
+      }
       // mode = 5;
       transpen = 0;
       endcode = 0xf;
@@ -1572,71 +1590,8 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
     }
   }
 
-  /* MSBON */
-  // TODO: does this always applies to the frame buffer regardless of the mode?
-  pix |= current_sprite.CMDPMOD & 0x8000;
-/*
-TODO: from docs:
-"Except for the color calculation of replace and shadow, color calculation can
-only be performed when the color code of the original picture is RGB code. Color
-calculation can be executed when the color code is color bank code, but the
-results are not guaranteed." Currently no idea about the "result not guaranteed"
-part, let's disable this branch for the time being ...
-*/
-#if 0
-	if ( mode != 5 )
-	{
-		if ( (raw != transpen) || spd )
-		{
-			vdp1_write_pixel(x, y, pix);
-		}
-	}
-	else
-#endif
-  {
-    if ((raw != transpen) || spd) {
-      if (current_sprite.CMDPMOD & 0x4) /* Gouraud shading */
-        pix = vdp1_apply_gouraud_shading(x, y, pix);
-
-      switch (current_sprite.CMDPMOD & 0x3) {
-      case 0: /* replace */
-        vdp1_write_pixel(x, y, pix);
-        break;
-      case 1: /* shadow */
-        if (vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x) & 0x8000) {
-          vdp1_write_pixel(x, y,
-            ((vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x) & ~0x8421) >> 1) | 0x8000);
-        }
-        break;
-      case 2: /* half luminance */
-        vdp1_write_pixel(x, y, ((pix & ~0x8421) >> 1) | 0x8000);
-        break;
-      case 3: /* half transparent */
-        if (vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x) & 0x8000) {
-          vdp1_write_pixel(x, y, alpha_blend_r16(vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x), pix,
-                              0x80) |
-              0x8000);
-        } else {
-          vdp1_write_pixel(x, y, pix);
-        }
-        break;
-      // case 4: /* Gouraud shading */
-      //  TODO: proyakts (during team creation, on PR girl select)
-      // case 6:
-      //   break;
-      // case 7: /* Gouraud-shading + half-transparent */
-      //  lupinpy enemy shadows
-      //  deathcri lives indicators
-      //  TODO: latter looks really bad.
-      default:
-        // TODO: mode 5: prohibited, mode 6: gouraud shading + half-luminance,
-        // mode 7: gouraud-shading + half-transparent
-        popmessage("VDP1 PMOD = %02x", current_sprite.CMDPMOD & 0x7);
-        vdp1_write_pixel(x, y, pix);
-        break;
-      }
-    }
-  }
+  if ((raw != transpen) || spd)
+    vdp1_draw_color(x, y, pix);
 }
 
 void saturn_state::vdp1_set_drawpixel() {
@@ -2262,6 +2217,26 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
   vdp1_fill_quad(cliprect, patterndata, xsize, q);
 }
 
+bool saturn_state::vdp1_is_end_code(int address, int texel) const {
+  switch ((current_sprite.CMDPMOD >> 3) & 7) {
+  case 0:
+  case 1: {
+    const uint8_t value = m_vdp1_legacy.gfx_decode[(address + texel / 2) & 0x7ffff];
+    return ((value >> ((texel & 1) ? 0 : 4)) & 0xf) == 0xf;
+  }
+  case 2:
+  case 3:
+  case 4:
+    return m_vdp1_legacy.gfx_decode[(address + texel) & 0x7ffff] == 0xff;
+  case 5:
+    address = ((address & ~0xf) + texel * 2) & 0x7ffff;
+    return m_vdp1_legacy.gfx_decode[address] == 0x7f &&
+           m_vdp1_legacy.gfx_decode[(address + 1) & 0x7ffff] == 0xff;
+  default:
+    return false; // prohibited color modes have no documented end code
+  }
+}
+
 void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
                                            int sprite_type) {
   int y, ysize, drawypos;
@@ -2348,7 +2323,14 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
   for (drawypos = y; drawypos <= maxdrawypos; drawypos++) {
     // destline = m_vdp1_legacy.framebuffer_draw_lines[drawypos];
     su = u;
+    unsigned end_codes = 0;
     for (drawxpos = x; drawxpos <= maxdrawxpos; drawxpos++) {
+      // ST-013 section 6.3: the second fetched end code terminates this
+      // texture row, independently of SPD. Count source texels, not writes.
+      if (!(current_sprite.CMDPMOD & 0x80) && vdp1_is_end_code(patterndata, u)) {
+        if (++end_codes == 2)
+          break;
+      }
       (this->*drawpixel)(drawxpos, drawypos, patterndata, u);
       u += dux;
     }
@@ -2662,10 +2644,6 @@ void saturn_state::vdp1_video_update() {
     logerror("FBCR = %0x, accessed = %d\n", VDP1_FBCR,
              m_vdp1_legacy.fbcr_accessed);
 
-  if (VDP1_CEF)
-    BEF_1();
-  else
-    BEF_0();
 
   if (m_vdp1_legacy.framebuffer_clear_on_next_frame) {
     if (((VDP1_FBCR & 0x3) == 3) && m_vdp1_legacy.fbcr_accessed) {
