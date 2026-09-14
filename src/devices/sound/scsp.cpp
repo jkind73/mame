@@ -141,11 +141,6 @@ static constexpr u32 SAMPLE_CLOCKS = 512;
 
 #define USEDSP
 
-/* TODO */
-// #define dma_transfer_end  ((scsp_regs[0x24/2] & 0x10) >> 4) |
-// (((scsp_regs[0x26/2] & 0x10) >> 4) << 1) | (((scsp_regs[0x28/2] & 0x10) >> 4)
-// << 2)
-
 static const float SDLT[8] = {-1000000.0f, -36.0f, -30.0f, -24.0f,
                               -18.0f,      -12.0f, -6.0f,  0.0f};
 
@@ -185,11 +180,20 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag,
 //-------------------------------------------------
 
 void scsp_device::device_start() {
+  // Stereo output with EXTS0,1 Input (External digital audio output)
+  // The stream must be allocated before init() because init() calls
+  // update_master_volume() which does set_output_gain(0/1, 1.0) and that
+  // requires the sound streams to exist — otherwise we trip
+  // \"Requested output 0 on sound device :scsp which only has 0\" during
+  // start_all_devices (seen at 2aedb4de/55b318be).  The bug has been latent
+  // since ab377921 which introduced update_master_volume() in init().
+  u32 rate = clock() / SAMPLE_CLOCKS;
+  if (rate == 0)
+    rate = 44100;
+  m_stream = stream_alloc(2, 2, rate);
+
   // init the emulation
   init();
-
-  // Stereo output with EXTS0,1 Input (External digital audio output)
-  m_stream = stream_alloc(2, 2, clock() / SAMPLE_CLOCKS);
 
   for (int slot = 0; slot < 32; slot++) {
     for (int i = 0; i < 0x10; i++)
@@ -1006,11 +1010,12 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
   case 0x21:
     if (!m_irq_cb.isunset()) {
       if (m_udata.data[0x1e / 2] & m_udata.data[0x20 / 2] & 0x20) {
-        // TODO: our use case (arcadegh) still doesn't have sound (but clearly
-        // executes irq 7s) log it anyway so we can validate the behaviour with
-        // anything else using this
-        // - documentation claims 7 to "not use because tied to dev board irq",
-        //   that doesn't stop this game using it anyway.
+        // SCIPD is read-only except for bit 5: writing 1 there applies a CPU
+        // interrupt (source 5, level 7 - which ST-077 says "not to use
+        // because tied to dev board irq"), writing 0 is invalid.  The OR into
+        // the pending register happens in w16(), matching mednafen.  Software
+        // requesting its own level-7 interrupt is unusual enough to keep
+        // logging (Arcade's Greatest Hits does it).
         logerror("%s: SCSP SCIPD write CPU irq 0x20\n",
                  machine().describe_context());
         CheckPendingIRQ();
@@ -1055,8 +1060,9 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
 
     MainCheckPendingIRQ(0);
 
-    // TODO: the external INT0-2N pins (bits 0-2) are not wired up by any
-    // current user of this device, log their enablement so that software
+    // the external INT0N/INT1N/INT2N pins (bits 0-2) are marked
+    // "currently not used" in the ST-077 pinout and are not wired up by
+    // any current user of this device; log their enablement so software
     // relying on them can be spotted
     if (m_mcieb & 0x007)
       logerror("%s: SCSP MCIEB enabled %04x\n", machine().describe_context(),
@@ -1485,63 +1491,59 @@ void scsp_device::DoMasterSamples(sound_stream &stream) {
   }
 }
 
-// TODO: this needs to be timer-ized
-// Very likely this is burst too.
-// - darius2j uses this at startup with DGATE enabled
+/* The DMA controller is not a fixed-rate engine: ST-077 3.2 gives it a
+   memory-access priority (below PCM/DSP fetches and DRAM refresh, above both
+   CPUs) without specifying a transfer rate, and both Ymir and mednafen run
+   the whole transfer as a burst when DEXE is written, so do the same here.
+   The wait states DMA imposes on the sound CPU are not modelled.
+   darius2j uses this at startup with DGATE enabled. */
 void scsp_device::exec_dma() {
-  static u16 tmp_dma[3];
-  int i;
-
-  logerror("SCSP: DMA transfer START\n"
-           "DMEA: %04x DRGA: %04x DTLG: %04x\n"
-           "DGATE: %d  DDIR: %d\n",
-           m_dma.dmea, m_dma.drga, m_dma.dtlg, m_dma.dgate ? 1 : 0,
-           m_dma.ddir ? 1 : 0);
-
-  /* Copy the dma values in a temp storage for resuming later */
-  /* (DMA *can't* overwrite its parameters).                  */
+  // work from snapshots: a mem->reg transfer can walk into the DMA's own
+  // parameter registers (0x12-0x17), and the loop must not have its
+  // addresses/count clobbered mid-transfer (mednafen snapshots the same
+  // way).  The register-file copies are restored afterwards so the DMA
+  // can't overwrite its own parameters; the references disagree here
+  // (mednafen leaves the written values behind, Ymir mutates its live
+  // parameters mid-transfer) and ST-077 declares DMEA/DRGA/DTLG
+  // write-only without describing self-targeting transfers, so there is
+  // no documented winner - keep MAME's long-standing behavior
+  u16 tmp_dma[3];
   if (!(m_dma.ddir)) {
-    for (i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++)
       tmp_dma[i] = m_udata.data[(0x12 + (i * 2)) / 2];
   }
 
+  u32 mem_addr = m_dma.dmea;
+  u32 reg_addr = m_dma.drga;
+  u32 length = m_dma.dtlg;
+  bool const dir = m_dma.ddir;
+  bool const gate = m_dma.dgate;
+
   /* note: we don't use space.read_word / write_word because it can happen that
    * SH-2 enables the DMA instead of m68k. */
-  /* TODO: don't know if params auto-updates, I guess not ... */
-  if (m_dma.ddir) {
-    if (m_dma.dgate) {
-      for (i = 0; i < m_dma.dtlg; i += 2) {
-        this->space().write_word(m_dma.dmea, 0);
-        m_dma.dmea += 2;
-      }
+  while (length) {
+    if (dir) {
+      // reg->mem: the register read still occurs when gated (register
+      // reads have side effects, e.g. popping the MIDI input buffer -
+      // mednafen observed the same); the gate only forces the stored
+      // value to 0
+      u16 const tmp = r16(reg_addr);
+      this->space().write_word(mem_addr, gate ? 0 : tmp);
     } else {
-      for (i = 0; i < m_dma.dtlg; i += 2) {
-        u16 tmp;
-        tmp = r16(m_dma.drga);
-        this->space().write_word(m_dma.dmea, tmp);
-        m_dma.dmea += 2;
-        m_dma.drga += 2;
-      }
+      u16 const tmp = read_word(mem_addr);
+      w16(reg_addr, gate ? 0 : tmp);
     }
-  } else {
-    if (m_dma.dgate) {
-      for (i = 0; i < m_dma.dtlg; i += 2) {
-        w16(m_dma.drga, 0);
-        m_dma.drga += 2;
-      }
-    } else {
-      for (i = 0; i < m_dma.dtlg; i += 2) {
-        u16 tmp = read_word(m_dma.dmea);
-        w16(m_dma.drga, tmp);
-        m_dma.dmea += 2;
-        m_dma.drga += 2;
-      }
-    }
+    // both addresses always advance and wrap: the memory address stays
+    // word-aligned inside the 1 MB sound RAM window, the register
+    // address inside the 4 KB register window (as in mednafen/Ymir)
+    mem_addr = (mem_addr + 2) & 0xffffe;
+    reg_addr = (reg_addr + 2) & 0xffe;
+    length -= 2;
   }
 
   /*Resume the values*/
   if (!(m_dma.ddir)) {
-    for (i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++)
       m_udata.data[(0x12 + (i * 2)) / 2] = tmp_dma[i];
   }
 
