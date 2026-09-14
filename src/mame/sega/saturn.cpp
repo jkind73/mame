@@ -328,17 +328,16 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
   // popmessage("%08x %d T0 %d T1 %d %08x",m_scu.ism ^
   // 0xffffffff,max_y,m_scu_regs[36],m_scu_regs[37],m_scu_regs[38]);
 
-  if (scanline == vblank_line * y_step) {
-    /* TODO: when Automatic Draw actually happens? Night Striker S is very fussy
-     * on this, and it looks like that VDP1 starts at more or less vblank-in
-     * time ... */
+  // Bank change and automatic drawing follow VBlank OUT, not VBlank IN.
+  // VDP2's screen coordinate zero is the field-start transition.
+  if (scanline == 0)
     vdp1_video_update();
-  }
 
-  if (scanline == (vblank_line + 1) * y_step) {
-    /* docs mentions that VBE happens one line after vblank-in. */
-    if (VDP1_VBE())
-      m_vdp1_legacy.framebuffer_clear_on_next_frame = 1;
+  if (scanline == (vblank_line + 1) * y_step && VDP1_VBE()) {
+    // ST-013 p.40: VBE erases the displayed bank during blanking and repeats
+    // every blank while enabled, independently of a fresh change request.
+    // Erase remains atomic here; the blanking-time write budget is separate.
+    vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
   }
 }
 
@@ -631,14 +630,14 @@ uint16_t saturn_state::vdp1_regs_r(offs_t offset) {
 void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
   int start_x, end_x, start_y, end_y;
 
-  start_x = VDP1_EWLR_X1 * ((VDP1_TVM() & 1) ? 16 : 8);
+  start_x = ((m_vdp1_legacy.erase_upper_left >> 9) & 0x3f) * ((VDP1_TVM() & 1) ? 16 : 8);
   // Erase Y registers address stored field rows. DIE doubles the logical
   // coordinate but halves it again for the physical bank (ST-013 p.47-49).
-  start_y = VDP1_EWLR_Y1;
-  end_x = VDP1_EWRR_X3 * ((VDP1_TVM() & 1) ? 16 : 8);
-  end_y = VDP1_EWRR_Y3 + 1;
+  start_y = (m_vdp1_legacy.erase_upper_left & 0x1ff);
+  end_x = ((m_vdp1_legacy.erase_lower_right >> 9) & 0x7f) * ((VDP1_TVM() & 1) ? 16 : 8);
+  end_y = (m_vdp1_legacy.erase_lower_right & 0x1ff) + 1;
   //  popmessage("%d %d %d %d
-  //  %d",VDP1_EWLR_X1,VDP1_EWLR_Y1,VDP1_EWRR_X3,VDP1_EWRR_Y3,m_vdp1_legacy.framebuffer_double_interlace);
+  //  %d",((m_vdp1_legacy.erase_upper_left >> 9) & 0x3f),(m_vdp1_legacy.erase_upper_left & 0x1ff),((m_vdp1_legacy.erase_lower_right >> 9) & 0x7f),(m_vdp1_legacy.erase_lower_right & 0x1ff),m_vdp1_legacy.framebuffer_double_interlace);
 
   if (VDP1_TVM() & 1) {
     // EWDR supplies the even/odd byte pair. Erase X units are 16 dots, so
@@ -690,7 +689,7 @@ void saturn_state::vdp1_change_framebuffers() {
     m_vdp1_legacy.field_valid[field] = true;
   }
   // ST-013 p.43: DIL selects drawing after the next framebuffer change.
-  m_vdp1_legacy.draw_field = VDP1_DIL;
+  vdp1_latch_framebuffer_config();
   // BEF records the previous drawing bank, not every VBlank callback.
   // In manual mode a VBlank without a bank change must leave it latched.
   if (VDP1_CEF)
@@ -710,17 +709,31 @@ void saturn_state::vdp1_change_framebuffers() {
   vdp1_prepare_framebuffers();
 }
 
+void saturn_state::vdp1_latch_framebuffer_config() {
+  // ST-013 p.35: these drawing/erase settings take effect on bank change.
+  const bool geometry_changed = m_vdp1_legacy.framebuffer_double_interlace != VDP1_DIE;
+  m_vdp1_legacy.framebuffer_double_interlace = VDP1_DIE;
+  m_vdp1_legacy.draw_field = VDP1_DIL;
+  m_vdp1_legacy.draw_eos = VDP1_EOS;
+  m_vdp1_legacy.ewdr = VDP1_EWDR;
+  m_vdp1_legacy.erase_upper_left = m_vdp1_regs[4];
+  m_vdp1_legacy.erase_lower_right = m_vdp1_regs[5];
+  if (geometry_changed) {
+    m_vdp1_legacy.framebuffer_mode = -1;
+    vdp1_set_framebuffer_config();
+  }
+}
+
 void saturn_state::vdp1_set_framebuffer_config() {
-  if (m_vdp1_legacy.framebuffer_mode == VDP1_TVM() &&
-      m_vdp1_legacy.framebuffer_double_interlace == VDP1_DIE)
+  if (m_vdp1_legacy.framebuffer_mode == VDP1_TVM())
     return;
 
   if (VDP1_LOG)
     logerror("Setting framebuffer config\n");
   m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
-  m_vdp1_legacy.draw_field = VDP1_DIL;
   m_vdp1_legacy.framebuffer_mode = VDP1_TVM();
-  m_vdp1_legacy.framebuffer_double_interlace = VDP1_DIE;
+  if (m_vdp1_legacy.framebuffer_double_interlace < 0)
+    m_vdp1_legacy.framebuffer_double_interlace = 0;
   switch (m_vdp1_legacy.framebuffer_mode) {
   case 0:
     m_vdp1_legacy.framebuffer_width = 512;
@@ -748,11 +761,11 @@ void saturn_state::vdp1_set_framebuffer_config() {
     m_vdp1_legacy.framebuffer_height = 256;
     break;
   }
-  if (VDP1_DIE)
+  if (m_vdp1_legacy.framebuffer_double_interlace)
     m_vdp1_legacy.framebuffer_height *= 2; /* double interlace */
 
-  m_vdp1_legacy.framebuffer_current_draw = 0;
-  m_vdp1_legacy.framebuffer_current_display = 1;
+  // TVM/DIE change interpretation, not ownership. Only a framebuffer change
+  // exchanges banks or latches the DIL selection for the next drawing field.
   vdp1_prepare_framebuffers();
 }
 
@@ -760,6 +773,8 @@ void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
                                uint16_t mem_mask) {
   // EDSR, LOPR, COPR and MODR are read-only (ST-013 sections 4.6-4.9).
   if (offset >= 0x10 / 2 && offset <= 0x16 / 2)
+    return;
+  if (!mem_mask)
     return;
   COMBINE_DATA(&m_vdp1_regs[offset]);
 
@@ -787,7 +802,7 @@ void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
     if (VDP1_LOG)
       logerror("VDP1: Erase data set %08X\n", data);
 
-    m_vdp1_legacy.ewdr = VDP1_EWDR;
+    // The erase payload is latched at framebuffer change.
     break;
   case 0x08 / 2:
     if (VDP1_LOG)
@@ -2011,7 +2026,7 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
     if (textured) {
       int u = vdp1_scaled_coordinate(std::max(1, hss ? texture_width / 2 : texture_width),
                                       major + 1, dot, current_sprite.CMDCTRL & 0x10);
-      if (hss) u = u * 2 + VDP1_EOS;
+      if (hss) u = u * 2 + m_vdp1_legacy.draw_eos;
       texel = texture_row * texture_width + u;
     }
     const auto plot = [&](int x, int y) {
@@ -2239,7 +2254,7 @@ void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int addres
   std::array<int, 1024> source_x;
   for (int x = left; x <= right; ++x) {
     const int u = vdp1_scaled_coordinate(source_columns, columns, std::abs(x - q[0].x), flip_x);
-    source_x[x] = hss ? u * 2 + VDP1_EOS : u;
+    source_x[x] = hss ? u * 2 + m_vdp1_legacy.draw_eos : u;
   }
 
   // Effective mode for this atomic primitive, not a write to guest VRAM.
@@ -2703,88 +2718,29 @@ end:
 }
 
 void saturn_state::vdp1_video_update() {
-  int framebuffer_changed = 0;
-
-  //  int enable;
-  //  if (machine.input().code_pressed (KEYCODE_R)) VDP1_LOG = 1;
-  //  if (machine.input().code_pressed (KEYCODE_T)) VDP1_LOG = 0;
-
-  //  if (machine.input().code_pressed (KEYCODE_Y)) VDP1_LOG = 0;
-  //  {
-  //      FILE *fp;
-  //
-  //      fp=fopen("vdp1_ram.dmp", "w+b");
-  //      if (fp)
-  //      {
-  //          fwrite(stv_vdp1, 0x00100000, 1, fp);
-  //          fclose(fp);
-  //      }
-  //  }
-  if (VDP1_LOG)
-    logerror("vdp1_video_update called\n");
-  if (VDP1_LOG)
-    logerror("FBCR = %0x, accessed = %d\n", VDP1_FBCR,
-             m_vdp1_legacy.fbcr_accessed);
-
-
-  if (m_vdp1_legacy.framebuffer_clear_on_next_frame) {
-    if (((VDP1_FBCR & 0x3) == 3) && m_vdp1_legacy.fbcr_accessed) {
-      vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
-      m_vdp1_legacy.framebuffer_clear_on_next_frame = 0;
-    }
-  }
-
-  switch (VDP1_FBCR & 0x3) {
-  case 0: /* Automatic mode */
+  bool framebuffer_changed = false;
+  switch (VDP1_FBCR & 3) {
+  case 0: // One-cycle mode
     vdp1_change_framebuffers();
     vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
-    framebuffer_changed = 1;
+    framebuffer_changed = true;
     break;
-  case 1: /* Setting prohibited */
+  case 2: // One-field manual erase request, without exchanging banks
+    if (m_vdp1_legacy.fbcr_accessed)
+      vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
     break;
-  case 2: /* Manual mode - erase */
-    if (m_vdp1_legacy.fbcr_accessed) {
-      m_vdp1_legacy.framebuffer_clear_on_next_frame = 1;
-    }
-    break;
-  case 3: /* Manual mode - change */
+  case 3: // One-field manual change request; VBE erase ran during blanking
     if (m_vdp1_legacy.fbcr_accessed) {
       vdp1_change_framebuffers();
-      if (VDP1_VBE()) {
-        vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
-      }
-      /* TODO: Slam n Jam 96 & Cross Romance doesn't like this, investigate. */
-      framebuffer_changed = 1;
+      framebuffer_changed = true;
     }
-    //      framebuffer_changed = 1;
+    break;
+  default: // FCM=0,FCT=1 is prohibited
     break;
   }
   m_vdp1_legacy.fbcr_accessed = 0;
-
-  if (VDP1_LOG)
-    logerror("PTM = %0x, TVM = %x\n", VDP1_PTM, VDP1_TVM());
-  /*Set CEF bit to 0*/
-  // CEF_0();
-  switch (VDP1_PTM & 3) {
-  case 0: /*Idle Mode*/
-    /*Set CEF bit to 0*/
-    // CEF_0();
-    break;
-  case 1: /*Draw by request*/
-    /*Set CEF bit to 0*/
-    // CEF_0();
-    break;
-  case 2: /*Automatic Draw*/
-    if (framebuffer_changed || VDP1_LOG) {
-      /*set CEF to 1*/
-      vdp1_process_list();
-    }
-    break;
-  case 3: /*<invalid>*/
-    logerror("Warning: Invalid PTM mode set for VDP1!\n");
-    break;
-  }
-  // popmessage("%04x %04x",VDP1_EWRR_X3,VDP1_EWRR_Y3);
+  if (framebuffer_changed && (VDP1_PTM & 3) == 2)
+    vdp1_process_list();
 }
 
 void saturn_state::vdp1_state_save_postload() {
@@ -2792,8 +2748,8 @@ void saturn_state::vdp1_state_save_postload() {
   int offset;
   uint32_t data;
 
-  // Geometry and bank ownership are saved. Reconfiguring TVMR here resets
-  // the restored drawing bank to zero and points the resumed list at it.
+  // Restore derived views only. Do not latch pending register writes across
+  // a framebuffer boundary that has not happened in the restored machine.
   vdp1_prepare_framebuffers();
 
   for (offset = 0; offset < 0x80000 / 4; offset++) {
@@ -2829,7 +2785,6 @@ int saturn_state::vdp1_start() {
   m_vdp1_legacy.framebuffer_current_display = 0;
   m_vdp1_legacy.framebuffer_current_draw = 1;
   vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
-  m_vdp1_legacy.framebuffer_clear_on_next_frame = 0;
 
   m_vdp1_legacy.system_cliprect.set(0, 0, 0, 0);
   /* Kidou Senshi Z Gundam - Zenpen Zeta no Kodou loves to use the user cliprect
@@ -2852,7 +2807,6 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.fbcr_accessed));
   save_item(NAME(m_vdp1_legacy.framebuffer_current_display));
   save_item(NAME(m_vdp1_legacy.framebuffer_current_draw));
-  save_item(NAME(m_vdp1_legacy.framebuffer_clear_on_next_frame));
   save_item(NAME(m_vdp1_legacy.local_x));
   save_item(NAME(m_vdp1_legacy.local_y));
 
@@ -2860,6 +2814,9 @@ int saturn_state::vdp1_start() {
   // function actually writes, and LOPR/COPR are what the 0x12/0x14 register
   // reads return, so these are live state rather than derived copies
   save_item(NAME(m_vdp1_legacy.ewdr));
+  save_item(NAME(m_vdp1_legacy.erase_upper_left));
+  save_item(NAME(m_vdp1_legacy.erase_lower_right));
+  save_item(NAME(m_vdp1_legacy.draw_eos));
   save_item(NAME(m_vdp1_legacy.lopr));
   save_item(NAME(m_vdp1_legacy.copr));
   save_item(NAME(m_vdp1_legacy.drawing));
