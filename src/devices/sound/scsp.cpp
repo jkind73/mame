@@ -386,6 +386,11 @@ void scsp_device::device_start() {
   save_item(NAME(m_DSP.FRC_REG));
   save_item(NAME(m_DSP.Y_REG));
   save_item(NAME(m_DSP.ADRS_REG));
+  save_item(NAME(m_DSP.RWAddr));
+  save_item(NAME(m_DSP.ReadValue));
+  save_item(NAME(m_DSP.ReadPending));
+  save_item(NAME(m_DSP.WritePending));
+  save_item(NAME(m_DSP.WriteValue));
   save_item(NAME(m_DSP.EXTS));
   save_item(NAME(m_DSP.EFREG));
   save_item(NAME(m_DSP.Stopped));
