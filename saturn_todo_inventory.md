@@ -1,5 +1,35 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Rectangular Gouraud endpoint and interpolation correction — 2026-09-14
+
+Normal/scaled sprites now prepare integer edge-then-row Gouraud values, matching
+this core's native primitive model. Scaled rectangles include the final row and
+both destination endpoints; normal rectangle endpoints use character size minus
+one. Clipped or reversed coordinates retain their original gradient position.
+This removes stale shading on scaled final rows, including one-row rectangles.
+A saved per-row representation tag distinguishes integer data from the retained
+legacy fallback. The legacy helper also swaps its stored X origin with endpoint
+colors when the input endpoints are reversed.
+
+2640 independent queued Gouraud images cover normal/scaled sprites, one-dot and
+short dimensions, reversed axes, all texture directions, clipping, and Gouraud
+modes 4/6/7. Three legacy-origin probes pass. Existing rectangle interruption and
+state-copy/Gouraud-table-edit tests still pass. Missing final row, reversed origin,
+wrong interpolation length and legacy-origin mutations all fail assertions.
+All 18 regression scripts and nine production object compilations pass; the final
+standalone run additionally includes the three legacy probes.
+
+Primary [ST-013-R3](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf)
+pp.64–65/106 assigns correction values to A/B/C/D, then interpolates and saturates;
+pp.118–123 defines normal character extents and inclusive scaled endpoints, with
+independent coordinate inversion. Exact integer ties follow the existing native
+model cross-checked against [Ymir GouraudChannelStepper/Edge](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/vdp/renderer/common/vdp1_steppers.hpp).
+The pinned [MiSTer RTL](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP1/VDP1.sv)
+uses fractional division for Gouraud setup (`GRD_DIV_*`), so exact rounding is not
+claimed to have three-way agreement or hardware-trace proof. No external renderer
+code was imported. Preclip/degenerate qualification, exact timing, active-display
+erase, linked BIOS/game execution and real save-manager acceptance remain open.
+
 ## Interruptible normal/scaled sprites — 2026-09-14
 
 Normal and scaled sprite commands now enqueue rectangle rows and share the saved
