@@ -492,7 +492,10 @@ std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address,
     }
     break;
   }
-  case 0x0600'0000: {
+  case 0x0600'0000:
+  case 0x0700'0000: {
+    // Work RAM H occupies the C-Bus window through $07ffffff; the 1 MiB
+    // RAM is mirrored throughout it in both Saturn and ST-V address maps.
     flags = saturn_scu_device::C_BUS;
     // TODO: overhead due of SDRAM refresh?
   }

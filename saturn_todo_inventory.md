@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## C-Bus mirror decode update — 2026-09-14
+
+SCU now recognizes `0x07xxxxxx` high work-RAM mirrors, consistent with Saturn/ST-V
+address maps and Ymir/Mednafen. 768 classification checks and 2,304 direct DMA
+scenarios pass. Full DMA timing/indirect-chain validation and precise primary
+mirror-aperture documentation remain outstanding.
+
 ## TVMD startup/reset update — 2026-09-14
 
 TVMD and decoded display/interlace/resolution controls now initialize before the
