@@ -84,15 +84,20 @@ void saturn_vdp2_device::device_reset() {
 
 void saturn_vdp2_device::init_vcounter_table() {
   // put vcounter inside a table
+  /* Both NTSC and PAL modes are filled for all 313 rows: a PAL frame runs to
+     line 312 and may still be set to a 224 or 240 line mode, so stopping at
+     the 263 rows an NTSC frame reaches left the PAL vblank lines reading
+     whatever the allocation held.  The jump threshold belongs to the mode
+     rather than the region, so the extra lines continue the same ramp. */
   // 224 mode
-  for (u16 i = 0; i < 263; i++) {
+  for (u16 i = 0; i < 313; i++) {
     true_vcount[i][0] = i;
     if (i > 0xec)
       true_vcount[i][0] += 0xf9;
   }
 
   // 240 mode
-  for (u16 i = 0; i < 263; i++) {
+  for (u16 i = 0; i < 313; i++) {
     true_vcount[i][1] = i;
     if (i > 0xf5)
       true_vcount[i][1] += 0xf9;
@@ -368,9 +373,15 @@ int saturn_vdp2_device::get_vcounter() {
   if (m_lsmd == 3)
     return (vcount & ~1) | (m_screen->frame_number() & 1);
 
+  /* NTSC cannot select the 256 line modes, so mask VRESO exactly as
+     reconfigure_crtc() and get_vblank_line() do.  Without it an NTSC machine
+     with VRESO 2 or 3 programmed in TVMD reported the flat identity counter
+     while the CRTC was still configured for 224 or 240 lines. */
+  const u8 vres_mask = (m_is_pal << 1) | 1;
+
   // docs says << 1, but according to HW tests it's a typo.
   assert((vcount & 0x1ff) < std::size(true_vcount));
-  return (true_vcount[vcount & 0x1ff][m_vreso]); // Non-interlace
+  return (true_vcount[vcount & 0x1ff][m_vreso & vres_mask]); // Non-interlace
 }
 
 // TODO: refine hblank/vblank positions
