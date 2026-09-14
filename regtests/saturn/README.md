@@ -1028,3 +1028,55 @@ wrapper. This is build coverage only; CD emulation fidelity is not established b
 compilation. Linking, configuration validation, actual disc access and BIOS/game
 execution remain pending, as does validation of other transitive dependencies.
 Objects and generated layouts remain temporary and are not committed.
+
+## DMA forced stop — previously missing register control
+
+Mapped DSTP at `$05fe0060` and implemented its bit-0 command for the three
+CPU-programmed channels. Effective writes cancel MOVE/WAIT/background status,
+completion retirement and the one-slot held restart. The DMA timer stops. Programmed
+addresses/counts/enables and already-pending interrupts are preserved, so a later
+start is a fresh transfer. No end IRQ is manufactured for a canceled transfer.
+
+Under the existing halt/cycle-steal model, halt outputs asserted for a running
+direct channel are released. An idle/WAIT-only stop does not release halt lines
+that may belong to another component. DSP status is left alone; the handler does
+not reset or abort the separate DSP engine.
+
+Evidence:
+- [ST-097-R5-072694](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-097-R5-072694.pdf),
+  §3.2, printed p.47 / PDF p.63, figure 3.11: DSTOP bit 0 stops DMA in operation.
+  The following pages define the channel WAIT/MOVE/background status bits.
+- [Ymir scu.cpp](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  has byte/word/longword stop cases that clear the three channels' active state
+  and active-channel selection without issuing completion interrupts.
+- [Mednafen scu.inc](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  case 0x60 tests data AND mask AND bit 0, clears Active/GoGoGadget for all levels,
+  and recalculates CPU halt. That reference marks the stop case TODO: Test;
+  it corroborates the implementation model, not physical timing measurements.
+
+```sh
+python3 regtests/saturn/test_dma_indirect.py
+python3 regtests/saturn/test_dma_indirect.py --stop-noop  # expected stop assertion failure
+```
+
+**2,321 forced-stop scenarios pass with ASan/UBSan**: 2,304 cases over levels,
+direct/indirect mode, initial WAIT/MOVE/done-before-IRQ, held/non-held starts,
+all 16 byte-enable masks and four data patterns; 16 supported two-channel overlap
+cases; and an idle CPU-DMA case preserving DSP status/other halt ownership.
+Effective stops do no further memory work or completion signalling. All effective
+single-channel cases execute a later fresh transfer through completion. Zero and
+masked-out writes are checked for no state/callback/timer changes. The register-map
+binding is checked in source and compiled in the full SCU object.
+
+The negative control deliberately substitutes a no-op for the handler, modelling
+the old unmapped write at `3527325f9ae68d2528c7c7efa761c45f319bd548`; it is not an
+extracted old handler (none existed). It fails the stopped/status assertion.
+Existing held-trigger mutation controls were rerun and still fail their intended
+assertions; the sticky-hold target is scoped to completion rather than stop cleanup.
+
+Stop is immediate at the current software callback boundary. Exact hardware
+termination latency, partially issued bus accesses, real shared HALT ownership,
+DSP overlap and scheduler/MMIO/game execution remain unvalidated. The work does
+not claim a particular title is now running. All thirteen scripts/eight objects
+pass. See [game_blockers.md](game_blockers.md) for the broader compatibility plan
+and remaining priorities; not all missing game-blocking behavior is implemented.

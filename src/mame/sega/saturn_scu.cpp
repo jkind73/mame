@@ -142,7 +142,7 @@ void saturn_scu_device::regs_map(address_map &map) {
   // stv:smleague and shinmtaz reads from $005c (undocumented), DMA status
   // mirror?
   map(0x005c, 0x005f).r(FUNC(saturn_scu_device::dma_status_r));
-  //  map(0x0060, 0x0063).w(FUNC(saturn_scu_device::dma_force_stop_w));
+  map(0x0060, 0x0063).w(FUNC(saturn_scu_device::dma_force_stop_w));
   map(0x007c, 0x007f).r(FUNC(saturn_scu_device::dma_status_r));
   map(0x0080, 0x0083)
       .rw(m_scudsp, FUNC(scudsp_cpu_device::program_control_r),
@@ -961,6 +961,37 @@ inline void saturn_scu_device::dma_start_factor_ack(dma_event_id_t event) {
       }
     }
   }
+}
+
+void saturn_scu_device::dma_force_stop_w(uint32_t data, uint32_t mem_mask) {
+  // ST-097 section 3.2, DSTP: writing DSTOP=1 cancels CPU-programmed DMA.
+  if (!(data & mem_mask & 1))
+    return;
+
+  bool release_main = false, release_sound = false;
+  for (int level = 0; level < 3; ++level) {
+    // Only release halt lines owned by a running direct transfer. An idle
+    // stop write must not release a CPU halted for some other reason.
+    if ((m_dma_status & (DMA_LV0_MOVE << (4 * level))) &&
+        !(m_dma[level].mode & DMA_MODE_INDIRECT)) {
+      release_main = true;
+      release_sound |= m_dma[level].bbus_sound_access;
+    }
+    update_dma_status(level, DMA_STATE_IDLE);
+    m_dma[level].done = false;
+    m_dma[level].pending_trigger = false;
+    m_dma[level].indirect_fetch_phase = false;
+  }
+  m_dma_status &= ~(DMA_LV0_BK | DMA_LV1_BK);
+  m_dma_tick_timer->adjust(attotime::never);
+  if (release_main)
+    m_main_dtack_cb(0);
+  if (release_sound)
+    m_sound_dtack_cb(0);
+
+  // No completion IRQ is manufactured. Keep programmed registers and the
+  // enable bits: a later start is a new transfer, not a resumed/held one.
+  // DSP DMA state belongs to the DSP and is not reset by this handler.
 }
 
 uint32_t saturn_scu_device::dma_status_r() { return m_dma_status; }
