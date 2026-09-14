@@ -80,7 +80,6 @@ void SCSPDSP::Step() {
 
   /* ACC, FRC_REG, Y_REG and ADRS_REG are chip registers that persist across
      samples; see the declaration in scspdsp.h. */
-  s32 MEMVAL = 0;
 
   for (int step = 0; step < /*128*/ LastStep; ++step) {
     u16 *const IPtr = MPRO + (step * 4);
@@ -149,7 +148,7 @@ void SCSPDSP::Step() {
 			DUMP(Y);
 			DUMP(B);
 			DUMP(INPUTS);
-			DUMP(MEMVAL);
+			DUMP(ReadValue);
 			DUMP(FRC_REG);
 			DUMP(Y_REG);
 			DUMP(ADDR);
@@ -175,9 +174,10 @@ void SCSPDSP::Step() {
     INPUTS = util::sext(INPUTS, 24);
 
     if (IWT) {
-      MEMS[IWA] = MEMVAL; // MEMVAL was selected in previous MRD
+      // ReadValue was latched by the read completed in the previous step
+      MEMS[IWA] = ReadValue;
       if (IRA == IWA)
-        INPUTS = MEMVAL;
+        INPUTS = ReadValue;
     }
 
     // Operand sel
@@ -242,8 +242,18 @@ void SCSPDSP::Step() {
         FRC_REG = (SHIFTED >> 11) & 0x1fff;
     }
 
-    if (MRD || MWT)
-    // if (0)
+    /* Complete the access the previous step requested before raising a new
+       one.  One access per step, reads first: a step that both reads and
+       writes leaves the write for the step after. */
+    if (ReadPending) {
+      u16 const tmp = space->read_word(RWAddr);
+      ReadValue = (ReadPending == 2) ? (s32(tmp) << 8) : UNPACK(tmp);
+      ReadPending = 0;
+    } else if (WritePending) {
+      space->write_word(RWAddr, WriteValue);
+      WritePending = false;
+    }
+
     {
       u32 ADDR = MADRS[MASA];
       if (!TABLE)
@@ -258,19 +268,17 @@ void SCSPDSP::Step() {
         ADDR &= 0xffff;
       ADDR += RBP << 12;
       ADDR <<= 1;
-      if (MRD &&
-          (step & 1)) // memory only allowed on odd? DoA inserts NOPs on even
-      {
-        if (NOFL)
-          MEMVAL = space->read_word(ADDR) << 8;
-        else
-          MEMVAL = UNPACK(space->read_word(ADDR));
-      }
-      if (MWT && (step & 1)) {
-        if (NOFL)
-          space->write_word(ADDR, SHIFTED >> 8);
-        else
-          space->write_word(ADDR, PACK(SHIFTED));
+      RWAddr = ADDR;
+
+      /* The manual's "memory flags are permitted only in odd steps" is a
+         programming rule, not a hardware gate: MiSTer, mednafen and
+         SaturnRecomp all honour MRD/MWT on any step, so programs that
+         ignore the rule must still get their access. */
+      if (MRD)
+        ReadPending = NOFL ? 2 : 1;
+      if (MWT) {
+        WritePending = true;
+        WriteValue = NOFL ? u16(SHIFTED >> 8) : PACK(SHIFTED);
       }
     }
 
@@ -286,6 +294,13 @@ void SCSPDSP::Step() {
     if (EWT)
       EFREG[EWA] = SHIFTED >> 8;
   }
+  /* a write requested by the program's last step still reaches memory once
+     the program ends (SaturnRecomp services it the same way) */
+  if (WritePending) {
+    space->write_word(RWAddr, WriteValue);
+    WritePending = false;
+  }
+
   --DEC;
   std::fill(std::begin(MIXS), std::end(MIXS), 0);
   // if (f)

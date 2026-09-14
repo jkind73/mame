@@ -41,6 +41,20 @@ struct SCSPDSP {
   s32 Y_REG;    // 24 bit signed
   s32 ADRS_REG; // 12 bit
 
+  /* Sound-memory access pipeline.  A request raised by step N is carried out
+     during step N+1, and the value a read latches is what IWT of step N+2
+     stores: the DRAM port moves one access per step, so a pending read also
+     defers a pending write.  mednafen (ReadPending = 1 + NOFL), SaturnRecomp
+     (read_pending / write_pending) and the cassini model all carry the same
+     two flags, and the MiSTer core implements them as the DSP_READ/DSP_WRITE
+     pipeline stages with NOFL delayed through NOFL1/NOFL2.  Doing the access
+     in the requesting step instead makes delay lines read one sample early. */
+  u32 RWAddr;     // byte address of the pending access
+  s32 ReadValue;  // last value latched by a completed read
+  u8 ReadPending; // 0 = none, 1 = convert from float, 2 = raw (NOFL)
+  bool WritePending;
+  u16 WriteValue;
+
   // output
   s16 EFREG[16]; // EFREG, 16 bit signed
 
