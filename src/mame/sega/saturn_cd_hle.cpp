@@ -334,14 +334,16 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
   case XFERTYPE32_GETSECTOR:
   case XFERTYPE32_GETDELETESECTOR:
     // make sure we have sectors left
-    if (xfersect < xfersectnum) {
+    if (transpart && xfersectpos < MAX_BLOCKS &&
+        xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
       blockT *const blk = transpart->blocks[xfersectpos + xfersect];
 
       // a hole in the partition has nothing to hand over; leave the port at
       // its idle value and move on to the next sector rather than chasing a
       // null pointer or running off a block with a nonsense size
-      if (blk == nullptr || blk->size < 0 ||
-          uint32_t(blk->size) > sizeof(blk->data)) {
+      if (blk == nullptr || blk->size < 4 ||
+          uint32_t(blk->size) > sizeof(blk->data) ||
+          xferoffs > uint32_t(blk->size) - 4) {
         LOGWARN("CD: Get Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -367,35 +369,19 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
     } else // sectors are done, kill 'em all if we can
     {
       if (xfertype32 == XFERTYPE32_GETDELETESECTOR) {
-        int32_t i;
+        finish_get_delete();
 
-        LOG("Killing sectors in done\n");
-
-        // deallocate the blocks
-        for (i = xfersectpos; i < xfersectpos + xfersectnum; i++) {
-          cd_free_block(transpart->blocks[i]);
-          transpart->blocks[i] = (blockT *)nullptr;
-          transpart->bnum[i] = 0xff;
-        }
-
-        // defrag what's left
-        cd_defragblocks(transpart);
-
-        // clean up our state
-        transpart->size -= xferdnum;
-        transpart->numblks -= xfersectnum;
-
-        // TODO: is this correct?
-        xfertype32 = XFERTYPE32_INVALID;
+        // Keep the command active until DataEnd can report the count and
+        // signal EHST, but never delete this range twice on further reads.
+        xfersectnum = 0;
       }
     }
     break;
 
   default:
-    // punt in particular if SH-2 or SCU DMA try to go overboard ...
-    throw emu_fatalerror(
-        "CD: attempting to read 32-bit data port with invalid transfer mode %d",
-        (int)xfertype32);
+    // Inactive/wrong-direction accesses must not crash the emulator.  Keep
+    // the existing idle/dummy value; its exact hardware value is unverified.
+    break;
   }
 
   return rv;
@@ -405,12 +391,14 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
   switch (xfertype32) {
   case XFERTYPE32_PUTSECTOR:
     // make sure we have sectors left
-    if (xfersect < xfersectnum) {
+    if (transpart && xfersectpos < MAX_BLOCKS &&
+        xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
       blockT *const blk = transpart->blocks[xfersectpos + xfersect];
 
       // as above: skip anything we cannot safely write into
-      if (blk == nullptr || blk->size < 0 ||
-          uint32_t(blk->size) > sizeof(blk->data)) {
+      if (blk == nullptr || blk->size < 4 ||
+          uint32_t(blk->size) > sizeof(blk->data) ||
+          xferoffs > uint32_t(blk->size) - 4) {
         LOGWARN("CD: Put Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -850,6 +838,33 @@ void saturn_cd_hle_device::cmd_init_cdsystem() {
   cr_standard_return(cd_stat);
 }
 
+// Get-and-Delete removes the entire designated range, including sectors the
+// host did not read (ST-162-062094, CD interface p.96).  Account for actual
+// removed sector sizes, not xferdnum, which only counts host port accesses.
+void saturn_cd_hle_device::finish_get_delete() {
+  if (!transpart || xfersectpos >= MAX_BLOCKS)
+    return;
+
+  const u32 count = std::min<u32>(xfersectnum, MAX_BLOCKS - xfersectpos);
+  if (!count)
+    return;
+  unsigned removed = 0;
+  for (u32 i = xfersectpos; i < xfersectpos + count; ++i) {
+    blockT *const blk = transpart->blocks[i];
+    if (blk) {
+      transpart->size -= std::max(blk->size, 0);
+      cd_free_block(blk);
+      ++removed;
+    }
+    transpart->blocks[i] = nullptr;
+    transpart->bnum[i] = 0xff;
+  }
+  cd_defragblocks(transpart);
+  transpart->numblks -= std::min<unsigned>(removed, transpart->numblks);
+  if (freeblocks == MAX_BLOCKS)
+    sectorstore = 0;
+}
+
 void saturn_cd_hle_device::cmd_end_data_transfer() {
   // end data transfer (TODO: needs to be worked on!)
   // returns # of bytes transferred (24 bits) in
@@ -882,38 +897,17 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
     break;
 
   case XFERTYPE32_GETDELETESECTOR:
-    if (transpart->size > 0) {
-      int32_t i;
-
-      xfertype32 = XFERTYPE32_INVALID;
-
-      // deallocate the blocks
-      for (i = xfersectpos; i < xfersectpos + xfersectnum; i++) {
-        cd_free_block(transpart->blocks[i]);
-        transpart->blocks[i] = (blockT *)nullptr;
-        transpart->bnum[i] = 0xff;
-      }
-
-      // defrag what's left
-      cd_defragblocks(transpart);
-
-      // clean up our state
-      transpart->size -= xferdnum;
-      transpart->numblks -= xfersectnum;
-
-      if (freeblocks == MAX_BLOCKS) {
-        sectorstore = 0;
-      }
-
-      hirqreg |= EHST;
-      update_hirq();
-    }
+    finish_get_delete();
+    hirqreg |= EHST;
     break;
 
   default:
     break;
   }
 
+  // DataEnd stops both transfer interfaces, including partial GET and PUT.
+  xfertype = XFERTYPE_INVALID;
+  xfertype32 = XFERTYPE32_INVALID;
   xferdnum = 0;
   hirqreg |= CMOK;
   update_hirq();

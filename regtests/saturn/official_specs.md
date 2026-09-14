@@ -304,3 +304,45 @@ programmed registers and existing IRQs. Ymir/Mednafen corroborate three-channel
 cancellation without completion IRQ; Mednafen's stop case remains marked untested.
 2,321 standalone scenarios pass; a no-op control models the old missing mapping
 and fails. Physical stop latency and actual game compatibility remain unestablished.
+
+## Four-priority implementation evidence — 2026-09-14
+
+- **SCU source buffering:** ST-097 §3.2, printed pp.41–43 (PDF pp.57–59),
+  supplies source address and 0/4 increment controls. Pinned Ymir SCU `doRead`
+  and Mednafen `DMA_Read` corroborate longword buffering/byte position. New
+  source-buffer tests pass 1,152 scenarios; baseline e7cff8b8 fails. This is not
+  verification of every alignment/count configuration or the separate CD path.
+- **CD DataEnd/deletion:**
+  [ST-162-062094](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-162-062094.pdf),
+  CD Communication Interface, printed p.32/PDF p.20 requires DataEnd after an
+  accepted transfer; printed p.81/PDF p.69 specifies stopping, dummy excess
+  data and effective CD word counts; printed p.96/PDF p.84 specifies deleting
+  the entire Get-and-Delete range even when not fetched. Printed p.97/PDF p.85
+  says interrupted PUT retains designated sector count, with unspecified tail
+  bytes. Pinned Ymir CD `EndTransfer` and Mednafen `COMMAND_END_DATAXFER` both
+  deactivate transfers; they disagree on some deletion/dummy details, so the
+  primary full-range rule governs. Existing idle value and deletion timing
+  are retained, not claimed as hardware measurements. Partial GET count needs
+  a prefetch model; zero-data error reporting is also not fixed in this pass.
+- **SMPC:** ST-169-R1-072694 printed p.49/PDF p.59 resets IOSEL/EXLE;
+  printed pp.50/52/58 (PDF pp.60/62/68) defines CONTINUE as reversing IREG0 bit7,
+  BREAK termination, and prohibits simultaneous CONTINUE/BREAK. Mednafen's
+  alternating `NextContBit` corroborates the toggle; Ymir's level-based check
+  disagrees and was not copied. Ymir does corroborate clearing SF/canceling
+  pending collection on BREAK. Neither current 700us delay nor VBlank timeout
+  is validated by these tests.
+- **HALT ownership:** this is host-emulator signal composition, not a new Sega
+  timing claim. Both Saturn/ST-V wired SMPC and SCU directly to the same HALT
+  lines; independent saved sources prevent one callback clearing the other.
+  1,296 event sequences verify composition/reset with recording CPU endpoints.
+
+PDF extraction correction: both ST-162 files have a malformed `/Encrypt null`
+trailer, not actual encryption. Ignoring only that null entry lets pypdf extract
+ST-162-062094 (91 pages) and ST-162-R1-092994 (53 pages). The latter is System
+Library, not the CD Communication Interface. The earlier SDK extraction manifest
+is historical and still records these two failures; six other failures have not
+been retried. No downloaded SDK documents were added to Git.
+
+All 17 scripts/nine objects pass. CD pointer/payload/directory/MPEG saves and ISO
+parser bounds remain open; copied-state tests are not real MAME save/load proof.
+See `game_blockers.md` for scope and the remaining runtime dependency blocker.
