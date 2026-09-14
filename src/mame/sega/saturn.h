@@ -62,13 +62,16 @@ protected:
   };
 
   // At most 4096 connecting spans are emitted by the 12-bit quad row count.
-  // Flat saved records: xa,ya,xb,yb,ca,cb,clip[4],coverage,texture row,width.
+  // Native records: xa,ya,xb,yb,ca,cb,clip[4],coverage,texture row,width.
+  // Rectangle kinds -1/-2 occupy coverage: normal uses ca=U step,row=first
+  // texel; scaled uses ca=original X,cb=destination columns,row=source V.
+  // Rectangle clip slots are unused; pixel writers enforce live clip state.
   struct vdp1_raster_state {
     static constexpr unsigned segment_words = 13;
     static constexpr unsigned max_segments = 4096;
     std::array<int32_t, segment_words * max_segments> segments{};
     int count = 0, index = 0, dot = 0;
-    int x = 0, y = 0, error = 0;
+    int x = 0, y = 0, error = 0, end_codes = 0;
     bool extra = false;
   } m_vdp1_raster;
   // Host dispatch guards only; never live across an emulated timer boundary.
@@ -227,6 +230,7 @@ protected:
   int vdp1_raster_slice_cycles() const;
   void vdp1_reset_raster_queue();
   void vdp1_draw_raster_slice();
+  void vdp1_draw_rectangle_slice(const int32_t *data);
   void vdp1_draw_line(const rectangle &cliprect);
   int x2s(int v);
   int y2s(int v);
