@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## A-Bus interrupt mask update — 2026-09-14
+
+Fixed reversed IMS15 polarity using ST-097 and Mednafen; the pinned Ymir condition
+disagrees with the manual. Added arbitration, acknowledgement and register-write
+coverage with a failing pre-fix control. Full external acknowledge cycles, input
+sampling and actual SH-2/CD/game behavior still require runtime validation.
+
 ## A-Bus refresh register update — 2026-09-14
 
 AREF now resets to 0x10 per Sega's later erratum and stores only defined bits 4:0.
