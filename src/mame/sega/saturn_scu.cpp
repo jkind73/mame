@@ -714,6 +714,11 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
 
       if (wait_level != -1) {
         update_dma_status(wait_level, DMA_STATE_MOVE);
+        // Restore the resumed channel's bus ownership after releasing the
+        // completed transfer. This model uses cycle stealing for indirect DMA.
+        const bool direct = !(m_dma[wait_level].mode & DMA_MODE_INDIRECT);
+        m_main_dtack_cb(direct);
+        m_sound_dtack_cb(direct && m_dma[wait_level].bbus_sound_access);
 
         LOGMASKED(LOG_DMA_STATE, "Push DMA%d in foreground\n", wait_level);
         if (wait_level == 1)
@@ -847,14 +852,14 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
     // clear wait, set move
     update_dma_status(wait_level, DMA_STATE_MOVE);
 
-    if (!(m_dma[wait_level].mode & DMA_MODE_INDIRECT)) {
-      m_main_dtack_cb(1);
-      m_sound_dtack_cb(m_dma[wait_level].bbus_sound_access);
-    }
+    const bool direct = !(m_dma[wait_level].mode & DMA_MODE_INDIRECT);
+    m_main_dtack_cb(direct);
+    m_sound_dtack_cb(direct && m_dma[wait_level].bbus_sound_access);
 
     if (level != -1) {
-      // set wait (allegedly) and interrupt for the last transfer, clear move
-      update_dma_status(wait_level, DMA_STATE_WAIT);
+      // Suspend the old, lower-priority channel, not the channel just
+      // promoted to MOVE. Keep its live transfer state for resumption.
+      update_dma_status(level, DMA_STATE_WAIT);
       LOGMASKED(LOG_DMA_STATE, "Push DMA%d in background\n", level);
 
       m_dma_status |= (1 << (16 + level));

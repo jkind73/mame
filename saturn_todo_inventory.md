@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## DMA arbitration update — 2026-09-14
+
+Fixed two-channel preemption suspending the wrong channel, and made halt callback
+handoff consistent with the existing direct/indirect model. 64 supported overlap
+scenarios pass through resume/completion, cross-checked against documented priority
+and Ymir/Mednafen. Exact physical bus timing and unsupported overlaps remain open.
+
 ## Indirect DMA count update — 2026-09-14
 
 Corrected indirect counts to twenty bits on every channel, with zero meaning
