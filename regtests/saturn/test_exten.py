@@ -66,7 +66,8 @@ struct saturn_vdp2_device {
   machine_stub mach;
   machine_stub &machine() { return mach; }
   bool m_odd_bit = false, m_vramsz = true;
-  u16 m_old_tvmd = 0;
+  u16 m_old_tvmd = 0, m_tvmd = 0;
+  uint8_t m_disp = 0, m_bdclmd = 0, m_lsmd = 0, m_vreso = 0, m_hreso = 0;
   u16 m_exten = 0;
   bool m_exlten = false, m_exsyen = false, m_dasel = false, m_exbgen = false;
   u16 m_hcounter_latch = 0, m_vcounter_latch = 0;

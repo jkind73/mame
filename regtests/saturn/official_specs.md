@@ -188,3 +188,12 @@ MAME reset's stale decoded control bits; register readback now agrees with the
 external-latch enable and other controls. See `test_exten.py` and README.md for
 64 tested scenarios and limits. This does not validate the whole VDP2 reset or
 TVMD initialization; those remain separate audit items.
+
+## Additional reset audit: TVMD
+
+Read ST-058 §2.4, printed p.16 / PDF p.34, confirming TVMD clears on power-on/reset.
+Verified with Ymir/Mednafen. TVMD and decoded display/mode controls now initialize
+before the startup clock callback and clear on device reset before CRTC setup.
+3,072 scenarios cover initializers, register handlers and reset/CRTC helpers.
+This supersedes the previous note that TVMD initialization remains unaddressed;
+other reset registers, actual screen scheduling and SMPC reset wiring remain open.
