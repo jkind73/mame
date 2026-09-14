@@ -248,3 +248,15 @@ not the corrected reset; Ymir ignores AREF writes. The primary erratum takes
 precedence. No dynamic refresh timing or hardware write-protection behavior was
 inferred. Independent pre-fix reset and write controls fail; 32 resets, 32,768
 AREF writes, 288 ASR writes and 24,576 existing static wait decodes pass.
+
+## A-Bus interrupt mask audit update
+
+ST-097 §3.5, printed p.57 / PDF p.73, explicitly defines IMS15 as a mask with
+one blocking and zero allowing interrupts. Corrected the reversed external condition.
+Table 2.1 (printed p.27 / PDF p.43) supplies the tested priorities/vectors; table
+3.8 (printed p.59 / PDF p.75) defines status write clearing. Mednafen sign-extends
+IMask bit 15 to mask external requests and corroborates polarity. Pinned Ymir uses
+the opposite external condition despite a direct bit-15 field; it was not treated
+as authoritative over the manual. 1,920 arbitration cases, 16 acknowledgement
+sequences and 512 register writes pass; pre-fix arbitration fails. Actual CPU/CD
+runtime and full external-acknowledgement bus behavior remain unvalidated.
