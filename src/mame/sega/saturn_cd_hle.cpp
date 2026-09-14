@@ -42,6 +42,7 @@ DASM notes:
 **************************************************************************************************/
 
 #include "emu.h"
+#include "emuopts.h"
 #include "saturn_cd_hle.h"
 
 
@@ -539,6 +540,41 @@ void saturn_cd_hle_device::update_hirq() {
   m_host_irq_cb((hirqreg & hirqmask) ? ASSERT_LINE : CLEAR_LINE);
 }
 
+void saturn_cd_hle_device::trace_host_read(unsigned port, uint16_t value) {
+  if (!machine().options().verbose() || machine().side_effects_disabled())
+    return;
+  ++m_trace_reads[port];
+  m_trace_last_read[port] = value;
+}
+
+void saturn_cd_hle_device::trace_boot_state(const char *event, bool force) {
+  if (!machine().options().verbose())
+    return;
+  const int64_t second = machine().time().seconds();
+  if (!force && m_trace_second == second)
+    return;
+  if (!force)
+    m_trace_second = second;
+  auto *const maincpu = machine().root_device().subdevice<cpu_device>("maincpu");
+  auto *const slave = machine().root_device().subdevice<cpu_device>("slave");
+  logerror("CDBOOT t=%s event=%s mainpc=%08x slavepc=%08x status=%04x next=%04x "
+           "HIRQ=%04x HIRM=%04x pending=%x CR=%04x,%04x,%04x,%04x "
+           "fad=%06x remaining=%u free=%d full=%d store=%d playtype=%d "
+           "xfer=%d bytes=%u sector=%u/%u\n",
+           machine().time().as_string(), event,
+           maincpu ? uint32_t(maincpu->state_int(STATE_GENPC)) : 0,
+           slave ? uint32_t(slave->state_int(STATE_GENPC)) : 0,
+           cd_stat, cd_next_stat, hirqreg, hirqmask, cmd_pending, cr1, cr2, cr3, cr4,
+           cd_curfad, fadstoplay, freeblocks, buffull, sectorstore, playtype,
+           int(xfertype32), xferdnum, xfersect, xfersectnum);
+  logerror("CDBOOT reads HIRQ=%llu CR1=%llu CR2=%llu CR3=%llu CR4=%llu "
+           "last=%04x,%04x,%04x,%04x,%04x\n",
+           (unsigned long long)m_trace_reads[0], (unsigned long long)m_trace_reads[1],
+           (unsigned long long)m_trace_reads[2], (unsigned long long)m_trace_reads[3],
+           (unsigned long long)m_trace_reads[4], m_trace_last_read[0],
+           m_trace_last_read[1], m_trace_last_read[2], m_trace_last_read[3], m_trace_last_read[4]);
+}
+
 uint16_t saturn_cd_hle_device::hirq_r() {
   // TODO: this member must return the register only
   u16 rv;
@@ -561,6 +597,7 @@ uint16_t saturn_cd_hle_device::hirq_r() {
   hirqreg = rv;
   update_hirq();
 
+  trace_host_read(0, rv);
   return rv;
 }
 
@@ -583,14 +620,15 @@ void saturn_cd_hle_device::hirqmask_w(offs_t offset, uint16_t data,
   update_hirq();
 }
 
-uint16_t saturn_cd_hle_device::dr1_r() { return cr1; }
-uint16_t saturn_cd_hle_device::dr2_r() { return cr2; }
-uint16_t saturn_cd_hle_device::dr3_r() { return cr3; }
+uint16_t saturn_cd_hle_device::dr1_r() { trace_host_read(1, cr1); return cr1; }
+uint16_t saturn_cd_hle_device::dr2_r() { trace_host_read(2, cr2); return cr2; }
+uint16_t saturn_cd_hle_device::dr3_r() { trace_host_read(3, cr3); return cr3; }
 uint16_t saturn_cd_hle_device::dr4_r() {
   if (!machine().side_effects_disabled()) {
     cmd_pending = 0;
     cd_stat |= CD_STAT_PERI;
   }
+  trace_host_read(4, cr4);
   return cr4;
 }
 
@@ -3087,6 +3125,7 @@ void saturn_cd_hle_device::cmd_mpeg_write_lsi() {
 }
 
 void saturn_cd_hle_device::cd_exec_command() {
+  trace_boot_state("command", true);
   if (cr1 != 0 && ((cr1 & 0xff00) != 0x5100) && ((cr1 & 0xff00) != 0x5200) &&
       ((cr1 & 0xff00) != 0x5300) && 1)
     LOGCMDV("Command exec %04x %04x %04x %04x %04x (stat %04x)\n", hirqreg, cr1,
@@ -3392,6 +3431,7 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
   if (cd_stat & CD_STAT_PERI) {
     cr_standard_return(cd_stat);
   }
+  trace_boot_state("periodic");
 }
 
 saturn_cd_hle_device::blockT *
@@ -4120,6 +4160,7 @@ void saturn_cd_hle_device::cd_playdata() {
                 LOG("cd_playdata: setting EFLS\n");
                 hirqreg |= EFLS;
                 update_hirq();
+                trace_boot_state("file-complete", true);
               }
             } else {
               // a cdda_maxrepeat of 0xf means keep repeating same track

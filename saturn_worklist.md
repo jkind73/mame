@@ -1,5 +1,20 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## After Burner II boot stall — active investigation
+
+The user clarifies that the `822d45ac` capture intentionally shows After Burner II
+failing to boot. It is not a replacement OutRun scaling test. Analysis finds the
+same 18-sector Read File/PAUSE sequence twice, separated by a long interval without
+further logged CD commands and a soft reset. VDP1 continues completing lists.
+Existing logging cannot distinguish a CD completion/polling issue from a CPU stall.
+
+Added opt-in, rate-limited `CDBOOT` status/CPU-PC/host-read diagnostics without
+changing emulation behavior. Diagnostic checks and 336 CD transfer cases pass;
+all 18 scripts/nine production objects passed with the instrumentation. See
+`regtests/saturn/afterburner2_boot_analysis.md` for timestamps, limits and the
+focused next capture. No After Burner II boot fix is claimed. OutRun flashing
+remains user-confirmed resolved; the reported size/offset issue remains open.
+
 ## Runtime follow-up: OutRun flashing confirmed resolved
 
 The user confirms the flashing sprites are gone following the manual display-erase
