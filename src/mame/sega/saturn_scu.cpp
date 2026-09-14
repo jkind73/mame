@@ -1063,10 +1063,10 @@ void saturn_scu_device::test_pending_irqs() {
     }
   }
 
-  // the A-Bus external sources share a single active-high enable and are
-  // held off until the previous one has been acknowledged through AIACK
+  // ST-097 section 3.5: IMS15 is an active-high mask, just like the
+  // internal source masks. AIACK independently gates repeated delivery.
   int external = -1;
-  if (BIT(m_ism, 15)) {
+  if (!BIT(m_ism, 15)) {
     for (int i = 0; i < 16; i++) {
       if (BIT(m_ist, 16 + i) && !BIT(m_abus_pending_ack, i)) {
         external = i;

@@ -819,3 +819,58 @@ mask/timing change or permanent-ARFEN write protection was inferred from this au
 
 All **eleven** Saturn regression scripts and three object compilations pass.
 Full linking and BIOS/game runtime validation remain pending.
+
+## A-Bus interrupt mask polarity and delivery regression
+
+Corrected IMS bit 15 from an active-high enable to an **active-high mask**, matching
+bits 13:0: one blocks, zero allows delivery. Previously the reset/acknowledgement
+value `0xbfff` could permit external interrupts, while clearing bit 15 blocked
+requests that software intended to enable. The per-source AIACK pending gate,
+internal priority table, vector fetch and status write semantics are unchanged.
+
+Evidence:
+- [ST-097-R5-072694](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-097-R5-072694.pdf),
+  §3.5, printed p.57 / PDF p.73: zero does not mask, one masks; figure 3.21 and
+  its first field definition explicitly include A-Bus mask IMS15. Printed p.27 /
+  PDF p.43, table 2.1 supplies the source/vector/priority assignments. Table 3.8
+  (printed p.59 / PDF p.75) defines status writes: zero resets, one preserves.
+  §3.6 (printed p.61 / PDF p.77) describes external acknowledgement and rearming.
+- [Mednafen scu.inc](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  computes `IPending & ~(int16)IMask`; sign extension of IMS15 masks all external
+  bits when it is set. `SCU_MSH2VectorFetch` restores `IMask = 0xbfff`.
+- [Ymir scu.cpp](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  `UpdateMasterInterruptLevel` instead includes external bits when
+  `m_intrMask.ABus_ExtIntrs` is one. `InterruptMask` in scu_defs.hpp makes this a
+  direct bit-15 field, so the inspected pinned implementation disagrees with the
+  manual on polarity. It agrees on priority levels and the vector-ack mask reset,
+  but its external-mask condition was not copied over the primary specification.
+
+```sh
+python3 regtests/saturn/test_scu_irqs.py
+python3 regtests/saturn/test_scu_irqs.py --baseline  # expected polarity assertion failure
+```
+
+The new ASan/UBSan harness extracts the actual arbiter, IMS/IST readers and write
+handlers, external input handler, AIACK writer and vector-acknowledgement callback,
+plus the header's writable mask. It passes:
+- **1,920 arbitration cases:** each external source versus each internal source
+  (or none), independent mask settings and existing per-source pending-ack gating.
+  Checks priority, vector, selected status-bit consumption and preserved pending
+  bits; vector fetch clears the issued CPU line and restores all masks.
+- **16 acknowledgement sequences:** one for each external source. Masked requests
+  remain pending, unmasking delivers them, later requests cannot replace an already
+  issued vector, AIACK respects its byte lane, and a queued higher-priority internal
+  request is retained until explicitly unmasked.
+- **512 masked register writes:** IMS defined-bit filtering/preservation and IST
+  write-zero-to-clear across all 16 byte-enable combinations and mixed data/state.
+
+The pre-fix arbiter from `024d7e28b1c4a67e6f667f89e2999eaaf2e519d8` fails the
+expected IRQ-level assertion. Tests record CPU input-line calls and invoke vector
+acknowledgement directly; they do not run SH-2 instructions or MAME address-space
+routing. Physical request sampling/deassertion, same-class multi-source tie cases,
+complete external acknowledge bus cycles, and global versus per-source AIACK
+hardware behavior are not established. No change to those behaviors was inferred
+from the mask-polarity fix. CD/game effects still need runtime confirmation.
+
+All **twelve** regression scripts and three object compilations pass; full linking,
+BIOS boot and game validation remain pending.

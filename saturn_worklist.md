@@ -241,3 +241,13 @@ alongside these reopened items.
 - Register-state correction only: AREF is not yet used for dynamic refresh
   timing. ASR behavior unchanged; physical bus/CPU reset wiring and save/load
   remain open. All eleven scripts and three object compilations pass.
+
+### A-Bus interrupt mask — corrected polarity and added delivery tests
+
+- IMS15 is a mask, not an enable: set blocks, clear permits. ST-097 §3.5 and
+  Mednafen agree; pinned Ymir differs. Reset/ack mask 0xbfff now blocks external
+  sources as intended. Existing AIACK and internal arbitration policies unchanged.
+- 1,920 arbitration cases, 16 acknowledgement sequences and 512 masked register
+  writes pass with ASan/UBSan. The pre-fix arbiter fails its IRQ-level assertion.
+- All twelve scripts and three object compilations pass. Physical bus handshake,
+  multi-source external edge cases and SH-2/CD/game runtime remain open.
