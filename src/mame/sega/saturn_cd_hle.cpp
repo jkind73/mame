@@ -248,6 +248,10 @@ void saturn_cd_hle_device::device_reset() {
   cd_speed = 2;
   cdda_repeat_count = 0;
 
+  // the MPEG state is not registered for save states, following the convention
+  // of the filter, partition and block arrays above; reset re-establishes it
+  mpeg_reset();
+
   m_sector_timer->adjust(
       attotime::from_hz(150)); // 150 sectors / second = 300kBytes/second
 }
@@ -687,13 +691,6 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
         (get_track_index(cd_curfad) << 8) | (cd_curfad >> 16); // index & 0xff00
     cr4 = cd_curfad;
   }
-}
-
-void saturn_cd_hle_device::mpeg_standard_return(uint16_t cur_status) {
-  cr1 = cur_status | 0x01;
-  cr2 = 0;               // V-Counter
-  cr3 = (0 << 8) | 0x10; // Picture Info | audio status
-  cr4 = 0x1000;          // video status
 }
 
 void saturn_cd_hle_device::cd_change_status(u16 new_status) {
@@ -2295,8 +2292,135 @@ void saturn_cd_hle_device::cmd_get_disc_region() {
   //  cr_standard_return(cd_stat);
 }
 
+/* ------------------------------------------------------------------------
+   MPEG (Video CD / Movie Card) cartridge
+
+   The card is driven entirely through CD block host commands $90-$AF: the
+   SH-2 writes parameters into CR1-CR4 and reads decoder status back out of
+   the same registers, so from the host side the card is the state in mpegT
+   plus this response contract.  The CDB-106 firmware itself does no
+   decoding - it relays commands to the two decoder LSIs on the cartridge
+   (register windows $0A100000 / $0A180000 on the SH-1 bus) and aggregates
+   their status back.
+
+   What is modelled here is that host-visible contract: the command set, the
+   parameter encodings, the status report layout and the interrupt causes.
+   What is not modelled is the decoding - the raw decoder-LSI register
+   encoding is not documented, and MAME has neither a dump of the card's own
+   firmware image nor a Video CD data path, so no picture is produced and the
+   timecode/PTS counters never advance.
+   ------------------------------------------------------------------------ */
+
+void saturn_cd_hle_device::mpeg_bringup() {
+  /* Bring-up service hook 34 ($A500), which the cartridge's own firmware image
+     supplies.  The image is loaded and run at boot - the CD block reads a
+     length and image from the window at $0E000000, copies it to buffer DRAM
+     $0907B000 and calls its entry point - so on a unit with a card fitted this
+     has already run before the host issues a single MPEG command.  MpegInit
+     ($93) runs it again. */
+  mpeg.subsys_state = 0x67818022;
+  mpeg.lsi_b_control = 0x8209;
+  mpeg.lsi_a_event = 0xffffffff;
+  mpeg.lsi_a_param[0] = 0x88fe;
+
+  /* the subsystem state long is big-endian at $0F000890, so $0F000891 is its
+     bits 23-16 and $0F000892 its bits 15-8: derive both documented flags from
+     the constant rather than restating them */
+  mpeg.active = ((mpeg.subsys_state >> 8) & 0x80) != 0; // $0F000892 bit 7
+  mpeg.decode_stopped =
+      ((mpeg.subsys_state >> 16) & 0x01) != 0; // $0F000891 bit 0
+}
+
+void saturn_cd_hle_device::mpeg_reset() {
+  memset(&mpeg, 0, sizeof(mpeg));
+
+  /* MAME has no MPEG cartridge device and no dump of the card's firmware image,
+     so there is nothing to probe.  The interface is modelled as fitted and
+     loaded, which is what this driver has always assumed when it answered
+     $90-$94; clear these to reproduce a stock unit, on which the firmware's
+     extension dispatch table is empty and every MPEG command rejects. */
+  mpeg.present = true;
+  mpeg.image_loaded = true;
+
+  mpeg_bringup();
+
+  // idle report: both run states stopped, nothing decoded, both buffers empty
+  mpeg.video_run = 1;
+  mpeg.audio_run = 1;
+  mpeg.video_status = 0x1000; // video buffer-partition empty
+  mpeg.audio_status = 0x10;   // audio buffer empty
+  mpeg.audio_mute = 0x04;     // default, unmuted
+  mpeg.pause_time = 1;        // normal playback
+  mpeg.freeze_time = 1;       // normal playback
+
+  // NTSC normal-resolution picture geometry until Set Mode says otherwise
+  mpeg.scan_mode = 0;
+  mpeg.operation_mode = 0;
+  mpeg.pic_width = 352;
+  mpeg.pic_height = 240;
+
+  // partition $FF disconnects a layer
+  for (int i = 0; i < 2; i++) {
+    mpeg.layer[i].partition = 0xff;
+    mpeg.next_layer[i].partition = 0xff;
+  }
+}
+
+/* The dispatcher gates every MPEG command on the hardware being present and the
+   subsystem being active; MpegInit ($93) is the one exception and skips the
+   active check.  A gated-off command still answers with CMOK - only the status
+   byte says it was refused. */
+bool saturn_cd_hle_device::mpeg_gate(bool need_active) {
+  if (mpeg.present && (!need_active || mpeg.active))
+    return true;
+
+  LOGWARN("CD: MPEG command %02x refused, %s\n", cr1 >> 8,
+          mpeg.present ? "subsystem not initialised" : "no MPEG hardware");
+
+  cr1 = CD_STAT_REJECT;
+  cr2 = cr3 = cr4 = 0;
+  hirqreg |= CMOK;
+  update_hirq();
+  return false;
+}
+
+void saturn_cd_hle_device::mpeg_standard_return(uint16_t cur_status) {
+  /* GetStatus service (ROM index 68, $AEB4), which nearly every MPEG command
+     tail-calls.  It seeds CR1:CR2 from the drive's own status responder and
+     then ORs in the MPEG fields, which lands on this layout: CR1 high byte is
+     the CD status code and its low byte the MPEG operation status, CR2 holds
+     the picture-info and audio-status bytes, CR3 the video status word and CR4
+     the operation-interval (VSYNC) counter.
+
+     The operation status byte packs the two run states either side of the
+     decode-stopped flag: bits 0-2 video, bit 3 stopped, bits 4-6 audio. */
+  const uint8_t op_status = (mpeg.video_run & 0x07) |
+                            (mpeg.decode_stopped ? 0x08 : 0x00) |
+                            ((mpeg.audio_run & 0x07) << 4);
+
+  cr1 = cur_status | op_status;
+  cr2 = (mpeg.picture_info << 8) | mpeg.audio_status;
+  cr3 = mpeg.video_status;
+  cr4 = mpeg.interval;
+}
+
 void saturn_cd_hle_device::cmd_get_mpeg_card_boot_rom() {
-  // Get MPEG Card Boot ROM
+  // Get MPEG Card Boot ROM ($E2)
+  LOGCMD("%s: Get MPEG Card Boot ROM\n", machine().describe_context());
+
+  /* requires MPEG hardware present and a loaded cartridge image.  The firmware
+     also requires the subsystem to be active and validates the requested
+     address and length against a $07FF window, but it does not document which
+     CR holds which, so that check is not implemented here. */
+  if (!mpeg.present || !mpeg.image_loaded) {
+    LOGWARN("CD: Get MPEG Card Boot ROM with no MPEG cartridge\n");
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+
   // TODO: incomplete, needs to actually retrieve from MPEG ROM, just silence
   // popmessage for now.
 
@@ -2306,53 +2430,658 @@ void saturn_cd_hle_device::cmd_get_mpeg_card_boot_rom() {
 }
 
 void saturn_cd_hle_device::cmd_mpeg_get_status() {
-  // MPEG Get Status
-  // ...
+  // MPEG Get Status ($90) - read the decoder status and return it
+  LOGCMD("%s: MPEG Get Status\n", machine().describe_context());
+  if (!mpeg_gate(true))
+    return;
+
   mpeg_standard_return(cd_stat);
-  hirqreg |= (CMOK);
+  hirqreg |= CMOK;
   update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_mpeg_get_irq() {
-  // MPEG get IRQ
-  // ...
-  cr1 = cd_stat | 0;
-  cr2 = 5;
-  cr3 = 0;
-  cr4 = 0;
-  hirqreg |= (CMOK);
+  // MPEG Get Interrupt ($91) - read and clear the interrupt-status long
+  LOGCMD("%s: MPEG Get Interrupt\n", machine().describe_context());
+  if (!mpeg_gate(true))
+    return;
+
+  /* the interrupt-status long ($0F000848) is merged into the response and then
+     cleared, so build the status report first and let the pending causes take
+     over CR3:CR4, which is where the report puts the MPEG status longword */
+  mpeg_standard_return(cd_stat);
+  cr3 = mpeg.irq_status >> 16;
+  cr4 = mpeg.irq_status & 0xffff;
+  mpeg.irq_status = 0;
+
+  hirqreg |= CMOK;
   update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_mpeg_set_irq_mask() {
-  // MPEG Set IRQ Mask
-  // ...
-  mpeg_standard_return(cd_stat);
-  hirqreg |= (CMOK);
-  update_hirq();
-}
+  // MPEG Set Interrupt Mask ($92) - write CR to the interrupt mask ($0F00084C)
+  LOGCMD("%s: MPEG Set Interrupt Mask %04x%04x\n", machine().describe_context(),
+         cr3, cr4);
+  if (!mpeg_gate(true))
+    return;
 
-void saturn_cd_hle_device::cmd_mpeg_set_mode() {
-  // MPEG Set Mode
-  // ...
+  mpeg.irq_mask = (uint32_t(cr3) << 16) | cr4;
+
   mpeg_standard_return(cd_stat);
-  hirqreg |= (CMOK);
+  hirqreg |= CMOK;
   update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_mpeg_init() {
-  // MPEG init
-  // ...
+  // MPEG Init ($93)
+  /* the one MPEG command the dispatcher does not gate on the subsystem already
+     being active, since this is what activates it - but it still refuses with
+     status $FF unless the cartridge's own image is loaded, because that is
+     where the command logic lives. */
+  const uint16_t param = cr2; // read before the response overwrites the CRs
+
+  LOGCMD("%s: MPEG Init (%04x)\n", machine().describe_context(), param);
+  if (!mpeg_gate(false))
+    return;
+
+  if (!mpeg.image_loaded) {
+    LOGWARN("CD: MPEG Init with no cartridge image loaded\n");
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+
+  mpeg_bringup();
+
   hirqreg |= (CMOK | MPED);
-  update_hirq();
-  if (cr2 == 0x0001)
-    hirqreg |= (MPCM);
+  if (param == 0x0001)
+    hirqreg |= MPCM;
   update_hirq();
 
   cr1 = cd_stat;
-  cr2 = 0;
-  cr3 = 0;
-  cr4 = 0;
+  cr2 = cr3 = cr4 = 0;
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_mode() {
+  /* MPEG Set Mode ($94) - CR1 low byte operation mode (0 normal movie, 1 still
+     picture, 2 hi-res movie (unsupported), 3 hi-res still, 4 MPEG sector-buffer
+     mode), CR2 high byte decode timing (0 VSYNC-synchronised, 1 host-
+     synchronised), CR2 low byte output destination (0 VDP2, 1 host transfer),
+     CR3 high byte scan mode.  $FF in any byte keeps the current value. */
+  const uint8_t op = cr1 & 0xff;
+  const uint8_t timing = cr2 >> 8;
+  const uint8_t dest = cr2 & 0xff;
+  const uint8_t scan = cr3 >> 8;
+
+  LOGCMD("%s: MPEG Set Mode (op %02x timing %02x dest %02x scan %02x)\n",
+         machine().describe_context(), op, timing, dest, scan);
+  if (!mpeg_gate(true))
+    return;
+
+  if (op != 0xff)
+    mpeg.operation_mode = op;
+  if (timing != 0xff)
+    mpeg.decode_timing = timing;
+  if (dest != 0xff)
+    mpeg.output_dest = dest;
+  if (scan != 0xff)
+    mpeg.scan_mode = scan;
+
+  /* picture geometry follows the scan mode: 0/1 are NTSC (352x240 normal,
+     704x480 hi-res) and 2/3 are PAL (352x288 / 704x576).  These are the
+     per-scan-mode maxima - a stream's encoded picture can be smaller. */
+  const bool pal = (mpeg.scan_mode & 0x02) != 0;
+  const bool hires = (mpeg.operation_mode == 2) || (mpeg.operation_mode == 3);
+
+  mpeg.pic_width = hires ? 704 : 352;
+  mpeg.pic_height = hires ? (pal ? 576 : 480) : (pal ? 288 : 240);
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_play() {
+  /* MPEG Play ($95) - CR1 low byte playback mode (0 A/V-synchronised, 1
+     independent with no A/V sync), CR2 high byte audio-decoder transfer mode,
+     CR2 low byte video-decoder transfer mode (0 automatic, 1 forced), CR3 = 0,
+     CR4 low byte a fourth parameter whose meaning is untraced (the host library
+     always sends $FF for it).  Same $FF keep-current convention as Set Mode.
+     This is the start of decoding. */
+  const uint8_t mode = cr1 & 0xff;
+  const uint8_t axfer = cr2 >> 8;
+  const uint8_t vxfer = cr2 & 0xff;
+  const uint8_t param4 = cr4 & 0xff;
+
+  LOGCMD("%s: MPEG Play (mode %02x audio %02x video %02x param4 %02x)\n",
+         machine().describe_context(), mode, axfer, vxfer, param4);
+  if (!mpeg_gate(true))
+    return;
+
+  if (mode != 0xff)
+    mpeg.playback_mode = mode;
+  if (axfer != 0xff)
+    mpeg.audio_xfer = axfer;
+  if (vxfer != 0xff)
+    mpeg.video_xfer = vxfer;
+  if (param4 != 0xff)
+    mpeg.play_param4 = param4;
+
+  // both run states move to transferring/playing and decoding is no longer
+  // stopped
+  mpeg.video_run = 4;
+  mpeg.audio_run = 4;
+  mpeg.decode_stopped = false;
+  mpeg.video_status |= 0x0001;  // decoding
+  mpeg.audio_status |= 0x01;    // decoding
+  mpeg.video_status &= ~0x1000; // video partition no longer empty
+  mpeg.audio_status &= ~0x10;   // audio buffer no longer empty
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_decode() {
+  /* MPEG Set Decode ($96) - CR1 low byte audio mute ($04 default/unmuted, $01
+     mute right, $02 mute left), CR2 pause-time word, CR4 freeze-time word,
+     CR3 = 0.  Pause time 0 = pause (frame advance), 1 = normal playback, other
+     values = slow-playback interval; freeze time 0 = freeze, 1 = normal
+     playback, other values = strobe-playback interval. */
+  const uint8_t mute = cr1 & 0xff;
+  const uint16_t pause = cr2;
+  const uint16_t freeze = cr4;
+
+  LOGCMD("%s: MPEG Set Decode (mute %02x pause %04x freeze %04x)\n",
+         machine().describe_context(), mute, pause, freeze);
+  if (!mpeg_gate(true))
+    return;
+
+  if (mute != 0xff)
+    mpeg.audio_mute = mute;
+  mpeg.pause_time = pause;
+  mpeg.freeze_time = freeze;
+
+  mpeg.video_status &= ~0x000c;
+  if (pause == 0)
+    mpeg.video_status |= 0x0004; // paused
+  if (freeze == 0)
+    mpeg.video_status |= 0x0008; // frozen
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_out_decoding_sync() {
+  /* MPEG Out Decoding Sync ($97) - CR2 low byte frame bank number.  In
+     host-synchronised decode timing (Set Mode decode timing 1) the decoder
+     advances one picture per command; stream identification, the sequence
+     header and the first picture proceed without it. */
+  const uint8_t bank = cr2 & 0xff;
+
+  LOGCMD("%s: MPEG Out Decoding Sync (bank %02x)\n",
+         machine().describe_context(), bank);
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg.display_bank = bank;
+  mpeg.tc_frame++;
+  mpeg.video_status |= 0x0040; // picture updated
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_get_timecode() {
+  // MPEG Get Timecode ($98)
+  LOGCMD("%s: MPEG Get Timecode\n", machine().describe_context());
+  if (!mpeg_gate(true))
+    return;
+
+  /* the record is hour, minute, second and picture (frame) number, plus the
+     buffer bank, the picture type (1=I, 2=P, 3=B, 4=D) and the track number.
+     The reference does not give the CR packing for those seven bytes, so they
+     go out in that order two to a word; with no decoder running they stay at
+     whatever the last picture left behind. */
+  mpeg_standard_return(cd_stat);
+  cr1 = (mpeg.tc_hour << 8) | mpeg.tc_min;
+  cr2 = (mpeg.tc_sec << 8) | mpeg.tc_frame;
+  cr3 = (mpeg.tc_bank << 8) | mpeg.tc_pic_type;
+  cr4 = mpeg.tc_track << 8;
+
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_get_pts() {
+  // MPEG Get PTS ($99) - the audio presentation timestamp, a 32-bit count
+  LOGCMD("%s: MPEG Get PTS\n", machine().describe_context());
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg_standard_return(cd_stat);
+  cr3 = mpeg.pts >> 16;
+  cr4 = mpeg.pts & 0xffff;
+
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_connection() {
+  /* MPEG Set Connection ($9A) - CR1 low byte audio connection mode, CR2 audio
+     layer:partition, CR3 high byte record selector (0 = current, 1 = next),
+     CR3 low byte video connection mode, CR4 video layer:partition.  Connection
+     mode bits: $01 switch on EOR, $02 switch on system-end, $04 delete sector,
+     $08 ignore PTS, $10 clear VBV, $20 clear VBV + write-back cache, $40
+     evaluate the end condition before the back aperture.  Layer 0 = system,
+     1 = audio/video.  Picture search $00 off, $80 video, $C0 video plus discard
+     audio.  Partition $FF disconnects the layer. */
+  const bool next = (cr3 >> 8) != 0;
+  const uint8_t amode = cr1 & 0xff;
+  const uint16_t arec = cr2;
+  const uint8_t vmode = cr3 & 0xff;
+  const uint16_t vrec = cr4;
+
+  LOGCMD("%s: MPEG Set Connection (%s audio %02x %04x video %02x %04x)\n",
+         machine().describe_context(), next ? "next" : "current", amode, arec,
+         vmode, vrec);
+  if (!mpeg_gate(true))
+    return;
+
+  mpegT::layerT *const dst = next ? mpeg.next_layer : mpeg.layer;
+
+  dst[MPEG_LAYER_AUDIO].conn_mode = amode;
+  dst[MPEG_LAYER_AUDIO].layer_search = arec >> 8;
+  dst[MPEG_LAYER_AUDIO].partition = arec & 0xff;
+  dst[MPEG_LAYER_VIDEO].conn_mode = vmode;
+  dst[MPEG_LAYER_VIDEO].layer_search = vrec >> 8;
+  dst[MPEG_LAYER_VIDEO].partition = vrec & 0xff;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_get_connection() {
+  // MPEG Get Connection ($9B) - reads the selected records back in the $9A
+  // layout
+  const bool next = (cr3 >> 8) != 0;
+
+  LOGCMD("%s: MPEG Get Connection (%s)\n", machine().describe_context(),
+         next ? "next" : "current");
+  if (!mpeg_gate(true))
+    return;
+
+  const mpegT::layerT *const src = next ? mpeg.next_layer : mpeg.layer;
+
+  mpeg_standard_return(cd_stat);
+  cr1 = (cr1 & 0xff00) | src[MPEG_LAYER_AUDIO].conn_mode;
+  cr2 = (src[MPEG_LAYER_AUDIO].layer_search << 8) |
+        src[MPEG_LAYER_AUDIO].partition;
+  cr3 = (uint16_t(next ? 1 : 0) << 8) | src[MPEG_LAYER_VIDEO].conn_mode;
+  cr4 = (src[MPEG_LAYER_VIDEO].layer_search << 8) |
+        src[MPEG_LAYER_VIDEO].partition;
+
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_change_connection() {
+  /* MPEG Change Connection ($9C) - commits the staged next-slot records rather
+     than carrying full ones.  CR2 holds the two per-layer selector bytes, low
+     byte video and high byte audio; CR3/CR4 carry no field the handler
+     evaluates.  Per selector bit 7 set skips the layer and keeps its current
+     binding, bit 7 clear commits the layer's next-slot record, and bit 0 set
+     additionally requires the layer's busy flag to be clear first.  Committing
+     a layer requires its run state to be 4 (playing) and advances it to 5
+     (switching). */
+  const uint8_t vsel = cr2 & 0xff;
+  const uint8_t asel = cr2 >> 8;
+
+  LOGCMD("%s: MPEG Change Connection (video %02x audio %02x)\n",
+         machine().describe_context(), vsel, asel);
+  if (!mpeg_gate(true))
+    return;
+
+  /* beyond the dispatcher's active gate the handler refuses the whole command
+     unless $0F000892 bits 1-3 are clear - those are the LSI A/B packet-DMA
+     completion bits, and $0F000892 is bits 15-8 of the subsystem state long */
+  if (mpeg.subsys_state & 0x0e00) {
+    LOGWARN(
+        "CD: MPEG Change Connection refused, LSI packet DMA still running\n");
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+
+  const uint8_t sel[2] = {vsel, asel};
+
+  for (int i = 0; i < 2; i++) {
+    if (sel[i] & 0x80)
+      continue; // layer skipped, current binding kept
+
+    uint8_t &run = (i == MPEG_LAYER_VIDEO) ? mpeg.video_run : mpeg.audio_run;
+
+    if (run != 4) {
+      LOGWARN(
+          "CD: MPEG Change Connection, layer %d not playing (run state %d)\n",
+          i, run);
+      continue;
+    }
+
+    mpeg.layer[i] = mpeg.next_layer[i];
+    run = 5; // switching
+  }
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_stream() {
+  /* MPEG Set Stream ($9D) - wire layout mirrors Set Connection: CR1 low byte
+     audio stream mode, CR2 audio stream:channel, CR3 high byte record selector,
+     CR3 low byte video stream mode, CR4 video stream:channel.  Stream mode
+     bits: $01 set stream number, $02 identify stream number, $10 set channel
+     number, $20 identify channel number.  The stream number validates as <= 31.
+   */
+  const bool next = (cr3 >> 8) != 0;
+  const uint8_t amode = cr1 & 0xff;
+  const uint16_t arec = cr2;
+  const uint8_t vmode = cr3 & 0xff;
+  const uint16_t vrec = cr4;
+
+  LOGCMD("%s: MPEG Set Stream (%s audio %02x %04x video %02x %04x)\n",
+         machine().describe_context(), next ? "next" : "current", amode, arec,
+         vmode, vrec);
+  if (!mpeg_gate(true))
+    return;
+
+  if (((arec >> 8) > 31) || ((vrec >> 8) > 31)) {
+    LOGWARN("CD: MPEG Set Stream, stream number %d/%d out of range\n",
+            arec >> 8, vrec >> 8);
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+
+  mpegT::layerT *const dst = next ? mpeg.next_layer : mpeg.layer;
+
+  if (amode & 0x01)
+    dst[MPEG_LAYER_AUDIO].stream_number = arec >> 8;
+  if (amode & 0x10)
+    dst[MPEG_LAYER_AUDIO].channel = arec & 0xff;
+  if (vmode & 0x01)
+    dst[MPEG_LAYER_VIDEO].stream_number = vrec >> 8;
+  if (vmode & 0x10)
+    dst[MPEG_LAYER_VIDEO].channel = vrec & 0xff;
+
+  dst[MPEG_LAYER_AUDIO].stream_mode = amode;
+  dst[MPEG_LAYER_VIDEO].stream_mode = vmode;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_get_stream() {
+  // MPEG Get Stream ($9E) - reads back the Set Stream layout, per layer
+  const bool next = (cr3 >> 8) != 0;
+
+  LOGCMD("%s: MPEG Get Stream (%s)\n", machine().describe_context(),
+         next ? "next" : "current");
+  if (!mpeg_gate(true))
+    return;
+
+  const mpegT::layerT *const src = next ? mpeg.next_layer : mpeg.layer;
+
+  mpeg_standard_return(cd_stat);
+  cr1 = (cr1 & 0xff00) | src[MPEG_LAYER_AUDIO].stream_mode;
+  cr2 = (src[MPEG_LAYER_AUDIO].stream_number << 8) |
+        src[MPEG_LAYER_AUDIO].channel;
+  cr3 = (uint16_t(next ? 1 : 0) << 8) | src[MPEG_LAYER_VIDEO].stream_mode;
+  cr4 = (src[MPEG_LAYER_VIDEO].stream_number << 8) |
+        src[MPEG_LAYER_VIDEO].channel;
+
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_get_picture_size() {
+  // MPEG Get Picture Size ($9F) - horizontal and vertical pixel size
+  LOGCMD("%s: MPEG Get Picture Size\n", machine().describe_context());
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg_standard_return(cd_stat);
+  cr3 = mpeg.pic_width;
+  cr4 = mpeg.pic_height;
+
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_display() {
+  // MPEG Display ($A0) - CR2 high byte display switch (0 off, nonzero on),
+  // CR2 low byte frame bank number
+  const bool on = (cr2 >> 8) != 0;
+  const uint8_t bank = cr2 & 0xff;
+
+  LOGCMD("%s: MPEG Display (%s bank %02x)\n", machine().describe_context(),
+         on ? "on" : "off", bank);
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg.display_on = on;
+  mpeg.display_bank = bank;
+
+  if (on)
+    mpeg.video_status |= 0x0002; // displaying
+  else
+    mpeg.video_status &= ~0x0002;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_window() {
+  /* MPEG Set Window ($A1) - CR1 low byte selects the sub-parameter, and all
+     five selectors go through this one command: 0 frame-buffer position, 1
+     frame- buffer ratio, 2 display position, 3 display size (an exclusive
+     extent), 4 display offset.  CR2 low byte is a change flag, CR3 the X value
+     and CR4 the Y value.  Display position places the picture's top-left on
+     screen in the decoder's output-raster coordinates, where the X origin sits
+     one dot left of the visible frame and the Y origin at the top of the full
+     raster, 8 lines above a 224-line frame. */
+  const uint8_t sel = cr1 & 0xff;
+  const uint8_t flag = cr2 & 0xff;
+
+  LOGCMD("%s: MPEG Set Window (sel %02x flag %02x x %04x y %04x)\n",
+         machine().describe_context(), sel, flag, cr3, cr4);
+  if (!mpeg_gate(true))
+    return;
+
+  if (sel >= 5) {
+    LOGWARN("CD: MPEG Set Window, unknown sub-parameter %02x\n", sel);
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+
+  mpeg.win[sel][0] = cr3;
+  mpeg.win[sel][1] = cr4;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_border_color() {
+  // MPEG Set Border Color ($A2) - written to LSI shadow +18.  The reference
+  // does not give the CR position, so the colour is taken from CR4, the
+  // word-sized value register the neighbouring display commands use.
+  LOGCMD("%s: MPEG Set Border Color (%04x)\n", machine().describe_context(),
+         cr4);
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg.border_color = cr4;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_fade() {
+  /* MPEG Set Fade ($A3) - Y gain and C gain, gated on the LSI-ready flag at
+     $0F000890 bit 1, which is bits 31-24 of the subsystem state long.  The
+     reference gives the two gains but not their CR positions; they are taken
+     from CR2 high and low, the byte pair the other display commands use. */
+  const uint8_t ygain = cr2 >> 8;
+  const uint8_t cgain = cr2 & 0xff;
+
+  LOGCMD("%s: MPEG Set Fade (Y %02x C %02x)\n", machine().describe_context(),
+         ygain, cgain);
+  if (!mpeg_gate(true))
+    return;
+
+  if (!((mpeg.subsys_state >> 24) & 0x02)) {
+    LOGWARN("CD: MPEG Set Fade refused, LSI not ready\n");
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+
+  mpeg.fade_y = ygain;
+  mpeg.fade_c = cgain;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_video_effect() {
+  /* MPEG Set Video Effect ($A4) - written to LSI shadow +24.  Interpolation
+     bits $01 Y-horizontal, $02 C-horizontal, $04 Y-vertical, $08 C-vertical;
+     transparent-bit mode 0 off, 1 luma 64, 2 luma 96, 3 luma 128, $04 magnify
+     the transparent area; blur (soft-switch) $01 on.  The CR positions are not
+     documented, so the interpolation and transparent bytes are taken from CR2
+     and the blur flag from CR4 low. */
+  const uint8_t interp = cr2 >> 8;
+  const uint8_t transparent = cr2 & 0xff;
+  const uint8_t blur = cr4 & 0xff;
+
+  LOGCMD("%s: MPEG Set Video Effect (interp %02x transparent %02x blur %02x)\n",
+         machine().describe_context(), interp, transparent, blur);
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg.video_effect = (interp << 8) | transparent;
+  mpeg.display_attr = blur;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_set_display_attr() {
+  // MPEG $A5 - an additional display attribute, a window sub-parameter. Neither
+  // the command name nor its parameters were individually confirmed against the
+  // host-side command builders, so the CRs are recorded as given.
+  LOGCMD("%s: MPEG Set Display Attribute (%04x %04x %04x)\n",
+         machine().describe_context(), cr2, cr3, cr4);
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_get_picture_info() {
+  // MPEG $A6 - get image / picture info.  Not individually confirmed; the
+  // picture info byte is already carried in CR2 high of every status report.
+  LOGCMD("%s: MPEG Get Picture Info\n", machine().describe_context());
+  if (!mpeg_gate(true))
+    return;
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_read_lsi() {
+  /* MPEG $AE - raw read of an LSI shadow register rather than of the decoder
+     itself: $0F000854 for the LSI A parameter block and $0F000884 for the LSI B
+     control shadow.  CR1 bit 1 selects the window, matching $AF. */
+  const bool lsi_b = (cr1 & 0x02) != 0;
+  const uint8_t reg = (cr2 & 0xff) & ~1;
+
+  LOGCMD("%s: MPEG Read LSI %s register %02x\n", machine().describe_context(),
+         lsi_b ? "B" : "A", reg);
+  if (!mpeg_gate(true))
+    return;
+
+  uint16_t value = 0;
+
+  if (lsi_b)
+    value = mpeg.lsi_b_control;
+  else if ((reg >> 1) <
+           (sizeof(mpeg.lsi_a_param) / sizeof(mpeg.lsi_a_param[0])))
+    value = mpeg.lsi_a_param[reg >> 1];
+  else
+    LOGWARN("CD: MPEG Read LSI A register %02x outside the parameter block\n",
+            reg);
+
+  mpeg_standard_return(cd_stat);
+  cr4 = value;
+
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
+void saturn_cd_hle_device::cmd_mpeg_write_lsi() {
+  /* MPEG $AF - raw write of CR4 into window[CR2 low byte & ~1].  CR1 bit 1
+     selects the window (LSI A at $0A100000, LSI B at $0A180000) and CR1 bit 0
+     is read-back mode.  This is the escape hatch a cartridge image or a
+     diagnostic uses to poke the decoder LSIs directly; with no decoder modelled
+     the value lands in the shadow the read-back command reports. */
+  const bool lsi_b = (cr1 & 0x02) != 0;
+  const bool readback = (cr1 & 0x01) != 0;
+  const uint8_t reg = (cr2 & 0xff) & ~1;
+  const uint16_t value = cr4;
+
+  LOGCMD("%s: MPEG Write LSI %s register %02x = %04x%s\n",
+         machine().describe_context(), lsi_b ? "B" : "A", reg, value,
+         readback ? " (read-back)" : "");
+  if (!mpeg_gate(true))
+    return;
+
+  if (lsi_b)
+    mpeg.lsi_b_control = value;
+  else if ((reg >> 1) <
+           (sizeof(mpeg.lsi_a_param) / sizeof(mpeg.lsi_a_param[0])))
+    mpeg.lsi_a_param[reg >> 1] = value;
+  else
+    LOGWARN("CD: MPEG Write LSI A register %02x outside the parameter block\n",
+            reg);
+
+  mpeg_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
 }
 
 void saturn_cd_hle_device::cd_exec_command() {
@@ -2515,6 +3244,85 @@ void saturn_cd_hle_device::cd_exec_command() {
     break;
   case 0x94:
     cmd_mpeg_set_mode();
+    break;
+  case 0x95:
+    cmd_mpeg_play();
+    break;
+  case 0x96:
+    cmd_mpeg_set_decode();
+    break;
+  case 0x97:
+    cmd_mpeg_out_decoding_sync();
+    break;
+  case 0x98:
+    cmd_mpeg_get_timecode();
+    break;
+  case 0x99:
+    cmd_mpeg_get_pts();
+    break;
+  case 0x9a:
+    cmd_mpeg_set_connection();
+    break;
+  case 0x9b:
+    cmd_mpeg_get_connection();
+    break;
+  case 0x9c:
+    cmd_mpeg_change_connection();
+    break;
+  case 0x9d:
+    cmd_mpeg_set_stream();
+    break;
+  case 0x9e:
+    cmd_mpeg_get_stream();
+    break;
+  case 0x9f:
+    cmd_mpeg_get_picture_size();
+    break;
+  case 0xa0:
+    cmd_mpeg_display();
+    break;
+  case 0xa1:
+    cmd_mpeg_set_window();
+    break;
+  case 0xa2:
+    cmd_mpeg_set_border_color();
+    break;
+  case 0xa3:
+    cmd_mpeg_set_fade();
+    break;
+  case 0xa4:
+    cmd_mpeg_set_video_effect();
+    break;
+  case 0xa5:
+    cmd_mpeg_set_display_attr();
+    break;
+  case 0xa6:
+    cmd_mpeg_get_picture_info();
+    break;
+
+  /* $A7-$AD have no ROM default handler, so the dispatcher rejects them until
+     a cartridge extension image installs one - they are not unknown commands
+     and must not fall through to the unknown-command path */
+  case 0xa7:
+  case 0xa8:
+  case 0xa9:
+  case 0xaa:
+  case 0xab:
+  case 0xac:
+  case 0xad:
+    LOGWARN("CD: MPEG command %02x has no handler\n", cr1 >> 8);
+    cr1 = CD_STAT_REJECT;
+    cr2 = cr3 = cr4 = 0;
+    hirqreg |= CMOK;
+    update_hirq();
+    break;
+
+  // $AE/$AF are the raw decoder-LSI escape hatch
+  case 0xae:
+    cmd_mpeg_read_lsi();
+    break;
+  case 0xaf:
+    cmd_mpeg_write_lsi();
     break;
 
   case 0xe0:
