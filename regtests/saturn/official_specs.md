@@ -357,3 +357,49 @@ All 18 scripts/nine object builds pass. This is **not complete VDP1**: synchrono
 drawing, ENDR, exact draw/erase/swap timing, BEF/pointer details, full framebuffer
 formats, rasterization/texture/color edge cases and real save/load/runtime proof
 remain. See `regtests/saturn/vdp1_completion.md` for evidence and acceptance gates.
+
+## VDP1 sequencer and packed framebuffer implementation — 2026-09-14
+
+Replaced whole-list synchronous dispatch with saved, timer-driven command
+execution. Lists no longer stop at a host iteration cap; CPU edits to looping
+lists are seen on subsequent fetches. ENDR cancels at command boundaries, reset
+cancels pending work, and a new PTMR start restarts at command zero. COPR tracks
+the fetched command; LOPR latches on framebuffer changes; read-only status
+register writes are ignored. Legal jump/skip/CALL/RETURN controls are tested;
+nested CALLs and main-routine RETURNs are prohibited by Sega, not legal features.
+
+Packed 8-bit drawing now shares CPU-visible words with scanout and erase, with
+neighbor-byte preservation and correct word stride for high-resolution and
+rotation-8 storage. All five pixel writers use shared pixel accessors. Postload
+rebuilds line pointers without resetting the restored drawing bank/geometry.
+
+18 scripts/nine object compilations pass. VDP1 coverage is now 32,814 command/
+lifecycle, 532 framebuffer and 24,500 clipping scenarios. Pre-sequencer and
+pre-packed-rendering substitutions fail independently, as do the older baseline
+controls. Timer/CPU/raster endpoints and copied state are not runtime proof.
+Primitive rendering remains synchronous; the sequencer uses a 16-cycle fetch
+allowance without pixel/bus costs. ENDR's ~30-clock pipeline behavior, interlace
+fields, rotated VDP2 readout, texture end-code traversal and raster/color accuracy
+remain open. See `regtests/saturn/vdp1_completion.md` for the updated audit.
+
+### Primary sections and reference qualifications for the sequencer/packed pass
+
+ST-013-R3-061694 §4.3 (printed p.45/PDF p.60) specifies PTMR=1 restarts drawing
+from the top even while drawing. §4.5 (p.51/PDF p.66) specifies ENDR, no resume,
+and approximately 30 clocks to terminate; this pass implements command-boundary
+cancellation, **not** that pixel-pipeline latency. §§4.7–4.8 (pp.54–55/PDF69–70)
+specify LOPR at framebuffer change and live COPR. The command jump table lists
+all eight jump/skip controls; precautions pp.158–159/PDF173–174 prohibit nested
+CALL and RETURN in the main routine. These prohibited cases remain distinct
+from the valid sequencer paths, without claiming a primary-defined result.
+
+§1.1 p.13/PDF28 defines low-eight-bit pixel writes; the framebuffer is two
+2-Mbit banks, and §4.4/EWDR defines even-X/odd-X byte pairs. The packed tests
+cover replace rendering, not prohibited 8-bit color calculations (§6.3).
+Pinned Ymir `VDP1ProcessCommand` uses 16-cycle command fetches and persistent
+command/return addresses. Its software renderer `VDP1PlotPixel` stores byte dots
+for 8-bit mode and derives byte offsets from framebuffer width. This supports
+the layout change, not a complete hardware timing claim. Ymir also has an ENDR
+30-cycle TODO and a game-dependent start-delay workaround; neither was imported.
+The mere presence of a feature in a reference emulator is not proof of all its
+edge cases. No unreviewed source or title-specific delay was copied.

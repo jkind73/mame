@@ -71,9 +71,8 @@ TODO (VDP1):
   cfr. dariusg intro, 3dwarvesu after continue;
 - Some places are known to effectively glitch out in special cases with wrong
 pitch set cfr. suikoenb (STV), fill others;
-- 8 bpp support - now we always draw as 16 bpp, but this is not a problem since
-  VDP2 interprets framebuffer as 8 bpp in these cases (ETA: verify this
-statement);
+- Packed 8-bpp drawing/CPU access/erase/readout is implemented. Interlace field
+  selection, rotated VDP2 readout and mismatched VDP1/VDP2 dot formats need work;
 
 TODO (VDP2):
 - Mixing with VDP1;
@@ -198,6 +197,7 @@ void saturn_state::reset_halt_state() {
 }
 
 void saturn_state::machine_reset() {
+  vdp1_abort_draw();
   reset_halt_state();
   m_scsp_last_line = 0;
 
@@ -442,6 +442,7 @@ void saturn_state::system_reset_w(int state) {
   /*Only backup ram and SMPC ram are retained after that this command is
    * issued.*/
   m_scu->reset();
+  vdp1_abort_draw();
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
@@ -634,10 +635,14 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
   //  %d",VDP1_EWLR_X1,VDP1_EWLR_Y1,VDP1_EWRR_X3,VDP1_EWRR_Y3,m_vdp1_legacy.framebuffer_double_interlace);
 
   if (VDP1_TVM() & 1) {
+    // EWDR supplies the even/odd byte pair. Erase X units are 16 dots, so
+    // boundaries are word-aligned in both high-resolution and rotation-8.
+    const unsigned width = (VDP1_TVM() == 3) ? 512 : 1024;
+    const unsigned stride = width / 2;
     for (int y = start_y; y < end_y; y++)
-      for (int x = start_x; x < end_x; x++)
-        m_vdp1_legacy
-            .framebuffer[which_framebuffer][((x & 1023) + (y & 511) * 1024)] =
+      for (int x = start_x; x < end_x; x += 2)
+        m_vdp1_legacy.framebuffer[which_framebuffer]
+            [(((y * stride) + ((x & (width - 1)) >> 1)) & 0x1ffff)] =
             m_vdp1_legacy.ewdr;
   } else {
     for (int y = start_y; y < end_y; y++)
@@ -657,7 +662,7 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
 void saturn_state::vdp1_prepare_framebuffers() {
   int i, rowsize;
 
-  rowsize = m_vdp1_legacy.framebuffer_width;
+  rowsize = m_vdp1_legacy.framebuffer_width >> (m_vdp1_legacy.framebuffer_mode & 1);
   if (m_vdp1_legacy.framebuffer_current_draw == 0) {
     for (i = 0; i < m_vdp1_legacy.framebuffer_height; i++) {
       m_vdp1_legacy.framebuffer_draw_lines[i] =
@@ -694,6 +699,8 @@ void saturn_state::vdp1_prepare_framebuffers() {
 }
 
 void saturn_state::vdp1_change_framebuffers() {
+  // ST-013 section 4.7: latch the current command address on bank change.
+  m_vdp1_legacy.lopr = m_vdp1_legacy.copr;
   m_vdp1_legacy.framebuffer_current_display ^= 1;
   m_vdp1_legacy.framebuffer_current_draw ^= 1;
   // "this bit is reset to 0 when the frame buffers are changed"
@@ -751,6 +758,9 @@ void saturn_state::vdp1_set_framebuffer_config() {
 
 void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
                                uint16_t mem_mask) {
+  // EDSR, LOPR, COPR and MODR are read-only (ST-013 sections 4.6-4.9).
+  if (offset >= 0x10 / 2 && offset <= 0x16 / 2)
+    return;
   COMBINE_DATA(&m_vdp1_regs[offset]);
 
   switch (offset) {
@@ -788,8 +798,10 @@ void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
       logerror("VDP1: Erase lower-right coord set: %08X\n", data);
     break;
   case 0x0c / 2:
-  case 0x0e /
-      2: // After Burner 2 / Out Run / Fantasy Zone writes here with a dword ...
+    if (mem_mask)
+      vdp1_abort_draw();
+    break;
+  case 0x0e / 2: // unused halfword of a longword access at ENDR
     if (VDP1_LOG)
       logerror("VDP1: Draw forced termination register write: %08X %08X\n",
                offset * 2, data);
@@ -1326,6 +1338,24 @@ to the framebuffer we CAN'T frameskip the vdp1 drawing as the hardware can READ
 the framebuffer and if we skip the drawing the content could be incorrect when
 it reads it, although i have no idea why they would want to */
 
+uint16_t saturn_state::vdp1_read_pixel(const uint16_t *line, int x) const {
+  if (VDP1_TVM() & 1)
+    return (line[x >> 1] >> ((x & 1) ? 0 : 8)) & 0xff;
+  return line[x];
+}
+
+void saturn_state::vdp1_write_pixel(int x, int y, uint16_t value) {
+  uint16_t *const line = m_vdp1_legacy.framebuffer_draw_lines[y];
+  if (VDP1_TVM() & 1) {
+    // ST-013 section 1.1: an 8-bit dot occupies one byte, even X first.
+    // Preserve the adjacent dot in the shared CPU-visible word.
+    const unsigned shift = (x & 1) ? 0 : 8;
+    line[x >> 1] = (line[x >> 1] & ~(0xff << shift)) | ((value & 0xff) << shift);
+  } else {
+    line[x] = value;
+  }
+}
+
 bool saturn_state::vdp1_pixel_visible(int x, int y) const {
   if (x < 0 || y < 0 || x >= 1024 || y >= 512 ||
       !m_vdp1_legacy.system_cliprect.contains(x, y))
@@ -1345,7 +1375,7 @@ void saturn_state::drawpixel_poly(int x, int y, int patterndata,
   if (!vdp1_pixel_visible(x, y))
     return;
 
-  m_vdp1_legacy.framebuffer_draw_lines[y][x] = current_sprite.CMDCOLR;
+  vdp1_write_pixel(x, y, current_sprite.CMDCOLR);
 }
 
 void saturn_state::drawpixel_8bpp_trans(int x, int y, int patterndata,
@@ -1359,7 +1389,7 @@ void saturn_state::drawpixel_8bpp_trans(int x, int y, int patterndata,
 
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
   if (pix != 0) {
-    m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
+    vdp1_write_pixel(x, y, pix | m_sprite_colorbank);
   }
 }
 
@@ -1374,7 +1404,7 @@ void saturn_state::drawpixel_4bpp_notrans(int x, int y, int patterndata,
 
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
   pix = offsetcnt & 1 ? (pix & 0x0f) : ((pix & 0xf0) >> 4);
-  m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
+  vdp1_write_pixel(x, y, pix | m_sprite_colorbank);
 }
 
 void saturn_state::drawpixel_4bpp_trans(int x, int y, int patterndata,
@@ -1389,7 +1419,7 @@ void saturn_state::drawpixel_4bpp_trans(int x, int y, int patterndata,
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
   pix = offsetcnt & 1 ? (pix & 0x0f) : ((pix & 0xf0) >> 4);
   if (pix != 0)
-    m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix | m_sprite_colorbank;
+    vdp1_write_pixel(x, y, pix | m_sprite_colorbank);
 }
 
 void saturn_state::drawpixel_generic(int x, int y, int patterndata,
@@ -1558,7 +1588,7 @@ part, let's disable this branch for the time being ...
 	{
 		if ( (raw != transpen) || spd )
 		{
-			m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix;
+			vdp1_write_pixel(x, y, pix);
 		}
 	}
 	else
@@ -1570,27 +1600,24 @@ part, let's disable this branch for the time being ...
 
       switch (current_sprite.CMDPMOD & 0x3) {
       case 0: /* replace */
-        m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix;
+        vdp1_write_pixel(x, y, pix);
         break;
       case 1: /* shadow */
-        if (m_vdp1_legacy.framebuffer_draw_lines[y][x] & 0x8000) {
-          m_vdp1_legacy.framebuffer_draw_lines[y][x] =
-              ((m_vdp1_legacy.framebuffer_draw_lines[y][x] & ~0x8421) >> 1) |
-              0x8000;
+        if (vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x) & 0x8000) {
+          vdp1_write_pixel(x, y,
+            ((vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x) & ~0x8421) >> 1) | 0x8000);
         }
         break;
       case 2: /* half luminance */
-        m_vdp1_legacy.framebuffer_draw_lines[y][x] =
-            ((pix & ~0x8421) >> 1) | 0x8000;
+        vdp1_write_pixel(x, y, ((pix & ~0x8421) >> 1) | 0x8000);
         break;
       case 3: /* half transparent */
-        if (m_vdp1_legacy.framebuffer_draw_lines[y][x] & 0x8000) {
-          m_vdp1_legacy.framebuffer_draw_lines[y][x] =
-              alpha_blend_r16(m_vdp1_legacy.framebuffer_draw_lines[y][x], pix,
+        if (vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x) & 0x8000) {
+          vdp1_write_pixel(x, y, alpha_blend_r16(vdp1_read_pixel(m_vdp1_legacy.framebuffer_draw_lines[y], x), pix,
                               0x80) |
-              0x8000;
+              0x8000);
         } else {
-          m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix;
+          vdp1_write_pixel(x, y, pix);
         }
         break;
       // case 4: /* Gouraud shading */
@@ -1605,7 +1632,7 @@ part, let's disable this branch for the time being ...
         // TODO: mode 5: prohibited, mode 6: gouraud shading + half-luminance,
         // mode 7: gouraud-shading + half-transparent
         popmessage("VDP1 PMOD = %02x", current_sprite.CMDPMOD & 0x7);
-        m_vdp1_legacy.framebuffer_draw_lines[y][x] = pix;
+        vdp1_write_pixel(x, y, pix);
         break;
       }
     }
@@ -2329,57 +2356,49 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
   }
 }
 
-TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
-  // ST-013 section 4.6: fetching END sets CEF and generates draw-end IRQ.
-  // Keep the existing estimated delay; it is not a pixel-accurate timing model.
-  CEF_1();
-  m_scu->vdp1_end_w(1);
+void saturn_state::vdp1_abort_draw() {
+  // Command-granular stop: no subsequent command or END IRQ may execute.
+  // Pixel-pipeline termination and the documented ~30-clock latency remain
+  // separate from this command sequencer.
+  m_vdp1_legacy.drawing = false;
+  if (m_vdp1_legacy.draw_end_timer)
+    m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
 }
 
 void saturn_state::vdp1_process_list() {
-  int position;
-  int spritecount;
-  int vdp1_nest;
-  bool end_fetched = false;
+  vdp1_abort_draw();
+  m_vdp1_legacy.command_position = 0;
+  m_vdp1_legacy.command_return = -1;
+  m_vdp1_legacy.copr = 0;
+  m_vdp1_legacy.drawing = true;
+  clear_gouraud_shading();
+  CEF_0();
+  // Fetch cost only, as in Ymir VDP1ProcessCommand. Rasterization still needs
+  // pixel/VRAM costs and subdivision within a primitive.
+  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
+}
+
+TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
+  // This timer now advances the command engine, rather than estimating the
+  // completion of a whole synchronously rendered list. Loops yield to the
+  // scheduler and see CPU VRAM edits on the next fetch, with no host list cap.
+  if (!m_vdp1_legacy.drawing)
+    return;
+
+  int &position = m_vdp1_legacy.command_position;
+  int &vdp1_nest = m_vdp1_legacy.command_return;
   rectangle *cliprect;
 
-  spritecount = 0;
-  position = 0;
-
-  if (VDP1_LOG)
-    logerror("Sprite List Process START\n");
-
-  vdp1_nest = -1;
-
-  clear_gouraud_shading();
-
-  // A new list replaces the outstanding completion estimate.
-  m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
-  /*Set CEF bit to 0*/
-  CEF_0();
-
-  // TODO: is there an actual limit for this?
-  while (spritecount < 16383) // max 16383 with texture or max 16384 without
-                              // texture - virtually unlimited
   {
-    int draw_this_sprite;
-
-    draw_this_sprite = 1;
-
-    // ST-013 section 3.1: command fetch wraps at the end of 512 KiB VRAM.
+    int draw_this_sprite = 1;
     position &= 0x3fff;
-
-    spritecount++;
-
-    current_sprite.CMDCTRL =
-        (m_vdp1_vram[position * (0x20 / 4) + 0] & 0xffff0000) >> 16;
-
+    m_vdp1_legacy.copr = position << 2;
+    current_sprite.CMDCTRL = m_vdp1_vram[position * 8] >> 16;
     if (current_sprite.CMDCTRL & 0x8000) {
-      end_fetched = true;
-      if (VDP1_LOG)
-        logerror(
-            "List Terminator (END bit) Encountered, Sprite List Process END\n");
-      goto end; // end of list
+      m_vdp1_legacy.drawing = false;
+      CEF_1();
+      m_scu->vdp1_end_w(1);
+      return;
     }
 
     current_sprite.CMDLINK =
@@ -2602,10 +2621,8 @@ void saturn_state::vdp1_process_list() {
         // choroqpk 0x0e (when selecting island in main menu)
         // albodysj 0x0f (always)
         if ((current_sprite.CMDCTRL & 0x000f) < 0xc)
-          popmessage("VDP1: Sprite List Illegal %02x (%d)",
-                     current_sprite.CMDCTRL & 0xf, spritecount);
-        m_vdp1_legacy.lopr = (position * 0x20) >> 3;
-        // m_vdp1_legacy.copr = (position * 0x20) >> 3;
+          popmessage("VDP1: Sprite List Illegal %02x at %04x",
+                     current_sprite.CMDCTRL & 0xf, m_vdp1_legacy.copr);
         // Abort this unsupported command, but do not claim END was fetched.
         // Exact illegal-command progression remains unimplemented.
         goto end;
@@ -2613,19 +2630,12 @@ void saturn_state::vdp1_process_list() {
     }
   }
 
+  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
+  return;
+
 end:
-  m_vdp1_legacy.copr = (position * 0x20) >> 3;
-
-  /* TODO: what's the exact formula? Guess it should be a mix between number of
-   * pixels written and actual command data fetched. */
-  // Reaching the host safety limit or aborting an unsupported command is not
-  // a hardware END. In particular, a looping list must not set CEF/raise IRQ.
-  if (end_fetched)
-    m_vdp1_legacy.draw_end_timer->adjust(
-        m_maincpu->cycles_to_attotime(spritecount * 16));
-
-  if (VDP1_LOG)
-    logerror("End of list processing!\n");
+  // Undocumented/prohibited command flow is not a successful END fetch.
+  vdp1_abort_draw();
 }
 
 void saturn_state::vdp1_video_update() {
@@ -2722,10 +2732,9 @@ void saturn_state::vdp1_state_save_postload() {
   int offset;
   uint32_t data;
 
-  m_vdp1_legacy.framebuffer_mode = -1;
-  m_vdp1_legacy.framebuffer_double_interlace = -1;
-
-  vdp1_set_framebuffer_config();
+  // Geometry and bank ownership are saved. Reconfiguring TVMR here resets
+  // the restored drawing bank to zero and points the resumed list at it.
+  vdp1_prepare_framebuffers();
 
   for (offset = 0; offset < 0x80000 / 4; offset++) {
     data = m_vdp1_vram[offset];
@@ -2783,6 +2792,9 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.ewdr));
   save_item(NAME(m_vdp1_legacy.lopr));
   save_item(NAME(m_vdp1_legacy.copr));
+  save_item(NAME(m_vdp1_legacy.drawing));
+  save_item(NAME(m_vdp1_legacy.command_position));
+  save_item(NAME(m_vdp1_legacy.command_return));
 
   // framebuffer geometry latched from TVMR/DIE; double_interlace is also read
   // back outside the reconfiguration guard
@@ -10146,7 +10158,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           if (!vdp2_window_process(x, y))
             continue;
 
-          pix = framebuffer_line[x];
+          pix = vdp1_read_pixel(framebuffer_line, x);
           // pukunpa, no alpha no framebuffer bumps
           if (sprite_window && pix == 0x8000)
             continue;
@@ -10226,7 +10238,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           if (!vdp2_window_process(x, y))
             continue;
 
-          pix = framebuffer_line[x];
+          pix = vdp1_read_pixel(framebuffer_line, x);
           // raymanj on FMV, alpha enabled (no noticeable difference?)
           if (sprite_window && pix == 0x8000)
             continue;
@@ -10326,7 +10338,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         if (!vdp2_window_process(x, y))
           continue;
 
-        pix = framebuffer_line[x];
+        pix = vdp1_read_pixel(framebuffer_line, x);
         // amoudan, interlaced case
         if (sprite_window && pix == 0x8000)
           continue;
