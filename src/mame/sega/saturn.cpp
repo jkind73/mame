@@ -1146,7 +1146,8 @@ void saturn_state::vdp1_setup_shading_for_slope(
 }
 
 void saturn_state::vdp1_setup_shading(const struct spoint *q,
-                                      const rectangle &cliprect) {
+                                      const rectangle &cliprect,
+                                      std::array<uint8_t, 4> vertices) {
   int32_t x1, x2, delta, cury, limy;
   int32_t r1, g1, b1, r2, g2, b2;
   int32_t sl1, slg1, slb1, slr1;
@@ -1166,9 +1167,9 @@ void saturn_state::vdp1_setup_shading(const struct spoint *q,
   for (i = 0; i < 4; i++) {
     p[i].x = p[i + 4].x = q[i].x << FRAC_SHIFT;
     p[i].y = p[i + 4].y = q[i].y;
-    p[i].r = p[i + 4].r = RGB_R(gd[i]) << FRAC_SHIFT;
-    p[i].g = p[i + 4].g = RGB_G(gd[i]) << FRAC_SHIFT;
-    p[i].b = p[i + 4].b = RGB_B(gd[i]) << FRAC_SHIFT;
+    p[i].r = p[i + 4].r = RGB_R(gd[vertices[i]]) << FRAC_SHIFT;
+    p[i].g = p[i + 4].g = RGB_G(gd[vertices[i]]) << FRAC_SHIFT;
+    p[i].b = p[i + 4].b = RGB_B(gd[vertices[i]]) << FRAC_SHIFT;
   }
 
   pmin = pmax = 0;
@@ -1769,37 +1770,7 @@ void saturn_state::vdp1_fill_slope(const rectangle &cliprect, int patterndata,
 
   while (_y1 < y2) {
     if (_y1 >= cliprect.min_y) {
-      int32_t slux = 0, slvx = 0;
-      int xx1 = x1 >> FRAC_SHIFT;
-      int xx2 = x2 >> FRAC_SHIFT;
-      int32_t u = u1;
-      int32_t v = v1;
-      if (xx1 != xx2) {
-        int delta = xx2 - xx1;
-        slux = (u2 - u1) / delta;
-        slvx = (v2 - v1) / delta;
-      }
-      if (xx1 <= cliprect.max_x || xx2 >= cliprect.min_x) {
-        if (xx1 < cliprect.min_x) {
-          int delta = cliprect.min_x - xx1;
-          u += slux * delta;
-          v += slvx * delta;
-          xx1 = cliprect.min_x;
-        }
-        if (xx2 > cliprect.max_x)
-          xx2 = cliprect.max_x;
-        // the framebuffer is 1024x512, the clip rectangle is not
-        if (xx2 >= 1024)
-          xx2 = 1023;
-
-        while (xx1 <= xx2) {
-          (this->*drawpixel)(xx1, _y1, patterndata,
-                             (v >> FRAC_SHIFT) * xsize + (u >> FRAC_SHIFT));
-          xx1++;
-          u += slux;
-          v += slvx;
-        }
-      }
+      vdp1_fill_line(cliprect, patterndata, xsize, _y1, x1, x2, u1, u2, v1, v2);
     }
 
     x1 += sl1;
@@ -1850,8 +1821,9 @@ void saturn_state::vdp1_fill_line(const rectangle &cliprect, int patterndata,
       xx2 = 1023;
 
     while (xx1 <= xx2) {
-      (this->*drawpixel)(xx1, y, patterndata,
-                         (v >> FRAC_SHIFT) * xsize + (u >> FRAC_SHIFT));
+      const int texel = (v >> FRAC_SHIFT) * xsize + (u >> FRAC_SHIFT);
+      if (vdp1_texture_sample_visible(patterndata, xsize, texel))
+        (this->*drawpixel)(xx1, y, patterndata, texel);
       xx1++;
       u += slux;
       v += slvx;
@@ -1861,6 +1833,8 @@ void saturn_state::vdp1_fill_line(const rectangle &cliprect, int patterndata,
 
 void saturn_state::vdp1_fill_quad(const rectangle &cliprect, int patterndata,
                                   int xsize, const struct spoint *q) {
+  // Derived within this atomic primitive, never persistent drawing state.
+  m_vdp1_texture_end.fill(-1);
   int32_t sl1, sl2, slu1, slu2, slv1, slv2, cury, limy, x1, x2, u1, u2, v1, v2,
       delta;
   int pmin, pmax, i, ps1, ps2;
@@ -2021,6 +1995,7 @@ void saturn_state::vdp1_draw_line(const rectangle &cliprect) {
   q[0].u = q[3].u = q[1].u = q[2].u = 0;
   q[0].v = q[1].v = q[2].v = q[3].v = 0;
 
+  vdp1_setup_shading(q, cliprect, {0, 1, 0, 1});
   vdp1_fill_quad(cliprect, 0, 1, q);
 }
 
@@ -2039,6 +2014,7 @@ void saturn_state::vdp1_draw_poly_line(const rectangle &cliprect) {
   q[0].u = q[3].u = q[1].u = q[2].u = 0;
   q[0].v = q[1].v = q[2].v = q[3].v = 0;
 
+  vdp1_setup_shading(q, cliprect, {0, 1, 0, 1});
   vdp1_fill_quad(cliprect, 0, 1, q);
 
   q[0].x = x2s(current_sprite.CMDXB);
@@ -2053,6 +2029,7 @@ void saturn_state::vdp1_draw_poly_line(const rectangle &cliprect) {
   q[0].u = q[3].u = q[1].u = q[2].u = 0;
   q[0].v = q[1].v = q[2].v = q[3].v = 0;
 
+  vdp1_setup_shading(q, cliprect, {1, 2, 1, 2});
   vdp1_fill_quad(cliprect, 0, 1, q);
 
   q[0].x = x2s(current_sprite.CMDXC);
@@ -2067,6 +2044,7 @@ void saturn_state::vdp1_draw_poly_line(const rectangle &cliprect) {
   q[0].u = q[3].u = q[1].u = q[2].u = 0;
   q[0].v = q[1].v = q[2].v = q[3].v = 0;
 
+  vdp1_setup_shading(q, cliprect, {2, 3, 2, 3});
   vdp1_fill_quad(cliprect, 0, 1, q);
 
   q[0].x = x2s(current_sprite.CMDXD);
@@ -2081,7 +2059,7 @@ void saturn_state::vdp1_draw_poly_line(const rectangle &cliprect) {
   q[0].u = q[3].u = q[1].u = q[2].u = 0;
   q[0].v = q[1].v = q[2].v = q[3].v = 0;
 
-  vdp1_setup_shading(q, cliprect);
+  vdp1_setup_shading(q, cliprect, {3, 0, 3, 0});
   vdp1_fill_quad(cliprect, 0, 1, q);
 }
 
@@ -2150,116 +2128,40 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
   int direction;
   int patterndata;
   int zoompoint;
-  int x, y;
-  int x2, y2;
-  int screen_width, screen_height, screen_height_negative = 0;
+  direction = (current_sprite.CMDCTRL >> 4) & 3;
+  xsize = ((current_sprite.CMDSIZE >> 8) & 0x3f) * 8;
+  ysize = current_sprite.CMDSIZE & 0xff;
+  patterndata = (current_sprite.CMDSRCA & 0xffff) * 8;
+  zoompoint = (current_sprite.CMDCTRL >> 8) & 0xf;
 
-  direction = (current_sprite.CMDCTRL & 0x0030) >> 4;
-
-  xsize = (current_sprite.CMDSIZE & 0x3f00) >> 8;
-  xsize = xsize * 8;
-
-  ysize = (current_sprite.CMDSIZE & 0x00ff);
-
-  patterndata = (current_sprite.CMDSRCA) & 0xffff;
-  patterndata = patterndata * 0x8;
-
-  zoompoint = (current_sprite.CMDCTRL & 0x0f00) >> 8;
-
-  x = current_sprite.CMDXA;
-  y = current_sprite.CMDYA;
-
-  screen_width = (int16_t)current_sprite.CMDXB;
-  if ((screen_width < 0) && zoompoint) {
-    screen_width = -screen_width;
-    direction |= 1;
-  }
-
-  screen_height = (int16_t)current_sprite.CMDYB;
-  if ((screen_height < 0) && zoompoint) {
-    screen_height_negative = 1;
-    screen_height = -screen_height;
-    direction |= 2;
-  }
-
-  x2 = current_sprite.CMDXC; // second co-ordinate set x
-  y2 = current_sprite.CMDYC; // second co-ordinate set y
-
-  switch (zoompoint) {
-  case 0x0: // specified co-ordinates
-    break;
-  case 0x5: // up left
-    break;
-  case 0x6: // up center
-    x -= screen_width / 2;
-    break;
-  case 0x7: // up right
-    x -= screen_width;
-    break;
-
-  case 0x9: // center left
-    y -= screen_height / 2;
-    break;
-  case 0xa: // center center
-    y -= screen_height / 2;
-    x -= screen_width / 2;
-
-    break;
-
-  case 0xb: // center right
-    y -= screen_height / 2;
-    x -= screen_width;
-    break;
-
-  case 0xd: // center left
-    y -= screen_height;
-    break;
-
-  case 0xe: // center center
-    y -= screen_height;
-    x -= screen_width / 2;
-    break;
-
-  case 0xf: // center right
-    y -= screen_height;
-    x -= screen_width;
-    break;
-
-  default: // illegal
-    break;
-  }
-
-  /*  0----1
-      |    |
-      |    |
-      3----2   */
-
+  // Decode coordinates before anchor arithmetic. Re-decoding an adjusted
+  // coordinate wraps it at bit 12, and taking abs(width) incorrectly combines
+  // extent inversion with the independent texture read-direction bits.
+  int left = x2s(current_sprite.CMDXA);
+  int top = y2s(current_sprite.CMDYA);
+  int right, bottom;
   if (zoompoint) {
-    q[0].x = x2s(x);
-    q[0].y = y2s(y);
-    q[1].x = x2s(x) + screen_width;
-    q[1].y = y2s(y);
-    q[2].x = x2s(x) + screen_width;
-    q[2].y = y2s(y) + screen_height;
-    q[3].x = x2s(x);
-    q[3].y = y2s(y) + screen_height;
-
-    if (screen_height_negative) {
-      q[0].y += screen_height;
-      q[1].y += screen_height;
-      q[2].y += screen_height;
-      q[3].y += screen_height;
+    const int width = vdp1_coord(current_sprite.CMDXB);
+    const int height = vdp1_coord(current_sprite.CMDYB);
+    switch (zoompoint & 3) {
+    case 2: left -= width >> 1; break;
+    case 3: left -= width; break;
     }
+    switch ((zoompoint >> 2) & 3) {
+    case 2: top -= height >> 1; break;
+    case 3: top -= height; break;
+    }
+    // Width/height are endpoint distances: zero still describes one dot.
+    right = left + width;
+    bottom = top + height;
   } else {
-    q[0].x = x2s(x);
-    q[0].y = y2s(y);
-    q[1].x = x2s(x2);
-    q[1].y = y2s(y);
-    q[2].x = x2s(x2);
-    q[2].y = y2s(y2);
-    q[3].x = x2s(x);
-    q[3].y = y2s(y2);
+    right = x2s(current_sprite.CMDXC);
+    bottom = y2s(current_sprite.CMDYC);
   }
+  q[0].x = q[3].x = left;
+  q[1].x = q[2].x = right;
+  q[0].y = q[1].y = top;
+  q[2].y = q[3].y = bottom;
 
   if (xsize == 0) {
     // see vdp1_draw_distorted_sprite: CMDSIZE.H = 0 means the pattern has
@@ -2282,6 +2184,33 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
 
   vdp1_setup_shading(q, cliprect);
   vdp1_fill_quad(cliprect, patterndata, xsize, q);
+}
+
+bool saturn_state::vdp1_texture_sample_visible(int address, int width, int texel) {
+  // ST-013 p.86: END acts in source-row order, not destination-dot order.
+  // Scan each referenced row once, including texels skipped during reduction;
+  // enlargement must not count repeated samples of the same END twice.
+  // HSS needs its own fetch/decimation traversal, not this affine fallback.
+  if (current_sprite.ispoly || (current_sprite.CMDPMOD & 0x1080) || width <= 0)
+    return true;
+  const int row = texel / width;
+  if (texel < 0 || row >= 256)
+    return true; // no specified row semantics for an invalid character size
+  const bool reverse = current_sprite.CMDCTRL & 0x10;
+  int16_t &limit = m_vdp1_texture_end[row];
+  if (limit < 0) {
+    limit = width;
+    unsigned count = 0;
+    for (int i = 0; i < width; ++i) {
+      const int u = reverse ? width - 1 - i : i;
+      if (vdp1_is_end_code(address, row * width + u) && ++count == 2) {
+        limit = i;
+        break;
+      }
+    }
+  }
+  const int u = texel % width;
+  return (reverse ? width - 1 - u : u) < limit;
 }
 
 bool saturn_state::vdp1_is_end_code(int address, int texel) const {
