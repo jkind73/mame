@@ -641,10 +641,10 @@ void saturn_state::vdp1_trace(const char *event, int reg, const spoint *bounds) 
     logerror("VDP1TRACE register offset=%02x value=%04x\n", reg * 2, m_vdp1_regs[reg]);
   if (bounds) {
     const auto &c = current_sprite;
-    logerror("VDP1TRACE scaled COPR=%04x CTRL=%04x PMOD=%04x SRCA=%04x SIZE=%04x "
+    logerror("VDP1TRACE %s COPR=%04x CTRL=%04x PMOD=%04x SRCA=%04x SIZE=%04x "
              "A=(%04x,%04x) B=(%04x,%04x) C=(%04x,%04x) local=(%d,%d) "
              "bounds=(%d,%d)-(%d,%d) destination=%dx%d source=%dx%d\n",
-             v.copr, c.CMDCTRL, c.CMDPMOD, c.CMDSRCA, c.CMDSIZE,
+             event, v.copr, c.CMDCTRL, c.CMDPMOD, c.CMDSRCA, c.CMDSIZE,
              c.CMDXA, c.CMDYA, c.CMDXB, c.CMDYB, c.CMDXC, c.CMDYC,
              v.local_x, v.local_y, bounds[0].x, bounds[0].y, bounds[2].x, bounds[2].y,
              std::abs(bounds[2].x - bounds[0].x) + 1,
@@ -699,7 +699,36 @@ void saturn_state::vdp1_finish_vblank_erase() {
   }
 }
 
+void saturn_state::vdp1_begin_display_erase() {
+  auto &e = m_vdp1_display_erase;
+  const auto &v = m_vdp1_legacy;
+  e.pending = true;
+  e.bank = v.framebuffer_current_display;
+  e.data = v.ewdr;
+  e.left = ((v.erase_upper_left >> 9) & 0x3f) * 8;
+  e.right = ((v.erase_lower_right >> 9) & 0x7f) * 8;
+  e.top = v.erase_upper_left & 0x1ff;
+  e.bottom = v.erase_lower_right & 0x1ff;
+  vdp1_trace("display-erase-begin");
+}
+
+void saturn_state::vdp1_finish_display_erase() {
+  auto &e = m_vdp1_display_erase;
+  if (!e.pending)
+    return;
+  // ST-013 pp.39/49: manual erase uses the display period. The displayed
+  // pixels must be read before they are erased, not cleared at field start.
+  // Commit coarsely after presentation and before bank exchange; this is not
+  // a per-HBlank bus model. Both normal/hi-res banks have 512 words per row.
+  for (unsigned y = e.top; y <= e.bottom; ++y)
+    for (unsigned x = e.left; x < e.right; ++x)
+      m_vdp1_legacy.framebuffer[e.bank][(y & 255) * 512 + (x & 511)] = e.data;
+  e.pending = false;
+  vdp1_trace("display-erase-end");
+}
+
 void saturn_state::vdp1_cancel_erase() {
+  m_vdp1_display_erase.pending = false;
   m_vdp1_legacy.vblank_erase_active = false;
   m_vdp1_legacy.vblank_erase_pending = false;
 }
@@ -2617,6 +2646,12 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
   patterndata = (current_sprite.CMDSRCA) & 0xffff;
   patterndata = patterndata * 0x8;
 
+  if (xsize > 0 && ysize > 0) {
+    const spoint bounds[4] = {{x, y, 0, 0}, {},
+        {x + xsize - 1, y + ysize - 1, 0, 0}, {}};
+    vdp1_trace("normal", -1, bounds);
+  }
+
   if (VDP1_LOG)
     logerror("Drawing Normal Sprite x %04x y %04x xsize %04x ysize %04x "
              "patterndata %06x\n",
@@ -3036,6 +3071,7 @@ end:
 
 void saturn_state::vdp1_video_update() {
   vdp1_trace("field");
+  vdp1_finish_display_erase();
   vdp1_finish_vblank_erase();
   const bool blank_only = (VDP1_TVM() & 2) || VDP1_TVM() == 4;
   bool framebuffer_changed = false;
@@ -3053,7 +3089,7 @@ void saturn_state::vdp1_video_update() {
       if (blank_only)
         m_vdp1_legacy.vblank_erase_pending = true;
       else
-        vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
+        vdp1_begin_display_erase();
     }
     break;
   case 3: // One-field manual change request; VBE erase ran during blanking
@@ -3141,6 +3177,14 @@ int saturn_state::vdp1_start() {
   save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, dr));
   save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, dg));
   save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, db));
+
+  save_item(NAME(m_vdp1_display_erase.pending));
+  save_item(NAME(m_vdp1_display_erase.bank));
+  save_item(NAME(m_vdp1_display_erase.data));
+  save_item(NAME(m_vdp1_display_erase.left));
+  save_item(NAME(m_vdp1_display_erase.right));
+  save_item(NAME(m_vdp1_display_erase.top));
+  save_item(NAME(m_vdp1_display_erase.bottom));
 
   save_item(NAME(m_vdp1_texture_end));
   save_item(NAME(current_sprite.CMDCTRL));

@@ -75,6 +75,13 @@ protected:
     int x = 0, y = 0, error = 0, end_codes = 0;
     bool extra = false;
   } m_vdp1_raster;
+  // Display-period erase is committed after that field has been presented,
+  // before its bank can become CPU/drawing-owned at the following boundary.
+  struct vdp1_display_erase_state {
+    bool pending = false;
+    uint8_t bank = 0;
+    uint16_t data = 0, left = 0, right = 0, top = 0, bottom = 0;
+  } m_vdp1_display_erase;
   // Host dispatch guards only; never live across an emulated timer boundary.
   bool m_vdp1_raster_building = false, m_vdp1_raster_running = false;
   int m_vdp1_raster_budget = 0;
@@ -284,6 +291,8 @@ protected:
   void vdp1_begin_vblank_erase();
   void vdp1_finish_vblank_erase();
   void vdp1_cancel_erase();
+  void vdp1_begin_display_erase();
+  void vdp1_finish_display_erase();
   void vdp1_state_save_postload();
   int vdp1_start();
 
