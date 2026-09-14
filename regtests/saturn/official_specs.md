@@ -269,3 +269,13 @@ bits 0..26; Mednafen and MiSTer use 0x07ffffff. Direct count widths on the follo
 page remain unchanged. 15,360 address and 7,680 count writes/readbacks pass with
 separate failing pre-fix source/destination controls. End-of-transfer address-update
 wrapping, MMIO routing and CPU/cache runtime are outside this increment.
+
+## DMA control-register audit update
+
+ST-097 §3.2 printed pp.43/45/46 (PDF pp.59/61/62) supplies increment decoding,
+enable/GO and mode/update/factor fields. Cross-checked with Ymir's WriteRegLong /
+TriggerImmediateDMA and Mednafen's masked control writes. Existing handlers pass
+13,824 new field/byte-lane/start-gate scenarios; no production correction warranted.
+Four test-only mutations fail. Dispatch endpoints are recorders, so full MMIO-to-
+transfer/IRQ integration, active-register restrictions and bus-specific increment
+behavior remain outside this test.
