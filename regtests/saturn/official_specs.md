@@ -287,3 +287,11 @@ ST-V and DCC. Corrected emu.h include ordering in DCC/ST-V; pre-fix files fail w
 otherwise complete shared/layout include paths. Layout headers are generated with
 MAME's own tool in temporary storage. All thirteen scripts/six objects pass.
 This is build evidence only, not additional primary-document or runtime validation.
+
+## CD build coverage update (no hardware behavior change)
+
+Routine object validation now includes CD HLE and the CD block wrapper, bringing
+the total to eight. Corrected CD HLE's emu.h include order after reproducing the
+header/incomplete-type errors; the CD block wrapper compiled unchanged. All
+thirteen scripts/eight objects pass. No primary hardware interpretation or CD
+runtime correctness claim follows from this build-only change.
