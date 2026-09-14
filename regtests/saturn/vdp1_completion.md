@@ -1,5 +1,23 @@
 # VDP1 completion audit — 2026-09-14
 
+## VDP1 rendering/status audit — 2026-09-14
+
+Implemented destination-preserving MON, coordinate-based Gouraud evaluation
+(which does not stall on skipped mesh/transparent/clipped dots), explicit
+component-wise color calculations, bounded color-lookup fetches, and two-end-code
+row termination in the production normal-sprite loop. BEF now latches on an actual
+framebuffer change rather than every VBlank in manual mode. This does not complete
+scaled/distorted texture traversal, interlace, rotated scanout or pixel timing.
+
+Tests pass: 92,420 color/shading cases, 2,689 normal-texture/boundary cases,
+32,816 command/lifecycle cases, 532 framebuffer cases and 24,500 clipping cases.
+Four independent render mutations (MON source replacement, dropped odd carry,
+fixed Gouraud coordinate, disabled second-END termination) fail their assertions.
+All 18 scripts/nine objects pass. Shader tests do not establish polygon edge or
+interpolation precision on silicon; callbacks use recording timer/CPU endpoints.
+Full chip completion and BIOS/game/runtime/save-manager proof are not claimed.
+
+
 **Status: in progress, not a complete VDP1 implementation.** The command engine now yields between commands; primitive rasterization
 is still synchronous, and pixel/bus timing is not complete. No BIOS/game or hardware trace has been run here.
 
@@ -97,11 +115,11 @@ The full validator passes **18 scripts and nine object compilations**.
 |---|---|---|
 | Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR stops between primitives. | Subdivide primitive execution and implement documented approximately 30-clock pipeline termination; real save/load during primitives. |
 | Timing / transfer-over | Each command fetch gets 16 SH-2 cycles; lists may cross frames, but pixel/bus costs are absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
-| PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. Automatic start/swap/erase timing and BEF remain incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
+| PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. BEF now latches on bank change. Automatic start/swap/erase timing remains incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
 | Command control | Valid eight jump controls, persistent fetch state and scheduler-yielding loops are implemented. Prohibited/undocumented commands still use fallback behavior. | Hardware investigation of illegal opcodes/aliases and prohibited flow; do not invent a primary-defined result for them. |
 | Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Double-interlace/DIL/EOS, rotated VDP2 coordinate readout, mismatched dot formats and broader erase-bound tests. |
 | Rasterization | Affine quad/line code has known vertex, stipple and zoom differences. | Hardware-consistent line/polygon edge coverage and sprite scaling; pixel-golden tests for degenerates, flips, all zoom anchors, clipping and negative coordinates. |
-| Texture / color | End-code support only skips a matching texel; full scanline termination is absent. | Two-end-code behavior in texture traversal, transparent pixels, high-speed shrink, mesh, MSBON, shadow/half-luminance/transparency and Gouraud combinations. |
+| Texture / color | Normal-sprite second-END termination, destination MON and Gouraud/color combinations are implemented and tested. | Scaled/distorted end-code traversal, high-speed shrink/EOS, pre-clipping, exact interpolation/rounding qualification and full-image tests. |
 | Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
 | Runtime | No linked executable in this sandbox. | Install documented SDL/pkg-config dependencies, link and `-validate`, then BIOS and legally available Saturn/ST-V smoke/pixel comparisons (including prior workaround titles). |
 
