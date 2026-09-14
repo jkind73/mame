@@ -417,3 +417,50 @@ commit provides retrievable candidates for BIOS startup testing. The full-build
 blocker remains, and no game cartridge/disc validation has been performed.
 Availability on GitHub is not a redistribution license; this audit adds only
 metadata and notes. Cache loss can be recovered using the pinned source commit.
+
+## Double-density V-counter register encoding
+
+Implemented the bit layout in ST-058 table 2.4 (printed p.24 / PDF p.42): in
+normal/high-resolution double-density interlace, the nine-bit field count occupies
+VCT9..1, with VCT0=0 for odd fields and 1 for even fields. The old expression
+replaced the field count's low bit and masked to nine bits, losing both resolution
+and the tenth output bit. The getter now shifts the field count and preserves all
+ten register bits. The earlier screen-row/field-line conversion remains intact.
+
+Reference cross-checks:
+- [Ymir `ReadEXTEN`](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/vdp/vdp2_regs.hpp)
+  shifts VCNT using VCNTShift and inserts ODD xor 1 for double density.
+  [VDP timing setup](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/vdp/vdp.cpp)
+  selects a shift of one only for double density. Its separate VCNTSkip and
+  field-timing calculations are not copied or treated as equivalent to our table.
+- [Mednafen `GetNLVCounter` / `LatchHV`](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp2.cpp)
+  shifts its field count and adds inverse ODD only for double density, then
+  stores the result in the latched counter.
+
+`test_vcounter.py` now includes an independent encoding oracle: for each of all
+512 possible field counts, both field polarities and all four normal/high-res
+HRESO values, decoding result bits 9:1 must recover the original count and bit 0
+must recover parity. These **4,096 additional cases** also run the production
+`external_latch()` function and check that all ten VCNT bits survive storage,
+HCNT is captured and EXLTFG is set. With EXLTEN disabled, latch contents and flag
+remain unchanged. No register-map read/side-effect integration is simulated.
+
+The full test now passes **47,016 checks** under ASan/UBSan, retaining complete
+NTSC/PAL table equivalence and mode/row coverage. All other regression scripts
+and three full object compilations pass through `validate_build.py`.
+
+```sh
+python3 regtests/saturn/test_vcounter.py
+python3 regtests/saturn/test_vcounter.py --encoding-baseline  # expected encoding assertion failure
+python3 regtests/saturn/test_vcounter.py --baseline           # expected original bounds failure
+```
+
+The encoding negative control uses `fa629f552c338136e9945eb409e7db10bedff491`,
+which already contains the bounds fix. The older negative control still detects
+row 313 being read outside the table. This distinguishes the two bugs.
+
+Non-interlace, single-density and exclusive-mode behavior is unchanged, as are
+all rollback table values. The inherited note disputing the manual's non-interlace
+shift is not overridden. Field lengths, ODD transition phase, rollback thresholds,
+exact external-latch timing and hardware traces remain open. This is a supported
+register-encoding correction, not a complete interlace timing implementation.

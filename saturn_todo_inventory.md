@@ -1,5 +1,13 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Double-density counter encoding update — 2026-09-14
+
+The documented double-density bit layout is now implemented and cross-checked
+with Ymir/Mednafen: field count in bits 9:1 and inverse ODD in bit 0. 47,016
+V-counter checks pass including independent encoding and external-latch storage.
+This supersedes earlier approximate-encoding notes below only for this mode;
+rollback thresholds, field phase and non-interlace discrepancies remain open.
+
 ## Timer-0 implementation update — 2026-09-14
 
 The compare-zero/increment-order issue identified below is fixed and tested:
