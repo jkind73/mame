@@ -183,6 +183,7 @@ protected:
   void vdp1_abort_draw();
   void vdp1_set_drawpixel();
 
+  bool vdp1_is_end_code(int address, int texel) const;
   void vdp1_draw_normal_sprite(const rectangle &cliprect, int sprite_type);
   void vdp1_draw_scaled_sprite(const rectangle &cliprect);
   void vdp1_draw_distorted_sprite(const rectangle &cliprect);
@@ -203,6 +204,8 @@ protected:
   void drawpixel_8bpp_trans(int x, int y, int patterndata, int offsetcnt);
   void drawpixel_4bpp_notrans(int x, int y, int patterndata, int offsetcnt);
   void drawpixel_4bpp_trans(int x, int y, int patterndata, int offsetcnt);
+  static uint16_t vdp1_color_calculate(uint16_t src, uint16_t dst, unsigned mode);
+  void vdp1_draw_color(int x, int y, uint16_t src);
   void drawpixel_generic(int x, int y, int patterndata, int offsetcnt);
   void vdp1_fill_slope(const rectangle &cliprect, int patterndata, int xsize,
                        int32_t x1, int32_t x2, int32_t sl1, int32_t sl2,
