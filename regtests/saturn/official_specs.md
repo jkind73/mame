@@ -205,3 +205,13 @@ memory maps plus Ymir GetBusID and Mednafen AddressToBus/DMA_ReadCBus. The READM
 records 768 classification checks and 2,304 direct DMA scenarios. This is an
 explicit source/emulator cross-check: a precise official mirror-aperture section
 has not yet been established, and no hardware measurement is claimed.
+
+## Indirect descriptor audit update
+
+Read ST-097 §2.1, printed pp.19–20 (PDF pp.35–36), §3.2 printed p.42 (PDF p.58),
+and ST-210 item 25, printed p.8 (PDF p.12). These distinguish indirect descriptor
+execution/format from direct count registers. The all-channel twenty-bit descriptor
+width and zero-to-1-MiB rule are supported by Ymir/Mednafen, with MiSTer confirming
+the width, not explicitly by the inspected manual prose. Corrected the narrower
+channel-1/2 mask and zero handling; 54 legal two-entry chains now pass through
+completion. Runtime/clock/arbitration and unusual transfer cases remain open.
