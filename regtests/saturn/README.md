@@ -464,3 +464,40 @@ all rollback table values. The inherited note disputing the manual's non-interla
 shift is not overridden. Field lengths, ODD transition phase, rollback thresholds,
 exact external-latch timing and hardware traces remain open. This is a supported
 register-encoding correction, not a complete interlace timing implementation.
+
+## EXTEN reset coherence
+
+ST-058 §2.5 (printed p.19 / PDF p.37) states that the external signal enable
+register is cleared on power-on or reset. EXLTEN=0 selects counter latching on
+EXTEN reads; EXLTEN=1 selects external signals. The inherited reset cleared
+`m_exten` but left `m_exlten`, `m_exsyen`, `m_dasel` and `m_exbgen` unchanged.
+This allowed readback to report zero while behavior still used pre-reset controls.
+
+Reset now explicitly clears all four decoded controls alongside the register.
+Cross-checks: [Ymir VDP2Regs::Reset](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/vdp/vdp2_regs.hpp)
+clears the packed EXTEN value, and
+[Mednafen VDP2::Reset](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp2.cpp)
+clears all four decoded controls. No reference code was imported.
+
+```sh
+python3 regtests/saturn/test_exten.py
+python3 regtests/saturn/test_exten.py --baseline  # expected decoded-control assertion failure
+```
+
+**64 write/reset/latch scenarios passed** with ASan/UBSan. The harness compiles
+the actual reset and external-latch callbacks plus the EXTEN read/write lambda
+bodies. It covers all sixteen control combinations, full/masked write sequences,
+repeated reset, readback/control coherence, restored register-read latching,
+suppressed external latching after reset, side-effect-disabled reads and guest
+re-enabling EXLTEN. Masked writes preserve existing software handler behavior;
+they are not a claim about unsupported physical byte accesses. The negative
+control uses the pre-fix reset from `167c45469b379251c68cef6ff81d6b57ceed58c4`.
+
+The beam counters, scheduler, CRTC reconfiguration and machine wrapper are
+recording stand-ins. These tests do not exercise the actual address-map dispatcher,
+TVSTAT flag clearing, complete register reset semantics or lightgun input timing.
+Latch contents/status flags are not changed by this patch; the test resets its
+latch sentinels separately to observe each access. No saved-state layout changes.
+
+All **seven** regression scripts and three object compilations pass through
+`validate_build.py`. Full linking, boot, save/load and game tests remain pending.

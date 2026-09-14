@@ -78,7 +78,13 @@ void saturn_vdp2_device::device_reset() {
   // them, but both are read back - VRAMSZ also feeds get_vramsz() - so they
   // need a defined power-on value rather than whatever the allocation held
   m_vramsz = false;
+  // ST-058 section 2.5: EXTEN is cleared by reset. Keep the decoded
+  // controls coherent with readback, particularly the HV latch source.
   m_exten = 0;
+  m_exlten = false;
+  m_exsyen = false;
+  m_dasel = false;
+  m_exbgen = false;
   reconfigure_crtc();
 }
 

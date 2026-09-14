@@ -171,3 +171,11 @@ alongside these reopened items.
 - All six regression scripts and three object compilations pass. Normal/single-
   density/exclusive behavior and all rollback values are unchanged. Exact field
   timing and runtime validation remain open; no blanket interlace DONE.
+
+### EXTEN reset coherence — implemented and tested
+
+- ST-058 §2.5 plus Ymir/Mednafen: reset clears all four decoded EXTEN control bits
+  with the raw register, restoring register-read HV latching.
+- 64 write/reset/latch scenarios pass; baseline reset fails coherence. Seven
+  regression scripts and three object compilations pass. Whole-device reset,
+  actual address-map dispatch, lightgun timing and runtime validation remain open.
