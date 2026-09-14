@@ -338,14 +338,6 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
     if (VDP1_VBE())
       m_vdp1_legacy.framebuffer_clear_on_next_frame = 1;
   }
-
-  // TODO: temporary for Batman Forever, presumably anonymous timer not behaving
-  // well.
-  //       VDP1 timing needs some HW work anyway so I'm currently firing VDP1
-  //       after 8 scanlines for now, will de-anon the timers in a later stage.
-  if (scanline == (vblank_line + 8) * y_step) {
-    m_scu->vdp1_end_w(1);
-  }
 }
 
 static const gfx_layout tiles8x8x4_layout = {
@@ -846,7 +838,7 @@ void saturn_state::vdp1_framebuffer0_w(offs_t offset, uint32_t data,
           0x00ff;
       m_vdp1_legacy
           .framebuffer[m_vdp1_legacy.framebuffer_current_draw][offset * 2] |=
-          data & 0xff00;
+          (data >> 16) & 0xff00;
     }
     if (ACCESSING_BITS_16_23) {
       m_vdp1_legacy
@@ -854,7 +846,7 @@ void saturn_state::vdp1_framebuffer0_w(offs_t offset, uint32_t data,
           0xff00;
       m_vdp1_legacy
           .framebuffer[m_vdp1_legacy.framebuffer_current_draw][offset * 2] |=
-          data & 0x00ff;
+          (data >> 16) & 0x00ff;
     }
     if (ACCESSING_BITS_8_15) {
       m_vdp1_legacy.framebuffer[m_vdp1_legacy.framebuffer_current_draw]
@@ -1334,11 +1326,23 @@ to the framebuffer we CAN'T frameskip the vdp1 drawing as the hardware can READ
 the framebuffer and if we skip the drawing the content could be incorrect when
 it reads it, although i have no idea why they would want to */
 
+bool saturn_state::vdp1_pixel_visible(int x, int y) const {
+  if (x < 0 || y < 0 || x >= 1024 || y >= 512 ||
+      !m_vdp1_legacy.system_cliprect.contains(x, y))
+    return false;
+
+  // Technical Bulletin 15: Clip=bit10, Cmod=bit9 (corrected manual prose).
+  if (!(current_sprite.CMDPMOD & 0x0400))
+    return true;
+  const bool inside = m_vdp1_legacy.user_cliprect.contains(x, y);
+  return (current_sprite.CMDPMOD & 0x0200) ? !inside : inside;
+}
+
 void saturn_state::drawpixel_poly(int x, int y, int patterndata,
                                   int offsetcnt) {
   /* Capcom Collection Dai 4 uses a dummy polygon to clear VDP1 framebuffer that
    * goes over our current max size ... */
-  if (x >= 1024 || y >= 512)
+  if (!vdp1_pixel_visible(x, y))
     return;
 
   m_vdp1_legacy.framebuffer_draw_lines[y][x] = current_sprite.CMDCOLR;
@@ -1350,7 +1354,7 @@ void saturn_state::drawpixel_8bpp_trans(int x, int y, int patterndata,
 
   // the user clip rectangle comes from 13-bit command fields and can be far
   // larger than the framebuffer, so bound the pixel like the other variants do
-  if (x >= 1024 || y >= 512)
+  if (!vdp1_pixel_visible(x, y))
     return;
 
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt) & 0x7ffff] & 0xff;
@@ -1365,7 +1369,7 @@ void saturn_state::drawpixel_4bpp_notrans(int x, int y, int patterndata,
 
   // the user clip rectangle comes from 13-bit command fields and can be far
   // larger than the framebuffer, so bound the pixel like the other variants do
-  if (x >= 1024 || y >= 512)
+  if (!vdp1_pixel_visible(x, y))
     return;
 
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
@@ -1379,7 +1383,7 @@ void saturn_state::drawpixel_4bpp_trans(int x, int y, int patterndata,
 
   // the user clip rectangle comes from 13-bit command fields and can be far
   // larger than the framebuffer, so bound the pixel like the other variants do
-  if (x >= 1024 || y >= 512)
+  if (!vdp1_pixel_visible(x, y))
     return;
 
   pix = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
@@ -1406,7 +1410,7 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
     return;
   }
 
-  if (x >= 1024 || y >= 512)
+  if (!vdp1_pixel_visible(x, y))
     return;
 
   if (current_sprite.ispoly) {
@@ -2326,26 +2330,17 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
 }
 
 TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
-  /* set CEF to 1*/
+  // ST-013 section 4.6: fetching END sets CEF and generates draw-end IRQ.
+  // Keep the existing estimated delay; it is not a pixel-accurate timing model.
   CEF_1();
-
-// TODO: temporary for Batman Forever, presumably anonymous timer not behaving
-// well.
-#if 0
-	if(!(m_scu.ism & IRQ_VDP1_END))
-	{
-		m_maincpu->set_input_line_and_vector(0x2, HOLD_LINE, 0x4d); // SH2
-		scu_do_transfer(6);
-	}
-	else
-		m_scu.ist |= (IRQ_VDP1_END);
-#endif
+  m_scu->vdp1_end_w(1);
 }
 
 void saturn_state::vdp1_process_list() {
   int position;
   int spritecount;
   int vdp1_nest;
+  bool end_fetched = false;
   rectangle *cliprect;
 
   spritecount = 0;
@@ -2358,6 +2353,8 @@ void saturn_state::vdp1_process_list() {
 
   clear_gouraud_shading();
 
+  // A new list replaces the outstanding completion estimate.
+  m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
   /*Set CEF bit to 0*/
   CEF_0();
 
@@ -2369,21 +2366,19 @@ void saturn_state::vdp1_process_list() {
 
     draw_this_sprite = 1;
 
-    //  if (position >= ((0x80000/0x20)/4)) // safety check
-    //  {
-    //      if (VDP1_LOG) logerror ("Sprite List Position Too High!\n");
-    //      position = 0;
-    //  }
+    // ST-013 section 3.1: command fetch wraps at the end of 512 KiB VRAM.
+    position &= 0x3fff;
 
     spritecount++;
 
     current_sprite.CMDCTRL =
         (m_vdp1_vram[position * (0x20 / 4) + 0] & 0xffff0000) >> 16;
 
-    if (current_sprite.CMDCTRL == 0x8000) {
+    if (current_sprite.CMDCTRL & 0x8000) {
+      end_fetched = true;
       if (VDP1_LOG)
         logerror(
-            "List Terminator (0x8000) Encountered, Sprite List Process END\n");
+            "List Terminator (END bit) Encountered, Sprite List Process END\n");
       goto end; // end of list
     }
 
@@ -2503,26 +2498,12 @@ void saturn_state::vdp1_process_list() {
 
     /* continue to draw this sprite only if the command wasn't to skip it */
     if (draw_this_sprite == 1) {
-      /* CMDPMOD bit 10 enables user clipping and bit 9 selects whether it is
-         applied inside or outside the user clipping coordinates.  Technical
-         Bulletin #15 corrects page 79 of the VDP1 User's Manual, where the
-         prose had those two swapped against the bit diagram; the bulletin rules
-         "the drawing is correct", i.e. Clip = bit 10, Cmod = bit 9.  The enable
-         is handled here but the inside/outside select is not: one rectangle
-         cannot express "everywhere except this area", so outside clipping (used
-         by the Bio Hazard inventory screen) needs per pixel rejection in the
-         draw loop. The disabled attempt below is wrong in any case -
-         substituting the system cliprect means "ignore user clipping", not
-         "invert it". */
-      if (current_sprite.CMDPMOD & 0x0400) {
-        // if(current_sprite.CMDPMOD & 0x0200) /* TODO: Bio Hazard inventory
-        // screen uses outside cliprect */
-        //   cliprect = &m_vdp1_legacy.system_cliprect;
-        // else
+      // Outside clipping needs the system rectangle for rasterization;
+      // vdp1_pixel_visible rejects pixels inside the excluded user rectangle.
+      if ((current_sprite.CMDPMOD & 0x0600) == 0x0400)
         cliprect = &m_vdp1_legacy.user_cliprect;
-      } else {
+      else
         cliprect = &m_vdp1_legacy.system_cliprect;
-      }
 
       vdp1_set_drawpixel();
 
@@ -2625,9 +2606,8 @@ void saturn_state::vdp1_process_list() {
                      current_sprite.CMDCTRL & 0xf, spritecount);
         m_vdp1_legacy.lopr = (position * 0x20) >> 3;
         // m_vdp1_legacy.copr = (position * 0x20) >> 3;
-        //  prematurely kill the VDP1 process if an illegal opcode is executed
-        //  sexyparo calls multiple illegals and expects VDP1 irq to be fired
-        //  anyway!
+        // Abort this unsupported command, but do not claim END was fetched.
+        // Exact illegal-command progression remains unimplemented.
         goto end;
       }
     }
@@ -2638,10 +2618,11 @@ end:
 
   /* TODO: what's the exact formula? Guess it should be a mix between number of
    * pixels written and actual command data fetched. */
-  // if spritecount = 10000 don't send a vdp1 draw end
-  //  if(spritecount < 10000)
-  m_vdp1_legacy.draw_end_timer->adjust(
-      m_maincpu->cycles_to_attotime(spritecount * 16));
+  // Reaching the host safety limit or aborting an unsupported command is not
+  // a hardware END. In particular, a looping list must not set CEF/raise IRQ.
+  if (end_fetched)
+    m_vdp1_legacy.draw_end_timer->adjust(
+        m_maincpu->cycles_to_attotime(spritecount * 16));
 
   if (VDP1_LOG)
     logerror("End of list processing!\n");
