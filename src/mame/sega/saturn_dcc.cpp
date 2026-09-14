@@ -10,8 +10,11 @@ Essentially does two things
 
 TODO:
 - find the actual part #;
-- MINIT/SINIT writes must be 16-bit and checked against who's accessing it, TBD
-otherwise;
+- MINIT/SINIT: the 16-bit trigger rule is now implemented (byte and longword
+writes do not capture the FRT, per Sega's memory-map notes) and the
+cache-through aliases at 21000000H/21800000H are mapped; still open is checking
+a write against the CPU that issued it (MINIT from the master, SINIT from the
+slave), which no reference documents;
 - should probably handle sync barriers from here as well;
 - complete irq acknowledge support for slave CPU;
 
