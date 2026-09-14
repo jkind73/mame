@@ -511,8 +511,15 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
   // - can't transfer from BIOS, Work RAM L, backup RAM (gamebas, wc98,
   // batmanfu)
   // - SCU also can't do same bus transfers
+  // - the controller has no path to its own register space at all
+  // - SCU Final Specifications and Precautions (ST-210-110194): No.01 makes the
+  //   A-Bus a read source only, never a DMA destination, and No.02 makes the
+  //   VDP2 area a destination only, never a source.  Either violation is the
+  //   same DMA-illegal condition: the interrupt is raised and nothing moves.
   if (src_flags == 0 || dst_flags == 0 ||
-      (src_flags & 0x0300) == (dst_flags & 0x0300)) {
+      (src_flags & 0x0300) == (dst_flags & 0x0300) || src_flags == B_BUS_SCU ||
+      dst_flags == B_BUS_SCU || (dst_flags & 0x0300) == 0x0100 ||
+      src_flags == B_BUS_VDP2) {
     LOG("DMA%d illegal setup (ignored): R %08x W %08x\n", level,
         m_dma[level].src, m_dma[level].dst);
     m_ist |= IST_DMAILL;
