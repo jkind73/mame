@@ -147,6 +147,7 @@ private:
   };
 
   TIMER_CALLBACK_MEMBER(dma_tick_cb);
+  void dma_hog_bus(uint8_t level);
   TIMER_CALLBACK_MEMBER(timer1_irq_cb);
   emu_timer *m_timer1;
   emu_timer *m_dma_tick_timer;
