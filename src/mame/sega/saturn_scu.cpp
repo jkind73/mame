@@ -263,6 +263,10 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[0].live_dst));
   save_item(NAME(m_dma[0].live_size));
   save_item(NAME(m_dma[0].live_count));
+  save_item(NAME(m_dma[0].read_buffer));
+  save_item(NAME(m_dma[0].read_address));
+  save_item(NAME(m_dma[0].read_offset));
+  save_item(NAME(m_dma[0].read_buffer_valid));
   save_item(NAME(m_dma[0].bbus_sound_access));
   save_item(NAME(m_dma[0].transfer_penalty));
 
@@ -286,6 +290,10 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[1].live_dst));
   save_item(NAME(m_dma[1].live_size));
   save_item(NAME(m_dma[1].live_count));
+  save_item(NAME(m_dma[1].read_buffer));
+  save_item(NAME(m_dma[1].read_address));
+  save_item(NAME(m_dma[1].read_offset));
+  save_item(NAME(m_dma[1].read_buffer_valid));
   save_item(NAME(m_dma[1].bbus_sound_access));
   save_item(NAME(m_dma[1].transfer_penalty));
 
@@ -309,6 +317,10 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[2].live_dst));
   save_item(NAME(m_dma[2].live_size));
   save_item(NAME(m_dma[2].live_count));
+  save_item(NAME(m_dma[2].read_buffer));
+  save_item(NAME(m_dma[2].read_address));
+  save_item(NAME(m_dma[2].read_offset));
+  save_item(NAME(m_dma[2].read_buffer_valid));
   save_item(NAME(m_dma[2].bbus_sound_access));
   save_item(NAME(m_dma[2].transfer_penalty));
 
@@ -349,6 +361,10 @@ void saturn_scu_device::device_reset() {
     m_dma[i].live_dst = 0;
     m_dma[i].live_size = 0;
     m_dma[i].live_count = 0;
+    m_dma[i].read_buffer = 0;
+    m_dma[i].read_address = 0;
+    m_dma[i].read_offset = 0;
+    m_dma[i].read_buffer_valid = false;
     m_dma[i].start_factor = DMA_EVENT_TRIGGER;
     m_dma[i].mode = DMA_MODE_RESET;
     m_dma[i].enable_mask = false;
@@ -368,10 +384,9 @@ void saturn_scu_device::device_reset() {
   m_current_irq_level = 0;
   m_current_vector = 0;
 
-  // Nope until we have a proper DTACK instead of an HALT,
-  // SMPC triggers this thru dotsel (2 credits meme ...)
-  // m_sound_dtack_cb(0);
-  // m_main_dtack_cb(0);
+  // Release only SCU-owned stalls; the driver preserves SMPC HALT separately.
+  m_sound_dtack_cb(0);
+  m_main_dtack_cb(0);
 
   m_tenb = false;
   m_t1md = false;
@@ -591,6 +606,7 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
   m_dma[level].live_dst = m_dma[level].dst;
   m_dma[level].live_size = m_dma[level].size;
   m_dma[level].live_count = 0;
+  m_dma[level].read_buffer_valid = false;
   m_dma[level].done = false;
   m_dma[level].transfer_penalty = src_penalty + dst_penalty;
 
@@ -770,6 +786,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
         if (m_dma[level].live_size == 0)
           m_dma[level].live_size = 0x10'0000;
         m_dma[level].live_count = 0;
+        m_dma[level].read_buffer_valid = false;
         m_dma[level].transfer_penalty = src_penalty + dst_penalty;
 
         m_dma[level].mode = DMA_MODE_INDIRECT;
@@ -881,43 +898,42 @@ const saturn_scu_device::dma_transfer_func
         &saturn_scu_device::dma_transfer_direct_cd,
         &saturn_scu_device::dma_transfer_direct_cd_cbus_write};
 
+uint16_t saturn_scu_device::dma_read_word(dma_channel_t &ch) {
+  // SCU reads a longword into its source buffer, then supplies bytes to the
+  // destination. DxRA advances the longword base, not each output halfword
+  // (ST-097 section 3.2; Ymir doRead / Mednafen DMA_Read).
+  if (!ch.read_buffer_valid) {
+    ch.read_address = ch.live_src & 0x07ff'fffc;
+    ch.read_offset = ch.live_src & 3;
+    ch.read_buffer = m_hostspace->read_dword(ch.read_address);
+    ch.read_buffer_valid = true;
+  }
+
+  uint16_t result = 0;
+  for (unsigned byte = 0; byte < 2; ++byte) {
+    if (ch.read_offset == 4) {
+      ch.read_address = (ch.read_address + ch.src_add) & 0x07ff'ffff;
+      ch.read_buffer = m_hostspace->read_dword(ch.read_address);
+      ch.read_offset = 0;
+    }
+    result = (result << 8) | ((ch.read_buffer >> (24 - 8 * ch.read_offset)) & 0xff);
+    ++ch.read_offset;
+  }
+  ch.live_src = (ch.read_address + ch.read_offset) & 0x07ff'ffff;
+  return result;
+}
+
 void saturn_scu_device::dma_transfer_direct_default(dma_channel_t &ch) {
-  // dma_single_transfer(m_dma[level].src, m_dma[level].dst, &src_shift);
-  const u32 src_address = ch.live_src & 0x07ff'fffe;
   const u32 dst_address = ch.live_dst & 0x07ff'fffe;
-
-  // TODO: actually reads as dword and writes as word for B-Bus transfers
-  uint32_t src_data = m_hostspace->read_word(src_address);
-
-  m_hostspace->write_word(dst_address, src_data);
-
-  // pfght fills VDP2 with a single work RAM location (i.e. DMA fill)
-  ch.live_src += ch.src_add >> 1;
-  // TODO: reimplement me
-  // if(src_shift)
-  //  dma_params.src+= dma_params.src_add;
-  //
+  m_hostspace->write_word(dst_address, dma_read_word(ch));
   ch.live_dst += ch.dst_add;
-
   ch.live_count += 2;
 }
 
 void saturn_scu_device::dma_transfer_direct_cbus_write(dma_channel_t &ch) {
-  // dma_single_transfer(m_dma[level].src, m_dma[level].dst, &src_shift);
-  const u32 src_address = ch.live_src & 0x07ff'fffe;
   const u32 dst_address = ch.live_dst & 0x07ff'fffe;
-
-  uint32_t src_data = m_hostspace->read_word(src_address);
-
-  m_hostspace->write_word(dst_address, src_data);
-
-  ch.live_src += ch.src_add >> 1;
-  // TODO: reimplement me
-  // if(src_shift)
-  //  dma_params.src+= dma_params.src_add;
-  //
+  m_hostspace->write_word(dst_address, dma_read_word(ch));
   ch.live_dst += 2;
-
   ch.live_count += 2;
 }
 
@@ -981,6 +997,7 @@ void saturn_scu_device::dma_force_stop_w(uint32_t data, uint32_t mem_mask) {
     m_dma[level].done = false;
     m_dma[level].pending_trigger = false;
     m_dma[level].indirect_fetch_phase = false;
+    m_dma[level].read_buffer_valid = false;
   }
   m_dma_status &= ~(DMA_LV0_BK | DMA_LV1_BK);
   m_dma_tick_timer->adjust(attotime::never);

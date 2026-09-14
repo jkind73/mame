@@ -189,6 +189,10 @@ private:
     uint32_t live_dst;
     uint32_t live_size;
     uint32_t live_count;
+    uint32_t read_buffer;
+    uint32_t read_address;
+    uint8_t read_offset;
+    bool read_buffer_valid;
     uint8_t start_factor;
     uint32_t mode;
     bool enable_mask;
@@ -207,6 +211,7 @@ private:
   static const dma_transfer_func dma_transfer_table[4];
 
   std::tuple<u16, int> get_address_flags(u32 address, bool write_op);
+  uint16_t dma_read_word(dma_channel_t &ch);
   void dma_transfer_direct_default(dma_channel_t &ch);
   void dma_transfer_direct_cbus_write(dma_channel_t &ch);
   void dma_transfer_direct_cd(dma_channel_t &ch);

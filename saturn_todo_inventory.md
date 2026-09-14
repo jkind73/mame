@@ -1,5 +1,54 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Four-priority pass — 2026-09-14
+
+This is a bounded implementation in all four requested areas, **not completion
+of all Saturn compatibility work and not a demonstrated game fix**.
+
+1. **DMA width/fixed source:** buffer 32-bit source reads and deliver halfwords,
+   advancing the source longword base by 0 or 4, rather than repeating one
+   halfword for fixed-source fills. Save/reset/invalidate the buffer state at
+   starts, descriptor changes and forced stop. 1,152 new ASan/UBSan cases cover
+   all three channels, both ordinary writers, offsets, strides and continuation.
+   The old implementation fails the source-read-count assertion. Odd transfer
+   counts, destination alignment and detailed B-Bus timing remain unresolved;
+   the special CD DMA path is unchanged.
+2. **CD ports/completion:** inactive/wrong-direction long reads no longer throw
+   emulator-fatal errors. Null partitions, array indices, invalid block sizes
+   and remaining longword space are checked. Get-and-Delete accounts for whole
+   deleted sectors even after a partial read, preserving block/index compaction.
+   Existing first-excess-read deletion timing is retained, but DataEnd still
+   receives the active command and signals EHST without deleting twice. DataEnd
+   invalidates both transfer interfaces, including GET/PUT. 336 sanitizer cases
+   pass. The existing all-ones idle/dummy value is not hardware-verified; partial
+   GET prefetch/count reporting, zero-data count/error semantics, command range
+   rejection and exact IRQ timing still need work. No successful payload is
+   fabricated by invalid port reads.
+3. **Reset/save-load/shared HALT:** Saturn/ST-V now OR independent SMPC, SCU
+   main/slave and SCU sound HALT ownership. Reset releases SCU-owned stalls
+   without releasing SMPC's halt. Driver reset clears ownership; three latches
+   are saved and a postload callback reapplies the combined levels. 1,296 event
+   sequences pass. DMA/HALT snapshot tests copy stand-in state and statically
+   check registrations; they do **not** exercise MAME's save manager. CD save
+   coverage remains incomplete (sector payloads, filter/partition pointers,
+   directory and MPEG state). The ISO directory parser also needs bounds and
+   subdirectory-length repairs; no untested large serialization rewrite was made.
+4. **SMPC/dual CPU:** CONTINUE detects either reversal of IREG0 bit 7, not a
+   high level. BREAK cancels queued continuation, acknowledges SF and prevents
+   stale callbacks from producing data/IRQs. IOSEL/EXLE reset to zero. 1,173
+   sanitizer cases pass; old handlers fail the handshake assertion. Simultaneous
+   CONTINUE/BREAK is excluded as prohibited by Sega. The existing 700us delay
+   is unchanged, not newly validated; VBlank timeout remains open. DCC width
+   filtering and synchronized FRT delivery were inspected, not retimed; paired
+   SH-2/DRC runtime traces are still required.
+
+Validation: **17 regression scripts and nine object compilations pass**. The
+ninth object is SMPC; adding it exposed and fixed its `emu.h` include ordering.
+No linked executable, MAME save/load round trip or BIOS/game boot was validated;
+the SDL/pkg-config dependency blocker remains. Source, tests and evidence are
+kept in Git; downloaded PDFs and temporary build products stay outside it.
+
+
 ## DMA forced-stop feature — 2026-09-14
 
 Implemented the previously unmapped DSTP command with cancellation/held-trigger/

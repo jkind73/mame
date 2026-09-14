@@ -32,8 +32,8 @@ SMPC NVRAM contents:
 
 *************************************************************************************/
 
-#include "smpc.h"
 #include "emu.h"
+#include "smpc.h"
 
 
 #include "coreutil.h"
@@ -176,6 +176,9 @@ void smpc_hle_device::device_reset() {
   m_cd_sf = false;
   m_ddr1 = 0;
   m_ddr2 = 0;
+  // ST-169 table 3.1: SMPC control mode, external latches disabled.
+  m_iosel1 = m_iosel2 = false;
+  m_exle1 = m_exle2 = false;
   m_pdr1_readback = 0;
   m_pdr2_readback = 0;
 
@@ -226,6 +229,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
   if (!(offset & 1)) // avoid writing to even bytes
     return;
 
+  const uint8_t previous = m_ireg[offset >> 1];
   m_ireg[offset >> 1] = data;
 
   if (offset == 1) // check if we are under intback
@@ -233,9 +237,11 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
     if (m_intback_stage) {
       if (data & 0x40) {
         LOGMASKED(LOG_PAD_CMD, "SMPC: BREAK request\n");
+        m_intback_timer->reset();
         sr_ack();
+        sf_ack(false);
         m_intback_stage = 0;
-      } else if (data & 0x80) {
+      } else if ((previous ^ data) & 0x80) {
         LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
 
         m_intback_timer->adjust(
@@ -646,6 +652,10 @@ void smpc_hle_device::resolve_intback() {
 }
 
 TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request) {
+  // BREAK/reset may have canceled collection before a queued callback runs.
+  if (!m_intback_stage)
+    return;
+
   if (m_has_ctrl_ports == true)
     read_saturn_ports();
 
