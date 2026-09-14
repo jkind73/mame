@@ -7750,6 +7750,12 @@ void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
       if (VDP2_LCCLMD)
         base_offs += (y / interlace) << 1;
 
+      /* LCTA is masked to 19 bits and doubled, which already lets the base
+         reach the last byte of the decode buffer, so the per-line offset can
+         run off the end of it; wrap inside the buffer, which is what the
+         address lines do on the hardware */
+      base_offs &= 0xfffff;
+
       for (x = cliprect.left(); x <= cliprect.right(); x++) {
         uint16_t pen;
 
@@ -8841,7 +8847,10 @@ uint32_t saturn_state::vdp2_read_rotation_coefficient(uint32_t address) {
   if (VDP2_CRKTE)
     return m_vdp2_cram[((address | 0x800) & 0xfff) >> 2];
 
-  return m_vdp2_vram[address >> 2];
+  /* the address is built from the rotation parameters, whose kast/dkast are
+     signed, so it can come out negative and wrap to a huge unsigned index;
+     wrap it inside VRAM the same way the CRAM branch above wraps inside CRAM */
+  return m_vdp2_vram[(address >> 2) & 0x3ffff];
 }
 
 void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
@@ -9202,8 +9211,10 @@ void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
       bitmap.fill(vdp2_back_screen_color(gfxdata, base_offs), cliprect);
     } else {
       for (int y = cliprect.top(); y <= cliprect.bottom(); y++) {
-        rgb_t const color =
-            vdp2_back_screen_color(gfxdata, base_offs + ((y / interlace) << 1));
+        /* as in vdp2_draw_line(): BKTA doubled can already reach the last
+           byte of the decode buffer, so wrap the per-line offset inside it */
+        rgb_t const color = vdp2_back_screen_color(
+            gfxdata, (base_offs + ((y / interlace) << 1)) & 0xfffff);
 
         for (int x = cliprect.left(); x <= cliprect.right(); x++)
           bitmap.pix(y, x) = color;
@@ -9611,7 +9622,11 @@ void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
     uint32_t address = (VDP2_W0LWTA & base_mask) * 2;
     // double density makes the line window to fetch data every two lines
     uint8_t interlace = (m_vdp2->get_lsmd() == 3);
-    uint32_t vram_data = m_vdp2_vram[(address >> 2) + (y >> interlace)];
+    /* the table address is masked to 19 bits, so address >> 2 can already be
+       the last word of VRAM and the per-line index runs past it; wrap inside
+       VRAM rather than reading beyond the allocation */
+    uint32_t vram_data =
+        m_vdp2_vram[((address >> 2) + (y >> interlace)) & 0x3ffff];
 
     raw_s_x = (int16_t)(vram_data >> 16);
     raw_e_x = (int16_t)(vram_data & 0xffff);
@@ -9675,7 +9690,11 @@ void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
     uint32_t address = (VDP2_W1LWTA & base_mask) * 2;
     // double density makes the line window to fetch data every two lines
     uint8_t interlace = (m_vdp2->get_lsmd() == 3);
-    uint32_t vram_data = m_vdp2_vram[(address >> 2) + (y >> interlace)];
+    /* the table address is masked to 19 bits, so address >> 2 can already be
+       the last word of VRAM and the per-line index runs past it; wrap inside
+       VRAM rather than reading beyond the allocation */
+    uint32_t vram_data =
+        m_vdp2_vram[((address >> 2) + (y >> interlace)) & 0x3ffff];
 
     raw_s_x = (int16_t)(vram_data >> 16);
     raw_e_x = (int16_t)(vram_data & 0xffff);
