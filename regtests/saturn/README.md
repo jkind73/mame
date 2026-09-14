@@ -699,3 +699,72 @@ recording memory/scheduler and GCC warning exception documented above still appl
 
 All ten regression scripts and three object compilations pass. Full MAME linking
 and BIOS/game runtime validation remain pending.
+
+## Held external DMA triggers — audit and regression coverage
+
+**No production change was warranted by this audit.** The existing one-slot
+`pending_trigger` handling passed the cases below. `test_dma_indirect.py` now
+extracts the actual `dma_start_factor_ack` event filter and `dma_event_id_t` in
+addition to the start/tick/transfer/completion functions already covered.
+
+Primary evidence:
+- [ST-210-110194](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-210-110194.pdf),
+  printed p.7 / PDF p.11, items 21–23: enable AND matching start factor; hold a
+  trigger arriving during DMA once and execute it after completion; do not rewrite
+  the active channel's registers. Item 20 limits guaranteed priority to two
+  channels; item 35 prohibits starting level 2 during level 1.
+- [ST-097-R5-072694](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-097-R5-072694.pdf),
+  printed pp.45–46 / PDF pp.61–62: enable, one-shot DxGO, address updates and
+  the seven external start factors. The tests here exercise external events,
+  **not the MMIO DxGO write lambda**.
+- [Mednafen](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  sets the boolean `GoGoGadget` for enabled matching external events, consumes it
+  in `CheckDMAStart` only when inactive, and calls that function again in
+  `SCU_DoDMAEnd`. This independently corroborates the one-slot held restart.
+- [Ymir](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  `TriggerDMATransfer` agrees on enable/event gating but filters `!ch.active`.
+  The inspected pinned path therefore does **not** corroborate holding external
+  triggers during active DMA; it was not copied over the primary-document-backed
+  MAME behavior.
+
+**924 held-trigger scenarios pass with ASan/UBSan**:
+- 756 cases: all three channels, all seven external factors, direct RUP/WUP in
+  all four combinations or indirect WUP either way, triggers in initial WAIT,
+  active MOVE or the done-before-IRQ phase, and bursts of one or three triggers.
+- 168 cases: level 0 suspended under either level 1 or level 2, with the same
+  event/mode/update/burst combinations. No prohibited level-1/2 start sequence.
+
+Assertions check disabled and nonmatching events are ignored; matching busy
+triggers change only the pending latch, not live state, registers, memory/IRQ/
+bus callbacks or timer scheduling; and the held trigger survives suspension.
+Both activations execute all their words. Tests verify updated or preserved
+source/destination registers are used on restart, indirect tables are re-read
+at the correct pointer, each activation produces a completion callback, repeated
+triggers yield only one restart, and the timer stops with idle status and no
+third activation. Setup writes occur while idle. IRQ acknowledgement is a change
+to the recording endpoint, not an exercised MAME register handler.
+
+```sh
+python3 regtests/saturn/test_dma_indirect.py
+# Each command below deliberately mutates only the extracted temporary C++
+# translation unit and MUST fail a regression assertion:
+python3 regtests/saturn/test_dma_indirect.py --hold-mutation drop
+python3 regtests/saturn/test_dma_indirect.py --hold-mutation sticky
+python3 regtests/saturn/test_dma_indirect.py --hold-mutation enable
+python3 regtests/saturn/test_dma_indirect.py --hold-mutation factor
+python3 regtests/saturn/test_dma_indirect.py --hold-mutation stride
+```
+
+All five controls failed their intended assertions: missing hold, uncleared hold,
+disabled-event acceptance, wrong-factor acceptance and wrong status-field stride.
+These are **mutation tests**, not claims that those faults exist at current HEAD
+or that a newly fixed historical baseline was reproduced. Mutation targets have
+occurrence-count guards against silent drift and never modify production files.
+
+Together with 54 indirect chains and 64 arbitration scenarios, all ten regression
+scripts and three object compilations pass. Initial WAIT/done-phase acceptance
+is a regression check of the existing software model, not proof of hardware
+trigger setup/hold timing. Real scheduler/IRQ delivery, DxGO writes, reset/save-
+load while a trigger is held, continuous event streams, illegal configurations,
+DSP overlaps and BIOS/game behavior still require further validation. The existing
+recording-endpoint and GCC warning-exception limitations remain unchanged.

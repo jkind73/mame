@@ -1,5 +1,13 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Held DMA trigger audit — 2026-09-14
+
+Existing external-event hold behavior passed 924 new scenarios, including one-slot
+restart and suspended level 0. Added event-filter extraction and five failing
+mutation controls; no production change. ST-210/Mednafen corroborate holding;
+Ymir's pinned external-trigger path differs. DxGO, held-state reset/save-load and
+real scheduler timing remain open.
+
 ## DMA arbitration update — 2026-09-14
 
 Fixed two-channel preemption suspending the wrong channel, and made halt callback

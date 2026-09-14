@@ -219,3 +219,14 @@ alongside these reopened items.
   indirect chains. Pre-fix ticks fail the priority assertion.
 - Exact cycle/bus halt policy, completion-boundary races, held triggers and DSP/
   three-channel overlap remain open. All ten scripts and three object builds pass.
+
+### Held DMA external triggers — audited, existing implementation retained
+
+- Expanded production-function tests to include the actual event filter. 924
+  cases cover enabled/matching selection, one-slot holds, initial WAIT/MOVE/done,
+  suspended level 0, register update policies and exactly one restart.
+- ST-210 item 22 and Mednafen agree on held external events. Ymir's pinned path
+  skips active channels; it was not used to override the primary specification.
+- Five test-only mutation controls fail as intended. No production fix needed.
+  All ten scripts and three object builds pass. DxGO MMIO, real event timing,
+  reset/save-load with pending work and continuous event streams remain open.
