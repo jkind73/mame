@@ -55,6 +55,68 @@ Post 07ee024a fix — SCSP boots, 0 TODO in SCSP.
 - NVRAM config change bug
 - Spaghetti / optimization TODOs
 
-## Proposed next commit
+## Follow-up audit — 2026-09-14
 
-Implement #1 VDP2 V counter rollback + H/V blank positions — highest ref coverage, unblocks timer0 and VBlank IRQs.
+The DONE labels above describe inherited implementation work, **not complete
+hardware validation**. Review and test results are in
+[`regtests/saturn/README.md`](regtests/saturn/README.md).
+
+- Fixed a remaining scheduler gap: HBlank edges were still skipped throughout
+  VBlank, starving SCU timer/DMA events. Slave HBlank IRQs remain VBlank-gated.
+- Callback regression harness passes 72 configurations and rejects the inherited
+  implementation. Full build/game validation is pending (missing build tools).
+- Next: runtime timing traces, V counter/interlace bounds and field-coordinate
+  audit, then SCU timer semantics and DMA bus width. Do not assume existing
+  breakpoint tables or wait-state formulas are validated solely by DONE labels.
+
+### Mosaic bounds follow-up
+
+- Applied clipping safety fix from the supplied candidate patch, without enabling
+  the incomplete mosaic/line-screen compositing paths.
+- 16,384 sanitizer-backed helper configurations pass; inherited implementation
+  fails the bounds assertion. Full `saturn.cpp` syntax check passes after fixing
+  its inherited include order. Details: `regtests/saturn/README.md`.
+
+
+### V counter bounds and table follow-up
+
+- Fixed double-density screen-row indexing: divide by two before field-table
+  lookup, rather than masking a doubled screen position to nine bits.
+- Simplified region-specific initialization to one fill per table cell. All
+  2,504 entries remain identical to the inherited implementation.
+- 42,920 table/getter checks pass with ASan/UBSan; the inherited getter reproduces
+  an out-of-bounds read. Exact rollback thresholds and interlaced counter encoding
+  are still unverified. Exclusive-mode lookup behavior is unchanged.
+- Updated `saturn_todo_inventory.md` with current-branch validation notes.
+
+### Vertical cell-scroll clip follow-up
+
+- Fixed caller clip containment for first/last columns; skip wholly clipped
+  columns and empty clips while preserving screen-anchored table addressing.
+- 21,312 sanitizer-backed configurations pass; inherited code fails the clip
+  assertion. Reduced nested-renderer call counts verified, not benchmarked.
+- Existing eight-dot width retained. Sixteen-dot character behavior, combined
+  line zoom/vertical line scroll, and game-level output remain unverified.
+
+
+## Official SDK specification audit — 2026-09-14
+
+See [`regtests/saturn/official_specs.md`](regtests/saturn/official_specs.md)
+and its 103-PDF manifest. Selected hardware-manual and bulletin sections were
+read, not just SDK library documentation. Indexed does not mean fully reviewed.
+
+**Reopened correctness items supported by primary documentation:**
+- SCU timer 1: ST-210 item 31 allows HBlank reload only while stopped; current
+  code unconditionally re-arms on eligible lines. Fix/test this next.
+- SCU timer 0: ST-210 item 30 puts compare-zero at VBlank-OUT; current callback
+  clears without comparing, while HBlank compares before incrementing.
+- V counter: ST-058 table 2.4 specifies double-density field count in bits 9:1;
+  current approximate encoding remains inconsistent. Bounds safety is fixed,
+  exact hardware encoding is not.
+- Vertical cell scroll: fractional table data and bulletin #14 combined-scroll
+  example are not handled by the current restricted path.
+- Screen-over repeated pattern is cell-format only; include this restriction in
+  any future implementation. CRAM byte prohibition does not prove ignored writes.
+
+No emulator changes made in this audit pass; earlier DONE labels must be read
+alongside these reopened items.
