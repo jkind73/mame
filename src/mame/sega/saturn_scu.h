@@ -198,6 +198,7 @@ private:
     bool rup;
     bool wup;
     bool done;
+    bool pending_trigger;
     bool bbus_sound_access;
     int transfer_penalty;
   } m_dma[3];
