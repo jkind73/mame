@@ -257,6 +257,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[0].wup));
   save_item(NAME(m_dma[0].mode));
   save_item(NAME(m_dma[0].done));
+  save_item(NAME(m_dma[0].pending_trigger));
   save_item(NAME(m_dma[0].live_src));
   save_item(NAME(m_dma[0].live_dst));
   save_item(NAME(m_dma[0].live_size));
@@ -279,6 +280,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[1].wup));
   save_item(NAME(m_dma[1].mode));
   save_item(NAME(m_dma[1].done));
+  save_item(NAME(m_dma[1].pending_trigger));
   save_item(NAME(m_dma[1].live_src));
   save_item(NAME(m_dma[1].live_dst));
   save_item(NAME(m_dma[1].live_size));
@@ -301,6 +303,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_dma[2].wup));
   save_item(NAME(m_dma[2].mode));
   save_item(NAME(m_dma[2].done));
+  save_item(NAME(m_dma[2].pending_trigger));
   save_item(NAME(m_dma[2].live_src));
   save_item(NAME(m_dma[2].live_dst));
   save_item(NAME(m_dma[2].live_size));
@@ -353,6 +356,7 @@ void saturn_scu_device::device_reset() {
     m_dma[i].rup = false;
     m_dma[i].wup = false;
     m_dma[i].done = false;
+    m_dma[i].pending_trigger = false;
     m_dma[i].bbus_sound_access = false;
     m_dma[i].transfer_penalty = 0;
   }
@@ -513,7 +517,11 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
      rather than by level * 4 tested DMA0's wait bit for level 1 and two
      bits nothing ever sets for level 2. */
   if (m_dma_status & (0x30 << (level * 4))) {
-    LOG("In-flight DMA%d attempt!\n", level);
+    /* SCU Final Specifications and Precautions (ST-210-110194) No.22: a
+       start trigger that arrives while the transfer is executing is held
+       (once) and the DMA is activated again after it ends. */
+    LOG("In-flight DMA%d attempt, holding trigger\n", level);
+    m_dma[level].pending_trigger = true;
     return;
   }
 
@@ -602,7 +610,11 @@ void saturn_scu_device::trigger_dma_indirect(uint8_t level) {
      rather than by level * 4 tested DMA0's wait bit for level 1 and two
      bits nothing ever sets for level 2. */
   if (m_dma_status & (0x30 << (level * 4))) {
-    LOG("In-flight DMA%d attempt!\n", level);
+    /* SCU Final Specifications and Precautions (ST-210-110194) No.22: a
+       start trigger that arrives while the transfer is executing is held
+       (once) and the DMA is activated again after it ends. */
+    LOG("In-flight DMA%d attempt, holding trigger\n", level);
+    m_dma[level].pending_trigger = true;
     return;
   }
 
@@ -690,6 +702,13 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       test_pending_irqs();
 
       update_dma_status(level, DMA_STATE_IDLE);
+
+      // ST-210-110194 No.22: a start trigger that arrived while this
+      // level was still transferring is held (once) and the activation
+      // is executed after the DMA ends
+      bool const held_trigger = m_dma[level].pending_trigger;
+      m_dma[level].pending_trigger = false;
+
       if (wait_level != -1) {
         update_dma_status(wait_level, DMA_STATE_MOVE);
 
@@ -699,8 +718,15 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
         else
           m_dma_status &= ~(DMA_LV0_BK);
         m_dma_tick_timer->adjust(attotime::from_ticks(1, m_dma_clock_ref));
-      } else
+      } else if (!held_trigger)
         m_dma_tick_timer->adjust(attotime::never);
+
+      if (held_trigger) {
+        if (m_dma[level].indirect_mode)
+          trigger_dma_indirect(level);
+        else
+          trigger_dma_direct(level);
+      }
       return;
     }
 
@@ -1202,6 +1228,10 @@ void saturn_scu_device::abus_irqack_w(offs_t offset, uint32_t data,
 void saturn_scu_device::abus_set_w(offs_t offset, uint32_t data,
                                    uint32_t mem_mask) {
   COMBINE_DATA(&m_abus_asr[offset & 1]);
+  // ST-210-110194 No.09: the A-Bus preread function was deleted, so the
+  // preread significant bits (31 and 15) of ASR0/ASR1 must be set to 0 and
+  // are not stored
+  m_abus_asr[offset & 1] &= ~0x8000'8000;
 }
 
 void saturn_scu_device::abus_refresh_w(uint32_t data, uint32_t mem_mask) {
