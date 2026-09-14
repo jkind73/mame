@@ -61,16 +61,19 @@ protected:
     int32_t u, v;
   };
 
-  // Up to four independent segments belong to one line/polyline command.
-  // Flat integer storage is save-manager friendly: xa,ya,xb,yb,ca,cb,clip[4].
-  struct vdp1_line_state {
-    std::array<int32_t, 40> segments{};
+  // At most 4096 connecting spans are emitted by the 12-bit quad row count.
+  // Flat saved records: xa,ya,xb,yb,ca,cb,clip[4],coverage,texture row,width.
+  struct vdp1_raster_state {
+    static constexpr unsigned segment_words = 13;
+    static constexpr unsigned max_segments = 4096;
+    std::array<int32_t, segment_words * max_segments> segments{};
     int count = 0, index = 0, dot = 0;
     int x = 0, y = 0, error = 0;
-  } m_vdp1_line;
+    bool extra = false;
+  } m_vdp1_raster;
   // Host dispatch guards only; never live across an emulated timer boundary.
-  bool m_vdp1_line_building = false, m_vdp1_line_running = false;
-  int m_vdp1_line_budget = 0;
+  bool m_vdp1_raster_building = false, m_vdp1_raster_running = false;
+  int m_vdp1_raster_budget = 0;
 
   struct {
     std::unique_ptr<uint16_t *[]> framebuffer_display_lines;
@@ -221,8 +224,9 @@ protected:
   void vdp1_draw_poly_line(const rectangle &cliprect);
   void vdp1_draw_segment(const rectangle &cliprect, const spoint &a, const spoint &b, uint16_t color_a, uint16_t color_b,
                          bool edge_coverage = false, int texture_row = -1, int texture_width = 0);
-  int vdp1_line_slice_cycles() const;
-  void vdp1_draw_line_slice();
+  int vdp1_raster_slice_cycles() const;
+  void vdp1_reset_raster_queue();
+  void vdp1_draw_raster_slice();
   void vdp1_draw_line(const rectangle &cliprect);
   int x2s(int v);
   int y2s(int v);
