@@ -3325,7 +3325,10 @@ void coolridr_state::coolridr(machine_config &config)
 
 	SPEAKER(config, "speaker", 2).front();
 
-	// TODO: initializes as 44'099 kHz in SCSP core
+	// the board OSC documented above is 22.579 MHz (not the Saturn's exact
+	// 22.5792 MHz = 512 * 44100), so the SCSP core initializes its stream at
+	// 44099.6 Hz; every internal rate (timers, EG, LFO) derives from the same
+	// clock, so the chip stays self-consistent
 	scsp_device &scsp1(SCSP(config, "scsp1", XTAL(22'579'000))); // 22.579 MHz
 	scsp1.set_addrmap(0, &coolridr_state::scsp_map<0>);
 	scsp1.irq_cb().set(FUNC(coolridr_state::scsp_irq));

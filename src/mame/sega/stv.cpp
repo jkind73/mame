@@ -1391,7 +1391,11 @@ void stv_state::stv(machine_config &config) {
 
   SPEAKER(config, "speaker", 2).front();
 
-  SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
+  // ST-077: the SCSP re-sampling frequency is fixed at 44.1 kHz, one sample
+  // is 512 master clocks, so the chip must be fed 512 * 44100 = 22.5792 MHz
+  // (same silicon and clocking as the Saturn, whose EXTCLK is 8.4672 MHz
+  // * 8 / 3); the sound 68EC000 above runs at half the SCSP clock
+  SCSP(config, m_scsp, 22579200);
   m_scsp->set_addrmap(0, &stv_state::scsp_mem);
   m_scsp->irq_cb().set(FUNC(stv_state::scsp_irq));
   m_scsp->main_irq_cb().set(m_scu, FUNC(saturn_scu_device::sound_req_w));
