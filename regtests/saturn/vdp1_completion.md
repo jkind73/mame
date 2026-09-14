@@ -1,10 +1,33 @@
 # VDP1 completion audit — 2026-09-14
 
-**Status: in progress, not a complete VDP1 implementation.** The existing renderer
-is synchronous; completing its timing and interruptible execution requires more
-than filling register handlers. No BIOS/game or hardware trace has been run here.
+**Status: in progress, not a complete VDP1 implementation.** The command engine now yields between commands; primitive rasterization
+is still synchronous, and pixel/bus timing is not complete. No BIOS/game or hardware trace has been run here.
 
-## Implemented in this pass
+## VDP1 sequencer and packed framebuffer implementation — 2026-09-14
+
+Replaced whole-list synchronous dispatch with saved, timer-driven command
+execution. Lists no longer stop at a host iteration cap; CPU edits to looping
+lists are seen on subsequent fetches. ENDR cancels at command boundaries, reset
+cancels pending work, and a new PTMR start restarts at command zero. COPR tracks
+the fetched command; LOPR latches on framebuffer changes; read-only status
+register writes are ignored. Legal jump/skip/CALL/RETURN controls are tested;
+nested CALLs and main-routine RETURNs are prohibited by Sega, not legal features.
+
+Packed 8-bit drawing now shares CPU-visible words with scanout and erase, with
+neighbor-byte preservation and correct word stride for high-resolution and
+rotation-8 storage. All five pixel writers use shared pixel accessors. Postload
+rebuilds line pointers without resetting the restored drawing bank/geometry.
+
+18 scripts/nine object compilations pass. VDP1 coverage is now 32,814 command/
+lifecycle, 532 framebuffer and 24,500 clipping scenarios. Pre-sequencer and
+pre-packed-rendering substitutions fail independently, as do the older baseline
+controls. Timer/CPU/raster endpoints and copied state are not runtime proof.
+Primitive rendering remains synchronous; the sequencer uses a 16-cycle fetch
+allowance without pixel/bus costs. ENDR's ~30-clock pipeline behavior, interlace
+fields, rotated VDP2 readout, texture end-code traversal and raster/color accuracy
+remain open. See `regtests/saturn/vdp1_completion.md` for the updated audit.
+
+## Earlier implemented corrections
 
 - Recognize CMDCTRL.END independently of the other control bits.
 - Wrap sequential command fetch at the 512 KiB VRAM boundary.
@@ -72,14 +95,14 @@ The full validator passes **18 scripts and nine object compilations**.
 
 | Area | Current gap | Required implementation/verification |
 |---|---|---|
-| Command scheduling / ENDR | Whole lists rasterize synchronously; ENDR still only logs. | Incremental command/pixel execution with saved active command, return address and pending work; stop after documented approximately 30 VDP1 clocks, without undoing already drawn pixels or inventing END. Test stop during every command family and reset/save-load. |
-| Timing / transfer-over | Completion still estimates 16 SH-2 cycles per fetched command; pixel/bus costs are absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
-| PTMR / FBCR / EDSR / pointers | Automatic start/swap/erase timing and BEF/LOPR/COPR remain incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
-| Command control | Unsupported commands/returns abort; loop limit cannot resume when guest edits VRAM. | Define documented branch/call/return semantics, retain live fetch state and park/resume loops safely. Test all eight jump modes; investigate illegal-command behavior separately. |
-| Framebuffer formats | CPU lane fix is not full 8-bit rasterization. | Packed 8-bit drawing, 16-bit drawing, double-interlace/EOS, rotated layouts, erase bounds and framebuffer readout integration with VDP2. |
+| Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR stops between primitives. | Subdivide primitive execution and implement documented approximately 30-clock pipeline termination; real save/load during primitives. |
+| Timing / transfer-over | Each command fetch gets 16 SH-2 cycles; lists may cross frames, but pixel/bus costs are absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
+| PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. Automatic start/swap/erase timing and BEF remain incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
+| Command control | Valid eight jump controls, persistent fetch state and scheduler-yielding loops are implemented. Prohibited/undocumented commands still use fallback behavior. | Hardware investigation of illegal opcodes/aliases and prohibited flow; do not invent a primary-defined result for them. |
+| Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Double-interlace/DIL/EOS, rotated VDP2 coordinate readout, mismatched dot formats and broader erase-bound tests. |
 | Rasterization | Affine quad/line code has known vertex, stipple and zoom differences. | Hardware-consistent line/polygon edge coverage and sprite scaling; pixel-golden tests for degenerates, flips, all zoom anchors, clipping and negative coordinates. |
 | Texture / color | End-code support only skips a matching texel; full scanline termination is absent. | Two-end-code behavior in texture traversal, transparent pixels, high-speed shrink, mesh, MSBON, shadow/half-luminance/transparency and Gouraud combinations. |
-| Save/reset | Existing framebuffers/timer saved, but future in-flight execution needs persistent state. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
+| Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
 | Runtime | No linked executable in this sandbox. | Install documented SDL/pkg-config dependencies, link and `-validate`, then BIOS and legally available Saturn/ST-V smoke/pixel comparisons (including prior workaround titles). |
 
 Do not mark this table complete from standalone tests or an absence of TODOs.
