@@ -95,6 +95,76 @@ private:
     uint8_t numblks;
   };
 
+  /* MPEG (Video CD / Movie Card) cartridge state.
+
+     The card is driven entirely through CD block host commands $90-$AF: the
+     SH-2 writes parameters into CR1-CR4 and reads decoder status back out of
+     the same registers, so from the host side the card is this state plus the
+     response contract.  Real hardware keeps these values in SH-1 on-chip RAM
+     $0F000840-$0F00089F and the CDB-106 firmware only relays them to the two
+     decoder LSIs on the cartridge; the addresses in the comments are those
+     locations.  What is not modelled is the decoding itself - the raw
+     decoder-LSI register encoding is not documented, and MAME has neither a
+     card ROM dump nor a Video CD data path, so no picture is produced. */
+  enum : unsigned { MPEG_LAYER_VIDEO = 0, MPEG_LAYER_AUDIO = 1 };
+
+  struct mpegT {
+    bool present;      // $0F00027D bit 1 - MPEG hardware fitted
+    bool image_loaded; // $0F0002FD - cartridge image loaded from the $0E000000
+                       // window
+    bool active; // $0F000892 bit 7 - subsystem brought up by MpegInit ($93)
+
+    // operation status ($0F00089C video / $0F00089D audio), packed into the CR1
+    // low byte
+    uint8_t
+        video_run; // 1 stopped, 2/3 prep, 4 playing, 5 switching, 6 recovery
+    uint8_t audio_run;   // same encoding, shifted into bits 4-6
+    bool decode_stopped; // $0F000891 bit 0 -> operation status bit 3
+
+    uint8_t picture_info;  // $0F000842 high byte
+    uint8_t audio_status;  // $0F000842 low byte
+    uint16_t video_status; // $0F000844
+    uint16_t interval;     // $0F000846 - operation-interval (VSYNC) counter
+
+    uint32_t irq_status;  // $0F000848 - read and cleared by Get Interrupt ($91)
+    uint32_t irq_mask;    // $0F00084C - written by Set Interrupt Mask ($92)
+    uint32_t lsi_a_event; // $0F000850 - $FFFFFFFF after reset
+    uint16_t lsi_b_control; // $0F000884 - $8209 after reset
+    uint32_t subsys_state;  // $0F000890 - $67818022 after init
+
+    // Set Mode ($94); $FF in any parameter byte keeps the current value
+    uint8_t operation_mode, decode_timing, output_dest, scan_mode;
+    // Play ($95); same keep-current convention
+    uint8_t playback_mode, audio_xfer, video_xfer, play_param4;
+    // Set Decode ($96)
+    uint8_t audio_mute;
+    uint16_t pause_time, freeze_time;
+
+    /* Connection ($9A/$9B/$9C) and stream ($9D/$9E).  Two records per command,
+       one per layer, plus the staged "next" slot that Change Connection
+       commits. */
+    struct layerT {
+      uint8_t conn_mode, layer_search, partition;
+      uint8_t stream_mode, stream_number, channel;
+    };
+    layerT layer[2], next_layer[2];
+
+    uint16_t pic_width, pic_height; // Get Picture Size ($9F)
+
+    uint8_t tc_hour, tc_min, tc_sec, tc_frame; // Get Timecode ($98)
+    uint8_t tc_bank, tc_pic_type, tc_track;    // 1=I 2=P 3=B 4=D
+    uint32_t pts;                              // Get PTS ($99)
+
+    // display and window model ($A0-$A5)
+    bool display_on;
+    uint8_t display_bank, fade_y, fade_c, video_effect, display_attr;
+    uint16_t border_color;
+    uint16_t win[5][2]; // $A1 sub-parameters 0-4, X and Y
+
+    uint16_t lsi_a_param[24]; // $0F000854-$0F000883 LSI A parameter block,
+                              // first word $88FE
+  };
+
 public:
   // 16-bit transfer types - fixed underlying type so the save state system can
   // serialise them, see ALLOW_SAVE_TYPE in the .cpp
@@ -121,6 +191,9 @@ private:
   int sega_cdrom_get_adr_control(int track);
   void cr_standard_return(uint16_t cur_status);
   void mpeg_standard_return(uint16_t cur_status);
+  void mpeg_bringup();
+  void mpeg_reset();
+  bool mpeg_gate(bool need_active);
   void cd_free_block(blockT *blktofree);
   void cd_defragblocks(partitionT *part);
   void cd_getsectoroffsetnum(uint32_t bufnum, uint32_t *sectoffs,
@@ -141,6 +214,8 @@ private:
 
   // local variables
   partitionT partitions[MAX_FILTERS];
+
+  mpegT mpeg; // MPEG (Video CD) cartridge state
   partitionT *transpart;
 
   blockT blocks[MAX_BLOCKS];
@@ -240,11 +315,31 @@ private:
   void cmd_read_file();
   void cmd_abort_file();
   // 0x90
-  void cmd_mpeg_get_status();
-  void cmd_mpeg_get_irq();
-  void cmd_mpeg_set_irq_mask();
-  void cmd_mpeg_init();
-  void cmd_mpeg_set_mode();
+  void cmd_mpeg_get_status();        // $90
+  void cmd_mpeg_get_irq();           // $91
+  void cmd_mpeg_set_irq_mask();      // $92
+  void cmd_mpeg_init();              // $93
+  void cmd_mpeg_set_mode();          // $94
+  void cmd_mpeg_play();              // $95
+  void cmd_mpeg_set_decode();        // $96
+  void cmd_mpeg_out_decoding_sync(); // $97
+  void cmd_mpeg_get_timecode();      // $98
+  void cmd_mpeg_get_pts();           // $99
+  void cmd_mpeg_set_connection();    // $9A
+  void cmd_mpeg_get_connection();    // $9B
+  void cmd_mpeg_change_connection(); // $9C
+  void cmd_mpeg_set_stream();        // $9D
+  void cmd_mpeg_get_stream();        // $9E
+  void cmd_mpeg_get_picture_size();  // $9F
+  void cmd_mpeg_display();           // $A0
+  void cmd_mpeg_set_window();        // $A1
+  void cmd_mpeg_set_border_color();  // $A2
+  void cmd_mpeg_set_fade();          // $A3
+  void cmd_mpeg_set_video_effect();  // $A4
+  void cmd_mpeg_set_display_attr();  // $A5
+  void cmd_mpeg_get_picture_info();  // $A6
+  void cmd_mpeg_read_lsi();          // $AE
+  void cmd_mpeg_write_lsi();         // $AF
   // 0xe0
   void cmd_check_copy_protection();
   void cmd_get_disc_region();
