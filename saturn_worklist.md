@@ -286,3 +286,14 @@ alongside these reopened items.
   on MAME's explicit include guard and incomplete device types.
 - All thirteen scripts/eight objects pass. No CD behavior changed; disc/BIOS/game
   runtime, full linking and remaining transitive dependencies are still untested.
+
+### Game-blocker implementation effort — started
+
+- Broader goal and prioritized remaining work are in `regtests/saturn/game_blockers.md`.
+  No complete inventory or claim that all remaining game blockers are fixed.
+- Implemented formerly unmapped DSTP forced stop: cancels three CPU DMA channels,
+  held restarts and transfer scheduling without fabricated completion interrupts.
+- 2,321 stop cases pass, including cancellation/restart and two-channel overlap.
+  No-op control fails; all thirteen scripts/eight object compilations pass.
+- Runtime build still lacks pkg-config/SDL development dependencies. Full linking,
+  BIOS/game execution and hardware stop timing remain pending.
