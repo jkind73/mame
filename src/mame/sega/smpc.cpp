@@ -180,6 +180,12 @@ void smpc_hle_device::device_reset() {
   m_prev_sndoff = m_prev_sshoff = 0xff;
   m_prev_cdoff = 0;
 
+  // ireg_w() tests m_intback_stage on any IREG1 write, which the guest can do
+  // long before the first INTBACK sets it, and m_pmode is echoed back into SR
+  // once an INTBACK completes
+  m_intback_stage = 0;
+  m_pmode = 0;
+
   m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
 }
 
