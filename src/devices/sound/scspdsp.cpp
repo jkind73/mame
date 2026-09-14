@@ -109,10 +109,22 @@ void SCSPDSP::Step() {
     u32 const ZERO = (IPtr[2] >> 1) & 0x01;
     u32 const BSEL = (IPtr[2] >> 0) & 0x01;
 
-    u32 const NOFL = (IPtr[3] >> 15) & 0x01; //????
+    /* NOFL sits at bit 8 of the fourth instruction word, with bit 15 unused.
+       Four independent implementations agree on that placement: the MiSTer
+       core's MPRO_t record (UNUSED at 63/44/15/7, NOFL at 8), Ymir's
+       scsp_dsp_instr.hpp bitfield, mednafen's SS_SCSP DSP decoder (which
+       even asserts the unused bits of this layout) and SaturnRecomp, which
+       validates against real-hardware probes.  The older "bit 15" reading
+       (yabause, and an early draft of the cassini notes) put NOFL in a
+       reserved bit, so NOFL=1 programs - linear-format delay lines - were
+       never honoured and their memory was mis-decoded as floating point. */
+    u32 const NOFL = (IPtr[3] >> 8) & 0x01;
     u32 const COEF = (IPtr[3] >> 9) & 0x3f;
 
-    u32 const MASA = (IPtr[3] >> 2) & 0x1f; //???
+    // MASA is bits 6-2, selecting one of the 32 MADRS entries (Saturn); the
+    // AICA widens it to 6 bits and shifts it, which is where the old doubt
+    // about this field came from
+    u32 const MASA = (IPtr[3] >> 2) & 0x1f;
     u32 const ADREB = (IPtr[3] >> 1) & 0x01;
     u32 const NXADR = (IPtr[3] >> 0) & 0x01;
 
