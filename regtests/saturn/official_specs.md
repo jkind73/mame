@@ -225,3 +225,15 @@ select active channels in descending priority. 64 supported two-channel scenario
 cover preemption/resume; the separate halt handoff fix preserves MAME's existing
 approximate policy, not Mednafen's bus-dependent implementation or proven physical
 CPU-halt behavior. Exact latency and unsupported overlaps remain open.
+
+## Held external DMA trigger audit update
+
+ST-210 printed p.7 / PDF p.11, items 21–23, establish enabled matching events,
+one held activation and the prohibition on rewriting active registers. ST-097
+printed pp.45–46 / PDF pp.61–62 supplies the enable/start/update definitions.
+Mednafen's `GoGoGadget`/`CheckDMAStart`/`SCU_DoDMAEnd` path corroborates one-slot
+external-event holding. Ymir's pinned `TriggerDMATransfer` excludes active channels
+and does not corroborate that behavior; the documented MAME behavior was retained.
+924 external-event scenarios pass; five explicit test-only mutations fail. No
+production change was needed. Exact hardware event timing, DxGO MMIO and held-
+state reset/save-load are not established by this test.
