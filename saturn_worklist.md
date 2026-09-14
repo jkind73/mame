@@ -269,3 +269,12 @@ alongside these reopened items.
   mutations fail as intended; no production change needed.
 - All thirteen scripts and three objects pass. Start endpoints are recorders;
   complete MMIO-to-transfer integration and actual runtime remain open.
+
+### Wider driver/DCC build validation — implemented
+
+- Normal validation now compiles six objects, including sat_console, stv and DCC.
+  Uses MAME's layout compiler for temporary ST-V headers and the shared include path.
+- Fixed DCC/ST-V including device headers before emu.h. Pre-fix files reproduce
+  include-order errors even with the correct layout/shared dependencies supplied.
+- All thirteen scripts/six objects pass. No emulation behavior change; full
+  dependency linking, configuration validation and runtime remain pending.

@@ -353,15 +353,22 @@ pending; next prioritize that validation and interlace counter encoding.
 python3 regtests/saturn/validate_build.py
 ```
 
-This runs all six regression scripts, then compiles the complete changed
-translation units (`saturn.cpp`, `saturn_vdp2.cpp`, `saturn_scu.cpp`) to objects
-with C++20, `-O1`, `MAME_NOASM` and the recorded include paths. This exercises
-code generation as well as parsing; it does **not** resolve external symbols or
-link MAME. Object files are temporary and deleted automatically. Set `CXX` to
-select the compiler for the object/regression checks.
+This runs all thirteen regression scripts, then compiles six complete translation
+units: `saturn.cpp`, `saturn_vdp2.cpp`, `saturn_scu.cpp`, `saturn_dcc.cpp`,
+`sat_console.cpp` and `stv.cpp`. The flags use C++20, `-O1`, `MAME_NOASM` and
+MAME/shared include paths. MAME's `scripts/build/complay.py` generates the three
+required ST-V layout headers (`critcrsh`, `segabill`, `segabillv`) in the temporary
+object directory. No generated headers or objects are checked into Git.
 
-**Result on 2026-09-14:** all regressions and all three object compilations passed
-with GCC 12.2.0. There were no emulation behavior changes in this validation pass.
+This exercises code generation as well as parsing, including the console and
+ST-V driver configurations; it does **not** resolve external symbols, link MAME,
+or validate those configurations at runtime. Temporary files are automatically
+deleted. Set `CXX` to select the compiler for the object/regression checks.
+
+**Latest result on 2026-09-14:** all thirteen scripts and six object compilations
+pass with GCC 12.2.0. This widened validation found and corrected `emu.h` include
+ordering in DCC/ST-V, without changing emulation behavior. Earlier sections below
+retain their historical three-object results.
 
 For a Debian/Ubuntu machine with package access, the intended focused-build path
 is:
@@ -385,8 +392,9 @@ development packages. Attempts to install them via both HTTP and HTTPS Debian
 repositories failed (connection/TLS errors); full-mode preflight correctly stops
 at missing pkg-config. No executable was linked or configuration validation run.
 The package list/build recipe may need adjustment for the target environment.
-No usable ROMs are present here, so no Saturn or ST-V boot, audio, frame output,
-save/load or performance comparison was performed.
+User-supplied firmware has since been archived and hash-inspected, but without a
+linked executable no Saturn/ST-V boot, audio, frame output, save/load or performance
+comparison has been performed.
 
 ## User-supplied firmware reference
 
@@ -973,3 +981,31 @@ production start/tick functions but do not close that complete integration gap.
 
 All thirteen scripts and three object compilations pass. Full linking and runtime
 validation remain pending.
+
+## Wider driver/DCC object validation
+
+Added `saturn_dcc.cpp`, `sat_console.cpp` and `stv.cpp` to the normal object-check
+path. The standalone build exposed `saturn_dcc.h`/`stv.h` being included before
+`emu.h`. DCC failed on undefined MAME attributes/types (including `ATTR_COLD`);
+ST-V reached the explicit `divo.h` diagnostic requiring `emu.h` first. Moving
+`emu.h` ahead of the device headers fixes both without changing executable logic.
+
+ST-V also needs the normal `src/mame/shared` include directory (`rax.h`) and three
+compiled layout headers. The validator now supplies that directory and runs the
+repository's actual layout compiler against the checked-in `.lay` sources in a
+temporary directory. It does not substitute dummy layout definitions or rely on
+stale generated files in a previous build tree.
+
+Negative validation used both original translation units from
+`7af22fbcf041c93dde51e5075e534414cd41c149`, compiled from temporary files with
+all required include directories and freshly generated layouts. Both still failed
+on include-order/type-definition errors, **not** missing `rax.h` or layout files.
+The fixed files pass under the same object flags. All thirteen regression scripts
+and all six objects pass through `validate_build.py`.
+
+This is a build-integration fix, not a new Sega hardware-spec interpretation.
+It does not cover every linked Saturn/ST-V dependency, replace a full MAME build,
+exercise the DRC at runtime, or establish DCC interrupt/handshake accuracy. Full
+linking, configuration validation, BIOS/game execution and performance measurements
+remain pending. No firmware, downloaded references or generated artifacts were
+added to Git in this increment.
