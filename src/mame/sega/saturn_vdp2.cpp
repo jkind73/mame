@@ -73,6 +73,12 @@ void saturn_vdp2_device::device_reset() {
   //	m_hreso = 0;
   //	m_vreso = 0;
   //	m_dotsel_352 = true;
+
+  // VRAMSZ and EXSLT/EXTEN are only ever written when the guest programs
+  // them, but both are read back - VRAMSZ also feeds get_vramsz() - so they
+  // need a defined power-on value rather than whatever the allocation held
+  m_vramsz = false;
+  m_exten = 0;
   reconfigure_crtc();
 }
 
