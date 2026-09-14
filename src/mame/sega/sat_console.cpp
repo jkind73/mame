@@ -674,7 +674,7 @@ void sat_console_state::saturn_mem(address_map &map) {
                         // window mirrors it
   map(0x05b00000, 0x05b00fff)
       .rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write))
-      .mirror(0xfff000); // SCSP registers are mirrored across the 1MB window
+      .mirror(0x000ff000); // SCSP registers are mirrored across the 1MB window
   /* VDP1 */
   map(0x05c00000, 0x05c7ffff)
       .rw(FUNC(sat_console_state::vdp1_vram_r),
@@ -724,7 +724,7 @@ void sat_console_state::sound_mem(address_map &map) {
   map(0x100000, 0x100fff)
       .before_delay(NAME([](offs_t) { return 1; }))
       .rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write))
-      .mirror(0xfff000);
+      .mirror(0x000ff000);
 }
 
 void sat_console_state::scsp_mem(address_map &map) {
