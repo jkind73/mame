@@ -249,6 +249,11 @@ private:
   uint32_t fadstoplay; // = 0;
   int buffull, sectorstore, freeblocks;
   bool buffull_temp_pause;
+
+  /* Seek model: sector periods (1/75 s) of pickup travel left before the
+     pending seek completes.  Zeroed whenever a new SEEK is chained so a
+     retarget re-measures the travel. */
+  int32_t m_seek_ticks_left;
   int cur_track;
   uint8_t cmd_pending;
   uint8_t cd_speed;
