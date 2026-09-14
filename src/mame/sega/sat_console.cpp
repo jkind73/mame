@@ -547,6 +547,7 @@ private:
 
   uint8_t saturn_cart_type_r();
   uint32_t abus_dummy_r(offs_t offset);
+  void ext_ram_init_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 
   uint32_t saturn_null_ram_r();
   void saturn_null_ram_w(uint32_t data);
@@ -595,6 +596,31 @@ uint32_t sat_console_state::abus_dummy_r(offs_t offset) {
   return -1;
 }
 
+/* Technical Bulletin #47 (Extended RAM Cartridge), section 4 "Initialization":
+   write "1" to 257EFFFEh (W/O) in word size, and "be sure to set up with 1. If
+   you use any other data ... the results are undefined".  It is step 3 of the
+   documented access procedure, ahead of setting the A-Bus registers, so every
+   title that uses the 8Mbit (ID 5Ah) or 32Mbit (ID 5Ch) cartridge performs it.
+
+   The DRAM windows installed in machine_start() are deliberately not gated on
+   this strobe: the cartridge RAM is allocated when the cart is loaded, and
+   staying permissive keeps the titles that do perform the sequence working
+   without depending on its timing relative to their first access.  Recognising
+   the write still matters - it was falling through to the unmapped A-Bus hole
+   and being reported as a bad access, for an operation the hardware requires.
+
+   The neighbouring SIMM disable register at 257FFFCh is intentionally absent.
+   TB47 documents it only for the Programming Box, where a SIMM's address
+   collides with the expanded RAM cartridge, and says "use this program with a
+   debugger, and do not incorporate it into the commercial version". */
+void sat_console_state::ext_ram_init_w(offs_t offset, uint16_t data,
+                                       uint16_t mem_mask) {
+  if (mem_mask != 0xffff || data != 1)
+    logerror("Extended RAM cart: initialisation write %04x & %04x to "
+             "257EFFFEh, expected a word write of 0001 (results undefined)\n",
+             data, mem_mask);
+}
+
 void sat_console_state::saturn_mem(address_map &map) {
   map(0x00000000, 0x0007ffff)
       .rom()
@@ -629,6 +655,9 @@ void sat_console_state::saturn_mem(address_map &map) {
   //  map(0x04000000, 0x047fffff).ram(); // External Battery RAM area
   map(0x04ffffff, 0x04ffffff).r(FUNC(sat_console_state::saturn_cart_type_r));
   map(0x05000000, 0x057fffff).r(FUNC(sat_console_state::abus_dummy_r));
+  // extended RAM cartridge initialisation strobe (Technical Bulletin #47 sec
+  // 4): a word write of exactly 1 to 257EFFFEh, step 3 of the access procedure
+  map(0x057efffe, 0x057effff).w(FUNC(sat_console_state::ext_ram_init_w));
   map(0x05800000, 0x0589ffff)
       .m(m_saturn_cd_hle, FUNC(saturn_cd_hle_device::amap));
   /* Sound */
