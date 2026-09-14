@@ -179,3 +179,12 @@ alongside these reopened items.
 - 64 write/reset/latch scenarios pass; baseline reset fails coherence. Seven
   regression scripts and three object compilations pass. Whole-device reset,
   actual address-map dispatch, lightgun timing and runtime validation remain open.
+
+### TVMD startup/reset coherence — implemented and tested
+
+- ST-058 §2.4, Ymir and Mednafen: initialize TVMD/decoded controls before startup
+  clock notification, clear them on device reset before CRTC reconfiguration.
+- 3,072 header-initializer/register/reset/CRTC scenarios pass; old reset fails.
+  All eight regression scripts and three object compilations pass.
+- No change to region/DOTSEL or saved-state layout. Full-device reset integration,
+  other register/status initialization and BIOS/game runtime remain unverified.
