@@ -11,7 +11,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -38,6 +38,9 @@ functions += extract(current, 'void saturn_state::vdp1_draw_normal_sprite(').rep
 functions += extract(current, 'void saturn_state::vdp1_draw_scaled_sprite(').replace(
     'saturn_state::vdp1_draw_scaled_sprite', 'saturn_state::raster_scaled') + '\n'
 functions+=extract(current,'void saturn_state::vdp1_draw_scaled_pixels(').replace('saturn_state::vdp1_draw_scaled_pixels','saturn_state::raster_scaled_pixels')+'\n'
+functions+=extract(current,'void saturn_state::vdp1_draw_segment(').replace('saturn_state::vdp1_draw_segment','saturn_state::raster_segment')+'\n'
+functions+=extract(current,'void saturn_state::vdp1_draw_quad_pixels(')+'\n'
+functions+=extract(current,'void saturn_state::vdp1_draw_distorted_sprite(').replace('saturn_state::vdp1_draw_distorted_sprite','saturn_state::raster_distorted')+'\n'
 shader_signatures=('uint8_t saturn_state::read_gouraud_table()', 'void saturn_state::vdp1_setup_shading(', 'void saturn_state::vdp1_setup_shading_for_line(', 'void saturn_state::vdp1_setup_shading_for_slope(')
 functions+='\n'.join(extract(current,sig) for sig in shader_signatures)+'\n'
 for name in ('line','poly_line'):
@@ -49,15 +52,18 @@ if a.render_mutation:
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
         'endcode': ('if (++end_codes == 2)', 'if (++end_codes == 99)'),
         'rotation': ('const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);', 'const int sx = x;'),
+        'quad_coverage': ('extra = edge_coverage;', 'extra = false;'),
+        'quad_edge': ('e.phase = wrap(~longest);', 'e.phase = 0;'),
+        'line_coverage': ('const int target = edge_coverage ? -1 : ((horizontal ? dx : dy) < 0 ? 1 : 0);', 'const int target = edge_coverage ? -1 : 0;'),
         'texture_step': ('const int initial = shrink ? source - 2 * destination - int(reverse) : -destination + int(reverse);', 'const int initial = 0;'),
         'eos': ('u * 2 + VDP1_EOS', 'u * 2'),
-        'line_gouraud': ('RGB_R(gd[vertices[i]])', 'RGB_R(gd[i])'),
+        'line_gouraud': ('colors[i], colors[(i + 1) & 3]', 'colors[0], colors[1]'),
         'scaled_end': ('return (reverse ? width - 1 - u : u) < limit;', 'return true;'),
         'scale_anchor': ('right = left + width;', 'left = vdp1_coord(left - m_vdp1_legacy.local_x) + m_vdp1_legacy.local_x; right = left + width;'),
         'parameter_b': ('0xffbe', '0xfffe'),
     }
     before,after=mutations[a.render_mutation]
-    assert functions.count(before)==1
+    assert functions.count(before)==(2 if a.render_mutation=='eos' else 1)
     functions=functions.replace(before,after)
 # The unrelated periodic scanline path must no longer manufacture a draw-end IRQ.
 assert 'm_vdp1_texture_end.fill(-1);' in extract(current,'void saturn_state::vdp1_fill_quad(')
@@ -182,7 +188,14 @@ struct saturn_state {
   if(current_sprite.CMDPMOD&4)shaded_edges.push_back({vdp1_apply_gouraud_shading(q[0].x,q[0].y,0xc210),vdp1_apply_gouraud_shading(q[1].x,q[1].y,0xc210)});
  }
  uint8_t read_gouraud_table();
- void vdp1_setup_shading(const spoint*,const rectangle&,std::array<uint8_t,4> = {0,1,2,3});
+ void vdp1_setup_shading(const spoint*,const rectangle&);
+ void raster_segment(const rectangle&,const spoint&,const spoint&,uint16_t,uint16_t,bool=false,int=-1,int=0);
+ void vdp1_draw_quad_pixels(const rectangle&,int,int,const spoint*);
+ void vdp1_draw_segment(const rectangle &r,const spoint &a,const spoint &b,uint16_t ca,uint16_t cb,bool coverage=false,int row=-1,int width=0){
+  if(coverage)raster_segment(r,a,b,ca,cb,coverage,row,width);
+  else shaded_edges.push_back({uint16_t(ca|0x8000),uint16_t(cb|0x8000)});
+ }
+ void raster_distorted(const rectangle&);
  void raster_line(const rectangle&);void raster_poly_line(const rectangle&);
  SHADER_PROTOTYPES
  void(saturn_state::*drawpixel)(int,int,int,int)=&saturn_state::drawpixel_generic;
@@ -577,6 +590,94 @@ int main(){
   }
  }
  std::cout<<texture_step_cases<<" texture-step/scaled HSS/EOS pixel cases passed\n";
+ unsigned line_cases=0;
+ for(int dx=-12;dx<=12;++dx)for(int dy=-12;dy<=12;++dy)for(bool gouraud : {false,true})for(bool mesh : {false,true}){
+  auto &l=s->m_vdp1_legacy;auto &c=s->current_sprite;
+  s->tvm=0;l.framebuffer_double_interlace=0;l.framebuffer_current_draw=0;l.framebuffer_width=512;l.framebuffer_height=256;
+  s->vdp1_prepare_framebuffers();l.system_cliprect.set(6,26,6,26);
+  std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0x5555);
+  c.CMDPMOD=0xc0|(gouraud?4:0)|(mesh?0x100:0);c.CMDCOLR=0xc210;c.ispoly=1;s->drawpixel=&saturn_state::drawpixel_generic;
+  saturn_state::spoint a{},b{};a.x=a.y=16;b.x=16+dx;b.y=16+dy;
+  s->raster_segment(l.system_cliprect,a,b,0x001f,0x7fe0);
+  uint16_t expected[32][32];for(auto &row : expected)std::fill(std::begin(row),std::end(row),0x5555);
+  int major=std::max(std::abs(dx),std::abs(dy)),minor=std::min(std::abs(dx),std::abs(dy));bool horizontal=std::abs(dx)>=std::abs(dy);
+  for(int i=0;i<=major;++i){
+   // Closed-form nearest-integer coverage oracle; ties depend on major direction.
+   int off=major?(2*minor*i+major-(((horizontal?dx:dy)>=0)?1:0))/(2*major):0;
+   int x=16+(dx<0?-1:1)*(horizontal?i:off),y=16+(dy<0?-1:1)*(horizontal?off:i);
+   if(x<6||x>26||y<6||y>26||(mesh&&((x^y)&1)))continue;
+   uint16_t color=0xc210;
+   if(gouraud){int r=texture_oracle(32,major+1,i,true),g=texture_oracle(32,major+1,i,false);color=0x8000|r|(g<<5)|(g<<10);}
+   expected[y][x]=color;
+  }
+  for(int y=0;y<32;++y)for(int x=0;x<32;++x)assert(l.framebuffer[0][y*512+x]==expected[y][x]);++line_cases;
+ }
+ std::cout<<line_cases<<" integer line coverage/shading/mesh images passed\n";
+ unsigned quad_cases=0;
+ const int shapes[][8]={{4,4,20,4,20,20,4,20},{4,8,18,2,25,19,12,23},{4,4,20,20,20,4,4,20},
+  {4,4,20,4,12,20,12,20},{12,12,12,12,12,12,12,12},{4,4,20,16,20,16,4,4},
+  {-5,-3,20,5,14,25,-5,18},{20,4,4,4,4,20,20,20}};
+ auto rounded=[](int numerator,int denominator,bool up){return denominator?(2*numerator+denominator-1+up)/(2*denominator):0;};
+ auto gradient=[&](int a,int b,int length,int position){return std::min(a,b)+texture_oracle(std::abs(b-a)+1,length,position,b<a);};
+ for(auto &shape : shapes)for(int kind=0;kind<5;++kind)for(bool mesh : {false,true})for(int direction=0;direction<4;++direction)
+ for(bool hss : {false,true})for(int eos=0;eos<2;++eos)for(int clipping=0;clipping<3;++clipping){
+  auto &l=s->m_vdp1_legacy;auto &c=s->current_sprite;s->tvm=0;
+  l.framebuffer_double_interlace=0;l.framebuffer_current_draw=0;l.framebuffer_width=512;l.framebuffer_height=256;
+  s->vdp1_prepare_framebuffers();l.system_cliprect.set(3,26,3,26);l.user_cliprect.set(8,20,8,20);
+  std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0xffff);
+  bool textured=kind>=3;c.ispoly=!textured;c.CMDCTRL=(direction<<4)|(textured?2:4);
+  c.CMDPMOD=(textured?(4<<3):0)|(kind==4?0:0x80)|(textured?0:0x40)|(kind==1?3:kind==2?4:0)|
+    (mesh?0x100:0)|(hss&&textured?0x1000:0)|(clipping?0x400:0)|(clipping==2?0x200:0);
+  c.CMDCOLR=textured?0x8000:kind==2?0xc210:0x8421;c.CMDSRCA=0;c.CMDGRDA=0x200;s->m_vdp1_regs[1]=eos<<4;
+  const uint16_t vertex_colors[4]={0x001f,0x7c00,0x03e0,0x4210};
+  s->m_vdp1_vram[0x400]=(uint32_t(vertex_colors[0])<<16)|vertex_colors[1];
+  s->m_vdp1_vram[0x401]=(uint32_t(vertex_colors[2])<<16)|vertex_colors[3];
+  for(int v=0;v<4;++v)for(int u=0;u<8;++u)l.gfx_decode[v*8+u]=(kind==4&&(u==1||u==5))?255:v*8+u+1;
+  saturn_state::spoint q[4]{};for(int i=0;i<4;++i){q[i].x=shape[i*2];q[i].y=shape[i*2+1];}
+  s->drawpixel=&saturn_state::drawpixel_generic;uint16_t saved=c.CMDPMOD;
+  l.local_x=l.local_y=0;c.CMDSIZE=0x0104;
+  c.CMDXA=q[0].x;c.CMDYA=q[0].y;c.CMDXB=q[1].x;c.CMDYB=q[1].y;
+  c.CMDXC=q[2].x;c.CMDYC=q[2].y;c.CMDXD=q[3].x;c.CMDYD=q[3].y;
+  s->raster_distorted(l.system_cliprect);assert(c.CMDPMOD==saved);
+  uint16_t expected[32][32];for(auto &row : expected)std::fill(std::begin(row),std::end(row),0xffff);
+  int ex[2],ey[2],length[2],longest=0;
+  for(int i=0;i<2;++i){ex[i]=q[3-i].x-q[i].x;ey[i]=q[3-i].y-q[i].y;length[i]=std::max(std::abs(ex[i]),std::abs(ey[i]));longest=std::max(longest,length[i]);}
+  for(int row=0;row<=longest;++row){
+   int px[2],py[2],edge_colors[2][3]{};
+   for(int i=0;i<2;++i){
+    int n=rounded(length[i]*row,longest,(std::abs(ex[i])>=std::abs(ey[i])?ex[i]:ey[i])<0);
+    px[i]=q[i].x+(ex[i]<0?-1:1)*rounded(std::abs(ex[i])*n,length[i],ey[i]<0);
+    py[i]=q[i].y+(ey[i]<0?-1:1)*rounded(std::abs(ey[i])*n,length[i],ex[i]<0);
+    if(kind==2)for(int ch=0;ch<3;++ch)edge_colors[i][ch]=gradient((vertex_colors[i]>>(5*ch))&31,(vertex_colors[3-i]>>(5*ch))&31,length[i]+1,n);
+   }
+   int dx=px[1]-px[0],dy=py[1]-py[0],major=std::max(std::abs(dx),std::abs(dy)),minor=std::min(std::abs(dx),std::abs(dy));
+   bool horizontal=std::abs(dx)>=std::abs(dy),reduced=hss&&textured&&major+1<8;
+   int v=textured?texture_oracle(4,longest+1,row,direction&2):0,previous=0;
+   for(int dot=0;dot<=major;++dot){
+    int off=rounded(minor*dot,major,false);
+    int x=px[0]+(dx<0?-1:1)*(horizontal?dot:off),y=py[0]+(dy<0?-1:1)*(horizontal?off:dot);
+    int u=textured?texture_oracle(reduced?4:8,major+1,dot,direction&1):0;if(reduced)u=2*u+eos;
+    bool end=kind==4&&(u==1||u==5);
+    bool sample=kind!=4||reduced||(!end&&((direction&1)?u>1:u<5));
+    uint16_t color=textured?(0x8000|(end?255:v*8+u+1)):0x8421;
+    if(kind==2){color=0x8000;for(int ch=0;ch<3;++ch)color|=gradient(edge_colors[0][ch],edge_colors[1][ch],major+1,dot)<<(5*ch);}
+    auto plot=[&](int x,int y){
+     if(x<3||x>26||y<3||y>26||!sample||(mesh&&((x^y)&1)))return;
+     bool inside=x>=8&&x<=20&&y>=8&&y<=20;if((clipping==1&&!inside)||(clipping==2&&inside))return;
+     if(kind==1){uint16_t mixed=0x8000;for(int shift : {0,5,10})mixed|=((((expected[y][x]>>shift)&31)+((color>>shift)&31))/2)<<shift;expected[y][x]=mixed;}
+     else expected[y][x]=color;
+    };
+    plot(x,y);
+    if(dot&&off!=previous){bool same=(dx<0)==(dy<0);plot(x-(same?0:(dx<0?-1:1)),y-(same?(dy<0?-1:1):0));}
+    previous=off;
+   }
+  }
+  for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+   if(l.framebuffer[0][y*512+x]!=expected[y][x])std::cerr<<"quad "<<(&shape-&shapes[0])<<" kind "<<kind<<" mesh "<<mesh<<" dir "<<direction<<" hss "<<hss<<" eos "<<eos<<" clip "<<clipping<<" xy "<<x<<","<<y<<" got "<<l.framebuffer[0][y*512+x]<<" expected "<<expected[y][x]<<"\n";
+   assert(l.framebuffer[0][y*512+x]==expected[y][x]);
+  }++quad_cases;
+ }
+ std::cout<<quad_cases<<" native quad coverage/texture/color images passed\n";
  unsigned edge_cases=0;
  for(bool transpose : {false,true})for(int dx : {-8,8})for(int dy : {-8,8})for(int rotation=0;rotation<4;++rotation){
   auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;l.local_x=l.local_y=0;l.system_cliprect.set(0,63,0,63);
