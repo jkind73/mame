@@ -67,7 +67,7 @@ private:
 
   u16 m_hdisplay, m_vdisplay;
   // size = 313 for PAL
-  u16 true_vcount[313][4];
+  u16 true_vcount[313][4]{};
 
   bool m_vramsz;
 
