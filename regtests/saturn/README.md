@@ -920,3 +920,56 @@ and whole-device execution from these writes are not tested or changed.
 
 All **thirteen** regression scripts and three object compilations pass. Full
 linking and BIOS/game runtime validation remain pending.
+
+## DMA control-register decoding and software-start gate audit
+
+**The existing implementation passed; no production change was needed.** Extended
+`test_dma_regs.py` to extract the actual DxAD, DxEN/DxGO and DxMOD/RUP/WUP/FT write
+lambdas and the header's event enum. Together with the address/count tests, this
+covers the six programmed register handlers without duplicating their bodies.
+
+Evidence: [ST-097-R5-072694](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-097-R5-072694.pdf)
+§3.2, printed p.43 / PDF p.59, tables 3.2/3.3, defines source addition 0/4 and
+write-add decoding 0/2/4/8/16/32/64/128. Printed pp.45–46 / PDF pp.61–62 defines
+enable bit 8, one-shot GO bit 0 with factor 7, mode bit 24, RUP bit 16, WUP bit 8
+and factor bits 2:0. [Ymir WriteRegLong/TriggerImmediateDMA](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+agrees on those decoded fields and the immediate-start gate.
+[Mednafen scu.inc](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+merges masked control writes and checks GO, Enable and SF==7 together.
+
+**13,824 control-register scenarios pass with ASan/UBSan**:
+- 6,144 enable/GO cases: all channels, all 16 byte-enable combinations, initial
+  and written enable states, GO zero/one, all eight factors and both DMA modes.
+  Checks the selected start endpoint/channel and that a later enable-byte-only
+  write does not replay GO.
+- 1,536 address-add cases: every encoded increment, contrasting initial values,
+  all channels and byte-enable combinations, with reserved bits set.
+- 6,144 mode/update cases: every defined-bit input combination, contrasting initial
+  values and byte-enable combinations. Untouched bytes and other channels must
+  remain unchanged; merely changing mode/add fields must not call a start endpoint.
+
+```sh
+python3 regtests/saturn/test_dma_regs.py
+# Deliberate temporary test-only mutations; each MUST fail an assertion:
+python3 regtests/saturn/test_dma_regs.py --mutation go-lane
+python3 regtests/saturn/test_dma_regs.py --mutation enable
+python3 regtests/saturn/test_dma_regs.py --mutation factor
+python3 regtests/saturn/test_dma_regs.py --mutation dispatch
+```
+
+All four controls failed the expected start-dispatch assertion. They remove the
+GO-byte, enable or factor gate, or invert direct/indirect dispatch. Mutation targets
+are occurrence-count guarded and affect only temporary extracted C++, never MAME.
+They are not newly reproduced historical production bugs.
+
+Start methods in this harness are recording endpoints: these checks cover the
+register-to-start decision, **not** register writes through MAME's MMIO dispatcher
+followed by real transfer execution/IRQ. No DMA actually runs between the test
+writes. The hardware prohibition on rewriting active registers and the documented
+bus-specific restrictions on increment settings are not relaxed or validated by
+these field-decoding tests. CPU bus access granularity, save/load and actual game
+behavior remain open. Existing transfer/held-trigger tests independently exercise
+production start/tick functions but do not close that complete integration gap.
+
+All thirteen scripts and three object compilations pass. Full linking and runtime
+validation remain pending.

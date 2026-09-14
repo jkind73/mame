@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## DMA control-register audit — 2026-09-14
+
+Existing increment, mode/update and enable/GO decoding passed 13,824 new cases,
+with four failing test-only mutation controls. No production change needed.
+Register-to-start dispatch is covered; real MMIO-to-transfer/IRQ execution and
+writes to active channels remain unvalidated.
+
 ## DMA address-register width update — 2026-09-14
 
 Programmed DxR/DxW addresses now retain only bits 26:0, not cache-alias bit 29,

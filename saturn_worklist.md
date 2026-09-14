@@ -260,3 +260,12 @@ alongside these reopened items.
   with independent failing pre-fix source/destination controls.
 - All thirteen scripts and three object compilations pass. MMIO routing, DxGO,
   address-update overflow and real CPU/cache/game execution remain open.
+
+### DMA control registers — audited, existing implementation retained
+
+- Extracted DxAD, DxEN/DxGO and mode/update/factor lambdas into the register test.
+  13,824 scenarios pass, including partial-write isolation and software-start gating.
+- ST-097 field definitions agree with Ymir/Mednafen. Four test-only gate/dispatch
+  mutations fail as intended; no production change needed.
+- All thirteen scripts and three objects pass. Start endpoints are recorders;
+  complete MMIO-to-transfer integration and actual runtime remain open.
