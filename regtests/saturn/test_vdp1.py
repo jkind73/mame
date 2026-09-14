@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -50,6 +50,10 @@ for name in ('line','poly_line'):
     functions+=extract(current,'void saturn_state::vdp1_draw_'+name+'(').replace('saturn_state::vdp1_draw_'+name,'saturn_state::raster_'+name)+'\n'
 if a.render_mutation:
     mutations = {
+        'normal_hidden_end': ('if (preclip && x < cliprect.min_x) // clip x', 'if (x < cliprect.min_x) // clip x'),
+        'scaled_preclip': ('const bool preclip_enabled = !(current_sprite.CMDPMOD & 0x0800);', 'const bool preclip_enabled = true;'),
+        'native_preclip': ('if (!(current_sprite.CMDPMOD & 0x0800) && major < 2048 &&', 'if (major < 2048 &&'),
+        'normal_preclip': ('const bool preclip = !(current_sprite.CMDPMOD & 0x0800);', 'const bool preclip = true;'),
         'legacy_shading_origin': ('swap(xx1, xx2);\n    swap(x1, x2);', 'swap(xx1, xx2);'),
         'rectangle_bottom': ('for (int y = top; y <= bottom; ++y) {\n    auto &line', 'for (int y = top; y < bottom; ++y) {\n    auto &line'),
         'rectangle_origin': ('std::abs(x - origin), b < a)', 'x - std::min(origin, line.x[1] >> FRAC_SHIFT), b < a)'),
@@ -665,6 +669,7 @@ int main(){
   target.vdp1_abort_draw();target.execute_quads=true;target.tvm=source.tvm;
   auto &l=target.m_vdp1_legacy;const auto &original=source.m_vdp1_legacy;const auto &c=source.current_sprite;
   l.framebuffer_double_interlace=original.framebuffer_double_interlace;l.draw_field=original.draw_field;l.draw_eos=original.draw_eos;
+  l.framebuffer_mode=original.framebuffer_mode;
   l.framebuffer_width=original.framebuffer_width;l.framebuffer_height=original.framebuffer_height;
   l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.local_x=l.local_y=0;
   l.system_cliprect=original.system_cliprect;l.user_cliprect=original.user_cliprect;
@@ -693,6 +698,115 @@ int main(){
   target.scu_.irqs=0;
  };
 
+ // Pclp=1 must visit clipped texels, including END markers invisible to the
+ // pixel writer. Compare physical packed storage against a literal traversal.
+ unsigned unclipped_normal_cases=0;
+ for(int format : {0,1})for(int mode=0;mode<6;++mode)for(int direction=0;direction<4;++direction)
+ for(bool ecd : {false,true})for(bool mesh : {false,true})for(int clipping : {0,1,2})
+ for(int xa : {-24,-8,0,12,48})for(int ya : {-4,-1,2,8}){
+  if(format&&mode==5)continue;
+  auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=format;s->m_vdp1_regs[0]=format;
+  l.framebuffer_mode=format;l.framebuffer_double_interlace=0;l.framebuffer_width=format?1024:512;l.framebuffer_height=256;
+  l.system_cliprect.set(0,31,0,7);l.user_cliprect.set(4,23,1,5);l.draw_eos=0;
+  c.CMDCTRL=direction<<4;c.CMDPMOD=0x0800|(mode<<3)|(ecd?0x80:0)|(mesh?0x100:0)|(clipping?clipping==1?0x400:0x600:0);
+  c.CMDCOLR=mode==1?0x300:0x8000;c.CMDSRCA=0x400;c.CMDSIZE=0x0403;c.CMDGRDA=0x200;
+  c.CMDXA=xa;c.CMDYA=ya;c.ispoly=0;
+  for(int i=0;i<16;++i){l.gfx_decode[0x1800+i*2]=0x80;l.gfx_decode[0x1801+i*2]=i;}
+  for(int v=0;v<3;++v)for(int u=0;u<32;++u){int index=v*32+u;bool end=u==3||u==20;int value=end?(mode<2?15:mode<5?255:0x7fff):mode==5?0x8000|v+2:v+2;
+   if(mode<2){auto &byte=l.gfx_decode[0x2000+index/2];if(!(index&1))byte=value<<4;else byte|=value;}
+   else if(mode<5)l.gfx_decode[0x2000+index]=value;
+   else {l.gfx_decode[0x2000+index*2]=value>>8;l.gfx_decode[0x2001+index*2]=value;}
+  }
+  load_quad(*quad_engine,*s);quad_engine->vdp1_set_framebuffer_config();
+  quad_engine->vdp1_process_list();quad_engine->fire();
+  assert(quad_engine->m_vdp1_raster.count==3&&!quad_engine->cef);
+  for(unsigned ticks=0;quad_engine->m_vdp1_legacy.drawing;++ticks){assert(ticks<32);quad_engine->fire();}
+  uint16_t expected[8][32];for(auto &row:expected)std::fill_n(row,32,format?255:65535);
+  for(int dy=0;dy<3;++dy){unsigned ends=0;int y=ya+dy,v=(direction&2)?2-dy:dy;
+   for(int dx=0;dx<32;++dx){int x=xa+dx,u=(direction&1)?31-dx:dx;bool end=u==3||u==20;
+    if(end&&!ecd){if(++ends==2)break;continue;}
+    if(x<0||x>=32||y<0||y>=8||(mesh&&((x^y)&1)))continue;
+    bool user=x>=4&&x<=23&&y>=1&&y<=5;
+    if((clipping==1&&!user)||(clipping==2&&user))continue;
+    int value=end?(mode<2?0x800f:mode==2?0x803f:mode==3?0x807f:mode==4?0x80ff:0x7fff):0x8000|v+2;
+    expected[y][x]=format?value&255:value;
+   }
+  }
+  for(int y=0;y<8;++y)for(int x=0;x<32;++x){uint16_t word=quad_engine->m_vdp1_legacy.framebuffer[0][y*512+(format?x/2:x)];
+   uint16_t actual=format?(word>>((x&1)?0:8))&255:word;assert(actual==expected[y][x]);
+  }
+  assert(quad_engine->cef&&quad_engine->scu_.irqs==1);++unclipped_normal_cases;
+ }
+ // Resume while the cursor and first END are still outside the window.
+ // A CPU edit to a not-yet-fetched second END must affect later traversal.
+ for(bool stop : {false,true})for(bool edit : {false,true})for(int operation : {0,4}){
+  auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=0;s->m_vdp1_regs[0]=0;
+  l.framebuffer_mode=0;l.framebuffer_width=512;l.framebuffer_height=256;l.framebuffer_double_interlace=0;
+  l.system_cliprect.set(0,31,0,7);l.user_cliprect=l.system_cliprect;
+  c.CMDCTRL=0;c.CMDPMOD=0x0828|operation;c.CMDSIZE=0x0801;c.CMDSRCA=0x400;c.CMDGRDA=0x200;
+  c.CMDXA=-24;c.CMDYA=0;c.CMDCOLR=0;c.ispoly=0;
+  s->m_vdp1_vram[0x400]=s->m_vdp1_vram[0x401]=0x42104210;
+  for(int u=0;u<64;++u){bool end=u==3||u==40||u==55;l.gfx_decode[0x2000+u*2]=end?0x7f:0xc2;l.gfx_decode[0x2001+u*2]=end?0xff:0x10;}
+  load_quad(*quad_engine,*s);quad_engine->vdp1_process_list();quad_engine->fire();quad_engine->fire();
+  assert(quad_engine->m_vdp1_raster.dot==16&&quad_engine->m_vdp1_raster.end_codes==1);
+  for(int x=0;x<32;++x)assert(quad_engine->m_vdp1_legacy.framebuffer[0][x]==0xffff);
+  if(edit)quad_engine->vdp1_vram_w((0x2000+40*2)/4,0xc210c210,0xffffffff);
+  if(stop)quad_engine->vdp1_request_termination();
+  auto restored=std::make_unique<saturn_state>();restored->execute_quads=true;restored->tvm=0;
+  restored->m_vdp1_raster=quad_engine->m_vdp1_raster;restored->current_sprite=quad_engine->current_sprite;
+  restored->m_vdp1_vram=quad_engine->m_vdp1_vram;*restored->vdp1_shading_data=*quad_engine->vdp1_shading_data;
+  auto &a=quad_engine->m_vdp1_legacy;auto &b=restored->m_vdp1_legacy;
+  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;
+  b.framebuffer_current_draw=0;b.framebuffer_current_display=1;b.framebuffer_mode=0;b.framebuffer_width=512;b.framebuffer_height=256;
+  b.framebuffer_double_interlace=0;b.system_cliprect=a.system_cliprect;b.user_cliprect=a.user_cliprect;
+  for(int bank=0;bank<2;++bank)b.framebuffer[bank]=a.framebuffer[bank];
+  restored->timer_.delay=quad_engine->timer_.delay;restored->terminate_.delay=quad_engine->terminate_.delay;
+  restored->vdp1_state_save_postload();
+  for(unsigned ticks=0;a.drawing;++ticks){assert(ticks<16);quad_engine->advance(16);restored->advance(16);}
+  assert(!b.drawing&&a.framebuffer[0]==b.framebuffer[0]);
+  assert(quad_engine->cef==!stop&&restored->cef==!stop&&quad_engine->scu_.irqs==unsigned(!stop)&&restored->scu_.irqs==unsigned(!stop));
+  const int written=stop?8:edit?31:16;
+  for(int x=0;x<32;++x)assert(a.framebuffer[0][x]==(x<written?0xc210:0xffff));
+  ++unclipped_normal_cases;
+ }
+ std::cout<<unclipped_normal_cases<<" queued Pclp-disabled normal sprite images passed\n";
+ unsigned unclipped_other_cases=0;
+ for(int primitive : {1,2,3,4,5,6,7})for(int xa : {-48,-16,8,48})for(int ya : {-8,-1,1,8}){
+  auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=0;s->m_vdp1_regs[0]=0;
+  l.framebuffer_mode=0;l.framebuffer_width=512;l.framebuffer_height=256;l.framebuffer_double_interlace=0;
+  l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.local_x=l.local_y=0;
+  l.system_cliprect.set(0,31,0,7);l.user_cliprect=l.system_cliprect;s->vdp1_prepare_framebuffers();
+  c.CMDCTRL=primitive;c.CMDPMOD=primitive<4?0x08a8:0x0880;c.CMDCOLR=0x801f;c.CMDSRCA=0x400;c.CMDSIZE=0x0404;c.CMDGRDA=0x200;c.ispoly=primitive>=4;
+  c.CMDXA=xa;c.CMDYA=ya;c.CMDXB=xa+31;c.CMDYB=ya;c.CMDXC=xa+31;c.CMDYC=ya+3;c.CMDXD=xa;c.CMDYD=ya+3;
+  for(int u=0;u<128;++u){l.gfx_decode[0x2000+u*2]=0x80;l.gfx_decode[0x2001+u*2]=0x1f;}
+  load_quad(*quad_engine,*s);quad_engine->execute_lines=true;
+  quad_engine->vdp1_process_list();quad_engine->fire();assert(quad_engine->m_vdp1_raster.count==(primitive==6?1:4));
+  assert(!quad_engine->cef);quad_engine->fire();assert(quad_engine->m_vdp1_raster.dot==16&&!quad_engine->cef);
+  for(unsigned ticks=0;quad_engine->m_vdp1_legacy.drawing;++ticks){assert(ticks<32);quad_engine->fire();}
+  if(primitive==1){
+   std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0xffff);s->execute_quads=true;s->vdp1_set_drawpixel();s->raster_scaled(l.system_cliprect);s->execute_quads=false;
+  }
+  for(int y=0;y<8;++y)for(int x=0;x<32;++x){
+   bool filled=x>=xa&&x<=xa+31&&y>=ya&&y<=ya+3;
+   if(primitive==5||primitive==7)filled=filled&&(x==xa||x==xa+31||y==ya||y==ya+3);
+   if(primitive==6)filled=filled&&y==ya;
+   const uint16_t expected=filled?0x801f:0xffff;
+   assert(quad_engine->m_vdp1_legacy.framebuffer[0][y*512+x]==expected);
+   if(primitive==1)assert(l.framebuffer[0][y*512+x]==expected);
+  }
+  assert(quad_engine->cef&&quad_engine->scu_.irqs==1);++unclipped_other_cases;
+ }
+ // Full signed-coordinate height must fit, but remains interruptible before
+ // it reaches the visible area. Inactive records need not be bulk-cleared.
+ {
+  auto &c=s->current_sprite;c.CMDCTRL=1;c.CMDPMOD=0x08a8;c.CMDXA=c.CMDXC=0;c.CMDYA=-4096;c.CMDYC=4095;
+  c.CMDSIZE=0x0101;load_quad(*quad_engine,*s);quad_engine->vdp1_process_list();quad_engine->fire();
+  assert(quad_engine->m_vdp1_raster.count==8192);quad_engine->fire();assert(quad_engine->m_vdp1_raster.index==16);
+  quad_engine->vdp1_request_termination();quad_engine->advance(30);
+  assert(!quad_engine->m_vdp1_legacy.drawing&&!quad_engine->cef&&quad_engine->scu_.irqs==0&&quad_engine->m_vdp1_raster.count==0);
+  ++unclipped_other_cases;
+ }
+ std::cout<<unclipped_other_cases<<" Pclp-disabled scaled/native image and queue-bound cases passed\n";
  // Independent integer recurrence oracle: quantize A-D/B-C first, then
  // interpolate the connecting row. Constant RGB texture isolates shading.
  // Legacy fallback keeps coordinates paired with swapped endpoint colors,
@@ -712,7 +826,7 @@ int main(){
   if(primitive==0&&(width!=8&&width!=32))continue;
   if(primitive==0&&axes)continue;
   auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=0;s->m_vdp1_regs[0]=0;
-  l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.framebuffer_width=512;l.framebuffer_height=256;
+  l.framebuffer_mode=0;l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.framebuffer_width=512;l.framebuffer_height=256;
   l.framebuffer_double_interlace=0;l.draw_eos=0;l.local_x=l.local_y=0;
   l.system_cliprect.set(0,63,0,63);l.user_cliprect.set(3,27,2,25);s->vdp1_prepare_framebuffers();
   const int left=clipping?-4:5,top=clipping?-3:5;
