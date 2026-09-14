@@ -1359,7 +1359,13 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
   int mesh = current_sprite.CMDPMOD & 0x100;
   int raw, endcode;
 
-  if (mesh && !((x ^ y) & 1)) {
+  /* Mesh is a checkerboard stipple, and the manual states the rule as "if the
+     X coordinate value + Y coordinate value is an even number, it will be
+     drawn" - so the pixel is dropped when the sum is odd, which is when the
+     parities of x and y differ.  The test here was inverted, drawing the
+     complementary pattern; x and y are framebuffer coordinates, the same
+     space the rule is stated in. */
+  if (mesh && ((x ^ y) & 1)) {
     return;
   }
 
