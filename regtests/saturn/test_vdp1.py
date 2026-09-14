@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:MAMEdev Team
-"""Execute VDP1 command/completion, CPU framebuffer and clipping bodies.
+"""Execute production VDP1 command, renderer and framebuffer helpers.
 
-Rasterizers, CPU time and IRQ delivery are recording endpoints, not a timing model.
+Time conversion and IRQ delivery are stand-ins. Selected command tests record
+raster dispatch; sliced line tests execute the real line/polyline entry points.
+State-copy checks are not MAME save-manager round trips or hardware timing proof.
 --baseline selects old command, framebuffer or pixel bodies independently.
 """
 from pathlib import Path
@@ -11,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -24,7 +26,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
-functions+='\n'.join(extract(current,s) for s in ('uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
+functions+='\n'.join(extract(current,s) for s in ('int saturn_state::vdp1_line_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_line_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
  ('framebuffer',['void saturn_state::vdp1_framebuffer0_w(', 'uint32_t saturn_state::vdp1_framebuffer0_r(']),
@@ -53,6 +55,9 @@ if a.render_mutation:
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
         'endcode': ('if (++end_codes == 2)', 'if (++end_codes == 99)'),
         'rotation': ('const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);', 'const int sx = x;'),
+        'reset_bank': ('m_vdp1_legacy.framebuffer_current_draw = 0;', 'm_vdp1_legacy.framebuffer_current_draw = 1;'),
+        'line_quantum': ('m_vdp1_line_budget = 16;', 'm_vdp1_line_budget = 100000;'),
+        'line_resume': ('x = m_vdp1_line.x;', 'x = a.x;'),
         'erase_budget': ('unsigned remaining = v.vblank_erase_budget;', 'unsigned remaining = 0xffffffff;'),
         'erase_bank': ('v.vblank_erase_bank = v.framebuffer_current_display;', 'v.vblank_erase_bank = v.framebuffer_current_draw;'),
         'erase_snapshot': ('v.framebuffer[v.vblank_erase_bank][address] = v.vblank_erase_data;', 'v.framebuffer[v.vblank_erase_bank][address] = v.ewdr;'),
@@ -89,7 +94,13 @@ for name in ('pending','active','bank','stride','data','left','right','top','bot
     assert f'save_item(NAME(m_vdp1_legacy.vblank_erase_{name}));' in current
 for signature in ('void saturn_state::machine_reset()', 'void saturn_state::system_reset_w('):
     assert 'vdp1_cancel_erase();' in extract(current,signature)
-types=extract(current,'struct shaded_point {')+';'+extract(header,'struct _gouraud_shading {')+' gouraud_shading;'+extract(header,'struct vdp1_sprite_list')+' current_sprite;'
+for field in ('segments','count','index','dot','x','y','error'):
+    assert f'save_item(NAME(m_vdp1_line.{field}));' in current
+for field in ('CMDCTRL','CMDPMOD','CMDCOLR','ispoly'):
+    assert f'save_item(NAME(current_sprite.{field}));' in current
+for signature in ('void saturn_state::machine_reset()', 'void saturn_state::system_reset_w(', 'int saturn_state::vdp1_start()'):
+    assert 'vdp1_reset_framebuffers();' in extract(current,signature)
+types=extract(header,'struct vdp1_line_state {')+' m_vdp1_line;'+extract(current,'struct shaded_point {')+';'+extract(header,'struct _gouraud_shading {')+' gouraud_shading;'+extract(header,'struct vdp1_sprite_list')+' current_sprite;'
 types+='\n'+extract(header,'struct vdp1_poly_scanline {')+';\n'+extract(header,'struct vdp1_poly_scanline_data {')+';'
 types+='\n'+extract(header,'struct spoint {')+';'
 harness=r'''
@@ -149,13 +160,16 @@ struct word_buffer:std::vector<uint16_t> {
 struct vdp2 {bool large=false;int lsmd=0;bool get_vramsz(){return large;}int get_lsmd(){return lsmd;}int hreso=0,total=263,vblank_start=224;int get_hreso(){return hreso;}bool is_pal() const {return total/(lsmd==3?2:1)==313;}int get_vblank_start_position(){return vblank_start;}int get_ystep_count(){return 1;}};
 struct saturn_state {
  // TYPES
+ bool m_vdp1_line_building=false,m_vdp1_line_running=false,execute_lines=false;
+ int m_vdp1_line_budget=0;
+ int vdp1_line_slice_cycles() const;
+ void vdp1_draw_line_slice();
  timer timer_,terminate_;cpu cpu_;scu scu_;cpu *m_maincpu=&cpu_;scu *m_scu=&scu_;
  struct legacy {
   timer *draw_end_timer=nullptr,*terminate_timer=nullptr;
   bool drawing=false;int command_position=0,command_return=-1;
   uint16_t lopr=0,copr=0;
   int local_x=0,local_y=0,framebuffer_current_draw=0,framebuffer_current_display=1;
-  int framebuffer_clear_on_next_frame=0;
   int framebuffer_width=1024,framebuffer_height=512,framebuffer_mode=0,framebuffer_double_interlace=0,fbcr_accessed=0;
   uint16_t ewdr=0;
   rectangle user_cliprect,system_cliprect;
@@ -181,7 +195,7 @@ struct saturn_state {
  saturn_state(){m_vdp1_legacy.draw_end_timer=&timer_;m_vdp1_legacy.terminate_timer=&terminate_;for(unsigned y=0;y<512;++y)m_vdp1_legacy.framebuffer_draw_lines[y]=m_vdp1_legacy.framebuffer[0].data()+((y*1024)&0x1ffff);}
  void CEF_0(){cef=false;}void CEF_1(){cef=true;}
  void BEF_0(){bef=false;}void BEF_1(){bef=true;}
- void clear_gouraud_shading(){}void vdp1_set_drawpixel(){}
+ void clear_gouraud_shading(){}void vdp1_set_drawpixel();
  int vdp1_coord(int v){return int16_t((v&0x1fff)<<3)>>3;}
  std::unique_ptr<vdp1_poly_scanline_data> vdp1_shading_data=std::make_unique<vdp1_poly_scanline_data>();
  uint16_t vdp1_apply_gouraud_shading(int,int,uint16_t);
@@ -209,7 +223,7 @@ struct saturn_state {
  void raster_segment(const rectangle&,const spoint&,const spoint&,uint16_t,uint16_t,bool=false,int=-1,int=0);
  void vdp1_draw_quad_pixels(const rectangle&,int,int,const spoint*);
  void vdp1_draw_segment(const rectangle &r,const spoint &a,const spoint &b,uint16_t ca,uint16_t cb,bool coverage=false,int row=-1,int width=0){
-  if(coverage)raster_segment(r,a,b,ca,cb,coverage,row,width);
+  if(coverage||m_vdp1_line_building||m_vdp1_line_running)raster_segment(r,a,b,ca,cb,coverage,row,width);
   else shaded_edges.push_back({uint16_t(ca|0x8000),uint16_t(cb|0x8000)});
  }
  void raster_distorted(const rectangle&);
@@ -220,15 +234,15 @@ struct saturn_state {
  void vdp1_draw_normal_sprite(const rectangle &clip,int){last_clip=&clip;++draws;}
  void vdp1_draw_scaled_sprite(const rectangle&){++draws;}
  void vdp1_draw_distorted_sprite(const rectangle&){++draws;}
- void vdp1_draw_poly_line(const rectangle&){++draws;}
- void vdp1_draw_line(const rectangle&){++draws;}
+ void vdp1_draw_poly_line(const rectangle &r){++draws;if(execute_lines)raster_poly_line(r);}
+ void vdp1_draw_line(const rectangle &r){++draws;if(execute_lines)raster_line(r);}
  int VDP1_TVM() const {return tvm;}
  int VDP1_VBE() const {return (m_vdp1_regs[0]>>3)&1;}
  void vdp1_video_update();
  uint16_t vdp1_read_pixel(const uint16_t *,int) const;
  void vdp1_write_pixel(int,int,uint16_t);void vdp1_clear_framebuffer(int);
  void vdp1_process_list();void vdp1_draw_end(int);void vdp1_abort_draw();void vdp1_request_termination();void vdp1_terminate(int);
- void vdp1_prepare_framebuffers();void vdp1_state_save_postload();void vdp1_change_framebuffers();
+ void vdp1_reset_framebuffers();void vdp1_prepare_framebuffers();void vdp1_state_save_postload();void vdp1_change_framebuffers();
  void vdp1_regs_w(offs_t,uint16_t,uint16_t);
  void vdp1_latch_framebuffer_config();void vdp1_set_framebuffer_config();
  void vdp1_framebuffer0_w(offs_t,uint32_t,uint32_t);
@@ -766,6 +780,117 @@ int main(){
   }++scale_cases;
  }
  std::cout<<scale_cases<<" scaled endpoint/anchor/direction cases passed\n";
+ unsigned sliced_cases=0;
+ auto queued=std::make_unique<saturn_state>();auto reference=std::make_unique<saturn_state>();
+ auto line_program=[](saturn_state &r,int opcode,int pmod,int format,int dx,int dy){
+  r.vdp1_abort_draw();r.execute_lines=true;r.tvm=format;
+  auto &l=r.m_vdp1_legacy;l.framebuffer_double_interlace=0;l.framebuffer_current_draw=0;l.framebuffer_current_display=1;
+  l.framebuffer_mode=format;l.framebuffer_width=format?1024:512;l.framebuffer_height=256;l.local_x=l.local_y=0;
+  l.system_cliprect.set(8,120,8,120);l.user_cliprect.set(16,100,16,100);r.vdp1_prepare_framebuffers();
+  for(auto &f:l.framebuffer)std::fill(f.begin(),f.end(),0xffff);
+  std::fill(r.m_vdp1_vram.begin(),r.m_vdp1_vram.end(),0);
+  auto &c=r.current_sprite;c.CMDCTRL=opcode;c.CMDPMOD=pmod;c.CMDCOLR=format?0x34:0xc210;c.ispoly=1;c.CMDGRDA=0x200;
+  c.CMDXA=64;c.CMDYA=64;c.CMDXB=64+dx;c.CMDYB=64+dy;
+  c.CMDXC=64-dy;c.CMDYC=64+dx;c.CMDXD=64-dx;c.CMDYD=64-dy;
+  r.m_vdp1_vram[0]=opcode<<16;r.m_vdp1_vram[1]=(pmod<<16)|c.CMDCOLR;
+  r.m_vdp1_vram[3]=(c.CMDXA<<16)|c.CMDYA;r.m_vdp1_vram[4]=(c.CMDXB<<16)|c.CMDYB;
+  r.m_vdp1_vram[5]=(c.CMDXC<<16)|c.CMDYC;r.m_vdp1_vram[6]=(c.CMDXD<<16)|c.CMDYD;
+  r.m_vdp1_vram[7]=c.CMDGRDA<<16;r.m_vdp1_vram[8]=0x80000000;
+  r.m_vdp1_vram[0x400]=0x001f7c00;r.m_vdp1_vram[0x401]=0x03e04210;
+  r.scu_.irqs=0;r.vdp1_set_drawpixel();
+ };
+ for(int dx : {-63,-32,-17,0,17,32,63})for(int dy : {-47,-17,0,17,47})for(int opcode : {5,6})
+ for(int calc : {0,3,4,7})for(bool mesh : {false,true})for(int format : {0,1}){
+  if(format&&calc)continue;
+  int pmod=0xc0|calc|(mesh?0x100:0);
+  line_program(*queued,opcode,pmod,format,dx,dy);line_program(*reference,opcode,pmod,format,dx,dy);
+  auto &c=reference->current_sprite;
+  saturn_state::spoint q[4]={{c.CMDXA,c.CMDYA,0,0},{c.CMDXB,c.CMDYB,0,0},{c.CMDXC,c.CMDYC,0,0},{c.CMDXD,c.CMDYD,0,0}};
+  uint16_t colors[4]={0x001f,0x7c00,0x03e0,0x4210};
+  for(int i=0;i<(opcode==5?4:1);++i)reference->raster_segment(reference->m_vdp1_legacy.system_cliprect,q[i],q[(i+1)&3],colors[i],colors[(i+1)&3]);
+  queued->vdp1_process_list();queued->fire();
+  assert(queued->m_vdp1_line.count>0&&!queued->cef&&queued->scu_.irqs==0);
+  assert(std::all_of(queued->m_vdp1_legacy.framebuffer[0].begin(),queued->m_vdp1_legacy.framebuffer[0].end(),[](uint16_t c){return c==0xffff;}));
+  unsigned slices=0;
+  while(queued->m_vdp1_line.index<queued->m_vdp1_line.count){
+   assert(++slices<100);queued->fire();assert(!queued->cef&&queued->scu_.irqs==0&&queued->m_vdp1_legacy.copr==0);
+  }
+  queued->fire();assert(queued->cef&&queued->scu_.irqs==1&&queued->m_vdp1_legacy.copr==4);
+  assert(queued->m_vdp1_legacy.framebuffer[0]==reference->m_vdp1_legacy.framebuffer[0]);
+  ++sliced_cases;
+ }
+ // ENDR in each phase of a slice kills pending pixels, not just command fetch.
+ for(int phase=0;phase<16;++phase){
+  line_program(*queued,6,0xc3,0,63,0);auto &l=queued->m_vdp1_legacy;
+  l.system_cliprect.set(0,511,0,255);queued->vdp1_process_list();queued->fire();queued->advance(phase);
+  queued->vdp1_regs_w(6,0,0xffff);queued->advance(29);
+  assert(l.drawing&&!queued->cef&&queued->scu_.irqs==0);queued->advance(1);
+  assert(!l.drawing&&queued->m_vdp1_line.count==0&&queued->timer_.delay==-1&&l.copr==0);
+  unsigned pixels=((phase+29)/16)*16;
+  for(int x=64;x<=127;++x)assert(l.framebuffer[0][64*512+x]==(unsigned(x-64)<pixels?0xdef7:0xffff));
+  auto image=l.framebuffer[0];queued->advance(128);assert(l.framebuffer[0]==image&&queued->scu_.irqs==0);
+  queued->vdp1_process_list();assert(queued->m_vdp1_line.count==0&&l.command_position==0);++sliced_cases;
+ }
+ // Short final slices do not invent a full 16 clocks of raster work.
+ for(int dots : {1,2,15,16,17,31,32,33,64}){
+  line_program(*queued,6,0xc0,0,dots-1,0);queued->m_vdp1_legacy.system_cliprect.set(0,511,0,255);
+  queued->vdp1_process_list();queued->advance(16);assert(queued->timer_.delay==std::min(16,dots));
+  queued->advance(dots);assert(queued->m_vdp1_line.index==queued->m_vdp1_line.count&&!queued->cef);
+  queued->advance(15);assert(!queued->cef);queued->advance(1);assert(queued->cef&&queued->scu_.irqs==1);++sliced_cases;
+ }
+ // A real END before the ENDR deadline cancels that deadline, not the IRQ.
+ line_program(*queued,6,0xc0,0,0,0);queued->vdp1_process_list();queued->advance(16);
+ queued->vdp1_regs_w(6,0,0xffff);queued->advance(17);
+ assert(queued->cef&&queued->scu_.irqs==1&&queued->terminate_.delay==-1);queued->advance(30);assert(queued->scu_.irqs==1);++sliced_cases;
+ // Framebuffer traffic between slices is observed by the next color blend.
+ line_program(*queued,6,0xc3,0,63,0);queued->vdp1_process_list();queued->fire();queued->fire();
+ queued->vdp1_framebuffer0_w((64*512+80)/2,0x80008000,0xffffffff);queued->fire();
+ assert(queued->m_vdp1_legacy.framebuffer[0][64*512+79]==0xdef7);
+ assert(queued->m_vdp1_legacy.framebuffer[0][64*512+80]==0xa108&&queued->m_vdp1_legacy.framebuffer[0][64*512+81]==0xa108);++sliced_cases;
+ // A fresh PTMR request restarts at command zero, not at an old line cursor.
+ line_program(*queued,6,0xc3,0,63,0);queued->vdp1_process_list();queued->fire();queued->fire();
+ queued->vdp1_regs_w(2,1,0xffff);assert(queued->m_vdp1_line.count==0);
+ queued->fire();queued->fire();assert(queued->m_vdp1_line.dot==16);
+ assert(queued->m_vdp1_legacy.framebuffer[0][64*512+64]==0xce73&&queued->m_vdp1_legacy.framebuffer[0][64*512+80]==0xffff);++sliced_cases;
+ // Automatic field change restarts drawing instead of leaving an old cursor
+ // in front of the newly selected bank's command zero.
+ line_program(*queued,6,0xc3,0,63,0);queued->vdp1_process_list();queued->fire();queued->fire();
+ queued->m_vdp1_regs[1]=0;queued->m_vdp1_regs[2]=2;queued->m_vdp1_regs[4]=queued->m_vdp1_regs[5]=0;
+ queued->vdp1_video_update();assert(queued->m_vdp1_line.count==0&&queued->m_vdp1_legacy.framebuffer_current_draw==1&&!queued->bef);
+ queued->fire();queued->fire();
+ assert(queued->m_vdp1_legacy.framebuffer[0][64*512+64]==0xdef7&&queued->m_vdp1_legacy.framebuffer[1][64*512+64]==0xdef7);++sliced_cases;
+ // Defined reset bank ownership applies even when the last field drew bank 1.
+ auto before_reset0=queued->m_vdp1_legacy.framebuffer[0],before_reset1=queued->m_vdp1_legacy.framebuffer[1];
+ queued->m_vdp1_legacy.field_valid[0]=queued->m_vdp1_legacy.field_valid[1]=true;
+ queued->vdp1_abort_draw();queued->vdp1_reset_framebuffers();
+ assert(queued->m_vdp1_line.count==0&&queued->m_vdp1_legacy.framebuffer_current_draw==0&&queued->m_vdp1_legacy.framebuffer_current_display==1);
+ assert(queued->m_vdp1_legacy.framebuffer[0]==before_reset0&&queued->m_vdp1_legacy.framebuffer[1]==before_reset1);
+ assert(!queued->m_vdp1_legacy.field_valid[0]&&!queued->m_vdp1_legacy.field_valid[1]);
+ assert(queued->m_vdp1_legacy.framebuffer_draw_lines[0]==queued->m_vdp1_legacy.framebuffer[0].data());
+ queued->vdp1_framebuffer0_w(0,0xabcddcba,0xffffffff);
+ assert(queued->m_vdp1_legacy.framebuffer[0][0]==0xabcd&&queued->m_vdp1_legacy.framebuffer[1]==before_reset1);++sliced_cases;
+ // Mid-segment state-copy/postload: do not redraw half-transparent pixels or
+ // restart the Gouraud phase. Command-table edits cannot replace fetched state.
+ for(int calc : {3,4,7})for(bool stop : {false,true})for(int slices : {1,4,5}){
+  line_program(*queued,5,0xc0|calc,0,63,47);queued->vdp1_process_list();queued->fire();
+  for(int i=0;i<slices;++i)queued->fire();
+  assert(queued->m_vdp1_line.index==(slices>=4?1:0)&&queued->m_vdp1_line.dot==(slices==4?0:16));
+  if(stop)queued->vdp1_regs_w(6,0,0xffff);
+  auto restored=std::make_unique<saturn_state>();restored->execute_lines=true;restored->tvm=queued->tvm;
+  restored->m_vdp1_line=queued->m_vdp1_line;restored->current_sprite=queued->current_sprite;
+  auto &l=queued->m_vdp1_legacy;auto &r=restored->m_vdp1_legacy;
+  r.drawing=l.drawing;r.command_position=l.command_position;r.command_return=l.command_return;r.copr=l.copr;
+  r.framebuffer_width=l.framebuffer_width;r.framebuffer_height=l.framebuffer_height;r.framebuffer_double_interlace=l.framebuffer_double_interlace;
+  r.framebuffer_current_draw=l.framebuffer_current_draw;r.framebuffer_current_display=l.framebuffer_current_display;
+  r.system_cliprect=l.system_cliprect;r.user_cliprect=l.user_cliprect;
+  for(int i=0;i<2;++i)r.framebuffer[i]=l.framebuffer[i];
+  queued->m_vdp1_vram[1]^=0xffff;restored->m_vdp1_vram=queued->m_vdp1_vram;
+  restored->timer_.delay=queued->timer_.delay;restored->terminate_.delay=queued->terminate_.delay;restored->vdp1_state_save_postload();
+  for(int i=0;i<100&&l.drawing;++i){queued->advance(16);restored->advance(16);}
+  assert(!l.drawing&&!r.drawing&&queued->cef==!stop&&restored->cef==!stop&&queued->scu_.irqs==unsigned(!stop)&&restored->scu_.irqs==unsigned(!stop));
+  assert(l.framebuffer[0]==r.framebuffer[0]);++sliced_cases;
+ }
+ std::cout<<sliced_cases<<" interruptible line/polyline image/lifecycle cases passed\n";
  unsigned control_cases=0;
  for(int draw : {0,1}) {
   auto &l=s->m_vdp1_legacy;s->vdp1_abort_draw();s->tvm=0;l.framebuffer_mode=0;l.framebuffer_double_interlace=0;
