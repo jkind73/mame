@@ -7630,7 +7630,7 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
 
 #define VDP2_READ_VERTICAL_LINESCROLL(_val, _address)                          \
   {                                                                            \
-    _val = util::sext(m_vdp2_vram[_address] & 0x07ffff00, 27);                 \
+    _val = util::sext(m_vdp2_vram[(_address) & 0x3ffff] & 0x07ffff00, 27);     \
   }
 
 void saturn_state::vdp2_check_tilemap_with_linescroll(
@@ -7675,6 +7675,10 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
     active_functions++;
 
   // address of data table
+  /* linescroll_table_address is (LSTA & base_mask) * 2, so like the other VDP2
+     table addresses it can already be the last byte of VRAM before the per-line
+     stride below is added to it; every index derived from it is wrapped inside
+     VRAM rather than read past the allocation */
   address = current_tilemap.linescroll_table_address +
             active_functions * 4 * cliprect.top();
 
@@ -7684,7 +7688,7 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
       VDP2_READ_VERTICAL_LINESCROLL(prev_scroll_values[i], (address / 4) + i);
       prev_scroll_values[i] -= (cur_line * current_tilemap.incy);
     } else {
-      prev_scroll_values[i] = m_vdp2_vram[(address / 4) + i];
+      prev_scroll_values[i] = m_vdp2_vram[((address / 4) + i) & 0x3ffff];
     }
   }
 
@@ -7703,7 +7707,7 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
           VDP2_READ_VERTICAL_LINESCROLL(scroll_values[i], (address / 4) + i);
           scroll_values[i] -= (cur_line + lines) * current_tilemap.incy;
         } else {
-          scroll_values[i] = m_vdp2_vram[(address / 4) + i];
+          scroll_values[i] = m_vdp2_vram[((address / 4) + i) & 0x3ffff];
         }
       }
 
@@ -7882,7 +7886,10 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
       cur_address = vcsc_address;
       cur_address += ((cur_char >> 3) * base_multiplier) + base_offset;
 
-      char_scroll = m_vdp2_vram[cur_address] >> 16;
+      /* vcsc_address is (VCSTA & base_mask) * 2 >> 2, so it can already be
+         the last word of VRAM before the per-character offset is added;
+         wrap inside VRAM as the other table reads do */
+      char_scroll = m_vdp2_vram[cur_address & 0x3ffff] >> 16;
       char_scroll &= 0x07ff;
       if (char_scroll & 0x0400)
         char_scroll |= 0xf800;
