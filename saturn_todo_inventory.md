@@ -1,5 +1,15 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Timer-0 implementation update — 2026-09-14
+
+The compare-zero/increment-order issue identified below is fixed and tested:
+zero at VBlank-OUT, positive compares after HBlank increment, TENB-gated counting.
+8,192 two-frame callback scenarios pass. Earlier statements that timer-0 ordering
+is still next are superseded by this update; exact CRTC phase, register-write
+side effects and full timer-1 mode behavior remain open. See the current report
+in `regtests/saturn/README.md` rather than interpreting historical DONE labels as
+hardware validation.
+
 ## Timer-1 implementation update — 2026-09-14
 
 The stopped-only HBlank reload issue below is now fixed and regression-tested
