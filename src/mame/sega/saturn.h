@@ -196,8 +196,11 @@ protected:
   bool vdp1_is_end_code(int address, int texel) const;
   void vdp1_draw_normal_sprite(const rectangle &cliprect, int sprite_type);
   void vdp1_draw_scaled_sprite(const rectangle &cliprect);
+  void vdp1_draw_quad_pixels(const rectangle &cliprect, int width, int height, const spoint *q);
   void vdp1_draw_distorted_sprite(const rectangle &cliprect);
   void vdp1_draw_poly_line(const rectangle &cliprect);
+  void vdp1_draw_segment(const rectangle &cliprect, const spoint &a, const spoint &b, uint16_t color_a, uint16_t color_b,
+                         bool edge_coverage = false, int texture_row = -1, int texture_width = 0);
   void vdp1_draw_line(const rectangle &cliprect);
   int x2s(int v);
   int y2s(int v);
@@ -239,8 +242,7 @@ protected:
                                     int32_t slb2, int32_t *nb1, int32_t *nb2,
                                     int32_t _y1, int32_t y2);
   uint16_t vdp1_apply_gouraud_shading(int x, int y, uint16_t pix);
-  void vdp1_setup_shading(const struct spoint *q, const rectangle &cliprect,
-                          std::array<uint8_t, 4> vertices = {0, 1, 2, 3});
+  void vdp1_setup_shading(const struct spoint *q, const rectangle &cliprect);
   uint8_t read_gouraud_table();
   void clear_gouraud_shading();
 
