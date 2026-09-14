@@ -1,5 +1,31 @@
 # Sega SDK hardware-document audit
 
+## Interruptible native polygons/distorted sprites — 2026-09-14
+
+The saved raster queue now also handles commands 2/3/4, retaining span texture
+coordinates, Gouraud endpoints, the signed line-error cursor, pending coverage
+and the texture-row END cutoff cache. Up to 4096 spans are bounded by the native
+12-bit outer-edge length. Reset clears active indices, not the entire 208 KiB
+span array. Pixel writes are evaluated when their slice executes, not pre-rendered
+or replayed. END fetch waits for the raster queue; ENDR discards pending work.
+
+**4362 additional queued-quad cases pass**: 3840 native-image comparisons, 512
+texture/packed-format/HSS/EOS/direction combinations, eight mid-span state-copy
+and ENDR sequences, maximum capacity and wholly clipped completion. Texture tests
+use the actual VRAM writer and command decoder. Restored END cutoffs survive a
+source edit; this establishes model consistency, not hardware prefetch behavior.
+Lost-coverage and wrong-texture-row mutations both fail image assertions. All
+18 regression scripts and nine production object compilations pass.
+
+Primary constraints remain ST-013-R3 pp.20, 51–56 (progression/termination/END);
+geometry reuses the integer recurrence cross-checked against pinned Ymir steppers,
+not imported renderer/scheduler code. A slice processes up to 16 raster positions
+and their paired coverage dots (potentially 32 writes). This is nominal timing,
+not measured bus arbitration or single-dot visibility. **Normal/scaled sprites
+remain atomic**. Active-display erase, exact timing, preclip/degenerate cases and
+linked BIOS/game/actual save-manager acceptance remain unfinished. Older progress
+entries below describe their checkpoints, not the current primitive coverage.
+
 ## VDP1 line execution across scheduler boundaries — 2026-09-14
 
 - Primary [ST-013-R3](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf), printed p.20: drawing is synchronized to the CPU operating clock, with one pixel's data drawn in sync. This supports a nominal pixel progression model, **not** proof that every color operation takes one clock.

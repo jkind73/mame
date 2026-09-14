@@ -1904,7 +1904,8 @@ void saturn_state::vdp1_fill_line(const rectangle &cliprect, int patterndata,
 
 void saturn_state::vdp1_fill_quad(const rectangle &cliprect, int patterndata,
                                   int xsize, const struct spoint *q) {
-  // Derived within this atomic primitive, never persistent drawing state.
+  // The legacy affine fallback is still atomic; native queued primitives
+  // save their source-row cutoff cache across scheduler boundaries.
   m_vdp1_texture_end.fill(-1);
   int32_t sl1, sl2, slu1, slu2, slv1, slv2, cury, limy, x1, x2, u1, u2, v1, v2,
       delta;
@@ -2065,11 +2066,14 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
       std::min(a.x, b.x) > cliprect.max_x + 1 || std::max(a.y, b.y) < cliprect.min_y - 1 ||
       std::min(a.y, b.y) > cliprect.max_y + 1))
     return;
-  if (m_vdp1_line_building) {
-    assert(!edge_coverage && texture_row < 0 && m_vdp1_line.count < 4);
-    const std::array<int32_t, 10> segment = {a.x, a.y, b.x, b.y, color_a, color_b,
-        cliprect.min_x, cliprect.max_x, cliprect.min_y, cliprect.max_y};
-    std::copy(segment.begin(), segment.end(), m_vdp1_line.segments.begin() + 10 * m_vdp1_line.count++);
+  if (m_vdp1_raster_building) {
+    assert(m_vdp1_raster.count < vdp1_raster_state::max_segments);
+    const std::array<int32_t, vdp1_raster_state::segment_words> segment = {
+        a.x, a.y, b.x, b.y, color_a, color_b,
+        cliprect.min_x, cliprect.max_x, cliprect.min_y, cliprect.max_y,
+        edge_coverage, texture_row, texture_width};
+    std::copy(segment.begin(), segment.end(), m_vdp1_raster.segments.begin() +
+              vdp1_raster_state::segment_words * m_vdp1_raster.count++);
     return;
   }
   // The line error datapath is signed 13-bit. Unlike textured/polygon lines,
@@ -2085,13 +2089,14 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
   const int address = (current_sprite.CMDSRCA & 0xffff) * 8;
   bool extra = false;
   int x = a.x, y = a.y;
-  if (m_vdp1_line_running && m_vdp1_line.dot) {
-    x = m_vdp1_line.x;
-    y = m_vdp1_line.y;
-    error = m_vdp1_line.error;
+  if (m_vdp1_raster_running && m_vdp1_raster.dot) {
+    x = m_vdp1_raster.x;
+    y = m_vdp1_raster.y;
+    error = m_vdp1_raster.error;
+    extra = m_vdp1_raster.extra;
   }
-  for (int dot = m_vdp1_line_running ? m_vdp1_line.dot : 0; dot <= major; ++dot) {
-    if (m_vdp1_line_running && !m_vdp1_line_budget)
+  for (int dot = m_vdp1_raster_running ? m_vdp1_raster.dot : 0; dot <= major; ++dot) {
+    if (m_vdp1_raster_running && !m_vdp1_raster_budget)
       break;
     int texel = 0;
     if (textured) {
@@ -2133,49 +2138,60 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
       if (horizontal) y += sy; else x += sx;
       extra = edge_coverage;
     }
-    if (m_vdp1_line_running) {
-      --m_vdp1_line_budget;
-      m_vdp1_line.dot = dot + 1;
-      m_vdp1_line.x = x;
-      m_vdp1_line.y = y;
-      m_vdp1_line.error = error;
+    if (m_vdp1_raster_running) {
+      --m_vdp1_raster_budget;
+      m_vdp1_raster.dot = dot + 1;
+      m_vdp1_raster.x = x;
+      m_vdp1_raster.y = y;
+      m_vdp1_raster.error = error;
+      m_vdp1_raster.extra = extra;
     }
   }
   current_sprite.CMDPMOD = mode;
 }
 
-int saturn_state::vdp1_line_slice_cycles() const {
-  if (m_vdp1_line.index == m_vdp1_line.count)
+void saturn_state::vdp1_reset_raster_queue() {
+  // Inactive records are irrelevant. Avoid clearing the full bounded span
+  // array on every command/restart (only indices and live cursor are reset).
+  m_vdp1_raster.count = m_vdp1_raster.index = m_vdp1_raster.dot = 0;
+  m_vdp1_raster.x = m_vdp1_raster.y = m_vdp1_raster.error = 0;
+  m_vdp1_raster.extra = false;
+  m_vdp1_texture_end.fill(-1);
+}
+
+int saturn_state::vdp1_raster_slice_cycles() const {
+  if (m_vdp1_raster.index == m_vdp1_raster.count)
     return 16; // Next command fetch, not another raster slice.
   int dots = 0;
-  for (int i = m_vdp1_line.index; i < m_vdp1_line.count && dots < 16; ++i) {
-    const int32_t *const data = m_vdp1_line.segments.data() + 10 * i;
+  for (int i = m_vdp1_raster.index; i < m_vdp1_raster.count && dots < 16; ++i) {
+    const int32_t *const data = m_vdp1_raster.segments.data() + vdp1_raster_state::segment_words * i;
     dots += std::max(std::abs(data[2] - data[0]), std::abs(data[3] - data[1])) + 1;
-    if (i == m_vdp1_line.index)
-      dots -= m_vdp1_line.dot;
+    if (i == m_vdp1_raster.index)
+      dots -= m_vdp1_raster.dot;
   }
   return std::min(16, dots);
 }
 
-void saturn_state::vdp1_draw_line_slice() {
+void saturn_state::vdp1_draw_raster_slice() {
   // Bound host work and yield to ENDR/CPU events within a primitive. ST-013
-  // describes nominal one-dot-per-clock drawing; this 16-dot quantum is not
-  // a complete Gouraud/framebuffer-bus wait-state model.
-  m_vdp1_line_budget = 16;
-  m_vdp1_line_running = true;
+  // describes nominal one-dot-per-clock drawing. A quantum covers at most
+  // 16 raster positions and their coverage dots, not exact bus wait states.
+  m_vdp1_raster_budget = 16;
+  m_vdp1_raster_running = true;
   vdp1_set_drawpixel(); // Reconstruct the dispatch pointer, including postload.
-  while (m_vdp1_line.index < m_vdp1_line.count && m_vdp1_line_budget) {
-    const int32_t *const data = m_vdp1_line.segments.data() + 10 * m_vdp1_line.index;
+  while (m_vdp1_raster.index < m_vdp1_raster.count && m_vdp1_raster_budget) {
+    const int32_t *const data = m_vdp1_raster.segments.data() + vdp1_raster_state::segment_words * m_vdp1_raster.index;
     const spoint a{data[0], data[1], 0, 0}, b{data[2], data[3], 0, 0};
     const rectangle cliprect(data[6], data[7], data[8], data[9]);
-    vdp1_draw_segment(cliprect, a, b, data[4], data[5]);
+    vdp1_draw_segment(cliprect, a, b, data[4], data[5], data[10], data[11], data[12]);
     const int length = std::max(std::abs(b.x - a.x), std::abs(b.y - a.y)) + 1;
-    if (m_vdp1_line.dot >= length) {
-      ++m_vdp1_line.index;
-      m_vdp1_line.dot = 0;
+    if (m_vdp1_raster.dot >= length) {
+      ++m_vdp1_raster.index;
+      m_vdp1_raster.dot = 0;
+      m_vdp1_raster.extra = false;
     }
   }
-  m_vdp1_line_running = false;
+  m_vdp1_raster_running = false;
 }
 
 void saturn_state::vdp1_draw_line(const rectangle &cliprect) {
@@ -2537,9 +2553,9 @@ void saturn_state::vdp1_abort_draw() {
   // Cancel both command dispatch and any delayed ENDR request. No completion
   // IRQ is manufactured; COPR remains at the last fetched command.
   m_vdp1_legacy.drawing = false;
-  m_vdp1_line = {};
-  m_vdp1_line_building = m_vdp1_line_running = false;
-  m_vdp1_line_budget = 0;
+  vdp1_reset_raster_queue();
+  m_vdp1_raster_building = m_vdp1_raster_running = false;
+  m_vdp1_raster_budget = 0;
   if (m_vdp1_legacy.draw_end_timer)
     m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
   if (m_vdp1_legacy.terminate_timer)
@@ -2549,7 +2565,7 @@ void saturn_state::vdp1_abort_draw() {
 void saturn_state::vdp1_request_termination() {
   // ST-013 section 4.5 specifies approximately 30 VDP1 clocks. Keep command
   // execution live during that interval rather than stopping at the write.
-  // Lines/polylines yield in pixel slices; other primitive paths remain atomic.
+  // Lines, polylines and quads yield in slices; normal/scaled sprites remain atomic.
   if (m_vdp1_legacy.drawing)
     m_vdp1_legacy.terminate_timer->adjust(m_maincpu->cycles_to_attotime(30));
 }
@@ -2566,8 +2582,8 @@ void saturn_state::vdp1_process_list() {
   m_vdp1_legacy.drawing = true;
   clear_gouraud_shading();
   CEF_0();
-  // Fetch cost as in Ymir VDP1ProcessCommand. Lines/polylines then advance
-  // in bounded pixel slices. Other primitive and VRAM costs remain incomplete.
+  // Fetch cost as in Ymir VDP1ProcessCommand. Native lines/quads then advance
+  // in bounded raster slices. Normal/scaled sprites and bus costs remain incomplete.
   m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
 }
 
@@ -2578,9 +2594,9 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
   if (!m_vdp1_legacy.drawing)
     return;
 
-  if (m_vdp1_line.index < m_vdp1_line.count) {
-    vdp1_draw_line_slice();
-    m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_line_slice_cycles()));
+  if (m_vdp1_raster.index < m_vdp1_raster.count) {
+    vdp1_draw_raster_slice();
+    m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_raster_slice_cycles()));
     return; // Never fetch END or another command while a segment is pending.
   }
 
@@ -2759,14 +2775,20 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
           logerror("CMDPMOD = %04x\n", current_sprite.CMDPMOD);
 
         current_sprite.ispoly = 0;
+        vdp1_reset_raster_queue();
+        m_vdp1_raster_building = true;
         vdp1_draw_distorted_sprite(*cliprect);
+        m_vdp1_raster_building = false;
         break;
 
       case 0x0004:
         if (VDP1_LOG)
           logerror("Sprite List Polygon\n");
         current_sprite.ispoly = 1;
+        vdp1_reset_raster_queue();
+        m_vdp1_raster_building = true;
         vdp1_draw_distorted_sprite(*cliprect);
+        m_vdp1_raster_building = false;
         break;
 
       case 0x0005:
@@ -2774,20 +2796,20 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
         if (VDP1_LOG)
           logerror("Sprite List Polyline\n");
         current_sprite.ispoly = 1;
-        m_vdp1_line = {};
-        m_vdp1_line_building = true;
+        vdp1_reset_raster_queue();
+        m_vdp1_raster_building = true;
         vdp1_draw_poly_line(*cliprect);
-        m_vdp1_line_building = false;
+        m_vdp1_raster_building = false;
         break;
 
       case 0x0006:
         if (VDP1_LOG)
           logerror("Sprite List Line\n");
         current_sprite.ispoly = 1;
-        m_vdp1_line = {};
-        m_vdp1_line_building = true;
+        vdp1_reset_raster_queue();
+        m_vdp1_raster_building = true;
         vdp1_draw_line(*cliprect);
-        m_vdp1_line_building = false;
+        m_vdp1_raster_building = false;
         break;
 
       case 0x0008:
@@ -2836,7 +2858,7 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
     }
   }
 
-  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_line_slice_cycles()));
+  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_raster_slice_cycles()));
   return;
 
 end:
@@ -2931,13 +2953,15 @@ int saturn_state::vdp1_start() {
   m_vdp1_legacy.terminate_timer =
       timer_alloc(FUNC(saturn_state::vdp1_terminate), this);
   // save state
-  save_item(NAME(m_vdp1_line.segments));
-  save_item(NAME(m_vdp1_line.count));
-  save_item(NAME(m_vdp1_line.index));
-  save_item(NAME(m_vdp1_line.dot));
-  save_item(NAME(m_vdp1_line.x));
-  save_item(NAME(m_vdp1_line.y));
-  save_item(NAME(m_vdp1_line.error));
+  save_item(NAME(m_vdp1_raster.segments));
+  save_item(NAME(m_vdp1_raster.count));
+  save_item(NAME(m_vdp1_raster.index));
+  save_item(NAME(m_vdp1_raster.dot));
+  save_item(NAME(m_vdp1_raster.x));
+  save_item(NAME(m_vdp1_raster.y));
+  save_item(NAME(m_vdp1_raster.error));
+  save_item(NAME(m_vdp1_raster.extra));
+  save_item(NAME(m_vdp1_texture_end));
   save_item(NAME(current_sprite.CMDCTRL));
   save_item(NAME(current_sprite.CMDLINK));
   save_item(NAME(current_sprite.CMDPMOD));
