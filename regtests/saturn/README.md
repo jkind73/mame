@@ -546,3 +546,50 @@ reset values and status/latch flags remain separate audit work.
 
 All **eight** regression scripts and three object compilations pass through
 `validate_build.py`. Full build and BIOS/game execution remain pending.
+
+## SCU high work-RAM mirror classification
+
+Both Saturn (`sat_console.cpp`) and ST-V (`stv.cpp`) map high work RAM as
+`0x06000000..0x060fffff` with mirror mask `0x21f00000`. The SCU's manually coded
+address classifier only accepted the `0x06xxxxxx` half of the physical C-Bus
+window; `0x07000000..0x07ffffff` returned no bus. Direct DMA using those aliases
+was rejected as illegal. Indirect descriptor decoding uses the same classifier,
+so upper mirrored destinations also missed C-Bus write-mode selection there.
+
+Added the missing `0x07000000` switch case. The change preserves existing wait
+penalties, address masks, bus restrictions and transfer routines. References:
+- [Ymir GetBusID](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/scu/scu_defs.hpp)
+  masks addresses to 27 bits and classifies the entire range at or above
+  `0x06000000` as work RAM.
+- [Mednafen AddressToBus and DMA_ReadCBus](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  classify the same range as C-Bus and mask RAM reads to the 1 MiB storage;
+  transfer addresses are constrained to 27 bits.
+
+This fix reconciles SCU decoding with the existing machine address maps and two
+independent emulator implementations. The official-document audit has not yet
+established a precise section specifying the full mirror aperture; do not cite
+this as newly hardware-measured or as verified from the overview's RAM size alone.
+
+```sh
+python3 regtests/saturn/test_dma_bus.py
+python3 regtests/saturn/test_dma_bus.py --baseline  # expected classification assertion failure
+```
+
+**768 address classifications and 2,304 mirrored DMA scenarios passed** under
+ASan/UBSan. Tests cover all 32 one-MiB mirrors, physical and `0x20000000` aliases,
+read/write classification, boundary offsets, all three DMA levels, programmed
+write increments 0/2/128, A-Bus-to-C-Bus acceptance, C-Bus-to-VDP2 acceptance and
+same-C-Bus rejection. Actual production direct setup and two word-transfer steps
+are executed; C-Bus destinations must use fixed word stepping, while emitted
+addresses retain the correct physical mirror. Neighboring bus decoding and
+selected A-Bus wait fields are checked for regressions. The negative control
+uses the classifier from `2cc26488273905f3623ef0b1d1e0fcd2e4a1e020`.
+
+Memory and DMA timer/IRQ endpoints are recording stand-ins; this does not test
+RAM alias resolution in MAME's address-space dispatcher, DMA completion, bus
+arbitration, timing, or a full indirect-descriptor chain. The indirect consequence
+above follows code inspection rather than an executed indirect DMA integration
+test. No broad DMA-accuracy completion claim or measured speedup.
+
+All **nine** regression scripts and three object compilations pass. Full linking
+and BIOS/game runtime validation remain pending.
