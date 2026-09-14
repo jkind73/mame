@@ -5667,6 +5667,10 @@ void saturn_state::vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,
       // compute sprite increment per screen pixel
       // int dx = (gfx->width()<<16)/sprite_screen_width;
       // int dy = (gfx->height()<<16)/sprite_screen_height;
+      /* dx and dy are 16.16 zoom increments copied out of a uint32_t
+         register pair, so a product with a pixel count does not fit in
+         int32_t and signed overflow is undefined; widen it and truncate
+         back, which is the value two's complement wrapping gives */
       int dx = current_tilemap.incx;
       int dy = current_tilemap.incy;
 
@@ -5677,14 +5681,14 @@ void saturn_state::vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,
       int y_index;
 
       if (flipx) {
-        x_index_base = (sprite_screen_width - 1) * dx;
+        x_index_base = s32(s64(sprite_screen_width - 1) * dx);
         dx = -dx;
       } else {
         x_index_base = 0;
       }
 
       if (flipy) {
-        y_index = (sprite_screen_height - 1) * dy;
+        y_index = s32(s64(sprite_screen_height - 1) * dy);
         dy = -dy;
       } else {
         y_index = 0;
@@ -5694,13 +5698,13 @@ void saturn_state::vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,
         // clip left
         int pixels = myclip.left() - sx;
         sx += pixels;
-        x_index_base += pixels * dx;
+        x_index_base += s32(s64(pixels) * dx);
       }
       if (sy < myclip.top()) {
         // clip top
         int pixels = myclip.top() - sy;
         sy += pixels;
-        y_index += pixels * dy;
+        y_index += s32(s64(pixels) * dy);
       }
       if (ex > myclip.right() + 1) {
         // clip right
@@ -5829,6 +5833,10 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
       /* compute sprite increment per screen pixel */
       // int dx = (gfx->width()<<16)/sprite_screen_width;
       // int dy = (gfx->height()<<16)/sprite_screen_height;
+      /* dx and dy are 16.16 zoom increments copied out of a uint32_t
+         register pair, so a product with a pixel count does not fit in
+         int32_t and signed overflow is undefined; widen it and truncate
+         back, which is the value two's complement wrapping gives */
       int dx = current_tilemap.incx;
       int dy = current_tilemap.incy;
 
@@ -5839,14 +5847,14 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
       int y_index;
 
       if (flipx) {
-        x_index_base = (sprite_screen_width - 1) * dx;
+        x_index_base = s32(s64(sprite_screen_width - 1) * dx);
         dx = -dx;
       } else {
         x_index_base = 0;
       }
 
       if (flipy) {
-        y_index = (sprite_screen_height - 1) * dy;
+        y_index = s32(s64(sprite_screen_height - 1) * dy);
         dy = -dy;
       } else {
         y_index = 0;
@@ -5856,13 +5864,13 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
         // clip left
         int pixels = myclip.left() - sx;
         sx += pixels;
-        x_index_base += pixels * dx;
+        x_index_base += s32(s64(pixels) * dx);
       }
       if (sy < myclip.top()) {
         // clip top
         int pixels = myclip.top() - sy;
         sy += pixels;
-        y_index += pixels * dy;
+        y_index += s32(s64(pixels) * dy);
       }
       if (ex > myclip.right() + 1) {
         // clip right
@@ -6012,6 +6020,10 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
       /* compute sprite increment per screen pixel */
       // int dx = (gfx->width()<<16)/sprite_screen_width;
       // int dy = (gfx->height()<<16)/sprite_screen_height;
+      /* dx and dy are 16.16 zoom increments copied out of a uint32_t
+         register pair, so a product with a pixel count does not fit in
+         int32_t and signed overflow is undefined; widen it and truncate
+         back, which is the value two's complement wrapping gives */
       int dx = current_tilemap.incx;
       int dy = current_tilemap.incy;
 
@@ -6022,14 +6034,14 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
       int y_index;
 
       if (flipx) {
-        x_index_base = (sprite_screen_width - 1) * dx;
+        x_index_base = s32(s64(sprite_screen_width - 1) * dx);
         dx = -dx;
       } else {
         x_index_base = 0;
       }
 
       if (flipy) {
-        y_index = (sprite_screen_height - 1) * dy;
+        y_index = s32(s64(sprite_screen_height - 1) * dy);
         dy = -dy;
       } else {
         y_index = 0;
@@ -6039,13 +6051,13 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
         // clip left
         int pixels = myclip.left() - sx;
         sx += pixels;
-        x_index_base += pixels * dx;
+        x_index_base += s32(s64(pixels) * dx);
       }
       if (sy < myclip.top()) {
         // clip top
         int pixels = myclip.top() - sy;
         sy += pixels;
-        y_index += pixels * dy;
+        y_index += s32(s64(pixels) * dy);
       }
       if (ex > myclip.right() + 1) {
         // clip right
@@ -6169,6 +6181,10 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
   myclip &= dest_bmp.cliprect();
 
   {
+    /* dx and dy are 16.16 zoom increments copied out of a uint32_t
+       register pair, so a product with a pixel count does not fit in
+       int32_t and signed overflow is undefined; widen it and truncate
+       back, which is the value two's complement wrapping gives */
     int dx = current_tilemap.incx;
     int dy = current_tilemap.incy;
 
@@ -6179,14 +6195,14 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
     int y_index;
 
     if (flipx) {
-      x_index_base = (sprite_screen_width - 1) * dx;
+      x_index_base = s32(s64(sprite_screen_width - 1) * dx);
       dx = -dx;
     } else {
       x_index_base = 0;
     }
 
     if (flipy) {
-      y_index = (sprite_screen_height - 1) * dy;
+      y_index = s32(s64(sprite_screen_height - 1) * dy);
       dy = -dy;
     } else {
       y_index = 0;
@@ -6196,13 +6212,13 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
       // clip left
       int pixels = myclip.left() - sx;
       sx += pixels;
-      x_index_base += pixels * dx;
+      x_index_base += s32(s64(pixels) * dx);
     }
     if (sy < myclip.top()) {
       // clip top
       int pixels = myclip.top() - sy;
       sy += pixels;
-      y_index += pixels * dy;
+      y_index += s32(s64(pixels) * dy);
     }
     if (ex > myclip.right() + 1) {
       // clip right
@@ -6264,6 +6280,10 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
   myclip &= dest_bmp.cliprect();
 
   {
+    /* dx and dy are 16.16 zoom increments copied out of a uint32_t
+       register pair, so a product with a pixel count does not fit in
+       int32_t and signed overflow is undefined; widen it and truncate
+       back, which is the value two's complement wrapping gives */
     int dx = current_tilemap.incx;
     int dy = current_tilemap.incy;
 
@@ -6274,14 +6294,14 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
     int y_index;
 
     if (flipx) {
-      x_index_base = (sprite_screen_width - 1) * dx;
+      x_index_base = s32(s64(sprite_screen_width - 1) * dx);
       dx = -dx;
     } else {
       x_index_base = 0;
     }
 
     if (flipy) {
-      y_index = (sprite_screen_height - 1) * dy;
+      y_index = s32(s64(sprite_screen_height - 1) * dy);
       dy = -dy;
     } else {
       y_index = 0;
@@ -6291,13 +6311,13 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
       // clip left
       int pixels = myclip.left() - sx;
       sx += pixels;
-      x_index_base += pixels * dx;
+      x_index_base += s32(s64(pixels) * dx);
     }
     if (sy < myclip.top()) {
       // clip top
       int pixels = myclip.top() - sy;
       sy += pixels;
-      y_index += pixels * dy;
+      y_index += s32(s64(pixels) * dy);
     }
     if (ex > myclip.right() + 1) {
       // clip right
@@ -7017,8 +7037,14 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
 
   scalex = s32(s64(0x100000000U) / s64(current_tilemap.incx));
   scaley = s32(s64(0x100000000U) / s64(current_tilemap.incy));
-  tilesizex = scalex * 8;
-  tilesizey = scaley * 8;
+  /* scalex and scaley are 0x100000000 / inc, so a zoomed-in layer gives them
+     values up to 2^30 and inc == 2 gives INT_MIN; both this product and the
+     scroll products below are signed and overflow, which is undefined rather
+     than wrapped.  Widen and truncate, which is the value wrapping gives.
+     The negation is done in 64 bits so that -(INT_MIN) is not itself an
+     overflow. */
+  tilesizex = s32(s64(scalex) * 8);
+  tilesizey = s32(s64(scaley) * 8);
   drawypos = drawxpos = 0;
 
   /* Calculate the Number of tiles for x / y directions of each page (actually
@@ -7206,15 +7232,16 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
     map = 0;
     page = 0;
     if (y == 0) {
-      int drawyposinc = tilesizey * (current_tilemap.tile_size ? 2 : 1);
-      drawypos = -(current_tilemap.scrolly * scaley);
+      int drawyposinc =
+          s32(s64(tilesizey) * (current_tilemap.tile_size ? 2 : 1));
+      drawypos = s32(-s64(current_tilemap.scrolly) * scaley);
       while (((drawypos + drawyposinc) >> 16) < cliprect.top()) {
         drawypos += drawyposinc;
         y++;
       }
       mptiles_y += y;
     } else {
-      drawypos += tilesizey * (current_tilemap.tile_size ? 2 : 1);
+      drawypos += s32(s64(tilesizey) * (current_tilemap.tile_size ? 2 : 1));
     }
     if ((drawypos >> 16) > cliprect.bottom())
       break;
@@ -7226,15 +7253,16 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
       int tilecodespacing = 1;
 
       if (x == 0) {
-        int drawxposinc = tilesizex * (current_tilemap.tile_size ? 2 : 1);
-        drawxpos = -(current_tilemap.scrollx * scalex);
+        int drawxposinc =
+            s32(s64(tilesizex) * (current_tilemap.tile_size ? 2 : 1));
+        drawxpos = s32(-s64(current_tilemap.scrollx) * scalex);
         while (((drawxpos + drawxposinc) >> 16) < cliprect.left()) {
           drawxpos += drawxposinc;
           x++;
         }
         mptiles_x += x;
       } else {
-        drawxpos += tilesizex * (current_tilemap.tile_size ? 2 : 1);
+        drawxpos += s32(s64(tilesizex) * (current_tilemap.tile_size ? 2 : 1));
       }
       if ((drawxpos >> 16) > cliprect.right())
         break;
