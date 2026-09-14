@@ -2154,7 +2154,7 @@ void saturn_state::vdp1_reset_raster_queue() {
   // Inactive records are irrelevant. Avoid clearing the full bounded span
   // array on every command/restart (only indices and live cursor are reset).
   m_vdp1_raster.count = m_vdp1_raster.index = m_vdp1_raster.dot = 0;
-  m_vdp1_raster.x = m_vdp1_raster.y = m_vdp1_raster.error = 0;
+  m_vdp1_raster.x = m_vdp1_raster.y = m_vdp1_raster.error = m_vdp1_raster.end_codes = 0;
   m_vdp1_raster.extra = false;
   m_vdp1_texture_end.fill(-1);
 }
@@ -2176,6 +2176,8 @@ void saturn_state::vdp1_draw_raster_slice() {
   // Bound host work and yield to ENDR/CPU events within a primitive. ST-013
   // describes nominal one-dot-per-clock drawing. A quantum covers at most
   // 16 raster positions and their coverage dots, not exact bus wait states.
+  // A normal-sprite END may shorten work after the quantum was scheduled;
+  // its unused time is not retroactively removed from the elapsed interval.
   m_vdp1_raster_budget = 16;
   m_vdp1_raster_running = true;
   vdp1_set_drawpixel(); // Reconstruct the dispatch pointer, including postload.
@@ -2183,15 +2185,54 @@ void saturn_state::vdp1_draw_raster_slice() {
     const int32_t *const data = m_vdp1_raster.segments.data() + vdp1_raster_state::segment_words * m_vdp1_raster.index;
     const spoint a{data[0], data[1], 0, 0}, b{data[2], data[3], 0, 0};
     const rectangle cliprect(data[6], data[7], data[8], data[9]);
-    vdp1_draw_segment(cliprect, a, b, data[4], data[5], data[10], data[11], data[12]);
+    if (data[10] < 0)
+      vdp1_draw_rectangle_slice(data);
+    else
+      vdp1_draw_segment(cliprect, a, b, data[4], data[5], data[10], data[11], data[12]);
     const int length = std::max(std::abs(b.x - a.x), std::abs(b.y - a.y)) + 1;
     if (m_vdp1_raster.dot >= length) {
       ++m_vdp1_raster.index;
       m_vdp1_raster.dot = 0;
       m_vdp1_raster.extra = false;
+      m_vdp1_raster.end_codes = 0;
     }
   }
   m_vdp1_raster_running = false;
+}
+
+void saturn_state::vdp1_draw_rectangle_slice(const int32_t *data) {
+  // Negative span kinds select the existing rectangular texture traversals.
+  // Normal sprites count fetched END texels; scaled sprites retain the source
+  // row cutoff and integer resampling, including skipped source END markers.
+  const bool scaled = data[10] == -2;
+  const int width = data[12], columns = data[5];
+  const int address = current_sprite.CMDSRCA * 8;
+  const uint16_t mode = current_sprite.CMDPMOD;
+  const bool hss = scaled && (mode & 0x1000) && columns < width;
+  if (scaled)
+    current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x80 : 0);
+  const int length = data[2] - data[0] + 1;
+  while (m_vdp1_raster.dot < length && m_vdp1_raster_budget) {
+    const int x = data[0] + m_vdp1_raster.dot;
+    int texel;
+    if (scaled) {
+      const int u = vdp1_scaled_coordinate(std::max(1, hss ? width / 2 : width),
+          columns, std::abs(x - data[4]), current_sprite.CMDCTRL & 0x10);
+      texel = data[11] * width + (hss ? u * 2 + m_vdp1_legacy.draw_eos : u);
+    } else {
+      texel = data[11] + m_vdp1_raster.dot * data[4];
+    }
+    ++m_vdp1_raster.dot;
+    --m_vdp1_raster_budget;
+    if (!scaled && !(mode & 0x80) && vdp1_is_end_code(address, texel) &&
+        ++m_vdp1_raster.end_codes == 2) {
+      m_vdp1_raster.dot = length;
+      break;
+    }
+    if (!scaled || vdp1_texture_sample_visible(address, width, texel))
+      (this->*drawpixel)(x, data[1], address, texel);
+  }
+  current_sprite.CMDPMOD = mode;
 }
 
 void saturn_state::vdp1_draw_line(const rectangle &cliprect) {
@@ -2375,6 +2416,19 @@ void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int addres
   if (left > right || top > bottom)
     return;
 
+  if (m_vdp1_raster_building) {
+    for (int y = top; y <= bottom; ++y) {
+      const int v = width ? vdp1_scaled_coordinate(height, rows, std::abs(y - q[0].y),
+          current_sprite.CMDCTRL & 0x20) : 0;
+      const std::array<int32_t, vdp1_raster_state::segment_words> span = {
+          left, y, right, y, q[0].x, columns, 0, 0, 0, 0, -2, v, width};
+      assert(m_vdp1_raster.count < vdp1_raster_state::max_segments);
+      std::copy(span.begin(), span.end(), m_vdp1_raster.segments.begin() +
+          vdp1_raster_state::segment_words * m_vdp1_raster.count++);
+    }
+    return;
+  }
+
   const bool hss = (current_sprite.CMDPMOD & 0x1000) && columns < width;
   const bool flip_x = current_sprite.CMDCTRL & 0x10;
   const bool flip_y = current_sprite.CMDCTRL & 0x20;
@@ -2534,6 +2588,17 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
   for (drawypos = y; drawypos <= maxdrawypos; drawypos++) {
     // destline = m_vdp1_legacy.framebuffer_draw_lines[drawypos];
     su = u;
+    if (m_vdp1_raster_building) {
+      if (x <= maxdrawxpos) {
+        const std::array<int32_t, vdp1_raster_state::segment_words> span = {
+            x, drawypos, maxdrawxpos, drawypos, dux, 0, 0, 0, 0, 0, -1, u, 0};
+        assert(m_vdp1_raster.count < vdp1_raster_state::max_segments);
+        std::copy(span.begin(), span.end(), m_vdp1_raster.segments.begin() +
+            vdp1_raster_state::segment_words * m_vdp1_raster.count++);
+      }
+      u = su + duy;
+      continue;
+    }
     unsigned end_codes = 0;
     for (drawxpos = x; drawxpos <= maxdrawxpos; drawxpos++) {
       // ST-013 section 6.3: the second fetched end code terminates this
@@ -2565,7 +2630,7 @@ void saturn_state::vdp1_abort_draw() {
 void saturn_state::vdp1_request_termination() {
   // ST-013 section 4.5 specifies approximately 30 VDP1 clocks. Keep command
   // execution live during that interval rather than stopping at the write.
-  // Lines, polylines and quads yield in slices; normal/scaled sprites remain atomic.
+  // Legal nonzero-height primitive paths yield in saved raster slices.
   if (m_vdp1_legacy.drawing)
     m_vdp1_legacy.terminate_timer->adjust(m_maincpu->cycles_to_attotime(30));
 }
@@ -2748,7 +2813,10 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
           logerror("Sprite List Normal Sprite (%d %d)\n", current_sprite.CMDXA,
                    current_sprite.CMDYA);
         current_sprite.ispoly = 0;
+        vdp1_reset_raster_queue();
+        m_vdp1_raster_building = true;
         vdp1_draw_normal_sprite(*cliprect, 0);
+        m_vdp1_raster_building = false;
         break;
 
       case 0x0001:
@@ -2756,7 +2824,10 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
           logerror("Sprite List Scaled Sprite (%d %d)\n", current_sprite.CMDXA,
                    current_sprite.CMDYA);
         current_sprite.ispoly = 0;
+        vdp1_reset_raster_queue();
+        m_vdp1_raster_building = true;
         vdp1_draw_scaled_sprite(*cliprect);
+        m_vdp1_raster_building = false;
         break;
 
       case 0x0002:
@@ -2961,6 +3032,17 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_raster.y));
   save_item(NAME(m_vdp1_raster.error));
   save_item(NAME(m_vdp1_raster.extra));
+  save_item(NAME(m_vdp1_raster.end_codes));
+  // Rectangular Gouraud interpolation is prepared at command fetch. Preserve
+  // those coefficients, rather than re-reading a possibly edited VRAM table.
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, x));
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, r));
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, g));
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, b));
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, dr));
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, dg));
+  save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, db));
+
   save_item(NAME(m_vdp1_texture_end));
   save_item(NAME(current_sprite.CMDCTRL));
   save_item(NAME(current_sprite.CMDLINK));
