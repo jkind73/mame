@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:MAMEdev Team
-"""Run Saturn regressions and compile the changed translation units to objects.
+"""Run Saturn regressions and compile Saturn/ST-V core and driver translation units to objects.
 
 --full additionally builds a focused SDL Saturn/ST-V executable and runs MAME's
 ROM-free -validate command. Neither mode boots a game or validates real hardware.
@@ -38,13 +38,18 @@ run([sys.executable, str(ROOT / "regtests/saturn/run_all.py")])
 flags = ["-std=c++20", "-O1", "-c", "-fno-strict-aliasing", "-DMAME_NOASM",
          "-D__STDC_CONSTANT_MACROS", "-D__STDC_FORMAT_MACROS", "-D__STDC_LIMIT_MACROS"]
 for directory in ("src", "src/emu", "src/lib", "src/lib/util", "src/devices",
-                  "src/mame", "src/osd", "src/osd/modules"):
+                  "src/mame", "src/mame/shared", "src/osd", "src/osd/modules"):
     flags += ["-I", directory]
 with tempfile.TemporaryDirectory(prefix="saturn-objects-") as directory:
-    for name in ("saturn", "saturn_vdp2", "saturn_scu"):
-        run([os.environ.get("CXX", "g++"), *flags, f"src/mame/sega/{name}.cpp",
+    # Use MAME's own layout compiler; generated headers stay in the temporary
+    # object directory and never enter the working tree or Git.
+    for layout in ("critcrsh", "segabill", "segabillv"):
+        run([sys.executable, "scripts/build/complay.py", f"src/mame/layout/{layout}.lay",
+             str(Path(directory) / (layout + ".lh")), "layout_" + layout])
+    for name in ("saturn", "saturn_vdp2", "saturn_scu", "saturn_dcc", "sat_console", "stv"):
+        run([os.environ.get("CXX", "g++"), *flags, "-I", directory, f"src/mame/sega/{name}.cpp",
              "-o", str(Path(directory) / (name + ".o"))])
-print("Regressions and three object compilations passed (not a linked MAME build).", flush=True)
+print("Regressions and six object compilations passed (not a linked MAME build).", flush=True)
 
 if args.full:
     run(["make", f"-j{args.jobs}", "SUBTARGET=saturn", "REGENIE=1", "SYMBOLS=0", "OPTIMIZE=1",

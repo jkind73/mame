@@ -38,8 +38,8 @@ INTERLEAVE_DURATION but that breaks initial game loading)
 
 **************************************************************************************************/
 
-#include "saturn_dcc.h"
 #include "emu.h"
+#include "saturn_dcc.h"
 
 
 DEFINE_DEVICE_TYPE(SATURN_DCC, saturn_dcc_device, "saturn_dcc",

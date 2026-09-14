@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Wider driver/DCC build validation — 2026-09-14
+
+Normal validation now compiles six objects, including Saturn console, ST-V and
+DCC. Fixed DCC/ST-V include order; generated layouts remain temporary. All thirteen
+scripts and six objects pass. No hardware behavior was changed, and a linked
+executable/full dependency and runtime validation are still pending.
+
 ## DMA control-register audit — 2026-09-14
 
 Existing increment, mode/update and enable/GO decoding passed 13,824 new cases,

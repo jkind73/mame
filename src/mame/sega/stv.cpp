@@ -114,8 +114,8 @@ by introdon in ST-V ("SG0000000"), and according to the manual it's even wrong.
 
 **************************************************************************************************/
 
-#include "stv.h"
 #include "emu.h"
+#include "stv.h"
 
 
 #include "saturn_cd_hle.h"
