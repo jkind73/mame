@@ -70,13 +70,14 @@ protected:
     int framebuffer_height = 0;
     int framebuffer_current_display = 0;
     int framebuffer_current_draw = 0;
-    int framebuffer_clear_on_next_frame = 0;
     rectangle system_cliprect;
     rectangle user_cliprect;
     std::unique_ptr<uint16_t[]> framebuffer[2];
     std::unique_ptr<uint16_t[]> field_framebuffer[2];
     bool field_valid[2] = {false, false};
     uint8_t draw_field = 0;
+    uint8_t draw_eos = 0;
+    uint16_t erase_upper_left = 0, erase_lower_right = 0;
     std::unique_ptr<uint16_t *[]> framebuffer_draw_lines;
     std::unique_ptr<uint8_t[]> gfx_decode;
     uint16_t lopr = 0;
@@ -179,6 +180,7 @@ protected:
   void vdp2_regs_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
   /* VDP1 */
+  void vdp1_latch_framebuffer_config();
   void vdp1_set_framebuffer_config();
   void vdp1_prepare_framebuffers();
   void vdp1_change_framebuffers();

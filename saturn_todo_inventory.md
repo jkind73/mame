@@ -1,5 +1,37 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Framebuffer field control and register latches — 2026-09-14
+
+- Bank changes and automatic PTMR drawing now occur at screen field start
+  (VDP2 VBlank OUT), not VBlank IN. This is scanline-resolution scheduling,
+  not the final HBlank-edge timing model.
+- Manual erase is consumed in the next field without requiring a later manual
+  change. VBE erases the displayed bank after the first blank line and repeats
+  while enabled, even without a fresh FBCR change request. Erase is still atomic;
+  per-line/blank-budget truncation and scanout interaction remain unfinished.
+- TVM changes no longer reset bank ownership. DIE, DIL, EOS, erase data and erase
+  bounds latch on bank change, rather than being read live by rendering/erase.
+  New latch state is save-registered; postload reconstructs views without latching
+  pending writes. Zero-mask register accesses cannot submit requests.
+- Removed the obsolete deferred-clear flag and debug-dependent automatic start.
+
+Evidence: ST-013-R3 p.35 register switch timing, pp.38–40 manual modes and VBE,
+p.43 DIL; MiSTer a95b085 FRAME_CHANGE/VBOUT and DIE/DIL latches; Mednafen f0ee9d5
+field-boundary erase-parameter latching; Ymir 6d77996 VDP1SwapFramebuffer and its
+explicit pending-latch TODO. No wholesale reference code was imported.
+
+Tests execute production scanline, register-write, bank-change and erase helpers
+through two multi-field sequences, one per bank. They cover no-op writes,
+manual erase without a later swap, one-shot requests, persistent VBE, automatic
+start phase, preserved ownership, and delayed DIE/EOS/erase settings. Wrong field
+phase and wrong erase latch mutations fail assertions. All 18 scripts/nine object
+compilations pass. No linked game/BIOS or actual save-manager round trip is claimed.
+
+VDP1 remains incomplete: raster primitives are still atomic, so ENDR cannot stop
+inside one; pixel/VRAM arbitration, erase budgets, hardware pre-clipping and exact
+boundary timing still need implementation and runtime qualification.
+
+
 ## Native line and quad coverage — 2026-09-14
 
 Lines/polylines now use a signed 13-bit integer line-error datapath with directional
