@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -44,12 +44,16 @@ functions+=extract(current,'void saturn_state::vdp1_draw_segment(').replace('sat
 functions+=extract(current,'void saturn_state::vdp1_draw_quad_pixels(')+'\n'
 functions+=extract(current,'void saturn_state::vdp1_draw_distorted_sprite(').replace('saturn_state::vdp1_draw_distorted_sprite','saturn_state::raster_distorted')+'\n'
 functions+=extract(current,'TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline)').replace('TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline)','void saturn_state::scanline_tick(int param)')+'\n'
-shader_signatures=('uint8_t saturn_state::read_gouraud_table()', 'void saturn_state::vdp1_setup_shading(', 'void saturn_state::vdp1_setup_shading_for_line(', 'void saturn_state::vdp1_setup_shading_for_slope(')
+shader_signatures=('void saturn_state::vdp1_setup_rectangle_shading(', 'uint8_t saturn_state::read_gouraud_table()', 'void saturn_state::vdp1_setup_shading(', 'void saturn_state::vdp1_setup_shading_for_line(', 'void saturn_state::vdp1_setup_shading_for_slope(')
 functions+='\n'.join(extract(current,sig) for sig in shader_signatures)+'\n'
 for name in ('line','poly_line'):
     functions+=extract(current,'void saturn_state::vdp1_draw_'+name+'(').replace('saturn_state::vdp1_draw_'+name,'saturn_state::raster_'+name)+'\n'
 if a.render_mutation:
     mutations = {
+        'legacy_shading_origin': ('swap(xx1, xx2);\n    swap(x1, x2);', 'swap(xx1, xx2);'),
+        'rectangle_bottom': ('for (int y = top; y <= bottom; ++y) {\n    auto &line', 'for (int y = top; y < bottom; ++y) {\n    auto &line'),
+        'rectangle_origin': ('std::abs(x - origin), b < a)', 'x - std::min(origin, line.x[1] >> FRAC_SHIFT), b < a)'),
+        'rectangle_fractional': ('std::abs(b - a) + 1, columns, std::abs(x - origin), b < a)', 'std::abs(b - a) + 1, columns + 1, std::abs(x - origin), b < a)'),
         'rectangle_end': ('const bool scaled = data[10] == -2;', 'm_vdp1_raster.end_codes = 0; const bool scaled = data[10] == -2;'),
         'rectangle_resume': ('texel = data[11] + m_vdp1_raster.dot * data[4];', 'texel = data[11] + (m_vdp1_raster.dot % 16) * data[4];'),
         'mon': ('line[word] |= 0x8000;', 'vdp1_write_pixel(x, y, src | 0x8000);'),
@@ -101,7 +105,7 @@ for signature in ('void saturn_state::machine_reset()', 'void saturn_state::syst
 for field in ('segments','count','index','dot','x','y','error','extra','end_codes'):
     assert f'save_item(NAME(m_vdp1_raster.{field}));' in current
 assert 'save_item(NAME(m_vdp1_texture_end));' in current
-for field in ('x','r','g','b','dr','dg','db'):
+for field in ('integer','x','r','g','b','dr','dg','db'):
     assert f'save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, {field}));' in current
 for field in ('CMDCTRL','CMDPMOD','CMDCOLR','ispoly'):
     assert f'save_item(NAME(current_sprite.{field}));' in current
@@ -230,6 +234,7 @@ struct saturn_state {
  }
  uint8_t read_gouraud_table();
  void vdp1_setup_shading(const spoint*,const rectangle&);
+ void vdp1_setup_rectangle_shading(const spoint*,const rectangle&);
  void raster_segment(const rectangle&,const spoint&,const spoint&,uint16_t,uint16_t,bool=false,int=-1,int=0);
  void vdp1_draw_quad_pixels(const rectangle&,int,int,const spoint*);
  void vdp1_draw_segment(const rectangle &r,const spoint &a,const spoint &b,uint16_t ca,uint16_t cb,bool coverage=false,int row=-1,int width=0){
@@ -672,7 +677,10 @@ int main(){
   for(unsigned i=0;i<2;++i)target.vdp1_vram_w(c.CMDGRDA*2+i,source.m_vdp1_vram[c.CMDGRDA*2+i],0xffffffff);
   // Keep the CPU word storage and the byte decode cache coherent via the real
   // VRAM writer; texture/command/table regions must not overlap in this test.
-  for(unsigned i=0;i<16;++i){unsigned address=c.CMDSRCA*8+i*4;uint32_t word=0;
+  const unsigned mode=(c.CMDPMOD>>3)&7;
+  const unsigned pixels=((c.CMDSIZE>>8)&63)*8*(c.CMDSIZE&255);
+  const unsigned bytes=std::max(64u,(pixels*(mode<2?1:mode<5?2:4)+1)/2);
+  for(unsigned i=0;i<(bytes+3)/4;++i){unsigned address=c.CMDSRCA*8+i*4;uint32_t word=0;
    for(int j=0;j<4;++j)word=(word<<8)|original.gfx_decode[address+j];
    target.vdp1_vram_w(address/4,word,0xffffffff);
   }
@@ -685,6 +693,60 @@ int main(){
   target.scu_.irqs=0;
  };
 
+ // Independent integer recurrence oracle: quantize A-D/B-C first, then
+ // interpolate the connecting row. Constant RGB texture isolates shading.
+ // Legacy fallback keeps coordinates paired with swapped endpoint colors,
+ // and must clear an integer-row tag left by an earlier rectangle.
+ s->vdp1_shading_data->scanline[0].integer=true;
+ s->vdp1_setup_shading_for_line(0,8<<16,2<<16,24<<16,16<<16,0,0,16<<16,24<<16);
+ assert(!s->vdp1_shading_data->scanline[0].integer);
+ for(int x : {2,5,8}){
+  const uint16_t expected=0x8000|((x-2)*4)|(16<<5)|((8-x)*4<<10);
+  assert(s->vdp1_apply_gouraud_shading(x,0,0xc210)==expected);
+ }
+ std::cout<<"3 reversed legacy Gouraud origin probes passed\n";
+ unsigned rectangle_shading_cases=0;
+ for(int primitive : {0,1})for(int width : {1,2,8,32,40})for(int height : {1,2,7,16,32})
+ for(int axes=0;axes<4;++axes)for(int direction=0;direction<4;++direction)
+ for(int operation : {4,6,7})for(int clipping : {0,1}){
+  if(primitive==0&&(width!=8&&width!=32))continue;
+  if(primitive==0&&axes)continue;
+  auto &c=s->current_sprite;auto &l=s->m_vdp1_legacy;s->tvm=0;s->m_vdp1_regs[0]=0;
+  l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.framebuffer_width=512;l.framebuffer_height=256;
+  l.framebuffer_double_interlace=0;l.draw_eos=0;l.local_x=l.local_y=0;
+  l.system_cliprect.set(0,63,0,63);l.user_cliprect.set(3,27,2,25);s->vdp1_prepare_framebuffers();
+  const int left=clipping?-4:5,top=clipping?-3:5;
+  const int xa=left+((axes&1)?width-1:0),xc=left+((axes&1)?0:width-1);
+  const int ya=top+((axes&2)?height-1:0),yc=top+((axes&2)?0:height-1);
+  c.CMDCTRL=primitive|(direction<<4);c.CMDPMOD=0xa8|operation|(clipping?0x400:0);
+  c.CMDCOLR=0;c.CMDSRCA=0x400;c.CMDSIZE=primitive?0x0104:((width/8)<<8)|height;c.CMDGRDA=0x200;c.ispoly=0;
+  c.CMDXA=xa;c.CMDYA=ya;c.CMDXC=xc;c.CMDYC=yc;
+  const uint16_t corners[4]={0x001f,0x7c00,0x03e0,0x4210};
+  s->m_vdp1_vram[0x400]=(uint32_t(corners[0])<<16)|corners[1];
+  s->m_vdp1_vram[0x401]=(uint32_t(corners[2])<<16)|corners[3];
+  for(int i=0;i<1024;++i){l.gfx_decode[0x2000+i*2]=0xc2;l.gfx_decode[0x2001+i*2]=0x10;}
+  load_quad(*quad_engine,*s);*quad_engine->vdp1_shading_data={};
+  quad_engine->vdp1_process_list();quad_engine->fire();
+  assert(!quad_engine->cef);
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x)assert(quad_engine->m_vdp1_legacy.framebuffer[0][y*512+x]==0xffff);
+  for(unsigned ticks=0;quad_engine->m_vdp1_legacy.drawing;++ticks){assert(ticks<8192);quad_engine->fire();}
+  const auto interpolate=[&](int a,int b,int length,int dot){return std::min(a,b)+texture_oracle(std::abs(b-a)+1,length,dot,b<a);};
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x){
+   uint16_t expected=0xffff;
+   bool visible=x>=left&&x<left+width&&y>=top&&y<top+height;
+   if(clipping)visible=visible&&x>=3&&x<=27&&y>=2&&y<=25;
+   if(visible){expected=0x8000;for(int shift : {0,5,10}){
+    int a=interpolate((corners[0]>>shift)&31,(corners[3]>>shift)&31,height,std::abs(y-ya));
+    int b=interpolate((corners[1]>>shift)&31,(corners[2]>>shift)&31,height,std::abs(y-ya));
+    int value=interpolate(a,b,width,std::abs(x-xa));
+    if(operation==6)value/=2;else if(operation==7)value=(value+31)/2;
+    expected|=value<<shift;
+   }}
+   assert(quad_engine->m_vdp1_legacy.framebuffer[0][y*512+x]==expected);
+  }
+  assert(quad_engine->cef&&quad_engine->scu_.irqs==1);++rectangle_shading_cases;
+ }
+ std::cout<<rectangle_shading_cases<<" independent queued rectangle Gouraud images passed\n";
  const int shapes[][8]={{4,4,20,4,20,20,4,20},{4,8,18,2,25,19,12,23},{4,4,20,20,20,4,4,20},
   {4,4,20,4,12,20,12,20},{12,12,12,12,12,12,12,12},{4,4,20,16,20,16,4,4},
   {-5,-3,20,5,14,25,-5,18},{20,4,4,4,4,20,20,20}};
@@ -1207,7 +1269,7 @@ int main(){
  std::cout<<commands<<" VDP1 command/completion, "<<fb<<" framebuffer and "<<clipping<<" pixel-clipping scenarios passed\n";
 }
 '''.replace('// TYPES',types).replace('// FUNCTIONS',functions)
-harness=harness.replace('SHADER_PROTOTYPES','\n'.join(extract(current,sig).split('{')[0].replace('saturn_state::','')+';' for sig in shader_signatures[2:]))
+harness=harness.replace('SHADER_PROTOTYPES','\n'.join(extract(current,sig).split('{')[0].replace('saturn_state::','')+';' for sig in shader_signatures[3:]))
 with tempfile.TemporaryDirectory(prefix='saturn-vdp1-') as tmp:
     src=Path(tmp)/'test.cpp';exe=Path(tmp)/'test';src.write_text(harness)
     subprocess.run([os.environ.get('CXX','g++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie',str(src),'-o',str(exe)],check=True)
