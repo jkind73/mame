@@ -1,5 +1,35 @@
 # VDP1 completion audit — 2026-09-14
 
+## Rotation, interlace and delayed ENDR — 2026-09-14
+
+Implemented six-parameter-A sprite framebuffer readout in both rotated formats,
+with signed Q9 accumulation, parameter-table masking/VRAM-size selection and
+transparent out-of-plane samples. All three sprite compositor paths use it.
+Double-interlace drawing selects the latched DIL parity and halves physical Y;
+full-frame display weaves completed-field snapshots, not a bank being redrawn.
+Physical banks are now 256 KiB, including CPU-window mirroring, physical erase
+rows and wrapped line views. Both physical payloads and field snapshots are
+save-registered. **Correction:** the old framebuffer payloads were not registered;
+previous pointer/postload tests did not establish framebuffer-content saving.
+
+ENDR now schedules termination after 30 modeled SH-2/VDP1 clocks instead of
+aborting immediately. Reset/restart/END cancels pending termination. Primitives
+remain atomic: this is not a completed pixel pipeline or measured bus timing.
+
+Validation: 18 scripts/nine objects pass; VDP1 has 92,420 color/shading, 2,689
+normal-END, 974 rotation, 32,832 command, 532 framebuffer, 24,500 clipping cases
+and two multi-step interlace lifecycle sequences (16-bit/high-resolution 8-bit).
+Rotation/parameter-B mutations and all four previous render mutations fail
+assertions. Field tests cover DIL latching, parity, snapshots during redraw,
+postload pointer reconstruction, physical erase rows and CPU mirroring.
+No linked BIOS/game run or actual save-manager round trip is claimed.
+
+Primary: ST-013-R3 pp.15,43,47–51; ST-58-R2 pp.159–160. Cross-checks: pinned
+MiSTer a95b085 (rotation datapath/physical banks), Ymir 6d77996 (affine readout),
+Mednafen f0ee9d5 (field parity/physical Y). MiSTer confirms Q9 truncation before
+accumulation; Ymir's Q10 differs. Rotation-8 byte selection follows transformed
+source X; MiSTer's output-X byte mux remains an unresolved reference difference.
+
 ## VDP1 rendering/status audit — 2026-09-14
 
 Implemented destination-preserving MON, coordinate-based Gouraud evaluation
@@ -7,7 +37,7 @@ Implemented destination-preserving MON, coordinate-based Gouraud evaluation
 component-wise color calculations, bounded color-lookup fetches, and two-end-code
 row termination in the production normal-sprite loop. BEF now latches on an actual
 framebuffer change rather than every VBlank in manual mode. This does not complete
-scaled/distorted texture traversal, interlace, rotated scanout or pixel timing.
+scaled/distorted texture traversal or pixel timing; rotation/interlace were added in the later pass above.
 
 Tests pass: 92,420 color/shading cases, 2,689 normal-texture/boundary cases,
 32,816 command/lifecycle cases, 532 framebuffer cases and 24,500 clipping cases.
@@ -113,11 +143,11 @@ The full validator passes **18 scripts and nine object compilations**.
 
 | Area | Current gap | Required implementation/verification |
 |---|---|---|
-| Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR stops between primitives. | Subdivide primitive execution and implement documented approximately 30-clock pipeline termination; real save/load during primitives. |
+| Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR schedules a 30-clock stop. | Subdivide primitive execution and qualify pipeline termination; real save/load during primitives. |
 | Timing / transfer-over | Each command fetch gets 16 SH-2 cycles; lists may cross frames, but pixel/bus costs are absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
 | PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. BEF now latches on bank change. Automatic start/swap/erase timing remains incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
 | Command control | Valid eight jump controls, persistent fetch state and scheduler-yielding loops are implemented. Prohibited/undocumented commands still use fallback behavior. | Hardware investigation of illegal opcodes/aliases and prohibited flow; do not invent a primary-defined result for them. |
-| Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Double-interlace/DIL/EOS, rotated VDP2 coordinate readout, mismatched dot formats and broader erase-bound tests. |
+| Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Rotation and DIE/DIL field addressing are implemented above; EOS, mismatched dot formats, timing qualification and broader erase-bound tests remain. |
 | Rasterization | Affine quad/line code has known vertex, stipple and zoom differences. | Hardware-consistent line/polygon edge coverage and sprite scaling; pixel-golden tests for degenerates, flips, all zoom anchors, clipping and negative coordinates. |
 | Texture / color | Normal-sprite second-END termination, destination MON and Gouraud/color combinations are implemented and tested. | Scaled/distorted end-code traversal, high-speed shrink/EOS, pre-clipping, exact interpolation/rounding qualification and full-image tests. |
 | Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |

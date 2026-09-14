@@ -11,7 +11,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode'))
+p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -24,7 +24,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
-functions+='\n'.join(extract(current,s) for s in ('uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
+functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
  ('framebuffer',['void saturn_state::vdp1_framebuffer0_w(', 'uint32_t saturn_state::vdp1_framebuffer0_r(']),
@@ -37,10 +37,12 @@ functions += extract(current, 'void saturn_state::vdp1_draw_normal_sprite(').rep
     'saturn_state::vdp1_draw_normal_sprite', 'saturn_state::raster_normal') + '\n'
 if a.render_mutation:
     mutations = {
-        'mon': ('line[(VDP1_TVM() & 1) ? (x >> 1) : x] |= 0x8000;', 'vdp1_write_pixel(x, y, src | 0x8000);'),
+        'mon': ('line[word] |= 0x8000;', 'vdp1_write_pixel(x, y, src | 0x8000);'),
         'round': ('(src & dst & 0x0421)', '0'),
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
         'endcode': ('if (++end_codes == 2)', 'if (++end_codes == 99)'),
+        'rotation': ('const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);', 'const int sx = x;'),
+        'parameter_b': ('0xffbe', '0xfffe'),
     }
     before,after=mutations[a.render_mutation]
     assert functions.count(before)==1
@@ -51,12 +53,18 @@ for field in ('drawing','command_position','command_return'):
     assert f'save_item(NAME(m_vdp1_legacy.{field}));' in current
 assert 'vdp1_abort_draw();' in extract(current,'void saturn_state::machine_reset()')
 assert 'vdp1_abort_draw();' in extract(current,'void saturn_state::system_reset_w(')
-assert 'vdp1_abort_draw();' in extract(current,'void saturn_state::vdp1_regs_w(')
+assert 'vdp1_request_termination();' in extract(current,'void saturn_state::vdp1_regs_w(')
+for bank in (0,1):
+    for name in ('framebuffer','field_framebuffer'):
+        assert f'save_pointer(NAME(m_vdp1_legacy.{name}[{bank}]), 0x20000);' in current
+for name in ('field_valid','draw_field'):
+    assert f'save_item(NAME(m_vdp1_legacy.{name}));' in current
 types=extract(header,'struct vdp1_sprite_list')+' current_sprite;'
 types+='\n'+extract(header,'struct vdp1_poly_scanline {')+';\n'+extract(header,'struct vdp1_poly_scanline_data {')+';'
 types+='\n'+extract(header,'struct spoint {')+';'
 harness=r'''
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -73,6 +81,8 @@ constexpr uint16_t RGB_B(uint16_t c){return (c>>10)&31;}
 #define VDP1_PTM (m_vdp1_regs[2]&3)
 #define VDP1_FBCR (m_vdp1_regs[1])
 #define VDP1_CEF cef
+#define VDP1_DIL ((m_vdp1_regs[1]>>2)&1)
+#define VDP1_DIE ((m_vdp1_regs[1]>>3)&1)
 #define VDP1_EWDR (m_vdp1_regs[3])
 #define VDP1_EWLR_X1 ((m_vdp1_regs[4]&0x7e00)>>9)
 #define VDP1_EWLR_Y1 (m_vdp1_regs[4]&0x1ff)
@@ -101,11 +111,16 @@ struct byte_buffer:std::vector<uint8_t> {
  using std::vector<uint8_t>::vector;
  uint8_t *get(){return data();}
 };
+struct word_buffer:std::vector<uint16_t> {
+ using std::vector<uint16_t>::vector;
+ uint16_t *get(){return data();}const uint16_t *get() const{return data();}
+};
+struct vdp2 {bool large=false;int lsmd=0;bool get_vramsz(){return large;}int get_lsmd(){return lsmd;}};
 struct saturn_state {
  // TYPES
- timer timer_;cpu cpu_;scu scu_;cpu *m_maincpu=&cpu_;scu *m_scu=&scu_;
+ timer timer_,terminate_;cpu cpu_;scu scu_;cpu *m_maincpu=&cpu_;scu *m_scu=&scu_;
  struct legacy {
-  timer *draw_end_timer=nullptr;
+  timer *draw_end_timer=nullptr,*terminate_timer=nullptr;
   bool drawing=false;int command_position=0,command_return=-1;
   uint16_t lopr=0,copr=0;
   int local_x=0,local_y=0,framebuffer_current_draw=0,framebuffer_current_display=1;
@@ -113,15 +128,22 @@ struct saturn_state {
   int framebuffer_width=1024,framebuffer_height=512,framebuffer_mode=0,framebuffer_double_interlace=0,fbcr_accessed=0;
   uint16_t ewdr=0;
   rectangle user_cliprect,system_cliprect;
-  std::vector<uint16_t> framebuffer[2]={std::vector<uint16_t>(1024*512),std::vector<uint16_t>(1024*512)};
+  word_buffer framebuffer[2]={word_buffer(0x20000),word_buffer(0x20000)};
+  word_buffer field_framebuffer[2]={word_buffer(0x20000),word_buffer(0x20000)};
+  bool field_valid[2]{};uint8_t draw_field=0;
   byte_buffer gfx_decode=byte_buffer(0x100000,0x11);
   uint16_t *framebuffer_draw_lines[512]{},*framebuffer_display_lines[512]{};
  } m_vdp1_legacy;
  std::vector<uint32_t> m_vdp1_vram=std::vector<uint32_t>(0x80000/4);
  const rectangle *last_clip=nullptr;
- uint16_t m_vdp1_regs[16]{};
+ uint16_t m_vdp1_regs[16]{},m_vdp2_regs[128]{};
+ vdp2 vdp2_;vdp2 *m_vdp2=&vdp2_;
+ std::vector<uint32_t> m_vdp2_vram=std::vector<uint32_t>(0x40000);
+ std::array<uint32_t,6> vdp1_rotation_parameters() const;
+ static int vdp1_rotation_coordinate(uint32_t,uint32_t,uint32_t,int,int);
+ uint16_t vdp1_display_pixel(int,int,const std::array<uint32_t,6>&) const;
  unsigned draws=0;int tvm=0,m_sprite_colorbank=0;bool cef=false,bef=false;
- saturn_state(){m_vdp1_legacy.draw_end_timer=&timer_;for(unsigned y=0;y<512;++y)m_vdp1_legacy.framebuffer_draw_lines[y]=m_vdp1_legacy.framebuffer[0].data()+y*1024;}
+ saturn_state(){m_vdp1_legacy.draw_end_timer=&timer_;m_vdp1_legacy.terminate_timer=&terminate_;for(unsigned y=0;y<512;++y)m_vdp1_legacy.framebuffer_draw_lines[y]=m_vdp1_legacy.framebuffer[0].data()+((y*1024)&0x1ffff);}
  void CEF_0(){cef=false;}void CEF_1(){cef=true;}
  void BEF_0(){bef=false;}void BEF_1(){bef=true;}
  void clear_gouraud_shading(){}void vdp1_set_drawpixel(){}
@@ -145,10 +167,10 @@ struct saturn_state {
  void vdp1_video_update();
  uint16_t vdp1_read_pixel(const uint16_t *,int) const;
  void vdp1_write_pixel(int,int,uint16_t);void vdp1_clear_framebuffer(int);
- void vdp1_process_list();void vdp1_draw_end(int);void vdp1_abort_draw();
+ void vdp1_process_list();void vdp1_draw_end(int);void vdp1_abort_draw();void vdp1_request_termination();void vdp1_terminate(int);
  void vdp1_prepare_framebuffers();void vdp1_state_save_postload();void vdp1_change_framebuffers();
  void vdp1_regs_w(offs_t,uint16_t,uint16_t);
- void vdp1_set_framebuffer_config(){assert(false);}
+ void vdp1_set_framebuffer_config();
  void vdp1_framebuffer0_w(offs_t,uint32_t,uint32_t);
  uint32_t vdp1_framebuffer0_r(offs_t,uint32_t);
  bool vdp1_pixel_visible(int,int) const;
@@ -158,6 +180,16 @@ struct saturn_state {
  static uint16_t vdp1_color_calculate(uint16_t,uint16_t,unsigned);
  void vdp1_draw_color(int,int,uint16_t);
  void fire(){if(timer_.delay!=-1){timer_.delay=-1;vdp1_draw_end(0);}}
+ void advance(int clocks){
+  while(clocks>0){
+   int next=clocks;
+   if(timer_.delay>=0)next=std::min(next,timer_.delay);
+   if(terminate_.delay>=0)next=std::min(next,terminate_.delay);
+   if(timer_.delay>=0)timer_.delay-=next;if(terminate_.delay>=0)terminate_.delay-=next;clocks-=next;
+   if(terminate_.delay==0){terminate_.delay=-1;vdp1_terminate(0);}
+   if(timer_.delay==0){timer_.delay=-1;vdp1_draw_end(0);}
+  }
+ }
 };
 // FUNCTIONS
 int main(){
@@ -226,8 +258,9 @@ int main(){
  // Execute the actual ENDR register dispatch, including its unused neighbor.
  for(unsigned offset : {6u,7u})for(uint16_t mask : {uint16_t(0),uint16_t(0xffff)}){
   s->vdp1_process_list();s->vdp1_regs_w(offset,0,mask);
-  bool running=offset!=6||mask==0;
-  assert(s->m_vdp1_legacy.drawing==running&&((s->timer_.delay!=-1)==running));++commands;
+  bool requested=offset==6&&mask!=0;
+  assert(s->m_vdp1_legacy.drawing&&s->timer_.delay==16);
+  assert(s->terminate_.delay==(requested?30:-1));++commands;
  }
  for(unsigned reg=8;reg<=11;++reg){
   s->m_vdp1_regs[reg]=0x1234;s->vdp1_regs_w(reg,0xffff,0xffff);assert(s->m_vdp1_regs[reg]==0x1234);++commands;
@@ -243,6 +276,17 @@ int main(){
   s->bef=previous;s->cef=!previous;s->m_vdp1_regs[1]=2;s->m_vdp1_regs[2]=0;
   s->m_vdp1_legacy.fbcr_accessed=0;s->vdp1_video_update();assert(s->bef==previous);++commands;
  }
+ // ENDR remains live until its scheduled deadline at each phase relative
+ // to the command fetch clock, then cancels further work without END/IRQ.
+ for(int phase=0;phase<16;++phase){
+  for(unsigned n=0;n<8;++n)s->m_vdp1_vram[n*8]=n==7?0x80000000:0;
+  s->draws=0;s->scu_.irqs=0;s->vdp1_process_list();s->advance(phase);
+  s->vdp1_regs_w(6,0,0xffff);assert(s->terminate_.delay==30);
+  s->advance(29);assert(s->m_vdp1_legacy.drawing&&!s->cef);
+  s->advance(1);assert(!s->m_vdp1_legacy.drawing&&!s->cef&&s->scu_.irqs==0);
+  assert(s->timer_.delay==-1&&s->draws==unsigned((phase+29)/16));
+  s->vdp1_process_list();assert(s->terminate_.delay==-1&&s->m_vdp1_legacy.command_position==0);++commands;
+ }
  // Actual postload rebuild must preserve the saved bank and geometry, not
  // perform a TVMR reconfiguration that resets the bank to zero.
  for(int bank : {0,1})for(int width : {256,512,1024})for(int height : {256,512}){
@@ -253,8 +297,8 @@ int main(){
   assert(l.framebuffer_current_draw==bank&&l.framebuffer_current_display==(bank^1));
   assert(l.framebuffer_width==width&&l.framebuffer_height==height&&l.framebuffer_mode==3);
   assert(l.command_position==123&&l.command_return==45&&l.drawing);
-  assert(l.framebuffer_draw_lines[height-1]==l.framebuffer[bank].data()+(height-1)*(width/2));
-  assert(l.framebuffer_display_lines[height-1]==l.framebuffer[bank^1].data()+(height-1)*(width/2));
+  assert(l.framebuffer_draw_lines[height-1]==l.framebuffer[bank].data()+(((height-1)*(width/2))&0x1ffff));
+  assert(l.framebuffer_display_lines[height-1]==l.framebuffer[bank^1].data()+(((height-1)*(width/2))&0x1ffff));
   assert(l.gfx_decode[0]==0x12&&l.gfx_decode[1]==0x34&&l.gfx_decode[2]==0x56&&l.gfx_decode[3]==0x78);++commands;
  }
  s->m_vdp1_legacy.framebuffer_current_draw=0;s->m_vdp1_legacy.framebuffer_mode=0;s->m_vdp1_legacy.framebuffer_width=1024;s->m_vdp1_legacy.framebuffer_height=512;s->vdp1_prepare_framebuffers();
@@ -403,6 +447,93 @@ int main(){
   ++texture;
  }
  std::cout<<colors<<" color/shading and "<<texture<<" normal-sprite END scenarios passed\n";
+ unsigned rotation_cases=0;
+ // Rotation is always parameter A, independent of RPTA bit6 and VRAM size.
+ s->tvm=2;
+ for(unsigned i=0;i<s->m_vdp2_vram.size();++i)s->m_vdp2_vram[i]=i^0x12345678;
+ for(bool large : {false,true})for(unsigned reg : {0u,0x40u,0x170u,0x7fffeu}){
+  s->vdp2_.large=large;s->m_vdp2_regs[0xbc/2]=reg>>16;s->m_vdp2_regs[0xbe/2]=reg;
+  auto p=s->vdp1_rotation_parameters();unsigned fields[]={0,4,12,16,20,24};
+  unsigned base=(reg*2)&~0x83u,mask=large?0xfffff:0x7ffff;
+  for(unsigned i=0;i<6;++i)assert(p[i]==s->m_vdp2_vram[((base+fields[i])&mask)/4]);++rotation_cases;
+ }
+ // Precision must be discarded before accumulation. The signed 20-bit
+ // accumulator wraps while out-of-framebuffer samples are transparent.
+ assert(s->vdp1_rotation_coordinate(0,0,64,1024,0)==0);
+ assert(s->vdp1_rotation_coordinate(0,0,128,511,0)==0);
+ assert(s->vdp1_rotation_coordinate(0,0,128,512,0)==1);
+ assert(s->vdp1_rotation_coordinate(0,0x7ff80,0,0,512)==-1);
+ assert(s->vdp1_rotation_coordinate(0x3ff0000,0,65536,1,0)==-1024);
+ assert(s->vdp1_rotation_coordinate(0x0c000000,0,0,0,0)==0);
+ rotation_cases+=6;
+ for(unsigned bank=0;bank<2;++bank)for(unsigned i=0;i<0x20000;++i)
+  s->m_vdp1_legacy.framebuffer[bank][i]=0x8000|((i+bank*73)&0x7fff);
+ for(unsigned mode : {2u,3u})for(unsigned bank=0;bank<2;++bank)for(unsigned transform=0;transform<5;++transform){
+  s->tvm=mode;s->m_vdp1_legacy.framebuffer_current_display=bank;
+  std::array<uint32_t,6> p{};
+  switch(transform){
+   case 0:p={0,0,0,65536,65536,0};break;
+   case 1:p={uint32_t(-2*65536),3*65536,0,65536,65536,0};break;
+   case 2:p={511*65536,0,uint32_t(-65536),0,0,65536};break;
+   case 3:p={511*65536,255*65536,0,uint32_t(-65536),uint32_t(-65536),0};break;
+   case 4:p={32768,32768,0,32768,32768,0};break;
+  }
+  for(int y : {0,1,255,256,511,512})for(int x : {0,1,2,255,256,511,512,1023}){
+   int sx=x,sy=y;
+   switch(transform){case 1:sx=x-2;sy=y+3;break;case 2:sx=511-y;sy=x;break;case 3:sx=511-x;sy=255-y;break;case 4:sx=(x+1)/2;sy=(y+1)/2;break;}
+   // This sample range crosses the signed accumulator only at +1024.
+   if(sx>=1024)sx-=2048;if(sy>=1024)sy-=2048;
+   unsigned expected=0;
+   if(sx>=0&&sx<512&&sy>=0&&sy<int(mode==3?512:256)){
+    unsigned index=sy*(mode==3?256:512)+(mode==3?sx/2:sx);
+    unsigned word=0x8000|((index+bank*73)&0x7fff);
+    expected=mode==3?((word>>((sx&1)?0:8))&255):word;
+   }
+   assert(s->vdp1_display_pixel(x,y,p)==expected);++rotation_cases;
+  }
+ }
+ std::cout<<rotation_cases<<" rotated readout/parameter/precision scenarios passed\n";
+ unsigned field_cases=0;
+ for(int mode : {0,1}){
+  auto &l=s->m_vdp1_legacy;s->tvm=mode;s->vdp2_.lsmd=3;
+  l.framebuffer_mode=mode;l.framebuffer_width=mode?1024:512;l.framebuffer_height=512;l.framebuffer_double_interlace=1;
+  l.framebuffer_current_draw=0;l.framebuffer_current_display=1;l.draw_field=0;l.field_valid[0]=l.field_valid[1]=false;
+  std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0x1111);
+  std::fill(l.framebuffer[1].begin(),l.framebuffer[1].end(),0x2222);
+  l.system_cliprect.set(0,l.framebuffer_width-1,0,511);
+  s->current_sprite.CMDPMOD=0;s->current_sprite.CMDCOLR=0x8033;s->current_sprite.ispoly=1;
+  s->m_vdp1_regs[1]=8;s->vdp1_prepare_framebuffers();
+  assert(l.framebuffer_draw_lines[0]==l.framebuffer_draw_lines[1]);
+  assert(l.framebuffer_draw_lines[2]==l.framebuffer[0].data()+512);
+  // Writing DIL does not change the current field before the bank change.
+  s->vdp1_regs_w(1,12,0xffff);assert(l.draw_field==0);
+  s->drawpixel_poly(0,1,0,0);assert(l.framebuffer[0][0]==0x1111);
+  s->drawpixel_poly(0,0,0,0);assert(l.framebuffer[0][0]==(mode?0x3311:0x8033));
+  s->vdp1_change_framebuffers();assert(l.draw_field==1&&l.framebuffer_current_draw==1);
+  std::array<uint32_t,6> p{};
+  assert(s->vdp1_display_pixel(0,0,p)==(mode?0x33:0x8033));
+  assert(s->vdp1_display_pixel(0,1,p)==0);
+  s->current_sprite.CMDCOLR=0x8055;
+  s->drawpixel_poly(0,0,0,0);assert(l.framebuffer[1][0]==0x2222);
+  s->drawpixel_poly(0,1,0,0);assert(l.framebuffer[1][0]==(mode?0x5522:0x8055));
+  s->m_vdp1_regs[1]=8;s->vdp1_change_framebuffers();assert(l.draw_field==0&&l.field_valid[0]&&l.field_valid[1]);
+  assert(s->vdp1_display_pixel(0,0,p)==(mode?0x33:0x8033));
+  assert(s->vdp1_display_pixel(0,1,p)==(mode?0x55:0x8055));
+  // Drawing the next even field must not overwrite the displayed previous one.
+  l.framebuffer[0][0]=0xdead;s->vdp1_state_save_postload();
+  assert(s->vdp1_display_pixel(0,0,p)==(mode?0x33:0x8033));
+  assert(s->vdp1_display_pixel(0,1,p)==(mode?0x55:0x8055));
+  // Erase registers address physical field rows, not an oversized bank.
+  l.ewdr=0xa1b2;s->m_vdp1_regs[4]=(1<<9)|1;s->m_vdp1_regs[5]=(2<<9)|1;
+  s->vdp1_clear_framebuffer(0);
+  assert(l.framebuffer[0][512+8]==0xa1b2&&l.framebuffer[0][1024+8]==0x1111);
+  // Both halves of the CPU's 512-KiB window address the same 256-KiB bank.
+  s->vdp1_framebuffer0_w(0x10000,0x12345678,0xffffffff);
+  assert(s->vdp1_framebuffer0_r(0,0xffffffff)==0x12345678);
+  assert(s->vdp1_framebuffer0_r(0x10000,0xffffffff)==0x12345678);
+  ++field_cases;
+ }
+ std::cout<<field_cases<<" interlace field lifecycle sequences passed\n";
  std::cout<<commands<<" VDP1 command/completion, "<<fb<<" framebuffer and "<<clipping<<" pixel-clipping scenarios passed\n";
 }
 '''.replace('// TYPES',types).replace('// FUNCTIONS',functions)
