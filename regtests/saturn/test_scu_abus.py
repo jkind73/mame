@@ -62,6 +62,8 @@ struct timer {
   void adjust(int value) { assert(value == attotime::never); stopped = true; }
 };
 struct saturn_scu_device {
+  void m_main_dtack_cb(int state) { assert(state == 0); }
+  void m_sound_dtack_cb(int state) { assert(state == 0); }
 // PRODUCTION_TYPES
   u32 m_ism = 0, m_ist = 0xffffffff, m_abus_pending_ack = 0xffff;
   u32 m_abus_asr[2]{}, m_abus_aref = 0;

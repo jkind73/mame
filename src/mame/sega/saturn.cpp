@@ -184,7 +184,21 @@ constexpr uint16_t RGB_B(uint16_t color) { return (color >> 10) & 0x1f; }
 
 } // anonymous namespace
 
+void saturn_state::machine_start() {
+  save_item(NAME(m_system_halt));
+  save_item(NAME(m_main_dma_halt));
+  save_item(NAME(m_sound_dma_halt));
+  machine().save().register_postload(save_prepost_delegate(
+      FUNC(saturn_state::update_halt_lines), this));
+}
+
+void saturn_state::reset_halt_state() {
+  m_system_halt = m_main_dma_halt = m_sound_dma_halt = false;
+  update_halt_lines();
+}
+
 void saturn_state::machine_reset() {
+  reset_halt_state();
   m_scsp_last_line = 0;
 
   // don't let the slave cpu and the 68k go anywhere
@@ -450,10 +464,29 @@ void saturn_state::system_reset_w(int state) {
   vdp2_window_cache_invalidate();
 }
 
+// SMPC clock switching and SCU stalls share CPU HALT inputs.  Releasing
+// one source must not release a CPU still held by the other source.
+void saturn_state::update_halt_lines() {
+  const bool main_halt = m_system_halt || m_main_dma_halt;
+  const bool sound_halt = m_system_halt || m_sound_dma_halt;
+  m_maincpu->set_input_line(INPUT_LINE_HALT, main_halt ? ASSERT_LINE : CLEAR_LINE);
+  m_slave->set_input_line(INPUT_LINE_HALT, main_halt ? ASSERT_LINE : CLEAR_LINE);
+  m_audiocpu->set_input_line(INPUT_LINE_HALT, sound_halt ? ASSERT_LINE : CLEAR_LINE);
+}
+
 void saturn_state::system_halt_w(int state) {
-  m_maincpu->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
-  m_slave->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
-  m_audiocpu->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
+  m_system_halt = bool(state);
+  update_halt_lines();
+}
+
+void saturn_state::main_dma_halt_w(int state) {
+  m_main_dma_halt = bool(state);
+  update_halt_lines();
+}
+
+void saturn_state::sound_dma_halt_w(int state) {
+  m_sound_dma_halt = bool(state);
+  update_halt_lines();
 }
 
 void saturn_state::dot_select_w(int state) {

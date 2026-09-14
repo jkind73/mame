@@ -109,7 +109,15 @@ protected:
 
   int m_scsp_last_line = 0;
 
+  bool m_system_halt = false;
+  bool m_main_dma_halt = false;
+  bool m_sound_dma_halt = false;
+  virtual void machine_start() override ATTR_COLD;
   virtual void machine_reset() override ATTR_COLD;
+  void reset_halt_state();
+  void update_halt_lines();
+  void main_dma_halt_w(int state);
+  void sound_dma_halt_w(int state);
 
   void scsp_irq(offs_t offset, uint8_t data);
 
