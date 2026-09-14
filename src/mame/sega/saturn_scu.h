@@ -226,6 +226,7 @@ private:
 
   // DMA
   template <unsigned Level> void dma_map(address_map &map);
+  void dma_force_stop_w(uint32_t data, uint32_t mem_mask = ~0);
   uint32_t dma_status_r();
 
   // Timers

@@ -295,3 +295,12 @@ the total to eight. Corrected CD HLE's emu.h include order after reproducing the
 header/incomplete-type errors; the CD block wrapper compiled unchanged. All
 thirteen scripts/eight objects pass. No primary hardware interpretation or CD
 runtime correctness claim follows from this build-only change.
+
+## DMA forced-stop control implementation
+
+ST-097 §3.2, printed p.47 / PDF p.63, defines DSTP bit 0 at $05fe0060. Previously
+unmapped, it now cancels CPU-programmed DMA including waiting/held work, preserving
+programmed registers and existing IRQs. Ymir/Mednafen corroborate three-channel
+cancellation without completion IRQ; Mednafen's stop case remains marked untested.
+2,321 standalone scenarios pass; a no-op control models the old missing mapping
+and fails. Physical stop latency and actual game compatibility remain unestablished.

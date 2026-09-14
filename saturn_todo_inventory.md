@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## DMA forced-stop feature — 2026-09-14
+
+Implemented the previously unmapped DSTP command with cancellation/held-trigger/
+restart coverage (2,321 cases). CPU DMA only; DSP engine unchanged. Stop latency
+and actual game compatibility still require runtime validation. The broader
+remaining-blocker plan is in `regtests/saturn/game_blockers.md`.
+
 ## CD component build validation — 2026-09-14
 
 Fixed CD HLE include order and added both CD translation units to routine checks.
