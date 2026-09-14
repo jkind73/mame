@@ -329,7 +329,8 @@ void saturn_scu_device::device_reset() {
   m_abus_pending_ack = 0;
   m_abus_asr[0] = 0;
   m_abus_asr[1] = 0;
-  m_abus_aref = 0;
+  // ST-210 No.33 supersedes the original AREF reset value: ARFEN starts set.
+  m_abus_aref = 0x10;
 
   // every dma_channel_t member has to be given a value here: the device
   // constructor leaves them indeterminate, and the DMA logic reads the flags
@@ -1270,6 +1271,8 @@ void saturn_scu_device::abus_set_w(offs_t offset, uint32_t data,
 
 void saturn_scu_device::abus_refresh_w(uint32_t data, uint32_t mem_mask) {
   COMBINE_DATA(&m_abus_aref);
+  // Only ARFEN (bit 4) and ARWT (bits 3:0) are implemented.
+  m_abus_aref &= 0x1f;
 }
 
 uint32_t saturn_scu_device::version_r() {
