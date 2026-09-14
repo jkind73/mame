@@ -1606,6 +1606,14 @@ void saturn_cd_hle_device::cmd_calculate_actual_data_size() {
   LOGCMD("%s: Calculate actual size: buf %x offs %x numsect %x\n",
          machine().describe_context(), bufnum, sectoffs, numsect);
 
+  /* cr2 and cr4 are the same offset / sector count pair that the other sector
+     commands take, and the loop below walks blocks[] with them, so bound them
+     the same way: cr2 is used unmasked here, so an offset of up to 0xffff
+     indexed a MAX_BLOCKS (200) entry array and dereferenced whatever pointer
+     it found there, and a large cr4 kept the loop walking past the end even
+     from a valid offset. */
+  cd_getsectoroffsetnum(bufnum, &sectoffs, &numsect);
+
   calcsize = 0;
   if (partitions[bufnum].size != -1) {
     int32_t i;
@@ -1640,7 +1648,11 @@ void saturn_cd_hle_device::cmd_get_sector_information() {
   uint32_t sectoffs = cr2 & 0xff;
   uint32_t bufnum = cr3 >> 8;
 
-  if (bufnum >= MAX_FILTERS || !partitions[bufnum].blocks[sectoffs]) {
+  /* sectoffs is masked to 8 bits but blocks[] only holds MAX_BLOCKS (200)
+     entries, so 200..255 read past the array and then dereferenced whatever
+     was found there; reject those through the existing path. */
+  if (bufnum >= MAX_FILTERS || sectoffs >= MAX_BLOCKS ||
+      !partitions[bufnum].blocks[sectoffs]) {
     cr1 |= CD_STAT_REJECT & 0xff00;
     hirqreg |= (CMOK | ESEL);
     update_hirq();
