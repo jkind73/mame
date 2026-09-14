@@ -230,3 +230,14 @@ alongside these reopened items.
 - Five test-only mutation controls fail as intended. No production fix needed.
   All ten scripts and three object builds pass. DxGO MMIO, real event timing,
   reset/save-load with pending work and continuous event streams remain open.
+
+### A-Bus refresh register — corrected reset and defined-bit storage
+
+- AREF resets to 0x10 per ST-210 item 33, superseding ST-097 figure 3.30's zero.
+  Writes retain bits 4:0, corroborated by MiSTer/Mednafen masks. Both reference
+  reset values are still zero; Ymir ignores AREF, so the primary erratum governs.
+- New ASan/UBSan tests pass 32 dirty resets, 32,768 refresh writes, 288 ASR writes
+  and 24,576 static wait classifications. Both pre-fix controls fail as expected.
+- Register-state correction only: AREF is not yet used for dynamic refresh
+  timing. ASR behavior unchanged; physical bus/CPU reset wiring and save/load
+  remain open. All eleven scripts and three object compilations pass.

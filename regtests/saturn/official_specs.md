@@ -237,3 +237,14 @@ and does not corroborate that behavior; the documented MAME behavior was retaine
 924 external-event scenarios pass; five explicit test-only mutations fail. No
 production change was needed. Exact hardware event timing, DxGO MMIO and held-
 state reset/save-load are not established by this test.
+
+## AREF audit update
+
+ST-097 figure 3.30 / table 3.24 (printed p.72, PDF p.88) defines AREF bits 4:0
+but prints the older zero initial value. ST-210 item 33 (printed p.10, PDF p.14)
+explicitly changes ARFEN to 1 on power-on reset. Corrected the device reset value
+to 0x10 and masked stored writes to 0x1f. MiSTer/Mednafen corroborate the mask,
+not the corrected reset; Ymir ignores AREF writes. The primary erratum takes
+precedence. No dynamic refresh timing or hardware write-protection behavior was
+inferred. Independent pre-fix reset and write controls fail; 32 resets, 32,768
+AREF writes, 288 ASR writes and 24,576 existing static wait decodes pass.
