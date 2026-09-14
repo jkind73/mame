@@ -1,5 +1,32 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## Scaled traversal and line shading follow-up — 2026-09-14
+
+- Scaled-sprite endpoints now decode signed fields before anchor arithmetic,
+  preserving independent geometry inversion and texture direction. Zero extents
+  describe one dot; odd centered extents retain the correct endpoint distance.
+- The affine scaled/distorted path now applies second-END source-row termination
+  with HSS disabled. Each referenced row is scanned at most once per primitive;
+  reduction cannot skip the terminators and repeated enlarged samples cannot
+  count one terminator twice. Both span paths share the same implementation.
+  This does **not** implement HSS/EOS decimation or hardware edge walking.
+- Lines now initialize their own Gouraud data using A/B only. Every polyline
+  edge initializes the appropriate pair (A/B, B/C, C/D, D/A), instead of using
+  stale data for the first three edges and a mis-mapped table for the last.
+- New tests: 12,000 scaled endpoint/anchor/direction cases; 2,924 source-END and
+  actual affine-span cases; 160 line/polyline Gouraud endpoint cases using the
+  production table reader and shading setup. Three new mutations fail assertions.
+  The complete 18-script/nine-object validator passes; no linked runtime proof.
+
+Evidence: ST-013-R3 pp.86–87 (horizontal source END), pp.120–123 (scaled
+coordinates/anchors and zero extents), §§7.8–7.9 (polyline vertex colors, line A/B
+colors only); pinned Ymir renderer scaled endpoints and per-edge Gouraud pairs.
+The p.86 HSS/ECD table distinguishes enlargement from reduction, unlike the
+blanket HSS wording on p.159. HSS is explicitly left to a proper fetch stepper,
+not guessed from the presence of the flag. Affine edge coverage, interpolation
+precision, pre-clipping, pixel timing and real save/load remain unfinished.
+
+
 ## Rotation, interlace and delayed ENDR — 2026-09-14
 
 Implemented six-parameter-A sprite framebuffer readout in both rotated formats,

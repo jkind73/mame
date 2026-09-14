@@ -189,6 +189,8 @@ protected:
   TIMER_CALLBACK_MEMBER(vdp1_terminate);
   void vdp1_set_drawpixel();
 
+  std::array<int16_t, 256> m_vdp1_texture_end{};
+  bool vdp1_texture_sample_visible(int address, int width, int texel);
   bool vdp1_is_end_code(int address, int texel) const;
   void vdp1_draw_normal_sprite(const rectangle &cliprect, int sprite_type);
   void vdp1_draw_scaled_sprite(const rectangle &cliprect);
@@ -235,7 +237,8 @@ protected:
                                     int32_t slb2, int32_t *nb1, int32_t *nb2,
                                     int32_t _y1, int32_t y2);
   uint16_t vdp1_apply_gouraud_shading(int x, int y, uint16_t pix);
-  void vdp1_setup_shading(const struct spoint *q, const rectangle &cliprect);
+  void vdp1_setup_shading(const struct spoint *q, const rectangle &cliprect,
+                          std::array<uint8_t, 4> vertices = {0, 1, 2, 3});
   uint8_t read_gouraud_table();
   void clear_gouraud_shading();
 
