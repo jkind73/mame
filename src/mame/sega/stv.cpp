@@ -1583,6 +1583,17 @@ void stv_state::machine_start() {
   save_item(NAME(m_mux_data));
   save_item(NAME(m_scsp_last_line));
 
+  // 315-5649 IOGA state, all of it written by ioga_w() and read back by
+  // ioga_r() with nothing recomputing it on load: m_ioga_mode bit 7 selects
+  // PORT-G counter mode and so decides which branch the read takes,
+  // m_ioga_portg auto-increments on every read to step through the four
+  // counters, m_ioga_count is the snapshot those reads are differenced
+  // against, and m_system_output is what port D reads back.
+  save_item(NAME(m_system_output));
+  save_item(NAME(m_ioga_mode));
+  save_item(NAME(m_ioga_portg));
+  save_item(NAME(m_ioga_count));
+
   stv_register_protection_savestates();
 }
 
