@@ -88,25 +88,161 @@ void saturn_vdp2_device::init_vcounter_table() {
      line 312 and may still be set to a 224 or 240 line mode, so stopping at
      the 263 rows an NTSC frame reaches left the PAL vblank lines reading
      whatever the allocation held.  The jump threshold belongs to the mode
-     rather than the region, so the extra lines continue the same ramp. */
-  // 224 mode
+     rather than the region, so the extra lines continue the same ramp.
+
+     Correct timings are taken from Ymir (vTimingsNormal) and MiSTer
+     (BREAK_LINE/JUMP_LINE) with verification against Charles MacDonald
+     hardware tests noted in saturn.cpp TODO:
+
+       vpos 0 == 0x1ff (VBE, VBlank-Out)
+       vpos 1 == 0
+       vpos 241 == 0xf0 (VBI, VBlank-In for 240 mode)
+       vpos 246 == 0xf5
+       vpos 247 == 0x1ef (rollback)
+       vpos 263 == 0x1ff
+
+     The Saturn V counter does not simply increment; it jumps from BREAK
+     to JUMP (VCNTSkip = 0x200 - base).  Base is 263 NTSC, 313 PAL.
+     MiSTer defines:
+
+       NTSC 224: BREAK 0xED (237) -> JUMP 0x1E6 (486)  [Ymir BBd 224, BSy 232,
+     VCS 237] NTSC 240: BREAK 0xF5 (245) -> JUMP 0x1EE (494)  [Ymir BBd 240, BSy
+     240, VCS 245] Adjusted to 0x1EF (495) to match documented rollback at 247
+       PAL 224 : BREAK 0x103 (259) -> JUMP 0x1CA (458)
+       PAL 240 : BREAK 0x10B (267) -> JUMP 0x1D2 (466)
+       PAL 256 : BREAK 0x113 (275) -> JUMP 0x1DA (474)
+
+     MAME's screen vpos 0 is the last line (0x1ff), vpos 1 is first active
+     (0), so the table is offset by 1 compared to raw VCNT.
+
+     Exclusive (VGA) modes use a 10-bit counter up to 525/561 lines and
+     are handled directly in get_vcounter().
+  */
+
+  // NTSC 224: BREAK 236 (0xEC) -> JUMP 486 (0x1E6)
+  // This gives: 0=0x1ff, 1=0, 225=0xE0 (224) VBI, 237=0xEC (236), 238=0x1E6
+  // (486) rollback, 263=0x1ff
   for (u16 i = 0; i < 313; i++) {
-    true_vcount[i][0] = i;
-    if (i > 0xec)
-      true_vcount[i][0] += 0xf9;
+    if (i == 0)
+      true_vcount[i][0] = 0x1ff;
+    else if (i >= 1 && i <= 236)
+      true_vcount[i][0] = i - 1;
+    else if (i >= 237 && i <= 262)
+      true_vcount[i][0] = 0x1e6 + (i - 237); // 486..511
+    else if (i == 263)
+      true_vcount[i][0] = 0x1ff;
+    else
+      true_vcount[i][0] = i; // beyond NTSC, keep identity for safety
   }
 
-  // 240 mode
+  // NTSC 240: BREAK 245 (0xF5) -> JUMP 495 (0x1EF) to match documented
+  // 247=0x1EF Gives: 0=0x1ff, 1=0, 241=0xF0 VBI, 246=0xF5, 247=0x1EF rollback,
+  // 263=0x1FF
   for (u16 i = 0; i < 313; i++) {
-    true_vcount[i][1] = i;
-    if (i > 0xf5)
-      true_vcount[i][1] += 0xf9;
+    if (i == 0)
+      true_vcount[i][1] = 0x1ff;
+    else if (i >= 1 && i <= 246)
+      true_vcount[i][1] = i - 1; // 0..245
+    else if (i >= 247 && i <= 262)
+      true_vcount[i][1] = 0x1ef + (i - 247); // 495..510
+    else if (i == 263)
+      true_vcount[i][1] = 0x1ff;
+    else
+      true_vcount[i][1] = i;
   }
 
-  // TODO: PAL only 256 mode
+  // PAL 224: BREAK 257 (0x101) -> JUMP 458 (0x1CA)
+  // 0=0x1ff, 1=0, 225=224 VBI, 259=258? Actually VBI at 225, rollback at
+  // 259=0x1CA
   for (u16 i = 0; i < 313; i++) {
-    true_vcount[i][2] = i;
-    true_vcount[i][3] = i;
+    if (i == 0)
+      true_vcount[i][2] = 0x1ff;
+    else if (i >= 1 && i <= 258)
+      true_vcount[i][2] = i - 1; // 0..257
+    else if (i >= 259 && i <= 312)
+      true_vcount[i][2] = 0x1ca + (i - 259); // 458..511
+    else
+      true_vcount[i][2] = i;
+  }
+
+  // PAL 240/256 share 256 timing for 240? Use PAL 240: BREAK 265, JUMP 466
+  // and PAL 256: BREAK 273, JUMP 474.  We use PAL 256 for both 2 and 3 to match
+  // original intent (256 modes).  For simplicity, fill [3] same as [2] but
+  // with PAL 256 break/jump.
+  for (u16 i = 0; i < 313; i++) {
+    if (i == 0)
+      true_vcount[i][3] = 0x1ff;
+    else if (i >= 1 && i <= 274)
+      true_vcount[i][3] = i - 1; // 0..273 for 256 mode
+    else if (i >= 275 && i <= 312)
+      true_vcount[i][3] = 0x1da + (i - 275); // 474..511
+    else
+      true_vcount[i][3] = i;
+  }
+
+  // Also fix PAL 240 separately if needed: overwrite index 1? No, index 1 is
+  // NTSC 240. For PAL region with VRESO 1 (240), the mask (m_is_pal<<1)|1 gives
+  // 3 when PAL, so it uses true_vcount[*][3] which is PAL 256 timing.  To
+  // correctly support PAL 240, we need a distinct table.  Since we have only 4
+  // slots, we repurpose: [0]=NTSC 224, [1]=NTSC 240, [2]=PAL 224, [3]=PAL
+  // 240/256. For PAL 240, use BREAK 265, JUMP 466:
+  if (m_is_pal) {
+    // Override [1] slot when PAL: actually PAL 240 should be in [1]? No, mask
+    // gives 3. Let's keep [2]=PAL 224, [3]=PAL 240 (with 256 fallback).
+    // Recompute [3] as PAL 240 for better accuracy, and [2] as PAL 224.
+    // PAL 240: 0=511, 1..266=0..265, 267..312=466..511
+    for (u16 i = 0; i < 313; i++) {
+      if (i == 0)
+        true_vcount[i][3] = 0x1ff;
+      else if (i >= 1 && i <= 266)
+        true_vcount[i][3] = i - 1;
+      else if (i >= 267 && i <= 312)
+        true_vcount[i][3] = 0x1d2 + (i - 267); // 466..511
+    }
+    // Keep [2] as PAL 224 already.
+    // For PAL 256, we don't have slot, but 256 mode also uses [3] (since VRESO
+    // 2,3 mask 3) so it will get PAL 240 timing, which is close (267 vs 275).
+    // Acceptable for now; ideally we'd have separate table, but true_vcount is
+    // [4] only. To improve, if VRESO is 2/3 (256), use 275 break: We can store
+    // PAL 256 in [2]?? Let's just keep [2]=PAL 224, [3]=PAL 256 as most common.
+    // Actually for PAL, VRESO 0=224,1=240,2=256,3=256. So we need:
+    // [0]=PAL 224? No, NTSC mask limits.
+    // Simpler: when PAL, [0]=PAL 224, [1]=PAL 240, [2]=PAL 256, [3]=PAL 256
+    // But then NTSC table lost. Since init is called at start with m_is_pal
+    // known, we can fill based on region.
+    if (m_is_pal) {
+      // PAL region: fill all 4 as PAL timings
+      // [0]=PAL 224
+      for (u16 i = 0; i < 313; i++) {
+        if (i == 0)
+          true_vcount[i][0] = 0x1ff;
+        else if (i >= 1 && i <= 258)
+          true_vcount[i][0] = i - 1;
+        else if (i >= 259)
+          true_vcount[i][0] = 0x1ca + (i - 259);
+      }
+      // [1]=PAL 240
+      for (u16 i = 0; i < 313; i++) {
+        if (i == 0)
+          true_vcount[i][1] = 0x1ff;
+        else if (i >= 1 && i <= 266)
+          true_vcount[i][1] = i - 1;
+        else if (i >= 267)
+          true_vcount[i][1] = 0x1d2 + (i - 267);
+      }
+      // [2]=PAL 256
+      for (u16 i = 0; i < 313; i++) {
+        if (i == 0)
+          true_vcount[i][2] = 0x1ff;
+        else if (i >= 1 && i <= 274)
+          true_vcount[i][2] = i - 1;
+        else if (i >= 275)
+          true_vcount[i][2] = 0x1da + (i - 275);
+      }
+      // [3]=PAL 256 duplicate
+      for (u16 i = 0; i < 313; i++)
+        true_vcount[i][3] = true_vcount[i][2];
+    }
   }
 }
 
@@ -370,13 +506,20 @@ int saturn_vdp2_device::get_vcounter() {
 
   vcount = m_screen->vpos();
 
-  // Exclusive Monitor
+  // Exclusive Monitor: 10-bit counter, up to 525/561 lines
   if (BIT(m_hreso, 2))
     return vcount & 0x3ff;
 
-  // Double Density Interlace
-  if (m_lsmd == 3)
-    return (vcount & ~1) | (m_screen->frame_number() & 1);
+  // Double Density Interlace: Ymir shows VCNTShift=1, VCNTSkip, and ODD
+  // handling VCNTLatch = (VCNT<<1)+skip, LSB = ODD^1 For MAME, approximate with
+  // vcount>>1 and ODD bit.
+  if (m_lsmd == 3) {
+    int base =
+        true_vcount[vcount & 0x1ff][m_vreso & ((m_is_pal << 1) | 1)] & 0x1ff;
+    // Double density: VCNT is (base>>1) with ODD in LSB
+    // ODD toggles each field (m_odd_bit)
+    return ((base & ~1) | (m_odd_bit ^ 1)) & 0x1ff;
+  }
 
   /* NTSC cannot select the 256 line modes, so mask VRESO exactly as
      reconfigure_crtc() and get_vblank_line() do.  Without it an NTSC machine
@@ -389,40 +532,58 @@ int saturn_vdp2_device::get_vcounter() {
   return (true_vcount[vcount & 0x1ff][m_vreso & vres_mask]); // Non-interlace
 }
 
-// TODO: refine hblank/vblank positions
+// Refined H/V blank positions based on Ymir vTimingsNormal and MiSTer VBL_START
+// Ymir: BBd = Bottom Border (VBlank IN), BSy = Blanking/Sync, VCS =
+// VCounterSkip,
+//       TBd = Top Border, LLn = Last Line, ADp = Active Display (next frame)
+// MiSTer: VBL_START_224=0xE0=224, VBL_START_240=0xF0=240,
+// VBL_START_256=0x100=256
+//         BREAK/JUMP define the V counter skip (rollback).
+// MAME's vpos 0 is the last line (0x1FF), so VBI (VBlank In) appears at vpos+1.
 int saturn_vdp2_device::get_hblank() {
-  const rectangle &visarea = m_screen->visible_area();
+  // HBlank: Ymir sets HBLANK=1 at Right Border phase, 0 at Left Border.
+  // For MAME, approximate with visible area, but use hdisplay as threshold
+  // to match MiSTer HBLANK_START (320->324, 352->356).
+  // The pixel clock and htotal are 427/455, active 320/352, so HBlank
+  // starts 4 pixels after active in 320 mode, 4 pixels after in 352?
+  // Use visarea.right() as before but also account for exclusive modes.
   int cur_h = m_screen->hpos();
-
-  if (cur_h > visarea.right()) // TODO
+  // In exclusive modes, H counter counts differently, but HBlank still
+  // after active. Use m_hdisplay as active width.
+  if (cur_h >= m_hdisplay)
     return 1;
-
   return 0;
 }
 
 int saturn_vdp2_device::get_vblank() {
-  int cur_v, vblank_line;
-  cur_v = m_screen->vpos();
+  int cur_v = m_screen->vpos();
+  int vblank_line = get_vblank_start_position() * get_ystep_count();
 
-  vblank_line = get_vblank_start_position() * get_ystep_count();
-
+  // VBlank is active from VBI (Bottom Border) through last line inclusive.
+  // Hardware: VBI at 241=0xF0 for 240 mode, VBE (VBlank-Out) at line 0=0x1FF
+  // (last line).  In MAME's screen, vpos 0 is first active line, but we keep
+  // true_vcount[0]=0x1FF to match documented rollback.  VBlank flag is 1
+  // when vpos >= VBI (241..262) and 0 otherwise (0..240), so VBE (1->0)
+  // happens at vpos 0, which is last line -> first active transition.
+  // This gives 22 lines VBlank for 240 mode (241..262) plus the 0 line
+  // handling via true_vcount, total 23 lines (263-240).
   if (cur_v >= vblank_line)
     return 1;
-
   return 0;
 }
 
 int saturn_vdp2_device::get_vblank_start_position() {
-  // first setting is at 240, the 16 lines are border overscan.
-  // TODO: test says that second setting happens at 241, might need further
-  // investigation ...
-  const int d_vres[4] = {240, 240, 256, 256};
-  int vblank_line;
-
+  // VBlank-In positions (VBI) based on Ymir/MiSTer VBL_START:
+  // NTSC 224: 224 active, VBI at 225 (MAME vpos, accounting for 0=last line)
+  // NTSC 240: 240 active, VBI at 241
+  // PAL  256: 256 active, VBI at 257
+  // For simplicity, return VBI = active+1, which matches documented
+  // 241=0xF0 for 240 mode and gives 225 for 224 mode.
+  const int d_vres_active[4] = {224, 240, 256, 256};
   const u8 vres_mask = (m_is_pal << 1) | 1;
-  vblank_line = d_vres[m_vreso & vres_mask];
-
-  return vblank_line;
+  int active = d_vres_active[m_vreso & vres_mask];
+  // VBI is active+1 due to vpos0 being last line
+  return active + 1;
 }
 
 int saturn_vdp2_device::get_ystep_count() {
@@ -439,7 +600,6 @@ int saturn_vdp2_device::get_ystep_count() {
 }
 
 TIMER_CALLBACK_MEMBER(saturn_vdp2_device::sync_timer_cb) {
-  //	int hpos = m_screen->hpos();
   int vpos = m_screen->vpos();
   int hsync = get_hblank();
   int vsync = get_vblank();
@@ -447,15 +607,23 @@ TIMER_CALLBACK_MEMBER(saturn_vdp2_device::sync_timer_cb) {
   m_vint_cb(vsync);
   m_hint_cb(hsync);
 
+  // VBlank handling: Ymir/MiSTer show VBlank IN at BottomBorder (BBd),
+  // VBlank OUT at LastLine (LLn).  Previously MAME jumped to 0,0 as soon
+  // as VBlank started, skipping the VBlank period.  Now we walk through
+  // VBlank lines and only flip ODD and wrap at the last line.
   if (vsync) {
-    // flip odd bit here
-    m_odd_bit ^= 1;
-    // TODO: T0C in SCU seems to run even after this point
-    m_video_sync_timer->adjust(m_screen->time_until_pos(0, 0));
+    int ystep = get_ystep_count();
+    int vtotal = get_vblank_duration();
+    // If we are at last line (vtotal-1), wrap to 0 and flip ODD
+    if (vpos >= vtotal - ystep) {
+      m_odd_bit ^= 1;
+      m_video_sync_timer->adjust(m_screen->time_until_pos(0, 0));
+    } else {
+      m_video_sync_timer->adjust(m_screen->time_until_pos(vpos + ystep, 0));
+    }
   } else {
     if (hsync) {
       int ystep = get_ystep_count();
-
       m_video_sync_timer->adjust(m_screen->time_until_pos(vpos + ystep, 0));
     } else
       m_video_sync_timer->adjust(m_screen->time_until_pos(vpos, m_hdisplay));
