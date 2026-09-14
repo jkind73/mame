@@ -146,6 +146,7 @@ Framebuffer TODO:
 */
 
 #include "emu.h"
+#include "emuopts.h"
 #include "saturn.h"
 
 
@@ -621,6 +622,37 @@ uint16_t saturn_state::vdp1_regs_r(offs_t offset) {
                               // zero
 }
 
+// Opt-in regression diagnostics: use -verbose -log and capture a short run.
+// This is observational only; never alter emulated timing or register state.
+void saturn_state::vdp1_trace(const char *event, int reg, const spoint *bounds) {
+  if (!machine().options().verbose())
+    return;
+  const auto &v = m_vdp1_legacy;
+  logerror("VDP1TRACE t=%s event=%s TVMR=%04x FBCR=%04x PTMR=%04x EDSR=%04x "
+           "draw=%d display=%d busy=%d COPR=%04x LOPR=%04x pc=%04x "
+           "span=%d/%d dot=%d HRESO=%u LSMD=%u width=%d height=%d DIE=%d DIL=%u\n",
+           machine().time().as_string(), event, m_vdp1_regs[0], m_vdp1_regs[1],
+           m_vdp1_regs[2], m_vdp1_regs[8], v.framebuffer_current_draw,
+           v.framebuffer_current_display, v.drawing, v.copr, v.lopr, v.command_position,
+           m_vdp1_raster.index, m_vdp1_raster.count, m_vdp1_raster.dot,
+           m_vdp2->get_hreso(), m_vdp2->get_lsmd(), v.framebuffer_width,
+           v.framebuffer_height, v.framebuffer_double_interlace, v.draw_field);
+  if (reg >= 0)
+    logerror("VDP1TRACE register offset=%02x value=%04x\n", reg * 2, m_vdp1_regs[reg]);
+  if (bounds) {
+    const auto &c = current_sprite;
+    logerror("VDP1TRACE scaled COPR=%04x CTRL=%04x PMOD=%04x SRCA=%04x SIZE=%04x "
+             "A=(%04x,%04x) B=(%04x,%04x) C=(%04x,%04x) local=(%d,%d) "
+             "bounds=(%d,%d)-(%d,%d) destination=%dx%d source=%dx%d\n",
+             v.copr, c.CMDCTRL, c.CMDPMOD, c.CMDSRCA, c.CMDSIZE,
+             c.CMDXA, c.CMDYA, c.CMDXB, c.CMDYB, c.CMDXC, c.CMDYC,
+             v.local_x, v.local_y, bounds[0].x, bounds[0].y, bounds[2].x, bounds[2].y,
+             std::abs(bounds[2].x - bounds[0].x) + 1,
+             std::abs(bounds[2].y - bounds[0].y) + 1,
+             ((c.CMDSIZE >> 8) & 63) * 8, c.CMDSIZE & 255);
+  }
+}
+
 // VBlank erase has a finite field budget, independent of command drawing.
 uint32_t saturn_state::vdp1_vblank_erase_capacity() const {
   // ST-013 pp.49-50, Tables 4.4/4.5. X erase coordinates count groups of
@@ -737,6 +769,7 @@ void saturn_state::vdp1_prepare_framebuffers() {
 }
 
 void saturn_state::vdp1_change_framebuffers() {
+  vdp1_trace("swap-before");
   if (m_vdp1_legacy.framebuffer_double_interlace > 0) {
     // Weave completed display fields for MAME's full-frame bitmap. Never read
     // the bank currently being drawn to as though it were the previous field.
@@ -764,6 +797,7 @@ void saturn_state::vdp1_change_framebuffers() {
              m_vdp1_legacy.framebuffer_current_draw,
              m_vdp1_legacy.framebuffer_current_display);
   vdp1_prepare_framebuffers();
+  vdp1_trace("swap-after");
 }
 
 void saturn_state::vdp1_latch_framebuffer_config() {
@@ -834,6 +868,7 @@ void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
   if (!mem_mask)
     return;
   COMBINE_DATA(&m_vdp1_regs[offset]);
+  vdp1_trace("register-write", offset);
 
   switch (offset) {
   case 0x00 / 2:
@@ -2431,6 +2466,7 @@ void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
     vdp1_setup_shading(q, cliprect);
   else
     vdp1_setup_rectangle_shading(q, cliprect);
+  vdp1_trace("scaled", -1, q);
   vdp1_draw_scaled_pixels(cliprect, patterndata, xsize, ysize, q);
 }
 
@@ -2672,6 +2708,8 @@ void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
 }
 
 void saturn_state::vdp1_abort_draw() {
+  if (m_vdp1_legacy.drawing)
+    vdp1_trace("abort");
   // Cancel both command dispatch and any delayed ENDR request. No completion
   // IRQ is manufactured; COPR remains at the last fetched command.
   m_vdp1_legacy.drawing = false;
@@ -2704,6 +2742,7 @@ void saturn_state::vdp1_process_list() {
   m_vdp1_legacy.drawing = true;
   clear_gouraud_shading();
   CEF_0();
+  vdp1_trace("start");
   // Fetch cost as in Ymir VDP1ProcessCommand. Native lines/quads then advance
   // in bounded raster slices. Normal/scaled sprites and bus costs remain incomplete.
   m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
@@ -2735,6 +2774,7 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
       m_vdp1_legacy.drawing = false;
       m_vdp1_legacy.terminate_timer->adjust(attotime::never);
       CEF_1();
+      vdp1_trace("end");
       m_scu->vdp1_end_w(1);
       return;
     }
@@ -2995,6 +3035,7 @@ end:
 }
 
 void saturn_state::vdp1_video_update() {
+  vdp1_trace("field");
   vdp1_finish_vblank_erase();
   const bool blank_only = (VDP1_TVM() & 2) || VDP1_TVM() == 4;
   bool framebuffer_changed = false;

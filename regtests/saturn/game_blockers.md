@@ -1,5 +1,34 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## OutRun visual regression report — investigation, not fixed
+
+The user reports sprites flashing on/off and an oversized, off-center image,
+suspecting reversed scaling coordinates. Exact game variant, running commit and
+scene have not yet been confirmed. Treat this as unresolved runtime evidence;
+passing extracted tests do not establish that OutRun renders correctly.
+
+Review of ST-013 pp.73–76/120–123 agrees with the current register roles: XA/YA
+is the anchor, XB/YB the display extent in zoom-point mode, and XC/YC the opposite
+corner in two-coordinate mode. No X/Y reversal has been demonstrated. The VDP2
+compositor also has separate mode-dependent horizontal/vertical doubling, while
+framebuffer scheduling may independently explain flashing. These are investigation
+paths, not established causes; no coordinate swap or timing workaround was applied.
+
+Added observational `VDP1TRACE` logging, enabled with `-verbose -log`. Rebuild this
+branch, append those flags to the **same launch command that reproduces the bug**,
+and capture a short section showing the failure. Preserve `error.log` (it can grow
+quickly and be overwritten by the next run), the launch command/build revision,
+and a screenshot or short video. The trace records raw scaled-sprite coordinates,
+source/destination dimensions and computed bounds; TVMR/FBCR/PTMR, HRESO/LSMD;
+framebuffer ownership, busy state, COPR/LOPR and raster cursor; register writes,
+starts/aborts/END and bank changes. It introduces no emulated-state fields and is
+disabled without verbose logging. No game-specific hack was added.
+
+All 18 regression scripts and nine production object compilations pass after the
+instrumentation. The extracted renderer fixture stubs the trace sink; object
+compilation checks the production logging implementation. No linked OutRun run,
+trace capture, root-cause confirmation or visual fix is claimed here.
+
 ## Pre-clipping disabled traversal — 2026-09-14
 
 Pclp=1 now preserves normal/scaled row traversal and native line/quad spans instead
