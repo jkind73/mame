@@ -249,3 +249,44 @@ and bulletin sections actually read, plus [sdk_documents.csv](sdk_documents.csv)
 with 103 PDF entries. These findings reopen timer and rendering correctness
 questions that the callback and safety tests do not answer. No runtime code was
 changed during the documentation audit.
+
+## SCU timer-1 stopped-only reload fix
+
+ST-210 item 31 (printed p.9 / PDF p.13) says HBlank loads timer 1 only when
+stopped. The branch now preserves an in-progress one-shot's deadline rather than
+re-arming it at each eligible HBlank. Both `enabled()` and `expire().is_never()`
+are checked: MAME's `emu_timer::adjust(never)` sets enabled=true, including on SCU
+reset and TENB disable. One-shot expiry disables the timer before its callback.
+No extra saved-state flag was introduced.
+
+Cross-checks, restricted to not overwriting an in-progress count:
+- [Ymir `UpdateHBlank`](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scu/scu.cpp)
+  schedules only if the timer event is not already scheduled.
+- [Mednafen `SCU_SetHBVB`](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/scu.inc)
+  gates HBlank reload with `Timer1_Met`. Its counter/interrupt model and Ymir's
+  reload arithmetic are not identical to MAME's. Neither is wholesale copied.
+
+```sh
+python3 regtests/saturn/test_timer1.py
+python3 regtests/saturn/test_timer1.py --baseline  # expected deadline assertion failure
+```
+
+**1,024 reload scenarios pass** (all 512 register encodings at 426/454-count line
+intervals), plus focused checks for T1MD load gating, partial writes, and the
+512-count regression. Tests check unchanged running deadlines, expiry IRQ/DMA
+events, reload writes affecting the next count, no spontaneous periodic reload,
+TENB cancellation and re-enabling after adjust(never). The production HBlank,
+mode-write, reload-write and expiry callback bodies are compiled against a
+recording scheduler with ASan/UBSan. The inherited getter-independent baseline
+fails the repeated-HBlank deadline assertion.
+
+The stand-in scheduler follows the inspected one-shot semantics of
+`src/emu/schedule.cpp`; this is not a full emu_timer/device integration test.
+Simultaneous expiry/HBlank ordering, hardware clock rate, exact T1MD interrupt
+qualification, and save/load behavior remain unverified. Existing T1MD gating,
+zero-to-512 conversion and clock divisor are intentionally retained. Timer-0
+compare ordering is still open.
+
+Complete `saturn.cpp`, `saturn_vdp2.cpp`, and `saturn_scu.cpp` syntax checks pass.
+SCU's inherited include order was corrected to include `emu.h` first. All four
+previous regression scripts pass. Full build and ROM testing remain pending.
