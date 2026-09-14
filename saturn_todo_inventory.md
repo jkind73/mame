@@ -1,5 +1,12 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Timer-1 implementation update — 2026-09-14
+
+The stopped-only HBlank reload issue below is now fixed and regression-tested
+against ST-210 item 31, with Ymir/Mednafen cross-checks. 1,024 reload scenarios
+plus gating/mask tests pass. Timer-0 ordering, full T1MD interrupt semantics and
+hardware clock-rate validation remain open; this is not a blanket timer DONE.
+
 ## Primary-document audit update — 2026-09-14
 
 [`regtests/saturn/official_specs.md`](regtests/saturn/official_specs.md) now records

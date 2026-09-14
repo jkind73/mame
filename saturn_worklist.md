@@ -120,3 +120,13 @@ read, not just SDK library documentation. Indexed does not mean fully reviewed.
 
 No emulator changes made in this audit pass; earlier DONE labels must be read
 alongside these reopened items.
+
+### SCU timer-1 stopped-only reload — implemented and unit-tested
+
+- ST-210 item 31, cross-checked with Ymir and Mednafen: preserve a running count
+  across HBlank; reload only when stopped. Account for MAME adjust(never) leaving
+  enabled=true. No new saved-state members.
+- 1,024 reload scenarios plus gating/mask tests pass under ASan/UBSan; baseline
+  fails repeated-HBlank deadline test. Existing tests and three syntax checks pass.
+- Timer-0 compare ordering remains next. Full timer accuracy, actual T1MD IRQ
+  qualification, simultaneous event ordering and ROM compatibility remain open.

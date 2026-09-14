@@ -31,8 +31,8 @@ C-Bus: $0600'0000 - $07ff'ffff (Work RAM-H, mirrored)
 
 **************************************************************************************************/
 
-#include "saturn_scu.h"
 #include "emu.h"
+#include "saturn_scu.h"
 
 
 #define LOG_DMA_MOVE                                                           \
@@ -1145,7 +1145,11 @@ void saturn_scu_device::hblank_in_w(int state) {
     // - Mode is 0 (all scanlines)
     // - Mode is 1 and timer 0 is hit
     const bool timer1_hit = (timer0_hit || !m_t1md);
-    if (timer1_hit) {
+    // ST-210, precaution 31: HBlank reloads timer 1 only while stopped.
+    // adjust(never) leaves an emu_timer enabled, so check its deadline too.
+    // A running count may span several lines and must not be postponed by
+    // the next HBlank (Ymir UpdateHBlank / Mednafen SCU_SetHBVB agree).
+    if (timer1_hit && (!m_timer1->enabled() || m_timer1->expire().is_never())) {
       // A count of 0 is specified to mean 512 (SCU Final Specifications:
       // Precautions, No. 31), which also makes the 9 bit mask applied to
       // m_t1s self consistent: a write of 512 masks down to 0 and has to
