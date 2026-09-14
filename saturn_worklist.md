@@ -1,5 +1,29 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## Interruptible normal/scaled sprites — 2026-09-14
+
+Normal and scaled sprite commands now enqueue rectangle rows and share the saved
+raster worker. Normal sprites retain their fetched END count within a row; scaled
+sprites retain integer sampling, direction/HSS/EOS and source-row END cutoffs.
+Prepared rectangular Gouraud scanline coefficients are save-registered, rather
+than reconstructed from a potentially modified VRAM table after loading.
+
+**1040 queued rectangle cases pass**: 1024 texture/format/direction/HSS/EOS images
+and 16 normal/scaled interruption and state-copy sequences, including Gouraud,
+blending, source END and a mid-command Gouraud-table edit. Completed lifecycle
+images also match synchronous rendering. Reset-END-count and replayed-texture
+cursor mutations fail assertions. All 18 scripts and nine production objects pass.
+The command harness now actually executes both rectangle pixel paths when enabled;
+geometry-only dispatch fixtures remain explicitly separate.
+
+All ordinary primitive families now yield within commands. The unspecified scaled
+zero-height fallback remains atomic. Timing is still batched/nominal: early normal
+END detection can leave unused clocks in an already-scheduled quantum, coverage
+pairs can produce two writes per position, and fetch/setup/VRAM arbitration is not
+measured. Active-display erase, preclip/degenerate qualification, linked BIOS/game
+execution and actual MAME save-manager tests remain open. **VDP1 completion is not
+claimed.** This supersedes the atomic-normal/scaled limitation in older entries.
+
 ## Interruptible native polygons/distorted sprites — 2026-09-14
 
 The saved raster queue now also handles commands 2/3/4, retaining span texture
