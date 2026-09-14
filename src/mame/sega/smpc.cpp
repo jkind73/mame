@@ -12,8 +12,14 @@ TODO:
 - fix intback issue with inputs (according to the docs, it should fall in
 between VBLANK-IN and OUT, for obvious reasons);
 - clean-ups;
-- RTC subdevice (unknown type, handled here for convenience);
 - Does ST-V even has a battery backed NVRAM?
+
+The RTC is a custom type internal to the SMPC (ST-169 chapter 2.5): 7 bytes of
+BCD (year 100s/1s, day-of-week|month, day, hour, minute, second), counted up
+once per second with leap-year correction until 2099, initialized to
+12/31/93 Friday 23:59:59 by SMPC cold reset, set by SETTIME and reported in
+INTBACK OREG1-7.  Since it is CR2032-backed it is wired into the core's
+battery-backed RTC machinery, which seeds it from the host clock at startup.
 
 Notes:
 SMPC NVRAM contents:
@@ -103,8 +109,6 @@ smpc_hle_device::smpc_hle_device(const machine_config &mconfig, const char *tag,
 
 void smpc_hle_device::device_add_mconfig(machine_config &config) {
   NVRAM(config, "smem", nvram_device::DEFAULT_ALL_0);
-
-  // TODO: custom RTC subdevice
 }
 
 //-------------------------------------------------
@@ -151,6 +155,15 @@ void smpc_hle_device::device_start() {
   m_intback_timer =
       timer_alloc(FUNC(smpc_hle_device::intback_continue_request), this);
   m_sndres_timer = timer_alloc(FUNC(smpc_hle_device::sound_reset), this);
+
+  // ST-169: the RTC is initialized to "12/31/93 Friday 23:59:59" and starts
+  // counting during SMPC cold reset (reset switch pressed, battery missing or
+  // dead at power-on, or battery installed while powered off).  If the RTC is
+  // battery-backed the core overwrites this with the host time right after
+  // NVRAM load; mednafen's SMPC_SetRTC uses the same power-on values.
+  static constexpr uint8_t cold_reset_rtc[7] = {0x19, 0x93, 0x5c, 0x31,
+                                                0x23, 0x59, 0x59};
+  memcpy(m_rtc_data, cold_reset_rtc, sizeof(m_rtc_data));
 }
 
 //-------------------------------------------------
@@ -516,6 +529,14 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command) {
 
     for (int i = 0; i < 7; i++)
       m_rtc_data[i] = m_ireg[i];
+
+    // ST-169: INTBACK OREG0 bit 7 (STE) reads 1 once SETTIME has been
+    // issued after an SMPC cold reset, so the BIOS stops presenting the
+    // clock-setting screen; mednafen (RTC.Valid) and Ymir (m_STE) latch
+    // the same flag here.  Restart the per-second phase too, matching
+    // mednafen's sub-second accumulator reset.
+    m_smem[4] |= 0x80;
+    m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
     break;
   }
 
