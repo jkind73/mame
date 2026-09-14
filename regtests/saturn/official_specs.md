@@ -403,3 +403,55 @@ the layout change, not a complete hardware timing claim. Ymir also has an ENDR
 30-cycle TODO and a game-dependent start-delay workaround; neither was imported.
 The mere presence of a feature in a reference emulator is not proof of all its
 edge cases. No unreviewed source or title-specific delay was copied.
+
+## VDP1 rendering/status audit — 2026-09-14
+
+Implemented destination-preserving MON, coordinate-based Gouraud evaluation
+(which does not stall on skipped mesh/transparent/clipped dots), explicit
+component-wise color calculations, bounded color-lookup fetches, and two-end-code
+row termination in the production normal-sprite loop. BEF now latches on an actual
+framebuffer change rather than every VBlank in manual mode. This does not complete
+scaled/distorted texture traversal, interlace, rotated scanout or pixel timing.
+
+Tests pass: 92,420 color/shading cases, 2,689 normal-texture/boundary cases,
+32,816 command/lifecycle cases, 532 framebuffer cases and 24,500 clipping cases.
+Four independent render mutations (MON source replacement, dropped odd carry,
+fixed Gouraud coordinate, disabled second-END termination) fail their assertions.
+All 18 scripts/nine objects pass. Shader tests do not establish polygon edge or
+interpolation precision on silicon; callbacks use recording timer/CPU endpoints.
+Full chip completion and BIOS/game/runtime/save-manager proof are not claimed.
+
+### Rendering evidence and disagreements
+
+Primary ST-013-R3-061694 §6.3 printed pp.86–87/PDF101–102 defines the second
+horizontal source end code and independence from SPD. The normal-sprite tests
+cover all six documented texture formats, four read directions, ECD/SPD and
+pairs of end positions on two rows. They do not cover scaled/distorted sampling
+or pre-clipping inversion. Lookup address wrap includes a deliberately unaligned
+(outside Sega's legal alignment requirements) table as a memory-boundary test,
+not evidence of a supported guest configuration.
+
+§6.3 pp.94–97/PDF109–112 defines replace/shadow/half-luminance/half-transparency,
+Gouraud saturation before combination, and MON modifying the existing framebuffer.
+The arithmetic tests include exhaustive component pairs, both MSBs and legal
+operation selectors. MSB-clear RGB arithmetic cases test the chosen model, not a
+hardware guarantee where Sega says results cannot be guaranteed.
+
+Pinned Ymir `VDP1PlotPixel` and Mednafen `PlotPixel` support destination-preserving
+MON and average-then-truncate blending. Ymir's line traversal also advances Gouraud
+through suppressed dots and counts end codes on newly fetched texels. Pinned
+MiSTer `VDP1.sv` selects the background for MON and ORs the top framebuffer bit;
+`VDP1_pkg.sv` confirms saturation and component operations. **MiSTer's ColorCalc
+halves each operand before addition, unlike the Ymir/Mednafen odd+odd result.**
+This implementation follows the manual's average wording and Ymir/Mednafen, not
+an assertion that all three references agree. 8-bit MON word-alignment is still
+reference-modeled and not independently hardware-verified.
+
+BEF's bank-change latch is supported by §4.6 printed p.53/PDF68 and Ymir's
+`VDP1SwapFramebuffer`; main-list start still clears CEF without overwriting BEF.
+The manual's start-of-drawing wording needs hardware qualification; no complete
+frame timing claim follows from correcting the unconditional VBlank overwrite.
+
+The version supplement ST-013-SP1-052794 was also read (14 PDF pages); it describes
+version-0 versus version-1 EOS/HSS/pre-clipping differences, not missing rounding
+or pipeline timing details. No source code was imported from any reference.

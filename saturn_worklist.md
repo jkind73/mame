@@ -1,5 +1,23 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## VDP1 rendering/status audit — 2026-09-14
+
+Implemented destination-preserving MON, coordinate-based Gouraud evaluation
+(which does not stall on skipped mesh/transparent/clipped dots), explicit
+component-wise color calculations, bounded color-lookup fetches, and two-end-code
+row termination in the production normal-sprite loop. BEF now latches on an actual
+framebuffer change rather than every VBlank in manual mode. This does not complete
+scaled/distorted texture traversal, interlace, rotated scanout or pixel timing.
+
+Tests pass: 92,420 color/shading cases, 2,689 normal-texture/boundary cases,
+32,816 command/lifecycle cases, 532 framebuffer cases and 24,500 clipping cases.
+Four independent render mutations (MON source replacement, dropped odd carry,
+fixed Gouraud coordinate, disabled second-END termination) fail their assertions.
+All 18 scripts/nine objects pass. Shader tests do not establish polygon edge or
+interpolation precision on silicon; callbacks use recording timer/CPU endpoints.
+Full chip completion and BIOS/game/runtime/save-manager proof are not claimed.
+
+
 ## VDP1 sequencer and packed framebuffer implementation — 2026-09-14
 
 Replaced whole-list synchronous dispatch with saved, timer-driven command
