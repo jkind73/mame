@@ -7,7 +7,8 @@ Records memory/timer/IRQ endpoints, not CPU or bus timing. --baseline substitute
 pre-fix DMA ticks and must fail zero-count decoding; --baseline-wide isolates
 the level 1/2 count-width regression. --arbitration-baseline uses pre-preemption
 fix ticks and must fail the two-channel priority test. --hold-mutation applies
-a named test-only fault to verify held-trigger assertions.
+a named test-only fault to verify held-trigger assertions. --stop-noop models
+the previously unmapped forced-stop write and must fail stop assertions.
 """
 import argparse
 import os
@@ -22,6 +23,7 @@ mode = parser.add_mutually_exclusive_group()
 mode.add_argument("--baseline", action="store_true")
 mode.add_argument("--baseline-wide", action="store_true")
 mode.add_argument("--arbitration-baseline", action="store_true")
+mode.add_argument("--stop-noop", action="store_true", help="model the previously unmapped stop write; must fail")
 mode.add_argument("--hold-mutation", choices=("drop", "sticky", "enable", "factor", "stride"))
 args = parser.parse_args()
 path = "src/mame/sega/saturn_scu.cpp"
@@ -60,13 +62,17 @@ for signature in ("std::tuple<u16, int> saturn_scu_device::get_address_flags(",
                   "void saturn_scu_device::dma_transfer_direct_cd(",
                   "void saturn_scu_device::dma_transfer_direct_cd_cbus_write("):
     functions += "\n" + extract(source, signature)
+assert "\n  map(0x0060, 0x0063).w(FUNC(saturn_scu_device::dma_force_stop_w));" in source
+functions += "\n" + ("void saturn_scu_device::dma_force_stop_w(uint32_t, uint32_t) {}"
+                     if args.stop_noop else extract(source, "void saturn_scu_device::dma_force_stop_w("))
 start = source.index("const saturn_scu_device::dma_transfer_func")
 functions += "\n" + source[start:source.index(";", start) + 1]
 # Mutation controls change only the extracted test translation unit, never MAME.
 if args.hold_mutation:
     mutations = {
         "drop": ("m_dma[level].pending_trigger = true;", "m_dma[level].pending_trigger = false;", 2),
-        "sticky": ("m_dma[level].pending_trigger = false;", "m_dma[level].pending_trigger = true;", 1),
+        "sticky": ("bool const held_trigger = m_dma[level].pending_trigger;\n      m_dma[level].pending_trigger = false;",
+                   "bool const held_trigger = m_dma[level].pending_trigger;\n      m_dma[level].pending_trigger = true;", 1),
         "enable": ("m_dma[i].enable_mask == true && m_dma[i].start_factor == event",
                    "m_dma[i].start_factor == event", 1),
         "factor": ("m_dma[i].enable_mask == true && m_dma[i].start_factor == event",
@@ -158,6 +164,7 @@ struct saturn_scu_device {
   void dma_transfer_direct_cbus_write(dma_channel_t &);
   void dma_transfer_direct_cd(dma_channel_t &);
   void dma_transfer_direct_cd_cbus_write(dma_channel_t &);
+  void dma_force_stop_w(uint32_t, uint32_t);
   void dma_tick_cb();
   void dma_hog_bus(uint8_t);
 };
@@ -443,10 +450,120 @@ int main() {
                 assert(s.mem.descriptor_reads == expected_reads);
                 ++held_scenarios;
               }
+  unsigned stop_scenarios = 0;
+  for (int level = 0; level < 3; ++level)
+    for (bool indirect : {false, true})
+      for (int phase = 0; phase < 3; ++phase) // initial WAIT, MOVE, done-before-IRQ
+        for (bool held : {false, true})
+          for (unsigned lanes = 0; lanes < 16; ++lanes)
+            for (u32 data : {0u, 1u, 0xfffffffeu, 0xffffffffu}) {
+              saturn_scu_device s;
+              auto &ch = s.m_dma[level];
+              ch.src = 0x02000000; ch.dst = indirect ? 0x07000800 : 0x05a10000;
+              ch.size = 8; ch.src_add = 4; ch.dst_add = 2;
+              ch.indirect_mode = indirect; ch.enable_mask = true;
+              s.mem.descriptors = {{0x07000800, 8}, {0x07000804, 0x05a10000}, {0x07000808, 0x82000000}};
+              s.m_ist = 0x80; // unrelated pending interrupt must survive stop
+              auto trigger = [&] {
+                if (indirect) s.trigger_dma_indirect(level); else s.trigger_dma_direct(level);
+              };
+              trigger();
+              if (phase) {
+                s.dma_tick_cb();
+                if (indirect) s.dma_tick_cb();
+                s.mem.expected_src = 0x02000000; s.mem.expected_dst = 0x05a10000;
+                for (int word = 0; word < (phase == 1 ? 1 : 4); ++word) s.dma_tick_cb();
+              }
+              if (held) trigger();
+              auto snapshot = [&] {
+                return std::make_tuple(s.m_dma_status, ch.done, ch.pending_trigger, ch.indirect_fetch_phase,
+                  ch.src, ch.dst, ch.size, ch.live_src, ch.live_dst, ch.live_count, ch.index,
+                  s.mem.words, s.mem.descriptor_reads.size(), s.tim.adjustments,
+                  s.m_main_dtack_cb.calls, s.m_sound_dtack_cb.calls, s.m_ist, s.irq_checks);
+              };
+              auto before = snapshot();
+              auto registers = std::make_tuple(ch.src, ch.dst, ch.size, ch.live_src, ch.live_dst, ch.live_count, ch.index);
+              unsigned words = s.mem.words, descriptors = s.mem.descriptor_reads.size();
+              u32 mask = 0;
+              for (unsigned byte = 0; byte < 4; ++byte)
+                if (lanes & (1u << byte)) mask |= 0xffu << (8*byte);
+              s.dma_force_stop_w(data, mask);
+              if (!(data & mask & 1)) {
+                assert(snapshot() == before);
+              } else {
+                assert(s.m_dma_status == 0 && s.tim.stopped);
+                assert(!ch.done && !ch.pending_trigger && !ch.indirect_fetch_phase && ch.enable_mask);
+                assert(std::make_tuple(ch.src, ch.dst, ch.size, ch.live_src, ch.live_dst, ch.live_count, ch.index) == registers);
+                assert(s.mem.words == words && s.mem.descriptor_reads.size() == descriptors);
+                assert(s.m_ist == 0x80 && s.irq_checks == 0); // no manufactured end IRQ
+                if (phase && !indirect) {
+                  assert(s.m_main_dtack_cb.last == 0 && s.m_sound_dtack_cb.last == 0);
+                }
+                // A later fresh start still works; no old held activation survives.
+                trigger(); s.dma_tick_cb();
+                if (indirect) s.dma_tick_cb();
+                assert(ch.live_count == 0 && ch.live_size == 8);
+                s.mem.expected_src = 0x02000000; s.mem.expected_dst = 0x05a10000;
+                for (int word = 0; word < 4; ++word) s.dma_tick_cb();
+                assert(ch.done); s.dma_tick_cb();
+                assert(s.m_ist == (0x80u | (1u << (11-level))) && s.irq_checks == 1);
+                assert(s.m_dma_status == 0 && s.tim.stopped && !ch.pending_trigger);
+                assert(s.mem.words == words+4);
+              }
+              ++stop_scenarios;
+            }
+  for (int higher : {1, 2})
+    for (bool low_indirect : {false, true})
+      for (bool high_indirect : {false, true})
+        for (bool sound : {false, true}) {
+          saturn_scu_device s;
+          auto setup = [&](int level, bool indirect) {
+            auto &ch = s.m_dma[level];
+            ch.src = 0x02000000 + level*0x100;
+            u32 dst = (sound ? 0x05a10000 : 0x07010000) + level*0x100;
+            ch.dst = indirect ? 0x07000800 + level*0x20 : dst;
+            ch.size = 8; ch.src_add = 4; ch.dst_add = 2; ch.indirect_mode = indirect;
+            if (indirect) {
+              s.mem.descriptors[ch.dst] = 8; s.mem.descriptors[ch.dst+4] = dst;
+              s.mem.descriptors[ch.dst+8] = ch.src | 0x80000000;
+              s.trigger_dma_indirect(level);
+            } else s.trigger_dma_direct(level);
+          };
+          setup(0, low_indirect); s.dma_tick_cb();
+          if (low_indirect) s.dma_tick_cb();
+          s.mem.expected_src = s.m_dma[0].live_src; s.mem.expected_dst = s.m_dma[0].live_dst;
+          s.dma_tick_cb(); setup(higher, high_indirect); s.dma_tick_cb();
+          assert(std::get<0>(s.check_dma_level_round_robin()) == higher);
+          if (high_indirect) s.dma_tick_cb();
+          s.mem.expected_src = s.m_dma[higher].live_src; s.mem.expected_dst = s.m_dma[higher].live_dst;
+          s.dma_tick_cb();
+          if (low_indirect) s.trigger_dma_indirect(0); else s.trigger_dma_direct(0);
+          if (high_indirect) s.trigger_dma_indirect(higher); else s.trigger_dma_direct(higher);
+          assert(s.m_dma[0].pending_trigger && s.m_dma[higher].pending_trigger);
+          assert(s.m_dma_status & s.DMA_LV0_BK);
+          s.dma_force_stop_w(1, 0xffffffff);
+          assert(s.m_dma_status == 0 && s.tim.stopped && s.mem.words == 3);
+          assert(s.m_main_dtack_cb.last == 0 && s.m_sound_dtack_cb.last == 0);
+          assert(!s.m_dma[0].pending_trigger && !s.m_dma[higher].pending_trigger);
+          assert(s.m_ist == 0 && s.irq_checks == 0);
+          ++stop_scenarios;
+        }
+  {
+    saturn_scu_device s;
+    s.m_dma_status = s.DMA_DSP_MOVE | s.DMA_DSP_WAIT;
+    s.m_main_dtack_cb(1); s.m_sound_dtack_cb(1); // other owners, no CPU DMA running
+    s.dma_force_stop_w(1, 0xffffffff);
+    assert(s.m_dma_status == (s.DMA_DSP_MOVE | s.DMA_DSP_WAIT));
+    assert(s.m_main_dtack_cb.calls == 1 && s.m_sound_dtack_cb.calls == 1);
+    assert(s.m_main_dtack_cb.last == 1 && s.m_sound_dtack_cb.last == 1);
+    ++stop_scenarios;
+  }
+  assert(stop_scenarios == 2321);
   assert(held_scenarios == 924);
   std::cout << scenarios << " indirect DMA chains passed through completion; "
             << arbitration_scenarios << " two-channel arbitration scenarios passed; "
-            << held_scenarios << " held-trigger scenarios passed\n";
+            << held_scenarios << " held-trigger scenarios passed; "
+            << stop_scenarios << " forced-stop scenarios passed\n";
 }
 '''
 with tempfile.TemporaryDirectory(prefix="saturn-dma-indirect-") as temp:
