@@ -1,5 +1,32 @@
 # VDP1 completion audit — 2026-09-14
 
+## Bounded VBlank erase — 2026-09-14
+
+VBlank erase now captures the displayed bank, word layout, latched bounds/data,
+and Sega's per-field erase capacity at blank entry. It commits only the permitted
+prefix before the next bank exchange; excess pixels stay untouched. Rotation and
+HDTV automatic/manual erase now queue for blanking instead of clearing a whole
+bank immediately. Persistent VBE still repeats. Pending/in-flight state is saved;
+machine/system reset cancels it, while stopping command drawing does not.
+
+The capacity reproduces all 12 entries of ST-013 Table 4.5, including NTSC/PAL,
+31 kHz and HDTV. High-resolution 8-bit mode erases two dots per word, not twice as
+many words. Double-density interlace does not double the per-field capacity.
+
+Validation adds **154 erase cases**, checking complete physical banks, partial-row
+cutoffs, sparse windows, both banks and all five TVM formats, pending-state copy /
+postload reconstruction, reset cancellation and blank-only scheduling. Three
+independent mutations (unlimited budget, wrong bank, live instead of captured data)
+fail assertions. All 18 scripts/nine objects pass. No real MAME save round trip or
+linked game/BIOS run has been performed.
+
+This remains a **coarse blank-period model**: writes commit at VBlank OUT. It does
+not model individual erase bus slots, row setup overhead, or intermediate debugger
+visibility. Active-display erase, interruptible command rasterization, pixel/VRAM
+arbitration and hardware pre-clipping remain unfinished. See `official_specs.md`
+for primary/reference evidence and differences.
+
+
 ## Framebuffer field control and register latches — 2026-09-14
 
 - Bank changes and automatic PTMR drawing now occur at screen field start
@@ -269,12 +296,12 @@ The full validator passes **18 scripts and nine object compilations**.
 |---|---|---|
 | Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR schedules a 30-clock stop. | Subdivide primitive execution and qualify pipeline termination; real save/load during primitives. |
 | Timing / transfer-over | Each command fetch gets 16 SH-2 cycles; lists may cross frames, but pixel/bus costs are absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
-| PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. BEF now latches on bank change. Automatic start/swap/erase timing remains incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
+| PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. BEF now latches on bank change. Field-start changes, deferred register latches and bounded blank-only erase are implemented; sub-scanline timing and active-display erase remain incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
 | Command control | Valid eight jump controls, persistent fetch state and scheduler-yielding loops are implemented. Prohibited/undocumented commands still use fallback behavior. | Hardware investigation of illegal opcodes/aliases and prohibited flow; do not invent a primary-defined result for them. |
-| Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Rotation and DIE/DIL field addressing are implemented above; EOS, mismatched dot formats, timing qualification and broader erase-bound tests remain. |
-| Rasterization | Affine quad/line code has known vertex, stipple and zoom differences. | Hardware-consistent line/polygon edge coverage and sprite scaling; pixel-golden tests for degenerates, flips, all zoom anchors, clipping and negative coordinates. |
-| Texture / color | Normal-sprite second-END termination, destination MON and Gouraud/color combinations are implemented and tested. | Scaled/distorted end-code traversal, high-speed shrink/EOS, pre-clipping, exact interpolation/rounding qualification and full-image tests. |
-| Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
+| Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Rotation, DIE/DIL and EOS are implemented; mismatched formats and hardware timing qualification remain. |
+| Rasterization | Native integer line/quad and scaled texture walkers are implemented and image-tested. | Hardware pre-clipping, interpolation precision and silicon-image qualification; resumable pixel execution. |
+| Texture / color | Normal-sprite second-END termination, destination MON and Gouraud/color combinations are implemented and tested. | Scaled/distorted END and HSS/EOS are implemented above; pre-clipping and hardware interpolation/rounding qualification remain. |
+| Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Physical banks, field caches and pending VBlank erase are saved; intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
 | Runtime | No linked executable in this sandbox. | Install documented SDL/pkg-config dependencies, link and `-validate`, then BIOS and legally available Saturn/ST-V smoke/pixel comparisons (including prior workaround titles). |
 
 Do not mark this table complete from standalone tests or an absence of TODOs.

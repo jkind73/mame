@@ -200,6 +200,7 @@ void saturn_state::machine_reset() {
   m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
   m_vdp1_legacy.draw_field = 0;
   vdp1_abort_draw();
+  vdp1_cancel_erase();
   reset_halt_state();
   m_scsp_last_line = 0;
 
@@ -333,12 +334,9 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
   if (scanline == 0)
     vdp1_video_update();
 
-  if (scanline == (vblank_line + 1) * y_step && VDP1_VBE()) {
-    // ST-013 p.40: VBE erases the displayed bank during blanking and repeats
-    // every blank while enabled, independently of a fresh change request.
-    // Erase remains atomic here; the blanking-time write budget is separate.
-    vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
-  }
+  if (scanline == (vblank_line + 1) * y_step &&
+      (VDP1_VBE() || m_vdp1_legacy.vblank_erase_pending))
+    vdp1_begin_vblank_erase();
 }
 
 static const gfx_layout tiles8x8x4_layout = {
@@ -444,6 +442,7 @@ void saturn_state::system_reset_w(int state) {
    * issued.*/
   m_scu->reset();
   vdp1_abort_draw();
+  vdp1_cancel_erase();
   m_vdp1_legacy.field_valid[0] = m_vdp1_legacy.field_valid[1] = false;
   m_vdp1_legacy.draw_field = 0;
   memset(m_sound_ram, 0x00, 0x080000);
@@ -624,9 +623,58 @@ uint16_t saturn_state::vdp1_regs_r(offs_t offset) {
                               // zero
 }
 
-/* TODO: TVM & 1 is just a kludgy work-around, the VDP1 actually needs to be
- * rewritten from scratch. */
-/* Daisenryaku Strong Style (daisenss) uses it */
+// VBlank erase has a finite field budget, independent of command drawing.
+uint32_t saturn_state::vdp1_vblank_erase_capacity() const {
+  // ST-013 pp.49-50, Tables 4.4/4.5. X erase coordinates count groups of
+  // eight framebuffer words (sixteen dots in 8-bit modes). The available
+  // budget therefore counts words, not packed dots or register X units.
+  const unsigned hreso = m_vdp2->get_hreso();
+  const bool exclusive = hreso & 4;
+  const int clocks_per_raster = exclusive ? ((hreso & 1) ? 848 : 852) : ((hreso & 1) ? 1820 : 1708);
+  const int field_rasters = exclusive ? ((hreso & 1) ? 562 : 525) :
+      (m_vdp2->is_pal() ? 313 : 263);
+  const int display_rasters = exclusive ? 480 : m_vdp2->get_vblank_start_position() - 1;
+  return (clocks_per_raster - 200) * std::max(0, field_rasters - display_rasters);
+}
+
+void saturn_state::vdp1_begin_vblank_erase() {
+  auto &v = m_vdp1_legacy;
+  v.vblank_erase_pending = false;
+  v.vblank_erase_active = true;
+  v.vblank_erase_bank = v.framebuffer_current_display;
+  v.vblank_erase_stride = VDP1_TVM() == 3 ? 256 : 512;
+  v.vblank_erase_data = v.ewdr;
+  v.vblank_erase_left = ((v.erase_upper_left >> 9) & 0x3f) * 8;
+  v.vblank_erase_right = ((v.erase_lower_right >> 9) & 0x7f) * 8;
+  v.vblank_erase_top = v.erase_upper_left & 0x1ff;
+  v.vblank_erase_bottom = v.erase_lower_right & 0x1ff;
+  v.vblank_erase_budget = vdp1_vblank_erase_capacity();
+}
+
+void saturn_state::vdp1_finish_vblank_erase() {
+  auto &v = m_vdp1_legacy;
+  if (!v.vblank_erase_active)
+    return;
+  v.vblank_erase_active = false;
+  // Commit at VBlank OUT, before bank exchange, as in Mednafen's coarse
+  // blank-period model. This enforces the primary's capacity without claiming
+  // per-clock erase/scanout arbitration. Pixels beyond the budget stay intact.
+  unsigned remaining = v.vblank_erase_budget;
+  for (unsigned y = v.vblank_erase_top; y <= v.vblank_erase_bottom && remaining; ++y) {
+    for (unsigned x = v.vblank_erase_left; x < v.vblank_erase_right && remaining; ++x) {
+      const unsigned address = ((y * v.vblank_erase_stride) + (x & (v.vblank_erase_stride - 1))) & 0x1ffff;
+      v.framebuffer[v.vblank_erase_bank][address] = v.vblank_erase_data;
+      --remaining;
+    }
+  }
+}
+
+void saturn_state::vdp1_cancel_erase() {
+  m_vdp1_legacy.vblank_erase_active = false;
+  m_vdp1_legacy.vblank_erase_pending = false;
+}
+
+// Daisenryaku Strong Style (daisenss) uses erase/write.
 void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
   int start_x, end_x, start_y, end_y;
 
@@ -2718,16 +2766,25 @@ end:
 }
 
 void saturn_state::vdp1_video_update() {
+  vdp1_finish_vblank_erase();
+  const bool blank_only = (VDP1_TVM() & 2) || VDP1_TVM() == 4;
   bool framebuffer_changed = false;
   switch (VDP1_FBCR & 3) {
   case 0: // One-cycle mode
     vdp1_change_framebuffers();
-    vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
+    if (blank_only)
+      m_vdp1_legacy.vblank_erase_pending = true;
+    else
+      vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
     framebuffer_changed = true;
     break;
   case 2: // One-field manual erase request, without exchanging banks
-    if (m_vdp1_legacy.fbcr_accessed)
-      vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
+    if (m_vdp1_legacy.fbcr_accessed) {
+      if (blank_only)
+        m_vdp1_legacy.vblank_erase_pending = true;
+      else
+        vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);
+    }
     break;
   case 3: // One-field manual change request; VBE erase ran during blanking
     if (m_vdp1_legacy.fbcr_accessed) {
@@ -2816,6 +2873,16 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.ewdr));
   save_item(NAME(m_vdp1_legacy.erase_upper_left));
   save_item(NAME(m_vdp1_legacy.erase_lower_right));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_pending));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_active));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_bank));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_stride));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_data));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_left));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_right));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_top));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_bottom));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_budget));
   save_item(NAME(m_vdp1_legacy.draw_eos));
   save_item(NAME(m_vdp1_legacy.lopr));
   save_item(NAME(m_vdp1_legacy.copr));
