@@ -145,18 +145,18 @@ void SCSPDSP::Step() {
 		}
 #endif
 
-    // INPUTS RW
-    //  colmns97 hits this
-    // assert(IRA < 0x32);
-    s32 INPUTS; // 24-bit
+    /* INPUTS RW.  INPUTS is a latch rather than a per-step temporary: a step
+       loads it from MEMS, MIXS or EXTS according to IRA and otherwise leaves it
+       holding its previous value.  IRA $32-$3F is reserved and is exactly that
+       "no load" case - it must not abandon the step, because returning here
+       also skips the remaining microprogram, the MDEC_CT decrement and the MIXS
+       clear for this sample.  colmns97 runs a program that reaches it. */
     if (IRA <= 0x1f)
       INPUTS = MEMS[IRA];
     else if (IRA <= 0x2F)
       INPUTS = MIXS[IRA - 0x20] << 4; // MIXS is 20 bit
     else if (IRA <= 0x31)
       INPUTS = EXTS[IRA - 0x30] << 8; // EXTS is 16 bit
-    else
-      return;
 
     INPUTS = util::sext(INPUTS, 24);
 
@@ -211,8 +211,12 @@ void SCSPDSP::Step() {
     // ACCUM
     Y = util::sext(Y, 13);
 
+    /* the 24-bit X by 13-bit Y product is shifted down by 12 and added to the
+       26-bit B operand; the sum is held in a 26-bit accumulator, so it has to
+       be masked and sign extended or an overflow into bit 26 reads back through
+       BSEL with the wrong sign */
     s64 const v = (s64(X) * s64(Y)) >> 12;
-    ACC = int(v + B);
+    ACC = util::sext(int(v + B) & 0x3ffffff, 26);
 
     if (TWT)
       TEMP[(TWA + DEC) & 0x7f] = SHIFTED;
@@ -263,8 +267,10 @@ void SCSPDSP::Step() {
         ADRS_REG = INPUTS >> 16;
     }
 
+    // EFREG writes replace the current value rather than accumulating, so that
+    // when several steps in one cycle target the same index the last one wins
     if (EWT)
-      EFREG[EWA] += SHIFTED >> 8;
+      EFREG[EWA] = SHIFTED >> 8;
   }
   --DEC;
   std::fill(std::begin(MIXS), std::end(MIXS), 0);
