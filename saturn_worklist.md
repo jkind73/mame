@@ -150,3 +150,14 @@ alongside these reopened items.
   missing; sandbox package downloads failed over HTTP and HTTPS. No linked MAME
   executable or ROM boot validated. A documented `--full` recipe is preserved
   for a machine with dependencies; it is not yet verified end-to-end.
+
+### Supplied firmware availability
+
+- User commit `8578abbe02220ae4d174d364b4544997cb61a2cd` supplies BIOS/CD firmware
+  candidates. Archive integrity and 35 relevant entry SHA-1s checked against Sega
+  source declarations; metadata preserved in `regtests/saturn/firmware_manifest.json`.
+- `saturn2`/`saturnzi` are unrelated games, not Sega Saturn BIOSes. Korean BIOS is
+  still the driver's BAD_DUMP placeholder. Audit adds no additional binaries; the
+  user's remote BIOS commit is preserved.
+- BIOS availability no longer blocks future startup checks; full executable build
+  remains blocked and BIOS hashes are not evidence of successful boot/game tests.
