@@ -146,8 +146,8 @@ Framebuffer TODO:
 
 */
 
-#include "saturn.h"
 #include "emu.h"
+#include "saturn.h"
 
 
 #include "cpu/scudsp/scudsp.h"
@@ -289,8 +289,11 @@ void saturn_state::vint_callback(int state) {
 void saturn_state::hint_callback(int state) {
   if (!m_prev_hint && state) {
     m_scu->hblank_in_w(1);
-    m_slave->set_input_line(0x2, ASSERT_LINE);
-  } else if (m_prev_hint && !state) {
+    // The SCU still receives HBlank during VBlank (timers and DMA), but
+    // the slave SH-2 horizontal interrupt is gated by vertical blanking.
+    if (!m_prev_vint)
+      m_slave->set_input_line(0x2, ASSERT_LINE);
+  } else if (m_prev_hint && !state && !m_prev_vint) {
     // Essentially clears?
     m_slave->set_input_line(0x0, ASSERT_LINE);
   }
@@ -7865,8 +7868,12 @@ void saturn_state::vdp2_draw_mosaic(bitmap_rgb32 &bitmap,
     for (int x = cliprect.left(); x <= cliprect.right(); x += h_size) {
       uint32_t pix = bitmap.pix(y, x);
 
-      for (int yi = 0; yi < v_size; yi++)
-        for (int xi = 0; xi < h_size; xi++)
+      // The final block may extend past the clip rectangle, including the
+      // bitmap edge.  Do not overwrite pixels outside this rendering pass.
+      const int block_height = std::min<int>(v_size, cliprect.bottom() - y + 1);
+      const int block_width = std::min<int>(h_size, cliprect.right() - x + 1);
+      for (int yi = 0; yi < block_height; yi++)
+        for (int xi = 0; xi < block_width; xi++)
           bitmap.pix(y + yi, x + xi) = pix;
     }
   }
@@ -7896,12 +7903,17 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
       current_tilemap.vertical_cell_scroll_enable &&
       !current_tilemap.vertical_linescroll_enable &&
       !current_tilemap.linezoom_enable) {
+    if (cliprect.empty())
+      return;
+
     uint32_t vcsc_address;
     uint32_t base_mask;
     int base_offset, base_multiplier;
     int16_t base_scrollx, base_scrolly;
     // uint32_t base_incx, base_incy;
-    int cur_char = 0;
+    // Keep column/table addressing anchored at screen X=0, but do not
+    // render columns wholly to the left of this partial update.
+    int cur_char = cliprect.left() & ~7;
 
     base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
     vcsc_address = (((VDP2_VCSTAU << 16) | VDP2_VCSTAL) & base_mask) * 2;
@@ -7924,7 +7936,8 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
     // base_incy = current_tilemap.incy;
 
     while (cur_char <= cliprect.right()) {
-      mycliprect.setx(cur_char, cur_char + 8 - 1);
+      mycliprect.setx(std::max(cur_char, cliprect.left()),
+                      std::min(cur_char + 7, cliprect.right()));
 
       uint32_t cur_address;
       int16_t char_scroll;
