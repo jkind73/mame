@@ -1,5 +1,30 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## VDP1 sequencer and packed framebuffer implementation — 2026-09-14
+
+Replaced whole-list synchronous dispatch with saved, timer-driven command
+execution. Lists no longer stop at a host iteration cap; CPU edits to looping
+lists are seen on subsequent fetches. ENDR cancels at command boundaries, reset
+cancels pending work, and a new PTMR start restarts at command zero. COPR tracks
+the fetched command; LOPR latches on framebuffer changes; read-only status
+register writes are ignored. Legal jump/skip/CALL/RETURN controls are tested;
+nested CALLs and main-routine RETURNs are prohibited by Sega, not legal features.
+
+Packed 8-bit drawing now shares CPU-visible words with scanout and erase, with
+neighbor-byte preservation and correct word stride for high-resolution and
+rotation-8 storage. All five pixel writers use shared pixel accessors. Postload
+rebuilds line pointers without resetting the restored drawing bank/geometry.
+
+18 scripts/nine object compilations pass. VDP1 coverage is now 32,814 command/
+lifecycle, 532 framebuffer and 24,500 clipping scenarios. Pre-sequencer and
+pre-packed-rendering substitutions fail independently, as do the older baseline
+controls. Timer/CPU/raster endpoints and copied state are not runtime proof.
+Primitive rendering remains synchronous; the sequencer uses a 16-cycle fetch
+allowance without pixel/bus costs. ENDR's ~30-clock pipeline behavior, interlace
+fields, rotated VDP2 readout, texture end-code traversal and raster/color accuracy
+remain open. See `regtests/saturn/vdp1_completion.md` for the updated audit.
+
+
 ## VDP1 implementation pass — 2026-09-14
 
 Fixed END-bit recognition, VRAM command wrap, completion-driven SCU IRQs (removed

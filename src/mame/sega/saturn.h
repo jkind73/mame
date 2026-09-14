@@ -83,6 +83,9 @@ protected:
     int local_x = 0;
     int local_y = 0;
 
+    bool drawing = false;
+    int command_position = 0;
+    int command_return = -1;
     emu_timer *draw_end_timer = nullptr;
   } m_vdp1_legacy;
 
@@ -177,6 +180,7 @@ protected:
   void vdp1_change_framebuffers();
   void vdp1_video_update();
   void vdp1_process_list();
+  void vdp1_abort_draw();
   void vdp1_set_drawpixel();
 
   void vdp1_draw_normal_sprite(const rectangle &cliprect, int sprite_type);
@@ -192,6 +196,8 @@ protected:
                       int32_t y, int32_t x1, int32_t x2, int32_t u1, int32_t u2,
                       int32_t v1, int32_t v2);
   void (saturn_state::*drawpixel)(int x, int y, int patterndata, int offsetcnt);
+  uint16_t vdp1_read_pixel(const uint16_t *line, int x) const;
+  void vdp1_write_pixel(int x, int y, uint16_t value);
   bool vdp1_pixel_visible(int x, int y) const;
   void drawpixel_poly(int x, int y, int patterndata, int offsetcnt);
   void drawpixel_8bpp_trans(int x, int y, int patterndata, int offsetcnt);
