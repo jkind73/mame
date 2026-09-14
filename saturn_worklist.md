@@ -161,3 +161,13 @@ alongside these reopened items.
   user's remote BIOS commit is preserved.
 - BIOS availability no longer blocks future startup checks; full executable build
   remains blocked and BIOS hashes are not evidence of successful boot/game tests.
+
+### Double-density VCNT encoding — implemented and tested
+
+- ST-058 table 2.4, Ymir and Mednafen agree: field count in bits 9:1, inverse ODD
+  in bit 0. Fixed the getter's bit replacement/nine-bit truncation.
+- 47,016 V-counter checks now pass, including 4,096 independent encoding/latch
+  cases. Pre-encoding and pre-bounds negative controls both fail as expected.
+- All six regression scripts and three object compilations pass. Normal/single-
+  density/exclusive behavior and all rollback values are unchanged. Exact field
+  timing and runtime validation remain open; no blanket interlace DONE.
