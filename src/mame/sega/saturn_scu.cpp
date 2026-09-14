@@ -1087,6 +1087,21 @@ void saturn_scu_device::test_pending_irqs() {
 IRQ_CALLBACK_MEMBER(saturn_scu_device::irq_ack_cb) {
   m_hostcpu->set_input_line(irqline, CLEAR_LINE);
   m_current_irq_level = 0;
+
+  /* The SCU resets the interrupt mask register to its power-on default
+     (0000BFFFH per the SCU User's Manual ST-097-R5, figure 3.21) when the
+     master SH-2 fetches the interrupt vector, so every source is masked
+     again after each acknowledged interrupt and software has to re-arm the
+     mask - mednafen's SCU_MSH2VectorFetch() and Ymir's
+     AcknowledgeExternalInterrupt() both model this, and the slave SH-2's
+     fixed vectors (0x41/0x43, served by the DCC callback) do not touch it.
+     Pending status bits in IST survive the reset: Rayman masks the SMPC
+     interrupt again inside its VBlank-OUT handler after an issued interrupt
+     has been marked pending, and relies on both properties - the pending
+     delivery surviving the re-mask (m_current_irq_level gates re-evaluation)
+     and the IST bit surviving while masked - to process INTBACK responses. */
+  m_ism = 0xbfff;
+
   return m_current_vector;
 }
 
