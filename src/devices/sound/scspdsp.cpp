@@ -65,7 +65,11 @@ void SCSPDSP::Step() {
     return;
   }
 
-  std::fill(std::begin(EFREG), std::end(EFREG), 0);
+  /* EFREG is a register file, not a per-sample scratchpad: an entry the
+     program never writes keeps its previous value.  The MiSTer core models it
+     as a RAM the effect mixer reads at slot 0 and Ymir never clears it, so
+     clearing it here would mute any effect return a program leaves untouched
+     for a sample. */
 
 #if 0
 	int dump=0;
@@ -74,11 +78,9 @@ void SCSPDSP::Step() {
 		f=fopen("dsp.txt","wt");
 #endif
 
-  s32 ACC = 0; // 26 bit
+  /* ACC, FRC_REG, Y_REG and ADRS_REG are chip registers that persist across
+     samples; see the declaration in scspdsp.h. */
   s32 MEMVAL = 0;
-  s32 FRC_REG = 0;  // 13 bit
-  s32 Y_REG = 0;    // 24 bit
-  u32 ADRS_REG = 0; // 13 bit
 
   for (int step = 0; step < /*128*/ LastStep; ++step) {
     u16 *const IPtr = MPRO + (step * 4);

@@ -29,6 +29,18 @@ struct SCSPDSP {
   // value across steps and across samples until a step loads a new one
   s32 INPUTS; // 24 bit signed
 
+  /* The remaining runtime registers are chip state, not per-sample
+     temporaries: the MiSTer core holds Y_REG/FRC_REG/ADRS_REG and the
+     adder/shifter register as module-level registers that only a hard reset
+     clears, and Ymir keeps them as save-stated members.  Zeroing them at the
+     start of every sample would truncate any effect whose program carries a
+     partial result (an interpolated address fraction, a latched Y operand)
+     across a sample boundary. */
+  s32 ACC;      // 26 bit signed
+  s32 FRC_REG;  // 13 bit
+  s32 Y_REG;    // 24 bit signed
+  s32 ADRS_REG; // 12 bit
+
   // output
   s16 EFREG[16]; // EFREG, 16 bit signed
 
