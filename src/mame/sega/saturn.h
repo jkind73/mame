@@ -189,6 +189,8 @@ protected:
   TIMER_CALLBACK_MEMBER(vdp1_terminate);
   void vdp1_set_drawpixel();
 
+  static int vdp1_scaled_coordinate(int source, int destination, int pixel, bool reverse);
+  void vdp1_draw_scaled_pixels(const rectangle &cliprect, int address, int width, int height, const spoint *q);
   std::array<int16_t, 256> m_vdp1_texture_end{};
   bool vdp1_texture_sample_visible(int address, int width, int texel);
   bool vdp1_is_end_code(int address, int texel) const;
