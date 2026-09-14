@@ -287,11 +287,9 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag,
   std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
   std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
   std::fill(std::begin(m_PLFO_SAW), std::end(m_PLFO_SAW), 0);
-
   std::fill(std::begin(m_ALFO_TRI), std::end(m_ALFO_TRI), 0);
   std::fill(std::begin(m_ALFO_SQR), std::end(m_ALFO_SQR), 0);
   std::fill(std::begin(m_ALFO_SAW), std::end(m_ALFO_SAW), 0);
-
   memset(m_PSCALES, 0, sizeof(m_PSCALES));
   memset(m_ASCALES, 0, sizeof(m_ASCALES));
   memset(&m_Slots, 0, sizeof(m_Slots));
@@ -383,6 +381,7 @@ void scsp_device::device_start() {
   save_item(NAME(m_DSP.MEMS));
   save_item(NAME(m_DSP.DEC));
   save_item(NAME(m_DSP.MIXS));
+  save_item(NAME(m_DSP.INPUTS));
   save_item(NAME(m_DSP.EXTS));
   save_item(NAME(m_DSP.EFREG));
   save_item(NAME(m_DSP.Stopped));
