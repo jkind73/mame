@@ -1359,12 +1359,13 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
   int mesh = current_sprite.CMDPMOD & 0x100;
   int raw, endcode;
 
-  /* Mesh is a checkerboard stipple, and the manual states the rule as "if the
-     X coordinate value + Y coordinate value is an even number, it will be
-     drawn" - so the pixel is dropped when the sum is odd, which is when the
-     parities of x and y differ.  The test here was inverted, drawing the
-     complementary pattern; x and y are framebuffer coordinates, the same
-     space the rule is stated in. */
+  /* Mesh is a checkerboard stipple.  VDP1 User's Manual sec 6.3 "Mesh Enable"
+     (Figure 6.8, "Mesh Processing") states the rule exactly: "Only pixels for
+     which (X coordinate value + Y coordinate value) is even (XLSB XOR YLSB = 0)
+     are drawn, and odd pixels are skipped and not drawn."  So the pixel is
+     dropped when the parities of x and y differ; x and y are framebuffer
+     coordinates, the same space the rule is stated in.  The test here used to
+     be inverted, drawing the complementary pattern. */
   if (mesh && ((x ^ y) & 1)) {
     return;
   }
