@@ -260,3 +260,12 @@ the opposite external condition despite a direct bit-15 field; it was not treate
 as authoritative over the manual. 1,920 arbitration cases, 16 acknowledgement
 sequences and 512 register writes pass; pre-fix arbitration fails. Actual CPU/CD
 runtime and full external-acknowledgement bus behavior remain unvalidated.
+
+## DMA programmed address width audit update
+
+ST-097 §3.2, printed p.41 / PDF p.57, defines DxR/DxW bits 26:0 for every channel.
+Removed incorrectly stored cache-alias bit 29 from both write masks. Ymir extracts
+bits 0..26; Mednafen and MiSTer use 0x07ffffff. Direct count widths on the following
+page remain unchanged. 15,360 address and 7,680 count writes/readbacks pass with
+separate failing pre-fix source/destination controls. End-of-transfer address-update
+wrapping, MMIO routing and CPU/cache runtime are outside this increment.
