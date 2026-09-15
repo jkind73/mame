@@ -236,6 +236,10 @@ protected:
   void vdp1_draw_segment(const rectangle &cliprect, const spoint &a, const spoint &b, uint16_t color_a, uint16_t color_b,
                          bool edge_coverage = false, int texture_row = -1, int texture_width = 0);
   int vdp1_raster_slice_cycles() const;
+  // Host-only diagnostics; deliberately not part of emulated save state.
+  int64_t m_boot_trace_second = -1;
+  bool boot_trace_word(u32 address, bool sound, u16 &word);
+  void trace_boot_cpu();
   void vdp1_trace(const char *event, int reg = -1, const spoint *bounds = nullptr);
   void vdp1_reset_raster_queue();
   void vdp1_draw_raster_slice();
