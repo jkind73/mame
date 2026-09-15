@@ -1,5 +1,20 @@
 # Sega SDK hardware-document audit
 
+## After Burner II SOUNDPROBE — clock-change SCSP reset correction
+
+The supplied three snapshots identify an old Timer B IRQ preempting startup
+before A5 becomes the SCSP base. A5=00009CC0 sends acknowledgement writes to RAM;
+the sound driver never reaches its ready-pointer write at 06F0 to RAM 04FC.
+CKCHG320 had called SCSP reset, but that routine retained BIOS interrupt masks,
+pending state and running timers. Sega ST-169 pp.30–31 require power-on defaults.
+
+Fixed the SCSP interrupt/timer reset domain, including physical IRQ release and
+replacement of old timer deadlines. No SNDON IRQ suppression, ready-flag patch or
+68000 RESET-opcode change. New production-code reset regressions pass and reject
+the old partial reset; **20 scripts/ten objects pass**, now including SCSP itself.
+Game boot still needs runtime confirmation; broader SCSP reset fidelity is not
+claimed complete. Details: `regtests/saturn/afterburner2_boot_analysis.md`.
+
 ## After Burner II follow-up 366ac068 — still hangs
 
 User confirms `436988f9` did not fix boot. Decoded the new BOOTCPU capture: SH-2

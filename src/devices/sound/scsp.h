@@ -182,6 +182,7 @@ private:
   u32 m_lfsr;
 
   void exec_dma(); /*state DMA transfer function*/
+  void reset_irq_timers();
   void CheckPendingIRQ();
   void MainCheckPendingIRQ(u16 irq_type);
   void update_main_irq();
