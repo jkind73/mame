@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
+p.add_argument('--render-mutation',choices=('hss_end_pixel','rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -66,6 +66,7 @@ if a.render_mutation:
         'round': ('(src & dst & 0x0421)', '0'),
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
         'endcode': ('if (++end_codes == 2)', 'if (++end_codes == 99)'),
+        'hss_end_pixel': ('(mode & ~0x1000) | (hss ? 0x1000 : 0)', '(mode & ~0x1000) | (hss ? 0x80 : 0)'),
         'rgb_end_transparency': ('transpen = (raw & 0x8000) ? 0 : raw;', 'if (raw < 0x7fff) raw = 0; transpen = 0;'),
         'rotation': ('const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);', 'const int sx = x;'),
         'coverage_resume': ('extra = m_vdp1_raster.extra;', 'extra = false;'),
@@ -89,7 +90,7 @@ if a.render_mutation:
         'parameter_b': ('0xffbe', '0xfffe'),
     }
     before,after=mutations[a.render_mutation]
-    assert functions.count(before)==(2 if a.render_mutation=='eos' else 1)
+    assert functions.count(before)==(3 if a.render_mutation=='hss_end_pixel' else 2 if a.render_mutation=='eos' else 1)
     functions=functions.replace(before,after)
 # The unrelated periodic scanline path must no longer manufacture a draw-end IRQ.
 assert 'm_vdp1_texture_end.fill(-1);' in extract(current,'void saturn_state::vdp1_fill_quad(')
@@ -658,15 +659,42 @@ int main(){
   for(int y=0;y<7;++y)for(int x=0;x<dots;++x){
    int u=texture_oracle(reduced?4:8,dots,invert?dots-1-x:x,direction&1);if(reduced)u=2*u+eos;
    int v=texture_oracle(4,7,invert?6-y:y,direction&2);
-   bool end=u==1||u==5;bool visible=x>=2&&(reduced||ecd||(!end&&((direction&1)?u>1:u<5)));
+   bool end=u==1||u==5;bool visible=x>=2&&(ecd||(!end&&(reduced||((direction&1)?u>1:u<5))));
    uint16_t color=0x8000|uint16_t(1+v);
-   if(end&&(reduced||ecd))color=mode<2?0x800f:mode==2?0x803f:mode==3?0x807f:mode==4?0x80ff:0x7fff;
+   if(end&&ecd)color=mode<2?0x800f:mode==2?0x803f:mode==3?0x807f:mode==4?0x80ff:0x7fff;
    if(mode==5&&end)visible=false; // ECD/HSS does not disable the RGB MSB test.
    uint16_t expected=visible?color:0x5555;if(format)expected&=0xff;
    assert(s->vdp1_read_pixel(l.framebuffer_draw_lines[y],x)==expected);++texture_step_cases;
   }
  }
  std::cout<<texture_step_cases<<" texture-step/scaled HSS/EOS pixel cases passed\n";
+ // Capture-derived mechanism, synthetic texture: two sampled F markers map
+ // to opaque black in the LUT. HSS bypasses row termination, but ECD=0 must
+ // skip both markers and still draw the following red/green texels.
+ for(bool queued : {false,true})for(bool ecd : {false,true}){
+  auto &l=s->m_vdp1_legacy;auto &c=s->current_sprite;s->tvm=0;
+  l.framebuffer_current_draw=0;l.framebuffer_width=512;l.framebuffer_height=256;
+  l.framebuffer_double_interlace=0;s->vdp1_prepare_framebuffers();
+  l.system_cliprect.set(0,31,0,31);l.draw_eos=1;
+  std::fill(l.framebuffer[0].begin(),l.framebuffer[0].end(),0x8463);
+  c.CMDCTRL=1;c.CMDPMOD=0x1808|(ecd?0x80:0);c.CMDSRCA=0;c.CMDCOLR=0x100;c.ispoly=0;
+  const uint8_t texels[]={0x1f,0x1f,0x11,0x12};
+  std::copy(std::begin(texels),std::end(texels),l.gfx_decode.begin());
+  for(int i=0;i<16;++i){uint16_t color=i==1?0x801f:i==2?0x83e0:0x8000;
+   l.gfx_decode[0x800+2*i]=color>>8;l.gfx_decode[0x801+2*i]=color;}
+  saturn_state::spoint q[4]{};q[1].x=3;q[3].y=0;
+  s->vdp1_set_drawpixel();s->vdp1_reset_raster_queue();
+  s->m_vdp1_raster_building=queued;
+  s->raster_scaled_pixels(l.system_cliprect,0,8,1,q);
+  s->m_vdp1_raster_building=false;
+  if(queued)while(s->m_vdp1_raster.index<s->m_vdp1_raster.count)s->vdp1_draw_raster_slice();
+  assert(l.framebuffer[0][0]==(ecd?0x8000:0x8463));
+  assert(l.framebuffer[0][1]==(ecd?0x8000:0x8463));
+  assert(l.framebuffer[0][2]==0x801f&&l.framebuffer[0][3]==0x83e0);
+  assert(c.CMDPMOD==(0x1808|(ecd?0x80:0)));
+ }
+ std::cout<<"4 HSS LUT-black marker/cutoff regressions passed\n";
+
  unsigned line_cases=0;
  for(int dx=-12;dx<=12;++dx)for(int dy=-12;dy<=12;++dy)for(bool gouraud : {false,true})for(bool mesh : {false,true}){
   auto &l=s->m_vdp1_legacy;auto &c=s->current_sprite;
@@ -942,7 +970,7 @@ int main(){
     int x=px[0]+(dx<0?-1:1)*(horizontal?dot:off),y=py[0]+(dy<0?-1:1)*(horizontal?off:dot);
     int u=textured?texture_oracle(reduced?4:8,major+1,dot,direction&1):0;if(reduced)u=2*u+eos;
     bool end=kind==4&&(u==1||u==5);
-    bool sample=kind!=4||reduced||(!end&&((direction&1)?u>1:u<5));
+    bool sample=kind!=4||(!end&&(reduced||((direction&1)?u>1:u<5)));
     uint16_t color=textured?(0x8000|(end?255:v*8+u+1)):0x8421;
     if(kind==2){color=0x8000;for(int ch=0;ch<3;++ch)color|=gradient(edge_colors[0][ch],edge_colors[1][ch],major+1,dot)<<(5*ch);}
     auto plot=[&](int x,int y){
