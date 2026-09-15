@@ -1,5 +1,17 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## After Burner II follow-up — sound ready, later DMA-related wait
+
+Latest captures `cc8a7db8`/`3e4b4384` show sound initialization completed:
+RAM 04FC=0007F000, A5=00100000, A0=000BF000 and sound code intact. The main CPU
+now waits at 0607BBC4 on software flag 06004E64=1, in a routine programming SCU
+DMA. This is not the old sound wait and not yet a confirmed DMA/IRQ root cause.
+
+Extended the existing Lua probe with read-only SCU DMA/IRQ state and main-RAM
+operand/vector/handler snapshots; no executable rebuild is needed. Updated Lua
+mock-binding tests pass. No new C++ emulation fix or successful game-boot claim.
+See `regtests/saturn/afterburner2_boot_analysis.md` for evidence and command.
+
 ## After Burner II latest probe — false sound-CPU RAM mirror corrected
 
 New uploads `d05617ff`/`faa4291a` show the SCSP reset correction clears the old
