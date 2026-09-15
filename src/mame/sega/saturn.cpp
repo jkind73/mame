@@ -8476,8 +8476,9 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
   // sets linezoom_enable Would make the background rounded to the Dome, but
   // o(n*m) nested loop causes a performance nosedive
   // https://mametesters.org/view.php?id=7203
-  if (current_tilemap.linescroll_enable &&
-      current_tilemap.vertical_cell_scroll_enable &&
+  // ST-058 p.134: vertical cell scroll is independent of horizontal line
+  // scroll. Keep the existing exclusions for the unqualified combinations.
+  if (current_tilemap.vertical_cell_scroll_enable &&
       !current_tilemap.vertical_linescroll_enable &&
       !current_tilemap.linezoom_enable) {
     if (cliprect.empty())
@@ -8534,12 +8535,19 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
       // current_tilemap.incx = base_incx;
       // current_tilemap.incy = base_incy;
 
-      vdp2_check_tilemap_with_linescroll(bitmap, mycliprect);
+      if (current_tilemap.linescroll_enable)
+        vdp2_check_tilemap_with_linescroll(bitmap, mycliprect);
+      else if (current_tilemap.bitmap_enable)
+        vdp2_draw_basic_bitmap(bitmap, mycliprect);
+      else
+        vdp2_draw_basic_tilemap(bitmap, mycliprect);
 
       // TODO: + 16 for tilemap and char size = 16?
       cur_char += 8;
     }
 
+    current_tilemap.scrollx = base_scrollx;
+    current_tilemap.scrolly = base_scrolly;
     return;
   } else if (current_tilemap.linescroll_enable ||
              current_tilemap.vertical_linescroll_enable ||

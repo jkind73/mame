@@ -13,17 +13,22 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = "868d72fc669765f8a0b9af6503a59642d293cbae"
+BASE = "a562a96f"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--baseline", action="store_true")
+parser.add_argument("--mutation", choices=("gate", "restore"))
 args = parser.parse_args()
 path = "src/mame/sega/saturn.cpp"
 source = (subprocess.check_output(["git", "show", BASE + ":" + path], cwd=ROOT, text=True)
           if args.baseline else (ROOT / path).read_text())
 start = source.index("void saturn_state::vdp2_check_tilemap(")
-start = source.index("  if (current_tilemap.linescroll_enable &&", start)
+start = source.index("  if (current_tilemap.", start)
 end = source.index("  } else if", start)
 branch = source[start:end] + "  }\n"
+if args.mutation == "gate":
+    branch = branch.replace("if (current_tilemap.vertical_cell_scroll_enable &&", "if (current_tilemap.linescroll_enable && current_tilemap.vertical_cell_scroll_enable &&")
+if args.mutation == "restore":
+    branch = branch.replace("    current_tilemap.scrollx = base_scrollx;\n    current_tilemap.scrolly = base_scrolly;", "")
 
 harness = r'''
 #include <algorithm>
@@ -57,7 +62,7 @@ struct table {
 struct saturn_state {
   struct tilemap {
     bool linescroll_enable = true, vertical_cell_scroll_enable = true;
-    bool vertical_linescroll_enable = false, linezoom_enable = false;
+    bool vertical_linescroll_enable = false, linezoom_enable = false, bitmap_enable = false;
     int layer_name = 0, scrollx = 17, scrolly = 23;
   } current_tilemap;
   vdp2 video;
@@ -68,6 +73,18 @@ struct saturn_state {
   rectangle requested;
   int calls = 0;
   void vdp2_check_tilemap_with_linescroll(bitmap_rgb32 &bitmap, const rectangle &clip) {
+    assert(current_tilemap.linescroll_enable);
+    draw(bitmap, clip);
+  }
+  void vdp2_draw_basic_bitmap(bitmap_rgb32 &bitmap, const rectangle &clip) {
+    assert(!current_tilemap.linescroll_enable && current_tilemap.bitmap_enable);
+    draw(bitmap, clip);
+  }
+  void vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap, const rectangle &clip) {
+    assert(!current_tilemap.linescroll_enable && !current_tilemap.bitmap_enable);
+    draw(bitmap, clip);
+  }
+  void draw(bitmap_rgb32 &bitmap, const rectangle &clip) {
     assert(!clip.empty());
     assert(clip.l >= requested.l && clip.r <= requested.r);
     assert(clip.t == requested.t && clip.b == requested.b);
@@ -80,6 +97,8 @@ struct saturn_state {
         assert(pixel == -9999); // no duplicate column coverage
         pixel = current_tilemap.scrolly;
       }
+    current_tilemap.scrollx = 1;
+    current_tilemap.scrolly = 2;
   }
   void run(bitmap_rgb32 &bitmap, const rectangle &cliprect);
 };
@@ -99,16 +118,21 @@ int main() {
         for (int layer : {0, 1})
           for (int left = 0; left < 37; ++left)
             for (int right : {left - 1, left, std::min(left + 9, 36), 36})
-              for (bool empty_y : {false, true}) {
+              for (bool empty_y : {false, true})
+              for (bool horizontal : {false, true})
+              for (bool bitmap_mode : {false, true}) {
                 saturn_state s;
                 s.video.size = size;
                 s.high = address >> 16; s.low = address & 0xffff;
                 s.n0 = ports & 1; s.n1 = ports & 2;
                 s.current_tilemap.layer_name = layer;
+                s.current_tilemap.linescroll_enable = horizontal;
+                s.current_tilemap.bitmap_enable = bitmap_mode;
                 rectangle clip{left, right, 1, empty_y ? 0 : 3};
                 s.requested = clip;
                 bitmap_rgb32 bitmap;
                 s.run(bitmap, clip);
+                assert(s.current_tilemap.scrollx == 17 && s.current_tilemap.scrolly == 23);
                 unsigned base = (address & (size ? 0x7ffff : 0x3ffff)) / 2;
                 int stride = ports == 3 ? 2 : 1;
                 int offset = ports == 3 ? layer : 0;
