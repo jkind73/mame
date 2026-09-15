@@ -1,5 +1,39 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## Screen-coordinate VDP1 scanout — 2026-09-15
+
+Implemented TVM=4 HDTV/31-kHz 2×2 dot replication and unified the VDP2 sprite
+compositor around output-screen coordinates. Normal-16/high-resolution output
+replication and high-resolution-8/normal-output decimation are now handled at
+framebuffer sampling, before rotation or field selection, rather than by copying
+already-composited output pixels. Odd partial clips and per-output-pixel windows,
+alpha/additive blending and normal shadows therefore use the correct destination.
+The accepted HSS/ECD rendering fix is unchanged; no title-position hack was added.
+
+Evidence: ST-013-R3-061694 §1.2 (printed p.14), pp.36–37 defines HDTV replication
+and legal framebuffer formats; pinned Ymir `VDP2DrawSpriteLayer` at
+`6d779960127ced72087a418c1daefc637d0aaa80` corroborates horizontal readout shifts;
+MiSTer VDP1 `VOUTO` at `a95b085038ace57fa621558d60a7adc7a3c53f78` independently
+models packed-byte dot-clock phases. Mismatched-mode decimation is cross-emulator
+behavior, not a claim that Sega specifies every prohibited combination.
+
+Validation: **23 regression scripts and eleven production object compilations
+passed**. New `test_sprite_scanout.py` extracts the actual compositor and readout
+functions: **3,036 image cases** under ASan/UBSan cover framebuffer modes, resolution
+mismatches, interlace, field caches, translated rotation, RGB/palette output,
+windows, blending, shadows and odd clips. Palette/window evaluation and device
+scheduling are stand-ins. `--old` compiles the pre-change implementation and fails
+an odd interlaced clip image (not a compilation failure). Existing VDP2 MSB-shadow
+handling in the alpha path remains a separate gap; these tests do not certify it.
+
+Not full VDP1 completion: active-display erase remains field-coarse, VBlank erase
+is budgeted but committed at field end, bus arbitration remains nominal, and real
+MAME save/load and linked runtime qualification remain outstanding. SDL/pkg-config
+build dependencies are unavailable in this sandbox; two Debian fetch attempts
+failed. AB2 explosions/boot, Power Drift cars and OutRun flashing retain their
+previous user acceptance. Separate logo/title placement is still unverified.
+
+
 ## User-verified results — 2026-09-15
 
 The user confirms that **969cc3ae fixes After Burner II explosion transparency

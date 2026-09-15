@@ -1628,6 +1628,23 @@ int saturn_state::vdp1_rotation_coordinate(uint32_t start, uint32_t line_step,
 uint16_t saturn_state::vdp1_display_pixel(int x, int y,
                                          const std::array<uint32_t, 6> &rotation) const {
   const unsigned mode = VDP1_TVM();
+  const unsigned hreso = m_vdp2->get_hreso();
+  // Output-screen coordinates enter here, including partial-update clips.
+  // ST-013 section 1.2: HDTV/31-kHz repeats every dot in a 2x2 block.
+  // Ymir VDP2DrawSpriteLayer also models normal-16/high-res doubling and
+  // high-res-8/normal-output decimation. MiSTer's VOUTO emits the two byte
+  // lanes on opposite dot-clock phases in mode 1.
+  if (mode == 4) {
+    x >>= 1;
+    y >>= 1;
+  } else {
+    if ((hreso & 4) || (mode == 0 && (hreso & 6) == 2))
+      x >>= 1;
+    else if (mode == 1 && (hreso & 6) == 0)
+      x <<= 1;
+    if (m_vdp2->get_lsmd() == 3 && m_vdp1_legacy.framebuffer_double_interlace == 0)
+      y >>= 1;
+  }
   if (mode != 2 && mode != 3) {
     if (m_vdp1_legacy.framebuffer_double_interlace > 0) {
       if (m_vdp2->get_lsmd() != 3) {
@@ -2873,8 +2890,8 @@ void saturn_state::vdp1_process_list() {
   clear_gouraud_shading();
   CEF_0();
   vdp1_trace("start");
-  // Fetch cost as in Ymir VDP1ProcessCommand. Native lines/quads then advance
-  // in bounded raster slices. Normal/scaled sprites and bus costs remain incomplete.
+  // Fetch cost as in Ymir VDP1ProcessCommand. All legal primitives then
+  // advance in bounded raster slices. Bus arbitration costs remain incomplete.
   m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
 }
 
@@ -10537,9 +10554,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
   int i;
   uint16_t pix;
   const auto rotation = vdp1_rotation_parameters();
-  uint32_t *bitmap_line, *bitmap_line2 = nullptr;
-  uint8_t interlace_framebuffer;
-  uint8_t double_x;
+  uint32_t *bitmap_line;
   static const uint16_t sprite_colormask_table[] = {
       0x07ff, 0x07ff, 0x07ff, 0x07ff, 0x03ff, 0x07ff, 0x03ff, 0x01ff,
       0x007f, 0x003f, 0x003f, 0x003f, 0x00ff, 0x00ff, 0x00ff, 0x00ff};
@@ -10639,20 +10654,6 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
     alpha_enabled = 0;
   }
 
-  /* framebuffer interlace */
-  if ((m_vdp2->get_lsmd() == 3) &&
-      m_vdp1_legacy.framebuffer_double_interlace == 0)
-    interlace_framebuffer = 1;
-  else
-    interlace_framebuffer = 0;
-
-  /*Guess:Some games needs that the horizontal sprite size to be doubled
-    (TODO: understand the proper settings,it might not work like this)*/
-  if (VDP1_TVM() == 0 && BIT(m_vdp2->get_hreso(), 1)) // astrass & findlove
-    double_x = 1;
-  else
-    double_x = 0;
-
   /* window control */
   current_tilemap.window_control.logic = VDP2_SPLOG;
   current_tilemap.window_control.enabled[0] = VDP2_SPW0E;
@@ -10677,205 +10678,22 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
 
   //  vdp2_apply_window_on_layer(mycliprect);
 
-  // if (VDP2_SPWINEN)
-  //	popmessage("(%d %d) enable mask %d type %d | color %d alpha %d shadow
-  //%d", interlace_framebuffer, double_x,	sprite_window, sprite_type,
-  //sprite_color_mode, alpha_enabled, sprite_shadow);
-
-  // TODO: reminder that this is an unfollowable snippet ...
-  if (interlace_framebuffer == 0 && double_x == 0) {
-    if (alpha_enabled == 0) {
-      for (y = cliprect.top(); y <= cliprect.bottom(); y++) {
-        if (vdp1_sprite_priorities_usage_valid)
-          if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
-            continue;
-
-        bitmap_line = &bitmap.pix(y);
-
-        for (x = cliprect.left(); x <= cliprect.right(); x++) {
-          if (!vdp2_window_process(x, y))
-            continue;
-
-          pix = vdp1_display_pixel(x, y, rotation);
-          // pukunpa, no alpha no framebuffer bumps
-          if (sprite_window && pix == 0x8000)
-            continue;
-
-          if ((pix & 0x8000) && sprite_color_mode) {
-            if (sprite_priorities[0] != pri) {
-              vdp1_sprite_priorities_used[sprite_priorities[0]] = 1;
-              vdp1_sprite_priorities_in_fb_line[y][sprite_priorities[0]] = 1;
-              continue;
-            };
-
-            b = pal5bit((pix & 0x7c00) >> 10);
-            g = pal5bit((pix & 0x03e0) >> 5);
-            r = pal5bit(pix & 0x001f);
-            if (color_offset_pal) {
-              vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
-            }
-
-            bitmap_line[x] = rgb_t(r, g, b);
-          } else {
-            priority = sprite_priorities[(pix >> sprite_priority_shift) &
-                                         sprite_priority_mask];
-            if (priority != pri) {
-              vdp1_sprite_priorities_used[priority] = 1;
-              vdp1_sprite_priorities_in_fb_line[y][priority] = 1;
-              continue;
-            };
-
-            // Pretty Fighter X, Game Tengoku shadows
-            // TODO: Pretty Fighter X doesn't read what's behind on title
-            // screen, VDP1 bug?
-            // TODO: seldomly Game Tengoku shadows aren't drawn properly
-            // TODO: allegedly can't enable this with sprite window (verify)
-            if (pix & 0x8000 && VDP2_SDCTL & 0x100 && !sprite_window) {
-              rgb_t p = bitmap_line[x];
-              bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-            } else {
-              pix &= sprite_colormask;
-              if (pix == (sprite_colormask - 1)) {
-                /*shadow - in reality, we should check from what layer pixel
-                 * beneath comes...*/
-                if (VDP2_SDCTL & 0x3f) {
-                  rgb_t p = bitmap_line[x];
-                  bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-                }
-                /* note that when shadows are disabled, "shadow" palette entries
-                 * are not drawn */
-              } else if (pix) {
-                pix += (VDP2_SPCAOS << 8);
-                pix &= 0x7ff;
-                pix += color_offset_pal;
-                bitmap_line[x] = m_palette->pen(pix);
-              }
-            }
-
-            /* TODO: I don't think this one makes much sense ... (1) */
-            if (pix & sprite_shadow) {
-              if (pix & ~sprite_shadow) {
-                rgb_t p = bitmap_line[x];
-                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-              }
-            }
-          }
-        }
-      }
-    } else // alpha_enabled == 1
-    {
-      for (y = cliprect.top(); y <= cliprect.bottom(); y++) {
-        if (vdp1_sprite_priorities_usage_valid)
-          if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
-            continue;
-
-        bitmap_line = &bitmap.pix(y);
-
-        for (x = cliprect.left(); x <= cliprect.right(); x++) {
-          if (!vdp2_window_process(x, y))
-            continue;
-
-          pix = vdp1_display_pixel(x, y, rotation);
-          // raymanj on FMV, alpha enabled (no noticeable difference?)
-          if (sprite_window && pix == 0x8000)
-            continue;
-
-          if ((pix & 0x8000) && sprite_color_mode) {
-            if (sprite_priorities[0] != pri) {
-              vdp1_sprite_priorities_used[sprite_priorities[0]] = 1;
-              vdp1_sprite_priorities_in_fb_line[y][sprite_priorities[0]] = 1;
-              continue;
-            };
-
-            b = pal5bit((pix & 0x7c00) >> 10);
-            g = pal5bit((pix & 0x03e0) >> 5);
-            r = pal5bit(pix & 0x001f);
-            if (color_offset_pal) {
-              vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
-            }
-            ccr = sprite_ccr[0];
-            if (VDP2_CCMD) {
-              bitmap_line[x] = add_blend_r32(bitmap_line[x], rgb_t(r, g, b));
-            } else {
-              bitmap_line[x] = alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
-                                               vdp2_cc_blend_level(ccr));
-            }
-          } else {
-            priority = sprite_priorities[(pix >> sprite_priority_shift) &
-                                         sprite_priority_mask];
-            if (priority != pri) {
-              vdp1_sprite_priorities_used[priority] = 1;
-              vdp1_sprite_priorities_in_fb_line[y][priority] = 1;
-              continue;
-            };
-
-            ccr = sprite_ccr[(pix >> sprite_ccrr_shift) & sprite_ccrr_mask];
-            if (alpha_enabled == 2) {
-              if ((pix & 0x8000) == 0) {
-                ccr = 0;
-              }
-            }
-
-            {
-              pix &= sprite_colormask;
-              if (pix == (sprite_colormask - 1)) {
-                /*shadow - in reality, we should check from what layer pixel
-                 * beneath comes...*/
-                if (VDP2_SDCTL & 0x3f) {
-                  rgb_t p = bitmap_line[x];
-                  bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-                }
-                /* note that when shadows are disabled, "shadow" palette entries
-                 * are not drawn */
-              } else if (pix) {
-                pix += (VDP2_SPCAOS << 8);
-                pix &= 0x7ff;
-                pix += color_offset_pal;
-                if (ccr > 0) {
-                  if (VDP2_CCMD) {
-                    bitmap_line[x] =
-                        add_blend_r32(bitmap_line[x], m_palette->pen(pix));
-                  } else {
-                    bitmap_line[x] =
-                        alpha_blend_r32(bitmap_line[x], m_palette->pen(pix),
-                                        vdp2_cc_blend_level(ccr));
-                  }
-                } else
-                  bitmap_line[x] = m_palette->pen(pix);
-              }
-            }
-
-            /* TODO: (1) */
-            if (pix & sprite_shadow) {
-              if (pix & ~sprite_shadow) {
-                rgb_t p = bitmap_line[x];
-                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-              }
-            }
-          }
-        }
-      }
-    }
-  } else {
-    for (y = cliprect.top();
-         y <= cliprect.bottom() / (interlace_framebuffer + 1); y++) {
+  // Composite in output coordinates. Scanout performs pixel replication or
+  // decimation; windows, clipping and blending must use each output pixel.
+  if (alpha_enabled == 0) {
+    for (y = cliprect.top(); y <= cliprect.bottom(); y++) {
       if (vdp1_sprite_priorities_usage_valid)
         if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
           continue;
 
-      if (interlace_framebuffer == 0) {
-        bitmap_line = &bitmap.pix(y);
-      } else {
-        bitmap_line = &bitmap.pix(2 * y);
-        bitmap_line2 = &bitmap.pix(2 * y + 1);
-      }
+      bitmap_line = &bitmap.pix(y);
 
-      for (x = cliprect.left(); x <= cliprect.right() / (double_x + 1); x++) {
+      for (x = cliprect.left(); x <= cliprect.right(); x++) {
         if (!vdp2_window_process(x, y))
           continue;
 
         pix = vdp1_display_pixel(x, y, rotation);
-        // amoudan, interlaced case
+        // pukunpa, no alpha no framebuffer bumps
         if (sprite_window && pix == 0x8000)
           continue;
 
@@ -10892,66 +10710,91 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           if (color_offset_pal) {
             vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
           }
-          if (alpha_enabled == 0) {
-            if (double_x) {
-              bitmap_line[x * 2] = rgb_t(r, g, b);
-              if (interlace_framebuffer == 1)
-                bitmap_line2[x * 2] = rgb_t(r, g, b);
-              bitmap_line[x * 2 + 1] = rgb_t(r, g, b);
-              if (interlace_framebuffer == 1)
-                bitmap_line2[x * 2 + 1] = rgb_t(r, g, b);
-            } else {
-              bitmap_line[x] = rgb_t(r, g, b);
-              if (interlace_framebuffer == 1)
-                bitmap_line2[x] = rgb_t(r, g, b);
-            }
-          } else // alpha_blend == 1
-          {
-            ccr = sprite_ccr[0];
 
-            if (VDP2_CCMD) {
-              if (double_x) {
-                bitmap_line[x * 2] =
-                    add_blend_r32(bitmap_line[x * 2], rgb_t(r, g, b));
-                if (interlace_framebuffer == 1)
-                  bitmap_line2[x * 2] =
-                      add_blend_r32(bitmap_line2[x * 2], rgb_t(r, g, b));
-                bitmap_line[x * 2 + 1] =
-                    add_blend_r32(bitmap_line[x * 2 + 1], rgb_t(r, g, b));
-                if (interlace_framebuffer == 1)
-                  bitmap_line2[x * 2 + 1] =
-                      add_blend_r32(bitmap_line2[x * 2 + 1], rgb_t(r, g, b));
-              } else {
-                bitmap_line[x] = add_blend_r32(bitmap_line[x], rgb_t(r, g, b));
-                if (interlace_framebuffer == 1)
-                  bitmap_line2[x] =
-                      add_blend_r32(bitmap_line2[x], rgb_t(r, g, b));
+          bitmap_line[x] = rgb_t(r, g, b);
+        } else {
+          priority = sprite_priorities[(pix >> sprite_priority_shift) &
+                                       sprite_priority_mask];
+          if (priority != pri) {
+            vdp1_sprite_priorities_used[priority] = 1;
+            vdp1_sprite_priorities_in_fb_line[y][priority] = 1;
+            continue;
+          };
+
+          // Pretty Fighter X, Game Tengoku shadows
+          // TODO: Pretty Fighter X doesn't read what's behind on title
+          // screen, VDP1 bug?
+          // TODO: seldomly Game Tengoku shadows aren't drawn properly
+          // TODO: allegedly can't enable this with sprite window (verify)
+          if (pix & 0x8000 && VDP2_SDCTL & 0x100 && !sprite_window) {
+            rgb_t p = bitmap_line[x];
+            bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+          } else {
+            pix &= sprite_colormask;
+            if (pix == (sprite_colormask - 1)) {
+              /*shadow - in reality, we should check from what layer pixel
+               * beneath comes...*/
+              if (VDP2_SDCTL & 0x3f) {
+                rgb_t p = bitmap_line[x];
+                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
               }
-            } else {
-              if (double_x) {
-                bitmap_line[x * 2] =
-                    alpha_blend_r32(bitmap_line[x * 2], rgb_t(r, g, b),
-                                    vdp2_cc_blend_level(ccr));
-                if (interlace_framebuffer == 1)
-                  bitmap_line2[x * 2] =
-                      alpha_blend_r32(bitmap_line2[x * 2], rgb_t(r, g, b),
-                                      vdp2_cc_blend_level(ccr));
-                bitmap_line[x * 2 + 1] =
-                    alpha_blend_r32(bitmap_line[x * 2 + 1], rgb_t(r, g, b),
-                                    vdp2_cc_blend_level(ccr));
-                if (interlace_framebuffer == 1)
-                  bitmap_line2[x * 2 + 1] =
-                      alpha_blend_r32(bitmap_line2[x * 2 + 1], rgb_t(r, g, b),
-                                      vdp2_cc_blend_level(ccr));
-              } else {
-                bitmap_line[x] = alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
-                                                 vdp2_cc_blend_level(ccr));
-                if (interlace_framebuffer == 1)
-                  bitmap_line2[x] =
-                      alpha_blend_r32(bitmap_line2[x], rgb_t(r, g, b),
-                                      vdp2_cc_blend_level(ccr));
-              }
+              /* note that when shadows are disabled, "shadow" palette entries
+               * are not drawn */
+            } else if (pix) {
+              pix += (VDP2_SPCAOS << 8);
+              pix &= 0x7ff;
+              pix += color_offset_pal;
+              bitmap_line[x] = m_palette->pen(pix);
             }
+          }
+
+          /* TODO: I don't think this one makes much sense ... (1) */
+          if (pix & sprite_shadow) {
+            if (pix & ~sprite_shadow) {
+              rgb_t p = bitmap_line[x];
+              bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+            }
+          }
+        }
+      }
+    }
+  } else // alpha_enabled == 1
+  {
+    for (y = cliprect.top(); y <= cliprect.bottom(); y++) {
+      if (vdp1_sprite_priorities_usage_valid)
+        if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
+          continue;
+
+      bitmap_line = &bitmap.pix(y);
+
+      for (x = cliprect.left(); x <= cliprect.right(); x++) {
+        if (!vdp2_window_process(x, y))
+          continue;
+
+        pix = vdp1_display_pixel(x, y, rotation);
+        // raymanj on FMV, alpha enabled (no noticeable difference?)
+        if (sprite_window && pix == 0x8000)
+          continue;
+
+        if ((pix & 0x8000) && sprite_color_mode) {
+          if (sprite_priorities[0] != pri) {
+            vdp1_sprite_priorities_used[sprite_priorities[0]] = 1;
+            vdp1_sprite_priorities_in_fb_line[y][sprite_priorities[0]] = 1;
+            continue;
+          };
+
+          b = pal5bit((pix & 0x7c00) >> 10);
+          g = pal5bit((pix & 0x03e0) >> 5);
+          r = pal5bit(pix & 0x001f);
+          if (color_offset_pal) {
+            vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
+          }
+          ccr = sprite_ccr[0];
+          if (VDP2_CCMD) {
+            bitmap_line[x] = add_blend_r32(bitmap_line[x], rgb_t(r, g, b));
+          } else {
+            bitmap_line[x] = alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
+                                             vdp2_cc_blend_level(ccr));
           }
         } else {
           priority = sprite_priorities[(pix >> sprite_priority_shift) &
@@ -10962,9 +10805,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
             continue;
           };
 
-          if (alpha_enabled)
-            ccr = sprite_ccr[(pix >> sprite_ccrr_shift) & sprite_ccrr_mask];
-
+          ccr = sprite_ccr[(pix >> sprite_ccrr_shift) & sprite_ccrr_mask];
           if (alpha_enabled == 2) {
             if ((pix & 0x8000) == 0) {
               ccr = 0;
@@ -10978,15 +10819,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
                * beneath comes...*/
               if (VDP2_SDCTL & 0x3f) {
                 rgb_t p = bitmap_line[x];
-                if (double_x) {
-                  p = bitmap_line[x * 2];
-                  bitmap_line[x * 2] =
-                      rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-                  p = bitmap_line[x * 2 + 1];
-                  bitmap_line[x * 2 + 1] =
-                      rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-                } else
-                  bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
               }
               /* note that when shadows are disabled, "shadow" palette entries
                * are not drawn */
@@ -10994,67 +10827,17 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
               pix += (VDP2_SPCAOS << 8);
               pix &= 0x7ff;
               pix += color_offset_pal;
-              if (alpha_enabled == 0) {
-                if (double_x) {
-                  bitmap_line[x * 2] = m_palette->pen(pix);
-                  if (interlace_framebuffer == 1)
-                    bitmap_line2[x * 2] = m_palette->pen(pix);
-                  bitmap_line[x * 2 + 1] = m_palette->pen(pix);
-                  if (interlace_framebuffer == 1)
-                    bitmap_line2[x * 2 + 1] = m_palette->pen(pix);
-                } else {
-                  bitmap_line[x] = m_palette->pen(pix);
-                  if (interlace_framebuffer == 1)
-                    bitmap_line2[x] = m_palette->pen(pix);
-                }
-              } else // alpha_blend == 1
-              {
+              if (ccr > 0) {
                 if (VDP2_CCMD) {
-                  if (double_x) {
-                    bitmap_line[x * 2] =
-                        add_blend_r32(bitmap_line[x * 2], m_palette->pen(pix));
-                    if (interlace_framebuffer == 1)
-                      bitmap_line2[x * 2] = add_blend_r32(bitmap_line2[x * 2],
-                                                          m_palette->pen(pix));
-                    bitmap_line[x * 2 + 1] = add_blend_r32(
-                        bitmap_line[x * 2 + 1], m_palette->pen(pix));
-                    if (interlace_framebuffer == 1)
-                      bitmap_line2[x * 2 + 1] = add_blend_r32(
-                          bitmap_line2[x * 2 + 1], m_palette->pen(pix));
-                  } else {
-                    bitmap_line[x] =
-                        add_blend_r32(bitmap_line[x], m_palette->pen(pix));
-                    if (interlace_framebuffer == 1)
-                      bitmap_line2[x] =
-                          add_blend_r32(bitmap_line2[x], m_palette->pen(pix));
-                  }
+                  bitmap_line[x] =
+                      add_blend_r32(bitmap_line[x], m_palette->pen(pix));
                 } else {
-                  if (double_x) {
-                    bitmap_line[x * 2] =
-                        alpha_blend_r32(bitmap_line[x * 2], m_palette->pen(pix),
-                                        vdp2_cc_blend_level(ccr));
-                    if (interlace_framebuffer == 1)
-                      bitmap_line2[x * 2] = alpha_blend_r32(
-                          bitmap_line2[x * 2], m_palette->pen(pix),
-                          vdp2_cc_blend_level(ccr));
-                    bitmap_line[x * 2 + 1] = alpha_blend_r32(
-                        bitmap_line[x * 2 + 1], m_palette->pen(pix),
-                        vdp2_cc_blend_level(ccr));
-                    if (interlace_framebuffer == 1)
-                      bitmap_line2[x * 2 + 1] = alpha_blend_r32(
-                          bitmap_line2[x * 2 + 1], m_palette->pen(pix),
-                          vdp2_cc_blend_level(ccr));
-                  } else {
-                    bitmap_line[x] =
-                        alpha_blend_r32(bitmap_line[x], m_palette->pen(pix),
-                                        vdp2_cc_blend_level(ccr));
-                    if (interlace_framebuffer == 1)
-                      bitmap_line2[x] =
-                          alpha_blend_r32(bitmap_line2[x], m_palette->pen(pix),
-                                          vdp2_cc_blend_level(ccr));
-                  }
+                  bitmap_line[x] =
+                      alpha_blend_r32(bitmap_line[x], m_palette->pen(pix),
+                                      vdp2_cc_blend_level(ccr));
                 }
-              }
+              } else
+                bitmap_line[x] = m_palette->pen(pix);
             }
           }
 
@@ -11062,14 +10845,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           if (pix & sprite_shadow) {
             if (pix & ~sprite_shadow) {
               rgb_t p = bitmap_line[x];
-              if (double_x) {
-                p = bitmap_line[x * 2];
-                bitmap_line[x * 2] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-                p = bitmap_line[x * 2 + 1];
-                bitmap_line[x * 2 + 1] =
-                    rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
-              } else
-                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+              bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
             }
           }
         }
