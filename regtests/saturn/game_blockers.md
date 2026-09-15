@@ -1,5 +1,22 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## Latest: captured HSS/LUT END-pixel defect corrected (3c31f363)
+
+The live video capture locates opaque 8000 pixels in the explosion framebuffer.
+LUT index F maps to that black value; the corresponding reduced commands use
+PMOD=1808 (HSS=1, ECD=0). The renderer incorrectly forced ECD during reduction.
+Keep ECD unchanged: bypass two-END row termination for HSS but reject individual
+END pixels. Ymir and MiSTer agree on this distinction; the Sega p.86 HSS table
+has conflicting wording, documented rather than presented as proof.
+
+Corrected synchronous/queued scaled and native texture paths. Four synthetic
+LUT marker/cutoff cases plus existing HSS/EOS/quad images pass; restoring the
+old behavior fails a C++ pixel assertion. All 22 scripts and eleven objects
+pass. Rebuild/game visual acceptance is pending; boot remains confirmed.
+See `regtests/saturn/visual_followup_3c31f363.md` for exact capture evidence,
+reference code and limitations. Logo/title displacement is still separate.
+
+
 ## Latest: explosion rectangles still present (d0166ac6)
 
 User confirms the 94cc6b24 RGB correction did **not** resolve After Burner II's
