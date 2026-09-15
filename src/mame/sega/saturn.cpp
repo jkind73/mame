@@ -2285,7 +2285,7 @@ void saturn_state::vdp1_draw_segment(const rectangle &cliprect, const spoint &a,
   const bool hss = textured && (current_sprite.CMDPMOD & 0x1000) && major + 1 < texture_width;
   const uint16_t mode = current_sprite.CMDPMOD;
   if (textured)
-    current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x80 : 0);
+    current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x1000 : 0);
   const int address = (current_sprite.CMDSRCA & 0xffff) * 8;
   bool extra = false;
   int x = a.x, y = a.y;
@@ -2410,7 +2410,7 @@ void saturn_state::vdp1_draw_rectangle_slice(const int32_t *data) {
   const uint16_t mode = current_sprite.CMDPMOD;
   const bool hss = scaled && (mode & 0x1000) && columns < width;
   if (scaled)
-    current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x80 : 0);
+    current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x1000 : 0);
   const int length = data[2] - data[0] + 1;
   while (m_vdp1_raster.dot < length && m_vdp1_raster_budget) {
     const int x = data[0] + m_vdp1_raster.dot;
@@ -2647,9 +2647,13 @@ void saturn_state::vdp1_draw_scaled_pixels(const rectangle &cliprect, int addres
   }
 
   // Effective mode for this atomic primitive, not a write to guest VRAM.
-  // The p.86 table disables END only on HSS-reduced rows, not enlargement.
+  // HSS reduction bypasses two-END row termination, not the ECD-controlled
+  // rejection of an individual END texel. Keep effective HSS for the row
+  // helper, but never force ECD: LUT END entries can contain opaque black.
+  // Ymir VDP1PlotTexturedLine and MiSTer IS_PAT_EC/FB_DRAW_WE agree. This
+  // differs from the HSS-reduction wording in the ST-013 p.86 table.
   const uint16_t mode = current_sprite.CMDPMOD;
-  current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x80 : 0);
+  current_sprite.CMDPMOD = (mode & ~0x1000) | (hss ? 0x1000 : 0);
   m_vdp1_texture_end.fill(-1);
   for (int y = top; y <= bottom; ++y) {
     const int v = width ? vdp1_scaled_coordinate(height, rows, std::abs(y - q[0].y), flip_y) : 0;
@@ -2666,7 +2670,8 @@ bool saturn_state::vdp1_texture_sample_visible(int address, int width, int texel
   // ST-013 p.86: END acts in source-row order, not destination-dot order.
   // Scan each referenced row once, including texels skipped during reduction;
   // enlargement must not count repeated samples of the same END twice.
-  // HSS needs its own fetch/decimation traversal, not this affine fallback.
+  // HSS reduction has no two-END cutoff. The pixel writer still rejects
+  // each sampled END when ECD=0; HSS must not imply ECD=1.
   if (current_sprite.ispoly || (current_sprite.CMDPMOD & 0x1080) || width <= 0)
     return true;
   const int row = texel / width;
