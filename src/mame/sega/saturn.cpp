@@ -10907,11 +10907,10 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           };
 
           ccr = sprite_ccr[(pix >> sprite_ccrr_shift) & sprite_ccrr_mask];
-          if (alpha_enabled == 2) {
-            if ((pix & 0x8000) == 0) {
-              ccr = 0;
-            }
-          }
+          // A ratio of zero is valid (31:1), not a disabled-calculation
+          // sentinel. Keep per-dot MSB eligibility separate from the ratio;
+          // additive calculation ignores the ratio entirely (ST-058 p.241).
+          const bool calculate_color = alpha_enabled != 2 || (pix & 0x8000);
 
           {
             pix &= sprite_colormask;
@@ -10928,7 +10927,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
               pix += (VDP2_SPCAOS << 8);
               pix &= 0x7ff;
               pix += color_offset_pal;
-              if (ccr > 0) {
+              if (calculate_color) {
                 if (VDP2_CCMD) {
                   bitmap_line[x] =
                       add_blend_r32(bitmap_line[x], m_palette->pen(pix));

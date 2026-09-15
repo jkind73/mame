@@ -1,5 +1,33 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## C05: sprite zero-ratio calculation and eligibility — 2026-09-15
+
+Sprite palette composition no longer uses CCRT=0 as a disabled-calculation sentinel.
+Ratio zero is the valid 31:1 top/second-image blend. Per-dot MSB eligibility is now
+kept separately, so eligible additive pixels also calculate at ratio zero while
+ineligible pixels still replace the destination. Other priority conditions and RGB
+selection are preserved. This does not implement CCRTMD second-image ratio selection,
+full underlying-layer eligibility, sprite windows or the remaining shadow behavior.
+
+Primary: ST-058 §12.1 printed p.235 gives the 31:1 through 0:32 range; p.241 says
+CCMD=1 ignores ratio registers; sprite condition rules are in §9.2. Pinned Ymir
+sprite ratio attributes and final calculation, and MiSTer separate CCRT/CCENFST
+inputs to ColorCalc, corroborate keeping eligibility separate from the ratio.
+
+The sprite fixture now extracts the **actual production blend-level helper**, not
+the earlier fixed-purpose stand-in. Existing ratio-16 expected images use the real
+15:17 weight. Added **38,400 ratio/selector/eligibility images** cover every ratio,
+eight palette selectors, all four conditions, three tested priorities, mixed/RGB
+selection, MSB eligibility, disabled calculation and additive saturation. The
+baf9b069 baseline compiles and fails the new oracle. The prior 3,036 scanout cases
+also pass. Palette/window devices in this sprite fixture remain stand-ins; actual
+palette/window integration is tested separately in the bitmap fixture.
+
+All **25 regression scripts and eleven production object compilations pass**.
+No linked runtime, physical hardware or real save-manager acceptance is claimed.
+Parent C05 and the broader composition tasks remain open.
+
+
 ## A04/C05: bitmap additive calculation — 2026-09-15
 
 The real bitmap fixture exposed a shared omission: all five bitmap routines used
