@@ -1,5 +1,93 @@
 # After Burner II boot stall — investigation
 
+## Latest files: IRQ reset works; false 68000 RAM mirror destroys startup code
+
+Retrieved and preserved the user uploads at root:
+
+- `afterburner2-sound-probe.txt`, commit `d05617ff`, 37,128 bytes, SHA-256
+  `47ddda836b5c4ceb68506b18857e06c1a9e618532460950696f0639748edf4dd`.
+- `error.log`, commit `faa4291a`, 6,496,483 bytes, SHA-256
+  `6e703db3f35deeb80b646c15aaaa46284b3c1b37c41e0124f2fc3afbbbbb45b1`.
+
+These are the new run, not duplicates of the earlier probe. The SCSP probe shows
+SCIEB=0, level assignments=0, current IRQ level=0 and reset timer reloads/prescalers.
+The old Timer B interrupt is no longer delivered. Pending masked timer/sample
+bits are allowed to accumulate; SCIPD=5C0 alone is not a failed reset.
+
+The game still does not boot. Sound CPU PC now runs through low RAM/exception
+paths, its stack decreases, and sound RAM through 06BA is zero. This is a second
+startup blocker exposed after the reset fix, not the earlier IRQ handler loop.
+
+### Exact corruption mechanism
+
+The earlier intact driver image supplied by the user contains:
+
+```text
+000006b2  72ff            moveq #-1,d1
+000006b4  41f9 0007 f000  lea $7f000,a0
+000006ba  20c0            move.l d0,(a0)+  ; D0=0
+000006bc  51c9 fffc       dbra d1,$6ba
+```
+
+DBRA decrements the low 16 bits; starting at FFFF, the intended sequence issues
+65,536 longword stores from 07F000 through 0BEFFC (end pointer 0BF000). Only the
+first 4 KiB is installed RAM. The rest must not wrap into the low sound program.
+
+Both Saturn and ST-V `sound_mem` instead mapped 080000–0FFFFF as a mirror of the
+installed 000000–07FFFF RAM. The loop therefore overwrote its own code: the store
+at **0806B8** clears physical **0006B8–0006BB**, including opcode 20C0 at 06BA.
+A0 advances to **0806BC**. The uploaded snapshot has exactly this fingerprint:
+
+- A0=000806BC;
+- zero reset vectors and zero words through 06BA;
+- `51c9 fffc` still intact at 06BC/06BE;
+- following startup instructions from 06C0 onward still present.
+
+This explains why the driver does not reach A5 setup or the ready-pointer write,
+now without the old interrupt. It does not require changing DBRA, RESET, the
+ready flag, or game data.
+
+### Corrected mapping and sources
+
+Removed the **68000-facing** upper-RAM mirror in Saturn and ST-V; writes to the
+uninstalled 080000–0FFFFF expansion region are ignored without log flooding.
+Reads retain the unmapped-space behavior; exact open-bus values/timing are not
+claimed. Installed sound RAM and SCSP register mapping are unchanged. The
+separate native sample/DSP RAM address wrapping and the SH-2-facing map are
+unchanged by this scoped correction.
+
+- Sega [ST-077-R2](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-077-R2-052594.pdf),
+  printed p.4, Figure 1.3: 000000–07FFFF is usable 4-Mbit sound RAM;
+  080000–0FFFFF is **uninstalled expansion memory**, access prohibited. The
+  manual establishes that this is not another installed-RAM window; behavior of
+  the game's out-of-range stores is cross-checked against the implementations.
+- [MiSTer SCSP](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/SCSP/SCSP.sv),
+  lines 1543–1558: CPU RAM accesses use `MEM_CS = ~SCPU_WA[19]` or
+  `~SCPU_RA[19]`. Address bit 19 deselects RAM instead of creating an alias.
+- [Ymir SCSP CPU bus](https://github.com/StrikerX3/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/scsp/scsp.hpp),
+  lines 322–344: CPU reads/writes RAM only in 000000–07FFFF; writes in the
+  expansion region are ignored. Its separate ReadWRAM/WriteWRAM address masking
+  is not a reason to mirror the entire CPU address window.
+
+BOOTCPU and the Lua probe now reject sound-CPU expansion pointers rather than
+presenting them as low-RAM aliases. This is a diagnostic correction, not another
+request for instrumentation evidence before trying the fixed map.
+
+### Tests and acceptance
+
+`test_sound_map.py` executes the production map declarations with a recording-map
+fixture for both Saturn and ST-V. Thirteen cases cover expansion writes, byte
+lanes, installed-RAM/register boundaries, the complete intended clear sequence,
+and the historical self-overwrite fingerprint. Reintroducing the old alias fails.
+The historical-map replay independently reproduces **A0=0806BC with 06BA zeroed
+and 06BC/06BE intact**. These are store/map tests, not a full 68000 execution run.
+
+All **21 regression scripts and ten production objects pass**. Updated standalone
+Lua mock-binding checks pass, including expansion-pointer exclusion. No linked
+emulator run or successful game boot is claimed. Rebuild and retest After Burner
+II; the user-reported Power Drift image/geometry issue remains separate.
+
+
 ## Supplied SOUNDPROBE: stale SCSP interrupt state across clock change
 
 The user supplied all three snapshots (20.011778927, 21.015714325 and
