@@ -8,6 +8,45 @@ local captures = 0
 local next_time = 20
 local failed = false
 
+-- A pending DMA-end bit with IMS=BFFF needs ordering evidence: whether the
+-- BIOS restores the mask, or another vector fetch masks it again. These taps
+-- observe existing accesses and return nil, never changing bus data.
+local taps, events = {}, {}
+local taps_started = false
+local function install_irq_taps(machine)
+    if taps_started then return end
+    local main = machine.devices[':maincpu']
+    if not main or not main.spaces or not main.spaces['program'] then return end
+    taps_started = true
+    local space = main.spaces['program']
+    local function observe(kind)
+        return function(address, data, mask)
+            local now = emu.time()
+            if now >= 19 and now <= 23 and #events < 12000 then
+                events[#events + 1] = string.format(
+                    'IRQTRACE t=%.9f %s addr=%08x data=%08x mask=%08x sampledpc=%08x',
+                    now, kind, address, data, mask, main.state['PC'].value)
+            end
+            -- No return value: the original memory access is unmodified.
+        end
+    end
+    for _, base in ipairs({0x05fe0000, 0x25fe0000}) do
+        taps[#taps + 1] = space:install_write_tap(base, base + 0x63,
+            'ab2-dma-writes', observe('DMA-write'))
+        taps[#taps + 1] = space:install_write_tap(base + 0xa0, base + 0xab,
+            'ab2-irq-writes', observe('IRQ-write'))
+    end
+    -- IRQ vector fetches go through the CPU address-space helper. Other
+    -- reads of the same table may also appear; these are address observations,
+    -- not an assertion that every read is an acknowledged interrupt.
+    taps[#taps + 1] = space:install_read_tap(0x06000100, 0x0600013f,
+        'ab2-vector-reads', observe('vector-read'))
+end
+local function remove_irq_taps()
+    for _, tap in ipairs(taps) do tap:remove() end
+    taps = {}
+end
+
 local function snapshot(machine, now)
     local sound = assert(machine.devices[':audiocpu'], 'sound CPU not found')
     local main = assert(machine.devices[':maincpu'], 'main CPU not found')
@@ -17,6 +56,9 @@ local function snapshot(machine, now)
     local text = {}
     local function line(fmt, ...) text[#text + 1] = string.format(fmt, ...) end
     line('SOUNDPROBE t=%.9f capture=%d', now, captures + 1)
+    line('IRQTRACE taps=%s buffered=%d (sampled PC may lag under DRC)', tostring(taps_started), #events)
+    for _, event in ipairs(events) do line('%s', event) end
+    events = {}
     for _, pair in ipairs({{'main', main}, {'sound', sound}}) do
         local names = {}
         for name in pairs(pair[2].state) do names[#names + 1] = name end
@@ -77,6 +119,10 @@ local function snapshot(machine, now)
     -- level-2 handler. The full low sound RAM window is needed only once.
     dump('sound', ram, 0, captures == 0 and 0x1000 or 0x100)
     dump('ready', ram, 0x4e0, 0x40)
+    -- Saturn BIOS software mask shadow, common interrupt dispatcher and
+    -- dispatch tables. Raw RAM: table values may be modified by the game.
+    dump('bios-mask', work, 0x340, 0x20)
+    dump('bios-dispatch', work, 0x8f0, 0x310)
     for i = 0, 7 do
         local entry = sound.state['A' .. i]
         if entry then
@@ -126,14 +172,24 @@ local function snapshot(machine, now)
 end
 
 emu.register_frame_done(function()
-    if failed or captures == 3 or emu.time() < next_time then return end
+    if failed or captures == 3 then return end
+    local installed, install_error = pcall(install_irq_taps, manager.machine)
+    if not installed then
+        failed = true
+        remove_irq_taps()
+        print('SOUNDPROBE tap installation failed: ' .. tostring(install_error))
+        return
+    end
+    if emu.time() < next_time then return end
     local ok, err = pcall(snapshot, manager.machine, emu.time())
     if not ok then
         failed = true
+        remove_irq_taps()
         print('SOUNDPROBE failed: ' .. tostring(err))
         return
     end
     captures = captures + 1
+    if captures == 3 then remove_irq_taps() end
     next_time = emu.time() + 1
     print(string.format('SOUNDPROBE saved %d/3 to %s', captures, output))
 end)
