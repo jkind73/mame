@@ -1,5 +1,10 @@
 # Visual follow-up: d402162b (2026-09-15)
 
+**Superseded diagnostic status:** the requested capture arrived in 3c31f363.
+The HSS/LUT END-pixel defect is now identified and corrected; see
+`visual_followup_3c31f363.md`. The history below records earlier hypotheses.
+
+
 ## Latest: explosion rectangles still present (d0166ac6)
 
 User confirms the 94cc6b24 RGB correction did **not** resolve After Burner II's
