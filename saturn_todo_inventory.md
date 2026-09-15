@@ -1,5 +1,20 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## After Burner II latest probe — false sound-CPU RAM mirror corrected
+
+New uploads `d05617ff`/`faa4291a` show the SCSP reset correction clears the old
+IRQ. A second blocker is now visible: the sound driver's clear loop writes beyond
+07FFFF, and the 68000 map wrongly aliases the uninstalled expansion area onto its
+own code. The snapshot's A0=0806BC and erased opcode at 06BA exactly match a
+store through this false alias. Removed the CPU-side mirror for Saturn/ST-V;
+Sega ST-077 Figure 1.3, MiSTer RAM chip select and Ymir CPU mapping agree.
+
+Thirteen map/store cases include the historical corruption fingerprint; the old
+alias mutation fails. **21 scripts/ten objects pass**, plus updated Lua fixture
+checks. DSP/sample address wrapping is unchanged. No game boot acceptance claim:
+rebuild/retest needed. See `regtests/saturn/afterburner2_boot_analysis.md`.
+OutRun flashing is user-confirmed fixed; Power Drift geometry remains separate.
+
 ## After Burner II SOUNDPROBE — clock-change SCSP reset correction
 
 The supplied three snapshots identify an old Timer B IRQ preempting startup

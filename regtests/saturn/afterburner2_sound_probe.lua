@@ -60,7 +60,7 @@ local function snapshot(machine, now)
         local entry = sound.state['A' .. i]
         if entry then
             local addr = entry.value & 0xffffff
-            if addr < 0x100000 then dump('sound-A' .. i, ram, addr & 0x7ffff, 0x80) end
+            if addr < 0x80000 then dump('sound-A' .. i, ram, addr, 0x80) end
         end
     end
     local pc = main.state['PC'].value & 0x1fffffff
