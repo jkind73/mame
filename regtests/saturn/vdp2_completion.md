@@ -1,5 +1,41 @@
 # VDP2 implementation report and progress tracker
 
+## A04/C01: preserve opaque black through rotation caching — 2026-09-15
+
+Rotation caches now distinguish **coverage from RGB intensity**. Cache construction
+clears with `rgb_t::transparent()` instead of opaque black. Actual source writers
+already produce alpha=255 on every drawn RGB/palette dot (including RGB black);
+transparent source dots leave the cache untouched. Both coefficient paths now test
+that coverage byte rather than rejecting every pixel with RGB=0. Transparency-code
+disable is handled by the source writer, not reapplied against decoded RGB.
+This byte is host cache metadata, not a new Saturn alpha channel or a replacement
+for the still-missing source-layer/priority/second-image metadata.
+
+Primary ST-058 printed pp.57–58 defines transparency from palette dot code zero
+or the RGB source MSB, and permits disabling that test. A nonzero palette index
+resolving to black and RGB 8000/80000000 are therefore not transparent. Pinned
+MiSTer `MakeDotData`/R0DOT.TP and Ymir's background dot/window processing likewise
+keep transparency separate from the final RGB value. MAME `palette.h` and palette
+initialization confirm that ordinary black pens and three-channel RGB constructors
+are opaque, while `rgb_t::transparent()` has zero coverage.
+
+The rotation fixture now uses the **actual MAME rgb_t** definition. Added **360
+bitmap-to-rotation coverage images** execute the five production bitmap writers
+into a transparent source cache and then the production rotation compositor:
+zero/black/red dots, RGB transparent codes with nonzero payload, transparency on/off,
+A/B, coefficient paths, forward/reversed traversal and opaque/ratio/additive output.
+Palette lookup and window/coefficient inputs remain controlled stand-ins; this is
+not exhaustive character-tile rendering or full device integration.
+The 9,216 existing rotation images still pass. Cache setup also uses actual rgb_t
+and verifies transparent clearing. Restoring RGB-zero rejection or opaque cache
+clearing causes separate assertion failures.
+
+All **27 regression scripts and eleven production object builds pass**. Full
+source-layer-aware composition, special effects, sprite windows, precision and real
+linked runtime/save/performance qualification remain open. No particular game's
+black-pixel symptom or title/logo placement is claimed fixed without runtime evidence.
+
+
 ## A04/C03/C05: rotation shortcut and source-cache composition — 2026-09-15
 
 The no-transform rotation shortcut no longer collapses window behavior into one
@@ -311,6 +347,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 
 ### P1 — Correct composition and ordinary visual effects
 
+- [x] **V2-C01a** Preserve decoded pixel coverage separately from RGB in rotation caches; verify opaque-black and transparent source dots.
 - [ ] **V2-C01** Establish per-pixel source identity/priority/eligibility sufficient for correct effect selection.
   - [ ] Top image and eligible second image selection.
   - [ ] Same-priority tie order and priority-zero suppression.

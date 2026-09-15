@@ -1,5 +1,13 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## VDP2 rotation coverage update — 2026-09-15
+
+Rotation caches now distinguish opaque black from transparent pixels using existing
+MAME RGB alpha metadata. 360 new production bitmap-to-rotation images and independent
+RGB-zero/opaque-clear mutations validate the correction. All 27 scripts/11 objects
+pass; full composition and runtime acceptance remain open. See the VDP2 tracker.
+
+
 ## VDP2 composition update — 2026-09-15
 
 Sprite CCRT=0 now calculates as a valid ratio; MSB eligibility is separate from
