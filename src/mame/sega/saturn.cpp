@@ -10042,7 +10042,8 @@ uint16_t saturn_state::vdp2_regs_r(offs_t offset) {
   return m_vdp2_regs[offset];
 }
 
-// TODO: mode 0 handling
+// Mode 0 broadcasts writes, not reads: mode changes can leave the two
+// physical halves different until the guest writes the corresponding words.
 uint32_t saturn_state::vdp2_cram_r(offs_t offset) {
   offset &= (0xfff) >> (2);
   return m_vdp2_cram[offset];
@@ -10051,6 +10052,9 @@ uint32_t saturn_state::vdp2_cram_r(offs_t offset) {
 // TODO: byte writes are goofy
 void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
                                uint32_t mem_mask) {
+  if (!mem_mask)
+    return;
+
   int r, g, b;
   uint8_t cmode0;
 
@@ -10058,6 +10062,12 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
 
   offset &= (0xfff) >> (2);
   COMBINE_DATA(&m_vdp2_cram[offset]);
+  // ST-058 section 3.4: mode-0 writes reach both 1K-word halves.
+  // Ymir WriteCRAM and MiSTer IO_PAL0/1_WE also broadcast upper-half
+  // accesses. Merge each half separately: unwritten lanes may differ after
+  // a mode change, and must not be copied from the addressed half.
+  if (cmode0)
+    COMBINE_DATA(&m_vdp2_cram[offset ^ 0x200]);
 
   mark_fade_effects_dirty();
 
