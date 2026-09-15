@@ -1,5 +1,14 @@
 # After Burner II boot stall — investigation
 
+## Boot accepted by user (d402162b follow-up)
+
+The user confirms After Burner II now boots with the d68770ea SH delay-slot
+interrupt-check correction. The startup hang below is resolved, not an active
+request for another sound/DMA probe. New graphics issues are tracked separately
+in `visual_followup_d402162b.md`; boot acceptance does not imply full graphics
+or gameplay acceptance. The following sections retain the diagnostic history.
+
+
 ## Capture 2f84a960: SH DRC loses delay-slot interrupt check (fixed, boot pending)
 
 The access history now identifies the mask transition, not merely the final
