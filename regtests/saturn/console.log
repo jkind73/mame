@@ -1,4 +1,3 @@
-C:\Users\jkind\mameSaturn\mame>mame -verbose -log -autoboot_delay 0 -autoboot_script regtests/saturn/afterburner2_sound_probe.lua
 Attempting load of mame.ini
 Parsing .\mame.ini
 Attempting load of mame.ini
@@ -151,7 +150,7 @@ Sound: Created output stream :speaker on device Speakers (Realtek(R) Audio).
 SOUNDPROBE saved 1/3 to afterburner2-sound-probe.txt
 SOUNDPROBE saved 2/3 to afterburner2-sound-probe.txt
 SOUNDPROBE saved 3/3 to afterburner2-sound-probe.txt
-Average speed: 100.00% (123 seconds)
+Average speed: 100.00% (139 seconds)
 Sound: WASAPI exited
 drc_cache: Statistics:
 Flush count 1, near cache use 1176, permanent cache use 5242896/5246976, invariant cache use 176, maximum transient cache use 4458784
