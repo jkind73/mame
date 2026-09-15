@@ -8754,6 +8754,9 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   int32_t coeff_table_val;
   uint32_t address;
   uint32_t *line;
+  // Source writers set rgb_t alpha on every drawn dot, including black.
+  // Transparent dots leave the cleared cache untouched. Coverage must not
+  // be inferred from RGB intensity or applied a second time after decoding.
   rgb_t pix;
   // uint32_t coeff_line_color_screen_data;
   int32_t clipxmask = 0, clipymask = 0;
@@ -8970,8 +8973,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
 
         pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
         if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
-          if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
-              (pix & 0xffffff)) {
+          if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
@@ -8980,8 +8982,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                 alpha_blend_r32(line[hcnt], pix, current_tilemap.alpha);
           }
         } else if (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND) {
-          if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
-              (pix & 0xffffff)) {
+          if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
@@ -8989,8 +8990,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             line[hcnt] = add_blend_r32(line[hcnt], pix);
           }
         } else {
-          if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
-              (pix & 0xffffff)) {
+          if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
@@ -9080,8 +9080,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
 
         pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
         if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
-          if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
-              (pix & 0xffffff)) {
+          if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
@@ -9090,8 +9089,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                 alpha_blend_r32(line[hcnt], pix, current_tilemap.alpha);
           }
         } else if (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND) {
-          if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
-              (pix & 0xffffff)) {
+          if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
@@ -9099,8 +9097,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             line[hcnt] = add_blend_r32(line[hcnt], pix);
           }
         } else {
-          if ((current_tilemap.transparency & STV_TRANSPARENCY_NONE) ||
-              (pix & 0xffffff)) {
+          if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
@@ -9777,7 +9774,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
       if ((RBG0_cache_data.is_cache_dirty & iRP) ||
           memcmp(&RBG0_cache_data.layer_data[iRP - 1], &current_tilemap,
                  sizeof(current_tilemap)) != 0) {
-        m_vdp2_legacy.roz_bitmap[iRP - 1].fill(m_palette->black_pen(),
+        m_vdp2_legacy.roz_bitmap[iRP - 1].fill(rgb_t::transparent(),
                                                roz_clip_rect);
         vdp2_check_tilemap(m_vdp2_legacy.roz_bitmap[iRP - 1], roz_clip_rect);
         // prepare cache data
