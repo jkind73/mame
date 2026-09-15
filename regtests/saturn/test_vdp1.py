@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
+p.add_argument('--render-mutation',choices=('rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -66,6 +66,7 @@ if a.render_mutation:
         'round': ('(src & dst & 0x0421)', '0'),
         'gouraud': ('const int64_t dx = int64_t(x) - (line.x[0] >> FRAC_SHIFT);', 'const int64_t dx = 0;'),
         'endcode': ('if (++end_codes == 2)', 'if (++end_codes == 99)'),
+        'rgb_end_transparency': ('transpen = (raw & 0x8000) ? 0 : raw;', 'if (raw < 0x7fff) raw = 0; transpen = 0;'),
         'rotation': ('const int sx = vdp1_rotation_coordinate(rotation[0], rotation[2], rotation[4], x, y);', 'const int sx = x;'),
         'coverage_resume': ('extra = m_vdp1_raster.extra;', 'extra = false;'),
         'texture_row': ('data[10], data[11], data[12]', 'data[10], data[11] < 0 ? -1 : 0, data[12]'),
@@ -538,7 +539,7 @@ int main(){
   s->raster_normal(l.system_cliprect,0);
   for(unsigned y=0;y<2;++y){unsigned ends=0;
    for(unsigned x=0;x<8;++x){unsigned u=(direction&1)?7-x:x;bool end=u==first||u==second;
-    if(end)++ends;bool written=ecd||(!end&&ends<2);
+    if(end)++ends;bool written=(ecd||(!end&&ends<2))&&!(mode==5&&end&&!spd);
     assert((l.framebuffer_draw_lines[y][x]!=0x5555)==written);
    }
   }
@@ -591,6 +592,26 @@ int main(){
   }
  }
  std::cout<<rotation_cases<<" rotated readout/parameter/precision scenarios passed\n";
+ // RGB END recognition and transparency are independent gates. Exhaust all
+ // words and ECD/SPD combinations (including deterministic prohibited 0/1).
+ unsigned rgb_gate_cases=0;
+ s->tvm=0;s->m_vdp1_regs[0]=0;
+ s->m_vdp1_legacy.framebuffer_current_draw=0;
+ s->m_vdp1_legacy.framebuffer_double_interlace=0;
+ s->m_vdp1_legacy.framebuffer_width=512;s->m_vdp1_legacy.framebuffer_height=256;
+ s->vdp1_prepare_framebuffers();s->m_vdp1_legacy.system_cliprect.set(0,31,0,31);
+ s->current_sprite.ispoly=0;
+ for(bool ecd : {false,true})for(bool spd : {false,true})for(unsigned raw=0;raw<65536;++raw){
+  s->current_sprite.CMDPMOD=0x28|(ecd?0x80:0)|(spd?0x40:0);
+  s->m_vdp1_legacy.gfx_decode[0]=raw>>8;s->m_vdp1_legacy.gfx_decode[1]=raw;
+  s->m_vdp1_legacy.framebuffer[0][0]=0x9234;
+  s->drawpixel_generic(0,0,0,0);
+  bool write=(ecd||raw!=0x7fff)&&(spd||(raw&0x8000));
+  assert(s->m_vdp1_legacy.framebuffer[0][0]==(write?raw:0x9234));
+  ++rgb_gate_cases;
+ }
+ std::cout<<rgb_gate_cases<<" RGB END/transparency gate cases passed\n";
+
  unsigned texture_step_cases=0;
  // Iterative error-accumulator oracle, independent of the production division.
  auto texture_oracle=[](int source,int dots,int pixel,bool reverse){
@@ -640,6 +661,7 @@ int main(){
    bool end=u==1||u==5;bool visible=x>=2&&(reduced||ecd||(!end&&((direction&1)?u>1:u<5)));
    uint16_t color=0x8000|uint16_t(1+v);
    if(end&&(reduced||ecd))color=mode<2?0x800f:mode==2?0x803f:mode==3?0x807f:mode==4?0x80ff:0x7fff;
+   if(mode==5&&end)visible=false; // ECD/HSS does not disable the RGB MSB test.
    uint16_t expected=visible?color:0x5555;if(format)expected&=0xff;
    assert(s->vdp1_read_pixel(l.framebuffer_draw_lines[y],x)==expected);++texture_step_cases;
   }
@@ -730,6 +752,7 @@ int main(){
   for(int dy=0;dy<3;++dy){unsigned ends=0;int y=ya+dy,v=(direction&2)?2-dy:dy;
    for(int dx=0;dx<32;++dx){int x=xa+dx,u=(direction&1)?31-dx:dx;bool end=u==3||u==20;
     if(end&&!ecd){if(++ends==2)break;continue;}
+    if(mode==5&&end)continue; // SPD=0 still rejects an MSB-clear RGB END value.
     if(x<0||x>=32||y<0||y>=8||(mesh&&((x^y)&1)))continue;
     bool user=x>=4&&x<=23&&y>=1&&y<=5;
     if((clipping==1&&!user)||(clipping==2&&user))continue;

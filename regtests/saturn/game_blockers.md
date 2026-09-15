@@ -1,5 +1,21 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## Current: boot confirmed; visual follow-up (d402162b)
+
+The user confirms After Burner II boots with d68770ea. Startup is no longer an
+open blocker. New screenshots show effect rectangles and displaced/clipped
+artwork. Corrected VDP1 RGB transparency: ECD/HSS must not make MSB-clear 7FFF
+opaque with SPD=0 (MiSTer/Ymir agree). 262,144 RGB gate cases pass; the old
+behavior fails a normal-sprite image assertion. All 22 regression scripts and
+eleven objects pass. Screenshot-level improvement needs a rebuilt game run.
+
+Geometry remains unresolved, not fixed by an arbitrary anchor adjustment.
+The verbose trace now includes VDP2 sprite-rotation/normal-layer scroll/zoom
+state and command COLR. Keep each game's log separately; the sound probe is
+not needed for graphics checks. Details and source limits:
+`regtests/saturn/visual_followup_d402162b.md`.
+
+
 ## After Burner II follow-up — sound ready, later DMA-related wait
 
 Latest captures `cc8a7db8`/`3e4b4384` show sound initialization completed:
