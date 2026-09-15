@@ -1,5 +1,38 @@
 # Sega SDK hardware-document audit
 
+## A04/C03: rotation partial clips and coefficient-path windows — 2026-09-15
+
+`vdp2_copy_roz_bitmap` now advances its per-line source accumulators to the
+partial clip's left edge instead of restarting at screen X=0. The advance uses
+64-bit products and explicit 32-bit wrapping. Its per-dot coefficient path now
+applies the ordinary rotation-screen and mode-3 parameter-window predicates,
+matching the checks already present in the per-line path. No new window geometry
+or screen-over-pattern implementation is implied.
+
+Primary ST-058 chapter 6 defines rotation from TV-screen Hcnt/Vcnt coordinates;
+chapter 8 defines screen and rotation-parameter windows. A host clip rectangle
+does not redefine those coordinates or disable windows. Cross-checks: pinned Ymir
+`VDP2CalcWindows` computes background and rotation-parameter masks independently
+of coefficient granularity; pinned MiSTer `RxW_EN` evaluates the rotation-screen
+window from output window hits. This corrects missing integration rather than
+claiming newly measured silicon rounding rules.
+
+New `test_vdp2_rotation_clip.py` executes the production rotation compositor:
+**9,216 image cases** cover A/B, no/per-line/per-dot coefficient paths, all four
+coefficient modes with controlled values, discarded coefficients, reversed and
+fractional steps, ordinary and parameter windows, interlace/high-resolution
+coordinates, opaque/ratio/additive output and split partial rectangles. Window
+predicates and coefficient reads are recording stand-ins; source pixels and output
+images are independently checked. Removing the clip advance fails split/full
+comparison; bypassing per-dot windows fails the image oracle.
+
+All **26 regression scripts and eleven production object builds pass**. Existing
+per-line/per-dot high-resolution coordinate precision differences are preserved
+and explicitly not hardware-qualified by the fixture. Complete coefficient-table
+fetch/precision, sprite windows, screen-over-pattern, second-image composition,
+real save/load and linked runtime acceptance remain open. A04/C03 are not closed.
+
+
 ## C05: sprite zero-ratio calculation and eligibility — 2026-09-15
 
 Sprite palette composition no longer uses CCRT=0 as a disabled-calculation sentinel.
