@@ -10,6 +10,14 @@ local function share(size)
     end}
 end
 local main = {state={PC={value=0x0607bbc4}, R1={value=0x06004e64}, VBR={value=0x06000000}, R2={value=0x66000000}}}
+local hooks = {}
+local function addtap(_, first, last, name, cb)
+    local tap = {first=first,last=last,cb=cb,removed=false}
+    function tap:remove() self.removed=true end
+    hooks[#hooks+1]=tap
+    return tap
+end
+main.spaces = {program={install_write_tap=addtap,install_read_tap=addtap}}
 local sound = {state={PC={value=0x7ea}, SR={value=0x2700},
     A2={value=0x806bc}, A5={value=0x100000}, A7={value=0x7fffe}}}
 local scsp = {items={['15/m_udata.data[i]']=0x80,
@@ -24,12 +32,22 @@ emu = {time=function() return now end,
     item=function(value) return {read=function(_, index) assert(index==0);return value end} end}
 dofile(script)
 callback();assert(reads==0)
-now=19.99;callback();assert(reads==0)
+assert(hooks[1].first==0x05fe0000 and hooks[3].first==0x25fe0000)
+assert(hooks[2].last==0x05fe00ab and hooks[4].last==0x25fe00ab)
+assert(hooks[2].cb(0x05fe00a0,0xdead,0xffffffff)==nil)
+now=19.99;callback();assert(reads==0 and #hooks==5)
+assert(hooks[2].cb(0x05fe00a0,0xb774,0xffffffff)==nil)
+assert(hooks[5].cb(0x06000100,0x06000840,0xffffffff)==nil)
 local function readfile()
     local f=assert(io.open('afterburner2-sound-probe.txt'));local s=f:read('a');f:close();return s
 end
 now=20;callback();local a=readfile();local n=reads
 assert(a:find('sound A5=00100000',1,true))
+assert(not a:find('data=0000dead',1,true))
+assert(a:find('IRQ-write addr=05fe00a0 data=0000b774',1,true))
+assert(a:find('vector-read addr=06000100 data=06000840',1,true))
+assert(a:find('bios-mask 000340:',1,true))
+assert(a:find('bios-dispatch 0008f0:',1,true))
 assert(a:find('SCU 0/m_ism=bfff',1,true))
 assert(a:find('SCU 0/m_dma[0].live_count=0',1,true))
 assert(not a:find('m_timer0_counter',1,true))
@@ -45,6 +63,7 @@ assert(not a:find('sound-A5 ',1,true)) -- never read SCSP MMIO via A5
 callback();assert(reads==n and readfile()==a)
 now=21;callback();now=22;callback();local b=readfile()
 local _, count=b:gsub('SOUNDPROBE t=', '');assert(count==3)
+for _, hook in ipairs(hooks) do assert(hook.removed) end
 n=reads;now=30;callback();assert(reads==n and readfile()==b)
 manager.machine.devices[':scsp']=nil
 dofile(script);callback();assert(readfile()==b) -- graceful missing-device failure
