@@ -1,5 +1,39 @@
 # VDP1 completion audit — 2026-09-14
 
+## Screen-coordinate VDP1 scanout — 2026-09-15
+
+Implemented TVM=4 HDTV/31-kHz 2×2 dot replication and unified the VDP2 sprite
+compositor around output-screen coordinates. Normal-16/high-resolution output
+replication and high-resolution-8/normal-output decimation are now handled at
+framebuffer sampling, before rotation or field selection, rather than by copying
+already-composited output pixels. Odd partial clips and per-output-pixel windows,
+alpha/additive blending and normal shadows therefore use the correct destination.
+The accepted HSS/ECD rendering fix is unchanged; no title-position hack was added.
+
+Evidence: ST-013-R3-061694 §1.2 (printed p.14), pp.36–37 defines HDTV replication
+and legal framebuffer formats; pinned Ymir `VDP2DrawSpriteLayer` at
+`6d779960127ced72087a418c1daefc637d0aaa80` corroborates horizontal readout shifts;
+MiSTer VDP1 `VOUTO` at `a95b085038ace57fa621558d60a7adc7a3c53f78` independently
+models packed-byte dot-clock phases. Mismatched-mode decimation is cross-emulator
+behavior, not a claim that Sega specifies every prohibited combination.
+
+Validation: **23 regression scripts and eleven production object compilations
+passed**. New `test_sprite_scanout.py` extracts the actual compositor and readout
+functions: **3,036 image cases** under ASan/UBSan cover framebuffer modes, resolution
+mismatches, interlace, field caches, translated rotation, RGB/palette output,
+windows, blending, shadows and odd clips. Palette/window evaluation and device
+scheduling are stand-ins. `--old` compiles the pre-change implementation and fails
+an odd interlaced clip image (not a compilation failure). Existing VDP2 MSB-shadow
+handling in the alpha path remains a separate gap; these tests do not certify it.
+
+Not full VDP1 completion: active-display erase remains field-coarse, VBlank erase
+is budgeted but committed at field end, bus arbitration remains nominal, and real
+MAME save/load and linked runtime qualification remain outstanding. SDL/pkg-config
+build dependencies are unavailable in this sandbox; two Debian fetch attempts
+failed. AB2 explosions/boot, Power Drift cars and OutRun flashing retain their
+previous user acceptance. Separate logo/title placement is still unverified.
+
+
 ## User-verified results — 2026-09-15
 
 The user confirms that **969cc3ae fixes After Burner II explosion transparency
@@ -667,19 +701,21 @@ this harness. Generic color calculation is not tested here. No claim follows
 about full rendering, actual IRQ latency or MAME save-manager restoration.
 The full validator passes **18 scripts and nine object compilations**.
 
-## Remaining implementation and acceptance gates
+## Remaining implementation and acceptance gates (reconciled 2026-09-15)
 
-| Area | Current gap | Required implementation/verification |
+Earlier dated sections are historical checkpoints, not the current feature matrix.
+
+| Area | Implemented | Remaining implementation/verification |
 |---|---|---|
-| Command scheduling / ENDR | Timer-driven commands and saved return/fetch state now implemented; ENDR schedules a 30-clock stop; line/polyline raster work now yields within commands. | Extend saved pixel cursors to sprites/polygons and qualify pipeline termination; real save/load during primitives. |
-| Timing / transfer-over | Command fetches use 16 cycles; lines/polylines have nominal pixel slices. Other primitive and bus costs remain absent. | Model fetch/pixel/VRAM arbitration and elapsed drawing across frames; measure against primary constraints and traces, not title delays. |
-| PTMR / FBCR / EDSR / pointers | PTMR restarts, live COPR, bank-change LOPR and read-only writes are implemented. BEF now latches on bank change. Field-start changes, deferred register latches and bounded blank-only erase are implemented; sub-scanline timing and active-display erase remain incomplete. | Resolve latch points and reset behavior from manuals/supplements; test manual erase/change, automatic draw, busy writes and transfer-over. Do not equate each VBlank with a framebuffer change. |
-| Command control | Valid eight jump controls, persistent fetch state and scheduler-yielding loops are implemented. Prohibited/undocumented commands still use fallback behavior. | Hardware investigation of illegal opcodes/aliases and prohibited flow; do not invent a primary-defined result for them. |
-| Framebuffer formats | Packed 8-bit rendering, erase, CPU access and unrotated scanout now share storage; rotation-8 has its physical row stride. | Rotation, DIE/DIL and EOS are implemented; mismatched formats and hardware timing qualification remain. |
-| Rasterization | Native integer line/quad and scaled texture walkers are implemented and image-tested. | Hardware pre-clipping, interpolation precision and silicon-image qualification; resumable pixel execution. |
-| Texture / color | Normal-sprite second-END termination, destination MON and Gouraud/color combinations are implemented and tested. | Scaled/distorted END and HSS/EOS are implemented above; pre-clipping and hardware interpolation/rounding qualification remain. |
-| Save/reset | Command fetch/return/activity state saved; postload preserves restored bank/geometry and reset cancels pending execution. Physical banks, field caches and pending VBlank erase are saved; line/polyline cursors and fetched command fields are saved; other intra-primitive state remains future work. | Real MAME round trips during drawing/erase, before END, after ENDR and across framebuffer changes; verify reconstructed pointers and no duplicate IRQs. |
-| Runtime | No linked executable in this sandbox. | Install documented SDL/pkg-config dependencies, link and `-validate`, then BIOS and legally available Saturn/ST-V smoke/pixel comparisons (including prior workaround titles). |
+| Command scheduling / ENDR | All legal primitives use saved, bounded raster cursors; command loops yield; ENDR schedules a 30-clock stop. | Qualify pipeline termination and real save/load during each primitive. |
+| Timing / transfer-over | 16-cycle command fetch and nominal sliced pixel work across frames. | Fetch/pixel/VRAM arbitration and silicon timing measurements, not title-specific delays. |
+| PTMR / FBCR / EDSR / pointers | Restarts, live COPR, bank-change LOPR/BEF, read-only writes, deferred latches and field control. | Sub-scanline latch qualification; active-display erase is field-coarse and VBlank erase commits its bounded budget at field end. |
+| Command control | Eight legal jump controls and persistent fetch/return state. | Hardware investigation of prohibited opcodes/aliases and flow; no invented primary-defined results. |
+| Framebuffer formats | Packed 8-bit storage, CPU access, rotation, DIE/DIL, field caches and HDTV replication; unified output-resolution sampling. | Physical readout phase/hardware qualification, particularly mismatched modes and rotated packed-byte lanes. |
+| Rasterization | Native integer line/quad and normal/scaled walkers, all resumable; pre-clipping-disabled traversal and clipping tests. | Silicon coverage, pre-clipping and interpolation/rounding qualification. |
+| Texture / color | END, HSS/EOS, transparency, MON, mesh and Gouraud combinations implemented and tested. | Hardware rounding/coverage checks; independent VDP2 alpha/MSB-shadow and underlying-layer shadow eligibility are not complete. |
+| Save/reset | Command state, all legal intra-primitive cursors, physical banks, field caches and pending erase saved; postload reconstructs views. | Real MAME round trips during drawing/erase, ENDR and bank changes; no duplicate IRQs. |
+| Runtime | User accepted AB2 boot/explosions, Power Drift cars and OutRun flashing. | Linked build/configuration validation, broader game/save smoke tests and the separate logo/title geometry report. Dependency downloads currently fail. |
 
 Do not mark this table complete from standalone tests or an absence of TODOs.
 
