@@ -8945,6 +8945,10 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       ys = mul_fixed32(ky, ysp) + yp;
       dxs = mul_fixed32(kx, mul_fixed32(dx, 1 << (16 - hcnt_shift)));
       dys = mul_fixed32(ky, mul_fixed32(dy, 1 << (16 - hcnt_shift)));
+      // Partial updates retain the screen-left coordinate origin. Advance
+      // both accumulators to the first output pixel, with 32-bit wrapping.
+      xs = uint32_t(xs) + uint32_t(int64_t(dxs) * cliprect.left());
+      ys = uint32_t(ys) + uint32_t(int64_t(dys) * cliprect.left());
 
       for (hcnt = cliprect.left(); hcnt <= cliprect.right();
            xs += dxs, ys += dys, hcnt++) {
@@ -9063,6 +9067,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         y >>= 16;
 
         if (x & clipxmask || y & clipymask)
+          continue;
+        // Coefficient lookup granularity does not bypass either window.
+        if (!vdp2_roz_window(hcnt, vcnt))
+          continue;
+        if (current_tilemap.roz_mode3 &&
+            !vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1))
           continue;
 
         pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
