@@ -710,14 +710,32 @@ void saturn_state::vdp1_trace(const char *event, int reg, const spoint *bounds) 
            m_vdp1_raster.index, m_vdp1_raster.count, m_vdp1_raster.dot,
            m_vdp2->get_hreso(), m_vdp2->get_lsmd(), v.framebuffer_width,
            v.framebuffer_height, v.framebuffer_double_interlace, v.draw_field);
+  if (!strcmp(event, "field")) {
+    const auto rp = vdp1_rotation_parameters();
+    logerror("VDP1TRACE readout RPTA=%04x:%04x A=%08x,%08x,%08x,%08x,%08x,%08x "
+             "SPCTL=%04x BGON=%04x CHCTLA=%04x "
+             "N0SC=%04x:%04x,%04x:%04x N0Z=%04x:%04x,%04x:%04x "
+             "N1SC=%04x:%04x,%04x:%04x N1Z=%04x:%04x,%04x:%04x\n",
+             m_vdp2_regs[0xbc / 2], m_vdp2_regs[0xbe / 2],
+             rp[0], rp[1], rp[2], rp[3], rp[4], rp[5],
+             m_vdp2_regs[0xe0 / 2], m_vdp2_regs[0x20 / 2], m_vdp2_regs[0x28 / 2],
+             m_vdp2_regs[0x70 / 2], m_vdp2_regs[0x72 / 2],
+             m_vdp2_regs[0x74 / 2], m_vdp2_regs[0x76 / 2],
+             m_vdp2_regs[0x78 / 2], m_vdp2_regs[0x7a / 2],
+             m_vdp2_regs[0x7c / 2], m_vdp2_regs[0x7e / 2],
+             m_vdp2_regs[0x80 / 2], m_vdp2_regs[0x82 / 2],
+             m_vdp2_regs[0x84 / 2], m_vdp2_regs[0x86 / 2],
+             m_vdp2_regs[0x88 / 2], m_vdp2_regs[0x8a / 2],
+             m_vdp2_regs[0x8c / 2], m_vdp2_regs[0x8e / 2]);
+  }
   if (reg >= 0)
     logerror("VDP1TRACE register offset=%02x value=%04x\n", reg * 2, m_vdp1_regs[reg]);
   if (bounds) {
     const auto &c = current_sprite;
-    logerror("VDP1TRACE %s COPR=%04x CTRL=%04x PMOD=%04x SRCA=%04x SIZE=%04x "
+    logerror("VDP1TRACE %s COPR=%04x CTRL=%04x PMOD=%04x COLR=%04x SRCA=%04x SIZE=%04x "
              "A=(%04x,%04x) B=(%04x,%04x) C=(%04x,%04x) local=(%d,%d) "
              "bounds=(%d,%d)-(%d,%d) destination=%dx%d source=%dx%d\n",
-             event, v.copr, c.CMDCTRL, c.CMDPMOD, c.CMDSRCA, c.CMDSIZE,
+             event, v.copr, c.CMDCTRL, c.CMDPMOD, c.CMDCOLR, c.CMDSRCA, c.CMDSIZE,
              c.CMDXA, c.CMDYA, c.CMDXB, c.CMDYB, c.CMDXC, c.CMDYC,
              v.local_x, v.local_y, bounds[0].x, bounds[0].y, bounds[2].x, bounds[2].y,
              std::abs(bounds[2].x - bounds[0].x) + 1,
@@ -1871,15 +1889,14 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
              << 8);
       // mode = 5;
       pix = raw;
-      /* the manual lists only 0x0000 as a transparent colour code and calls
-         0x0001-0x7ffe "invalid" because that range is reserved for colour bank
-         data, but the hardware skips every value below the 0x7fff end code
-         here. Sonic X-treme draws RGB 5:5:5 sprites containing 0x0060 (read
-         from VDP1 VRAM 0x10000) and expects them not to overwrite the frame
-         buffer. */
-      if (raw < 0x7fff)
-        raw = 0;
-      transpen = 0;
+      // ST-013 pp.86-88 keeps END and transparent-pixel controls separate.
+      // The RGB MSB test is corroborated by MiSTer's GetPattern (TP=!MSB,
+      // EC=7fff) and Ymir's VDP1PlotTexturedLine. In particular, ECD=1 must
+      // not make 7fff opaque when SPD=0, including HSS-reduced sprites.
+      // Preserve raw for the independent END comparison below; matching
+      // transpen to an MSB-clear value makes it transparent without changing
+      // the original pixel that SPD=1 may write.
+      transpen = (raw & 0x8000) ? 0 : raw;
       endcode = 0x7fff;
       break;
     case 0x0030: // mode 6 invalid
