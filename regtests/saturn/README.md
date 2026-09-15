@@ -1,5 +1,45 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## A04/C03/C05: rotation shortcut and source-cache composition — 2026-09-15
+
+The no-transform rotation shortcut no longer collapses window behavior into one
+rectangle and then disables window inputs. It preserves the original partial clip
+and forwards ordinary per-pixel window configuration to the background renderer.
+
+The shortcut is now limited to its actual assumptions: identity geometry, zero
+start-coordinate offsets, unit output stepping and no enabled coefficient table
+for the selected A/B parameter. Nonzero Xst/Yst, double-density output and horizontal
+rescaling use the general rotation path. A coefficient table belonging only to the
+other parameter does not unnecessarily disable the shortcut. RPMD 2/3 were already
+excluded by the predicate; the obsolete mode-3 fast-path block was removed, not
+counted as newly implemented parameter-window support.
+
+Rotation source-cache construction clears prior alpha/additive flags and stores
+unblended source pixels. The wrapper no longer forces alpha after rendering that
+source; the final rotation compositor selects ratio/additive calculation using
+CCMD. This fixes the wrapper-level interference with additive output that the
+isolated rotation compositor fixture could not detect.
+
+Evidence: ST-058 chapter 6 defines Xst/Yst and coefficient-controlled conversion;
+chapter 8 defines the window combinations; printed p.241 defines CCMD calculation.
+Pinned Ymir's parameter/line-output and window preparation, and MiSTer's independent
+coefficient/window controls, are comparison points. The tighter shortcut conditions
+are an equivalence safeguard, not a new silicon timing claim.
+
+`test_vdp2_rotation_dispatch.py` executes actual dispatch, optimization predicate
+and cache setup in **5,376 cases**, including A/B, RPMD 0–3, selected/unselected
+coefficient enables, starts, output stepping, 32 window configurations, calculation
+modes, stale blend flags and cache reuse. Downstream rendering is recorded rather
+than treated as a complete pixel implementation. Previous 69995fab code compiles
+and fails preserved-window assertions; coefficient-bypass and forced-alpha mutations
+fail independently. Existing bitmap and rotation pixel suites also pass.
+
+All **27 scripts and eleven production object builds pass**. Broader window/rotation
+features, precision, sprite windows, second-image selection and real linked runtime/
+save/performance qualification remain open. General-path use may increase rotation
+cache work in affected modes and needs profiling with a linked executable.
+
+
 ## A04/C03: rotation partial clips and coefficient-path windows — 2026-09-15
 
 `vdp2_copy_roz_bitmap` now advances its per-line source accumulators to the

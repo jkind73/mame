@@ -443,7 +443,7 @@ protected:
   uint8_t vdp2_check_vram_cycle_pattern_registers(uint8_t access_command_pnmdr,
                                                   uint8_t access_command_cpdr,
                                                   uint8_t bitmap_enable);
-  uint8_t vdp2_is_rotation_applied();
+  uint8_t vdp2_is_rotation_applied(uint8_t rot_parameter);
   uint8_t vdp2_are_map_registers_equal();
   void vdp2_get_map_page(int x, int y, int *_map, int *_page);
 
