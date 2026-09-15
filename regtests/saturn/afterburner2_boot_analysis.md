@@ -463,3 +463,40 @@ copy error.log afterburner2-boot.log
 
 This requests the newly added status/PC evidence, not another copy of the already
 analyzed capture. A boot fix has **not** been claimed or visually validated.
+
+
+## Capture 29b70a92: completed DMA, masked completion
+
+At 21 and 22 seconds DMA0 is idle with live_count=0, source advanced from
+060d6000 to 060d8000 and destination from 05e40000 to 05e42000 (size 2000).
+IST=289f includes DMA0-end (0800), but IMS=bfff masks it. No SCU IRQ is
+currently driven; the last acknowledged vector is 40 (VBlank-in).
+The main CPU waits at 0607bbc4 on 06004e64=1. Stack return 06000928 is the
+BIOS interrupt dispatcher return from the game callback, not a main-loop
+return. Sound startup remains healthy. This does **not** demonstrate a DMA
+engine that never finishes, nor justify forcing the software flag clear.
+
+The SCU acknowledge mask reset is retained: Sega ST-097-R5 figure 3.21 and
+pinned Ymir 6d779960127ced72087a418c1daefc637d0aaa80,
+`libs/ymir-core/src/ymir/hw/scu/scu.cpp`, AcknowledgeExternalInterrupt,
+agree on resetting IMS to BFFF. Static inspection of the locally supplied
+BIOS dispatcher shows software mask/table handling around the callback;
+actual game-modified RAM tables and access ordering remain unknown.
+
+The existing no-rebuild Lua probe now records DMA/IRQ register writes through
+both physical and uncached aliases, plus reads of the BIOS IRQ vector table,
+from 19 seconds until the final snapshot (normally 22 seconds). Records are
+bounded to 12,000 per snapshot; reaching the bound means history is incomplete.
+It also snapshots the BIOS software mask shadow and dispatcher/tables in RAM.
+Taps return nil and do not modify bus data, and are removed after capture.
+`sampledpc` can lag under DRC; a vector-table read alone is not proof of an
+interrupt acknowledgement. No RAM write tap is used because SH-2 fast RAM
+can bypass those handlers. Standalone mocks check aliases, nil returns,
+time filtering, captured records, RAM bounds and tap removal; they do not
+validate live MAME tap delivery or linked game boot.
+
+**Next runtime evidence:** use the updated script with the same command and
+existing executable, run past 23 emulated seconds, and provide the resulting
+`afterburner2-sound-probe.txt`. This is an access-order trace, not a request
+for the identical three snapshots already supplied. No production emulation
+change or boot-fix claim is made in this increment.

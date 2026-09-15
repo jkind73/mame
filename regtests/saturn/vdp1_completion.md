@@ -618,3 +618,14 @@ The full validator passes **18 scripts and nine object compilations**.
 | Runtime | No linked executable in this sandbox. | Install documented SDL/pkg-config dependencies, link and `-validate`, then BIOS and legally available Saturn/ST-V smoke/pixel comparisons (including prior workaround titles). |
 
 Do not mark this table complete from standalone tests or an absence of TODOs.
+
+
+### After Burner II masked DMA completion (29b70a92 capture)
+
+DMA0 has completed; IST=289f holds DMA0-end pending while IMS=bfff masks it.
+The CPU waits inside an interrupt callback. Do not remove the documented
+acknowledgement mask reset or force the game flag. The no-rebuild sound probe
+now adds bounded register-write/vector-read history and BIOS mask/dispatch
+RAM snapshots to distinguish mask restoration from a later acknowledgement.
+Sound startup is fixed; game boot remains unverified. See
+`regtests/saturn/afterburner2_boot_analysis.md` for evidence and trace caveats.

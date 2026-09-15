@@ -617,3 +617,14 @@ refresh timing is not automatically a demonstrated boot blocker.
 **Current validation:** thirteen regression scripts and eight object compilations
 pass. No linked executable, BIOS boot, game progression or hardware measurement
 has been established. Completion of “all game blockers” cannot be certified yet.
+
+
+### After Burner II masked DMA completion (29b70a92 capture)
+
+DMA0 has completed; IST=289f holds DMA0-end pending while IMS=bfff masks it.
+The CPU waits inside an interrupt callback. Do not remove the documented
+acknowledgement mask reset or force the game flag. The no-rebuild sound probe
+now adds bounded register-write/vector-read history and BIOS mask/dispatch
+RAM snapshots to distinguish mask restoration from a later acknowledgement.
+Sound startup is fixed; game boot remains unverified. See
+`regtests/saturn/afterburner2_boot_analysis.md` for evidence and trace caveats.
