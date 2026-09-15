@@ -1,5 +1,19 @@
 # Saturn/ST-V game-blocker implementation plan
 
+## User-verified results — 2026-09-15
+
+The user confirms that **969cc3ae fixes After Burner II explosion transparency
+and the Power Drift car rendering issue**. These are now runtime-accepted
+results, not pending visual checks. After Burner II boot remains accepted with
+the earlier SH DRC correction. This does not establish full gameplay or save/load
+acceptance, nor resolution of the separately reported logo/title placement bugs.
+
+The common fix preserves ECD-controlled END-pixel rejection during HSS reduction
+while bypassing two-END row termination. No game-specific workaround was used.
+The recorded validation remains 22 regression scripts and eleven object builds;
+this acceptance update changes documentation only.
+
+
 ## Latest: captured HSS/LUT END-pixel defect corrected (3c31f363)
 
 The live video capture locates opaque 8000 pixels in the explosion framebuffer.
