@@ -1,5 +1,13 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## VDP2 composition update — 2026-09-15
+
+Sprite CCRT=0 now calculates as a valid ratio; MSB eligibility is separate from
+ratio data. 38,400 new cases plus 3,036 existing scanout cases pass with the actual
+blend-level helper; previous code fails. All 25 scripts/11 objects pass. See
+`regtests/saturn/vdp2_completion.md`; full composition and runtime acceptance remain open.
+
+
 ## Current workstream — VDP2
 
 The source-audited feature matrix and prioritized, stable-ID checklist are now in

@@ -16,9 +16,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--old', action='store_true')
+p.add_argument('--ratio-baseline', action='store_true')
 a = p.parse_args()
-source = (subprocess.check_output(['git','show','9f6d2ccc:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
-          if a.old else (ROOT/'src/mame/sega/saturn.cpp').read_text())
+source = (subprocess.check_output(['git','show',('baf9b069' if a.ratio_baseline else '9f6d2ccc')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
+          if a.old or a.ratio_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(signature):
     start=source.index(signature);end=source.index('{',start)+1;depth=1
     while depth:
@@ -27,6 +28,7 @@ def extract(signature):
 functions='\n'.join(extract(sig) for sig in ('void saturn_state::draw_sprites(',
  'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_read_pixel(',
  'int saturn_state::vdp1_rotation_coordinate('))
+functions=extract('static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+functions
 names=sorted(set(re.findall(r'VDP2_(\w+)',functions)))
 macros='\n'.join('#define VDP2_'+n+' settings.'+n for n in names)
 fields='\n'.join('int '+n+'=0;' for n in names)
@@ -50,7 +52,6 @@ uint32_t alpha_blend_r32(uint32_t d,uint32_t s,int a){
  rgb_t D(d),S(s);return rgb_t((S.r()*a+D.r()*(256-a))>>8,(S.g()*a+D.g()*(256-a))>>8,(S.b()*a+D.b()*(256-a))>>8);
 }
 uint32_t add_blend_r32(uint32_t d,uint32_t s){rgb_t D(d),S(s);return rgb_t(std::min(255,D.r()+S.r()),std::min(255,D.g()+S.g()),std::min(255,D.b()+S.b()));}
-int vdp2_cc_blend_level(int c){return (32-c)*8;}
 struct rectangle {int l,r,t,b;int left()const{return l;}int right()const{return r;}int top()const{return t;}int bottom()const{return b;}};
 struct bitmap_rgb32 {
  std::array<uint32_t,48> p{};
@@ -122,7 +123,7 @@ int main(){
    unsigned dot=mode&1?(sx%2?16-value:value):(rgb?0x8000:0)|value;
    uint32_t color=(dot&0x8000)&&rgb?uint32_t(rgb_t(pal5bit(dot&31),0,0)):s.pal.pen(dot);
    uint32_t dest=expected.pix(y,x);
-   expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(dest,color,128):add_blend_r32(dest,color);
+   expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(dest,color,120):add_blend_r32(dest,color);
   }
   if(result.p!=expected.p){std::cerr<<"mode "<<mode<<" hreso "<<hreso<<" lsmd "<<interlace<<" fields "<<fields<<" blend "<<blend<<" clip "<<clip.l<<","<<clip.t<<"\n";assert(false);}
   ++images;
@@ -149,10 +150,44 @@ int main(){
   s.draw_sprites(result,{1,6,1,4},1);
   assert(result.p==expected.p);++images;
  }
+
+ unsigned ratio_cases=0;
+ s.tvm=0;s.device.hreso=0;s.device.lsmd=0;s.window=false;
+ v.framebuffer_double_interlace=0;v.framebuffer_current_display=1;
+ s.settings.SDCTL=0;s.settings.SPTYPE=0;s.settings.SPCCN=2;
+ for(unsigned ratio=0;ratio<32;++ratio)for(unsigned selector=0;selector<8;++selector)
+ for(int condition=0;condition<4;++condition)for(int priority : {1,2,3})
+ for(bool msb : {false,true})for(bool mixed : {false,true})for(bool enabled : {false,true})for(bool add : {false,true}){
+  bool rgb=msb&&mixed;
+  if(rgb&&selector)continue; // RGB dots select CCRT0, not palette selector bits.
+  s.settings.SPCCCS=condition;s.settings.SPCLMD=mixed;s.settings.SPCCEN=enabled;s.settings.CCMD=add;
+  // RATIO_PRI
+  // RATIO_CCR
+  uint16_t dot=7|(msb?0x8000:0)|(rgb?0:selector<<11);
+  v.framebuffer[1].data.fill(dot);
+  for(int y=0;y<512;++y)v.framebuffer_display_lines[y]=v.framebuffer[1].get()+((y*512)&0x1ffff);
+  s.vdp1_sprite_priorities_usage_valid=0;
+  bitmap_rgb32 image,expected;
+  image.p.fill(0x234567);expected=image;
+  s.draw_sprites(image,{1,6,1,4},priority);
+  bool calculate=enabled&&(condition==0?priority<=2:condition==1?priority==2:condition==2?priority>=2:msb);
+  uint32_t color=rgb?uint32_t(rgb_t(pal5bit(7),0,0)):s.pal.pen(7);
+  unsigned selected_ratio=(ratio+(rgb?0:selector))&31;
+  uint32_t out=color;
+  if(calculate){
+   if(add)out=rgb_t(std::min(255u,35+((color>>16)&255)),std::min(255u,69+((color>>8)&255)),std::min(255u,103+(color&255)));
+   else {out=0;for(unsigned shift : {0,8,16})out|=(( ((color>>shift)&255)*(31-selected_ratio)+((0x234567u>>shift)&255)*(selected_ratio+1) )/32)<<shift;}
+  }
+  for(int y=1;y<=4;++y)for(int x=1;x<=6;++x)expected.pix(y,x)=out;
+  assert(image.p==expected.p);++ratio_cases;
+ }
+ std::cout<<ratio_cases<<" sprite ratio/selector/eligibility images passed\n";
  std::cout<<images<<" production sprite scanout/compositor images passed\n";
 }
 '''
 harness=harness.replace('// FIELDS',fields).replace('// MACROS',macros).replace('// FUNCTIONS',functions)
+harness=harness.replace('// RATIO_PRI',''.join(f's.settings.S{i}PRIN=priority;' for i in range(8)))
+harness=harness.replace('// RATIO_CCR',''.join(f's.settings.S{i}CCRT=(ratio+{i})&31;' for i in range(8)))
 harness=harness.replace('// PRI_INIT',''.join(f's.settings.S{i}PRIN=1;' for i in range(8)))
 harness=harness.replace('// CCR_INIT',''.join(f's.settings.S{i}CCRT=16;' for i in range(8)))
 with tempfile.TemporaryDirectory(prefix='saturn-scanout-') as temp:
