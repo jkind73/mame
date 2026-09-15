@@ -1,5 +1,45 @@
 # Sega SDK hardware-document audit
 
+## S02: line-scroll intervals and partial rendering — 2026-09-15
+
+Reworked line-scroll scheduling around screen-origin interval boundaries. Packed
+H/V/zoom entries are indexed by `floor(screen_y / interval)`, not by the partial
+clip's first scanline. Vertical interpolation is anchored at the entry's first
+line; a clip starting inside an interval retains the previously selected entry.
+Every downstream draw is bounded to the requested clip, including short final
+intervals. Equivalent adjacent renderer states are still batched; no look-ahead
+fetch is made beyond the final required entry. Original scroll X/Y and horizontal
+increment are restored after rendering so later clips/columns do not inherit the
+last table entry or downstream coordinate normalization.
+
+Line-zoom values now decode as unsigned 3.8 increments. In particular, 4.0 is no
+longer sign-extended into a negative increment. This does not invent clamping for
+software exceeding the configured ZMCTL reduction range.
+
+Primary: ST-058 printed pp.131–133 describes compact H/V/zoom table ordering and
+holding entries between interval boundaries; p.137 specifies the interval modes;
+pp.132/138 specify horizontal increments matching the unsigned coordinate format.
+Pinned Ymir 6d779960 `vdp_renderer_sw.cpp` `VDP2UpdateLineScreenScroll` corroborates
+interval-controlled reads, packed fields and unsigned zoom extraction. Pinned
+MiSTer a95b0850 `VDP2.sv` lines 1298–1305 advances the table offset on interval
+boundaries using `NxLSTblSize`. Their interlace handling is not claimed equivalent
+to this scheduler; field-specific fetch timing remains a separate audit.
+
+`test_vdp2_linescroll.py` executes the production scheduler with recording basic
+renderers and a separate per-line table oracle. **4,200 scenarios** cover all seven
+active-function combinations, intervals 1/2/4/8/16, nonzero and unaligned clip
+origins, short clips, wrapped VRAM tables, negative scroll values, constant/varying
+entries, tile/bitmap dispatch, integer vertical increments, sequential single-line
+partial passes, state restoration and batching bounds. Previous d4343068 compiles
+and assertion-fails. Independent address, clip, signed-zoom and restoration
+mutations also compile and fail their intended assertions.
+
+All **29 scripts / eleven production object builds pass**. S02 remains open for
+fractional-coordinate resampling, broader simultaneous vertical-cell-scroll
+combinations, actual interlace fetch timing, and linked gameplay/save/performance.
+These tests record renderer parameters, not final hardware pixels or bus arbitration.
+
+
 ## R01: screen-over-pattern pixels implemented — 2026-09-15
 
 Rotation screen-over mode 1 now repeats the character selected by OVPNRA/OVPNRB
