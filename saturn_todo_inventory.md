@@ -1,5 +1,32 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## A03/C01: color-depth screen restrictions — 2026-09-15
+
+Applied the remaining normal-screen color-count exclusions from ST-058 printed
+p.61: 2048-color NBG0 suppresses NBG2; 2048-color NBG1 suppresses NBG3; RGB888
+NBG0 suppresses NBG1 and NBG3 as well as the already-suppressed NBG2. Existing
+RGB555 exclusions remain. Removed the unreachable N1CHCN==4 check (a two-bit
+field). These are configured resource exclusions, not tests of the other layer's
+BGON flag, and do not introduce handling for prohibited color formats.
+
+Pinned Ymir `vdp_state.hpp` lines 775–793 and MiSTer `VDP2.sv` lines 3199–3201
+independently match the primary color-count rules. Unlike the ZMCTL access-count
+comparison above, Ymir's color-depth gates are active code.
+
+Extended `test_vdp2_reduction.py` with actual NBG1 setup and **4,608 additional
+color-depth/reduction scenarios**: every legal normal-screen color count paired
+with permitted reduction ranges, all BGON combinations, cycle presence/absence,
+NBG1 tile/bitmap setup, and recovery after clearing the restrictions. Expected
+screen masks come from a separate p.61 table. NBG1 video mode queries and final
+rendering are stand-ins; no full tile image or arbitration claim is made.
+Baseline f941e312 compiles and assertion-fails. Three independent mutations,
+one per affected layer's color gate, compile and fail their corresponding assertions.
+
+The prior 3,456 reduction scenarios and full **28 scripts / eleven production
+object builds pass**. Full A03 register qualification, C01 composition metadata,
+S01 coordinate behavior, and linked runtime/save/performance remain open.
+
+
 ## S01: ZMCTL paired-screen restrictions — 2026-09-15
 
 NBG0 quarter-reduction enable now suppresses NBG2; half-reduction enable does

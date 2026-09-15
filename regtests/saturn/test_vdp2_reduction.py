@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:MAMEdev Team
-"""Production NBG2/NBG3 dispatch and register decoding for ST-058 Table 5.2.
+"""Production NBG1/NBG2/NBG3 dispatch for ST-058 p.61 and Table 5.2.
 
 Cycle-pattern presence checking is also production code. Final tile rendering is
 recorded, not a pixel/bus model. --baseline must compile and fail an assertion.
@@ -13,14 +13,24 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');a=p.parse_args()
-src=subprocess.check_output(['git','show','4ff73852:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True) if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',nargs='?',const='4ff73852');
+p.add_argument('--mutation',choices=['color-n1','color-n2','color-n3']);a=p.parse_args()
+src=subprocess.check_output(['git','show',a.baseline+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True) if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text()
+if a.mutation:
+ conditions={
+  'color-n1':'VDP2_N0CHCN == 0x04',
+  'color-n2':'VDP2_N0CHCN == 0x02 || VDP2_N0CHCN == 0x03 || VDP2_N0CHCN == 0x04',
+  'color-n3':'VDP2_N0CHCN == 0x04 || VDP2_N1CHCN == 0x02 || VDP2_N1CHCN == 0x03',
+ }
+ original='if ('+conditions[a.mutation]+')'
+ assert src.count(original)==1
+ src=src.replace(original,'if (false)',1)
 def extract(sig):
  start=src.index(sig);end=src.index('{',start)+1;depth=1
  while depth:
   depth+=(src[end]=='{')-(src[end]=='}');end+=1
  return src[start:end]
-funcs=[extract(sig) for sig in ('void saturn_state::vdp2_draw_NBG2(', 'void saturn_state::vdp2_draw_NBG3(', 'uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(')]
+funcs=[extract(sig) for sig in ('void saturn_state::vdp2_draw_NBG1(', 'void saturn_state::vdp2_draw_NBG2(', 'void saturn_state::vdp2_draw_NBG3(', 'uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(')]
 f=extract('static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
 # Extract register macros and their dependencies from production; do not mock
 # the ZMCTL or CHCTLA bit positions with separate per-field test variables.
@@ -41,6 +51,8 @@ struct rectangle {};
 struct bitmap_rgb32 {bool drawn=false;};
 struct saturn_state {
  uint16_t m_vdp2_regs[256]{};
+ struct device {int get_vramsz(){return 0;}int get_lsmd(){return 0;}} video;
+ device *m_vdp2=&video;
  struct { // FIELDS
   int map_offset[16]{};
   struct {int logic=0,enabled[2]{},sprite_window=0,area[2]{};} window_control;
@@ -81,6 +93,33 @@ int main(){
   ++cases;
  }
  std::cout<<cases<<" reduction register/layer restriction scenarios passed\n";
+ cases=0;
+ // Independent p.61 permitted-layer masks (bits 1=NBG1, 2=NBG2, 3=NBG3).
+ constexpr unsigned allow0[]={14,14,10,10,0},allow1[]={14,14,6,6};
+ constexpr setting all0[]={{0,0,false},{0,1,false},{0,2,true},{0,3,true},
+                          {1,0,false},{1,1,true},{2,0,false},{3,0,false},{4,0,false}};
+ constexpr setting all1[]={{0,0,false},{0,1,false},{0,2,true},{0,3,true},
+                          {1,0,false},{1,1,true},{2,0,false},{3,0,false}};
+ for(auto n0:all0)for(auto n1:all1)for(unsigned bgon=0;bgon<16;++bgon)
+ for(bool cycles:{false,true})for(bool bitmap:{false,true}){
+  s.m_vdp2_regs[0x20/2]=bgon;
+  s.m_vdp2_regs[0x28/2]=(n0.colors<<4)|(n1.colors<<12)|(unsigned(bitmap)<<9);
+  s.m_vdp2_regs[0x98/2]=n0.range|(n1.range<<8);
+  for(unsigned i=0x10/2;i<=0x1e/2;++i)s.m_vdp2_regs[i]=cycles?((i&1)?0x6677:0x1235):0xffff;
+  unsigned expected=bgon&allow0[n0.colors]&allow1[n1.colors];
+  if(n0.blocked)expected&=~4u;
+  if(n1.blocked)expected&=~8u;
+  if(!cycles)expected=0;
+  bitmap_rgb32 one,two,three;
+  s.vdp2_draw_NBG1(one,{});s.vdp2_draw_NBG2(two,{});s.vdp2_draw_NBG3(three,{});
+  assert(one.drawn==bool(expected&2));assert(two.drawn==bool(expected&4));assert(three.drawn==bool(expected&8));
+  // Return to 16-color, non-reduced source modes; layers recover immediately.
+  s.m_vdp2_regs[0x28/2]=0;s.m_vdp2_regs[0x98/2]=0;
+  s.vdp2_draw_NBG1(one,{});s.vdp2_draw_NBG2(two,{});s.vdp2_draw_NBG3(three,{});
+  assert(one.drawn==bool(cycles&&(bgon&2)));assert(two.drawn==bool(cycles&&(bgon&4)));assert(three.drawn==bool(cycles&&(bgon&8)));
+  ++cases;
+ }
+ std::cout<<cases<<" color-depth/reduction layer restriction scenarios passed\n";
 }
 '''
 code=code.replace('// FIELDS','\n'.join('int '+name+'=0;' for name in fields))
