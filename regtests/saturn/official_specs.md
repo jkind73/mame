@@ -1,5 +1,18 @@
 # Sega SDK hardware-document audit
 
+## Current workstream: VDP2 audit and progress tracker — 2026-09-15
+
+See [VDP2 implementation report and checklist](vdp2_completion.md) for the current
+source-audited feature matrix, test limits, stable task IDs, priorities and acceptance
+gates. Baseline: `ad5ae529`. Normal/rotation rendering is substantial, but special
+composition, sprite windows/shadows, line-color/mosaic integration, rotation edge
+cases, scroll combinations and bus/raster timing remain incomplete. In particular,
+a tested mosaic helper is not an enabled production mosaic feature.
+
+This entry is documentation-only. The latest implementation validation remains
+23 Saturn scripts and eleven object compilations, not a linked runtime certification.
+
+
 ## Active-display erase — 2026-09-15
 
 Manual and one-cycle display erase now advance behind scanout, instead of clearing
