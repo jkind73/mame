@@ -6099,7 +6099,7 @@ void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
 }
 
 /* check if RGB layer has rotation applied */
-uint8_t saturn_state::vdp2_is_rotation_applied() {
+uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
 #define _FIXED_1 (0x00010000)
 #define _FIXED_0 (0x00000000)
 
@@ -6107,7 +6107,10 @@ uint8_t saturn_state::vdp2_is_rotation_applied() {
       RP.D == _FIXED_0 && RP.E == _FIXED_1 && RP.F == _FIXED_0 &&
       RP.dxst == _FIXED_0 && RP.dyst == _FIXED_1 && RP.dx == _FIXED_1 &&
       RP.dy == _FIXED_0 && RP.kx == _FIXED_1 && RP.ky == _FIXED_1 &&
-      VDP2_RPMD < 2) // disable optimizations if roz mode is 2 or 3
+      RP.xst == _FIXED_0 && RP.yst == _FIXED_0 &&
+      !(rot_parameter == 1 ? VDP2_RAKTE : VDP2_RBKTE) &&
+      m_vdp2->get_lsmd() != 3 && !(m_vdp2->get_hreso() & 2) &&
+      VDP2_RPMD < 2) // only a unit-step, coefficient-free translation
   {
     return 0;
   } else {
@@ -9715,23 +9718,12 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     }
   }
 
-  if (vdp2_is_rotation_applied() == 0) {
+  if (vdp2_is_rotation_applied(iRP) == 0) {
     current_tilemap.scrollx = current_rotation_table.mx >> 16;
     current_tilemap.scrolly = current_rotation_table.my >> 16;
 
-    if (current_tilemap.roz_mode3 == true) {
-      // TODO: Cotton 2 enables mode 3 without an actual RP window enabled
-      //       Technically you could use split screen effect without rotation
-      //       applied, which will be annoying to emulate with this video
-      //       structure. Let's see if anything will do it ...
-      if (VDP2_RPW0E || VDP2_RPW1E)
-        popmessage("ROZ Mode 3 window enabled without zooming");
-
-      if (iRP == 2)
-        return;
-    }
-
-    // TODO: legacy code, to be removed
+    // Keep ordinary per-pixel window evaluation. A single clip rectangle
+    // cannot represent outside areas, line windows or two-window logic.
     current_tilemap.window_control.logic = VDP2_R0LOG;
     current_tilemap.window_control.enabled[0] = VDP2_R0W0E;
     current_tilemap.window_control.enabled[1] = VDP2_R0W1E;
@@ -9740,17 +9732,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     current_tilemap.window_control.area[1] = VDP2_R0W1A;
     //      current_tilemap.window_control.? = VDP2_R0SWA;
 
-    rectangle mycliprect = cliprect;
-
-    if (current_tilemap.window_control.enabled[0] ||
-        current_tilemap.window_control.enabled[1]) {
-      // popmessage("Window control for RBG");
-      vdp2_apply_window_on_layer(mycliprect);
-      current_tilemap.window_control.enabled[0] = 0;
-      current_tilemap.window_control.enabled[1] = 0;
-    }
-
-    vdp2_check_tilemap(bitmap, mycliprect);
+    vdp2_check_tilemap(bitmap, cliprect);
   } else {
     if (!m_vdp2_legacy.roz_bitmap[iRP - 1].valid())
       m_vdp2_legacy.roz_bitmap[iRP - 1].allocate(4096, 4096);
@@ -9777,6 +9759,9 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     uint8_t const colour_calculation_enabled =
         current_tilemap.colour_calculation_enabled;
     current_tilemap.colour_calculation_enabled = 0;
+    // The cached source is unblended. Select the final operation only when
+    // copying it to the output, rather than retaining a previous pass's flags.
+    current_tilemap.transparency &= ~(STV_TRANSPARENCY_ALPHA | STV_TRANSPARENCY_ADD_BLEND);
     //      window_control = current_tilemap.window_control;
     //      current_tilemap.window_control = 0;
     uint8_t const fade_control = current_tilemap.fade_control;
@@ -9819,9 +9804,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     }
 
     current_tilemap.colour_calculation_enabled = colour_calculation_enabled;
-    if (colour_calculation_enabled) {
-      current_tilemap.transparency |= STV_TRANSPARENCY_ALPHA;
-    }
+    // vdp2_copy_roz_bitmap selects ratio or additive calculation from CCMD.
 
 #if 0
 		// old reference code
