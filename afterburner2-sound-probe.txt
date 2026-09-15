@@ -88,6 +88,92 @@ SCSP C/m_udata.data[i]=143
 SCSP D/m_udata.data[i]=1b4
 SCSP E/m_udata.data[i]=ff
 SCSP F/m_udata.data[i]=c0
+SCU 0/m_abus_aref=0
+SCU 0/m_abus_asr=1ff01ff0
+SCU 0/m_abus_pending_ack=0
+SCU 0/m_current_irq_level=0
+SCU 0/m_current_vector=43
+SCU 0/m_dma[0].bbus_sound_access=0
+SCU 0/m_dma[0].done=0
+SCU 0/m_dma[0].dst=5c00040
+SCU 0/m_dma[0].dst_add=2
+SCU 0/m_dma[0].enable_mask=1
+SCU 0/m_dma[0].index=0
+SCU 0/m_dma[0].indirect_end_flag=0
+SCU 0/m_dma[0].indirect_fetch_phase=0
+SCU 0/m_dma[0].indirect_mode=0
+SCU 0/m_dma[0].live_count=0
+SCU 0/m_dma[0].live_dst=5c03060
+SCU 0/m_dma[0].live_size=3020
+SCU 0/m_dma[0].live_src=6099f70
+SCU 0/m_dma[0].mode=0
+SCU 0/m_dma[0].pending_trigger=0
+SCU 0/m_dma[0].read_address=6099f6c
+SCU 0/m_dma[0].read_buffer=0
+SCU 0/m_dma[0].read_buffer_valid=1
+SCU 0/m_dma[0].read_offset=4
+SCU 0/m_dma[0].rup=0
+SCU 0/m_dma[0].size=3020
+SCU 0/m_dma[0].src=6096f50
+SCU 0/m_dma[0].src_add=4
+SCU 0/m_dma[0].start_factor=7
+SCU 0/m_dma[0].transfer_penalty=0
+SCU 0/m_dma[0].wup=0
+SCU 0/m_dma[1].bbus_sound_access=0
+SCU 0/m_dma[1].done=0
+SCU 0/m_dma[1].dst=0
+SCU 0/m_dma[1].dst_add=0
+SCU 0/m_dma[1].enable_mask=0
+SCU 0/m_dma[1].index=0
+SCU 0/m_dma[1].indirect_end_flag=0
+SCU 0/m_dma[1].indirect_fetch_phase=0
+SCU 0/m_dma[1].indirect_mode=0
+SCU 0/m_dma[1].live_count=0
+SCU 0/m_dma[1].live_dst=0
+SCU 0/m_dma[1].live_size=0
+SCU 0/m_dma[1].live_src=0
+SCU 0/m_dma[1].mode=0
+SCU 0/m_dma[1].pending_trigger=0
+SCU 0/m_dma[1].read_address=0
+SCU 0/m_dma[1].read_buffer=0
+SCU 0/m_dma[1].read_buffer_valid=0
+SCU 0/m_dma[1].read_offset=0
+SCU 0/m_dma[1].rup=0
+SCU 0/m_dma[1].size=0
+SCU 0/m_dma[1].src=0
+SCU 0/m_dma[1].src_add=0
+SCU 0/m_dma[1].start_factor=7
+SCU 0/m_dma[1].transfer_penalty=0
+SCU 0/m_dma[1].wup=0
+SCU 0/m_dma[2].bbus_sound_access=0
+SCU 0/m_dma[2].done=0
+SCU 0/m_dma[2].dst=0
+SCU 0/m_dma[2].dst_add=0
+SCU 0/m_dma[2].enable_mask=0
+SCU 0/m_dma[2].index=0
+SCU 0/m_dma[2].indirect_end_flag=0
+SCU 0/m_dma[2].indirect_fetch_phase=0
+SCU 0/m_dma[2].indirect_mode=0
+SCU 0/m_dma[2].live_count=0
+SCU 0/m_dma[2].live_dst=0
+SCU 0/m_dma[2].live_size=0
+SCU 0/m_dma[2].live_src=0
+SCU 0/m_dma[2].mode=0
+SCU 0/m_dma[2].pending_trigger=0
+SCU 0/m_dma[2].read_address=0
+SCU 0/m_dma[2].read_buffer=0
+SCU 0/m_dma[2].read_buffer_valid=0
+SCU 0/m_dma[2].read_offset=0
+SCU 0/m_dma[2].rup=0
+SCU 0/m_dma[2].size=0
+SCU 0/m_dma[2].src=0
+SCU 0/m_dma[2].src_add=0
+SCU 0/m_dma[2].start_factor=7
+SCU 0/m_dma[2].transfer_penalty=0
+SCU 0/m_dma[2].wup=0
+SCU 0/m_dma_status=0
+SCU 0/m_ism=b774
+SCU 0/m_ist=2014
 sound 000000: 0007 7834 0000 0688 0000 0500 0000 0508
 sound 000010: 0000 0510 0000 0518 0000 0520 0000 0528
 sound 000020: 0000 0530 0000 0538 0000 0540 0000 0548
@@ -388,6 +474,61 @@ sound-A6 001f2c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f3c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f4c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f5c: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R4 0ffec8: 0300 0400 0000 0000 0600 5af0 0000 0000
+main-R4 0ffed8: 2029 d800 0000 0000 0600 5ae2 0000 0337
+main-R4 0ffee8: 060f ff30 0001 7a9b 060f ff0c 0300 0400
+main-R4 0ffef8: 0000 0000 0600 c7ca 0001 7a9b 0000 0000
+main-R5 0fff0c: 0300 0400 0004 0000 0000 0000 0600 c552
+main-R5 0fff1c: 0000 0000 0000 07ff 0002 8c38 0000 0800
+main-R5 0fff2c: 0000 0001 ffff ffff 0009 d000 0600 8d80
+main-R5 0fff3c: 0600 8fe0 000c 5c38 2020 0800 0000 0000
+main-R11 0ffef4: 0300 0400 0000 0000 0600 c7ca 0001 7a9b
+main-R11 0fff04: 0000 0000 0000 0001 0300 0400 0004 0000
+main-R11 0fff14: 0000 0000 0600 c552 0000 0000 0000 07ff
+main-R11 0fff24: 0002 8c38 0000 0800 0000 0001 ffff ffff
+main-R14 006f00: d305 6331 2431 d205 6021 8141 d304 6031
+main-R14 006f10: 8142 8532 000b 8143 2589 0018 2589 001c
+main-R14 006f20: 2589 0020 4f22 6543 7ff8 66f3 1f41 b004
+main-R14 006f30: e400 7f08 4f26 000b 0009 4f22 7fe0 1f43
+main-R15 0ffec8: 0300 0400 0000 0000 0600 5af0 0000 0000
+main-R15 0ffed8: 2029 d800 0000 0000 0600 5ae2 0000 0337
+main-R15 0ffee8: 060f ff30 0001 7a9b 060f ff0c 0300 0400
+main-R15 0ffef8: 0000 0000 0600 c7ca 0001 7a9b 0000 0000
+main-vectors 000100: 0600 0840 0600 0846 0600 08f0 0600 084c
+main-vectors 000110: 0600 0852 0600 0858 0600 085e 0600 0864
+main-vectors 000120: 0600 086a 0600 0870 0600 0876 0600 087c
+main-vectors 000130: 0600 0882 0600 0888 0600 094a 0600 094a
+main-vectors 000140: 0600 088e 0600 0894 0600 089a 0600 08a0
+main-vectors 000150: 0600 08a6 0600 08ac 0600 08b2 0600 08b8
+main-vectors 000160: 0600 08be 0600 08c4 0600 08ca 0600 08d0
+main-vectors 000170: 0600 08d6 0600 08dc 0600 08e2 0600 08e8
+DMA-vector 49=06000870
+DMA-handler 000870: 2f06 a03f e049 2f06 a03c e04a 2f06 a039
+DMA-handler 000880: e04b 2f06 a036 e04c 2f06 a033 e04d 2f06
+DMA-handler 000890: a030 e050 2f06 a02d e051 2f06 a02a e052
+DMA-handler 0008a0: 2f06 a027 e053 2f06 a024 e054 2f06 a021
+DMA-handler 0008b0: e055 2f06 a01e e056 2f06 a01b e057 2f06
+DMA-handler 0008c0: a018 e058 2f06 a015 e059 2f06 a012 e05a
+DMA-handler 0008d0: 2f06 a00f e05b 2f06 a00c e05c 2f06 a009
+DMA-handler 0008e0: e05d 2f06 a006 e05e 2f06 a003 e05f 0009
+DMA-vector 4a=06000876
+DMA-handler 000876: 2f06 a03c e04a 2f06 a039 e04b 2f06 a036
+DMA-handler 000886: e04c 2f06 a033 e04d 2f06 a030 e050 2f06
+DMA-handler 000896: a02d e051 2f06 a02a e052 2f06 a027 e053
+DMA-handler 0008a6: 2f06 a024 e054 2f06 a021 e055 2f06 a01e
+DMA-handler 0008b6: e056 2f06 a01b e057 2f06 a018 e058 2f06
+DMA-handler 0008c6: a015 e059 2f06 a012 e05a 2f06 a00f e05b
+DMA-handler 0008d6: 2f06 a00c e05c 2f06 a009 e05d 2f06 a006
+DMA-handler 0008e6: e05e 2f06 a003 e05f 0009 2f06 e042 2f16
+DMA-vector 4b=0600087c
+DMA-handler 00087c: 2f06 a039 e04b 2f06 a036 e04c 2f06 a033
+DMA-handler 00088c: e04d 2f06 a030 e050 2f06 a02d e051 2f06
+DMA-handler 00089c: a02a e052 2f06 a027 e053 2f06 a024 e054
+DMA-handler 0008ac: 2f06 a021 e055 2f06 a01e e056 2f06 a01b
+DMA-handler 0008bc: e057 2f06 a018 e058 2f06 a015 e059 2f06
+DMA-handler 0008cc: a012 e05a 2f06 a00f e05b 2f06 a00c e05c
+DMA-handler 0008dc: 2f06 a009 e05d 2f06 a006 e05e 2f06 a003
+DMA-handler 0008ec: e05f 0009 2f06 e042 2f16 d118 2f26 6212
 main-PC 006f00: d305 6331 2431 d205 6021 8141 d304 6031
 main-PC 006f10: 8142 8532 000b 8143 2589 0018 2589 001c
 main-PC 006f20: 2589 0020 4f22 6543 7ff8 66f3 1f41 b004
@@ -511,6 +652,92 @@ SCSP C/m_udata.data[i]=143
 SCSP D/m_udata.data[i]=1b4
 SCSP E/m_udata.data[i]=ff
 SCSP F/m_udata.data[i]=c0
+SCU 0/m_abus_aref=0
+SCU 0/m_abus_asr=1ff01ff0
+SCU 0/m_abus_pending_ack=0
+SCU 0/m_current_irq_level=0
+SCU 0/m_current_vector=40
+SCU 0/m_dma[0].bbus_sound_access=0
+SCU 0/m_dma[0].done=0
+SCU 0/m_dma[0].dst=5e40000
+SCU 0/m_dma[0].dst_add=2
+SCU 0/m_dma[0].enable_mask=1
+SCU 0/m_dma[0].index=0
+SCU 0/m_dma[0].indirect_end_flag=0
+SCU 0/m_dma[0].indirect_fetch_phase=0
+SCU 0/m_dma[0].indirect_mode=0
+SCU 0/m_dma[0].live_count=0
+SCU 0/m_dma[0].live_dst=5e42000
+SCU 0/m_dma[0].live_size=2000
+SCU 0/m_dma[0].live_src=60d8000
+SCU 0/m_dma[0].mode=0
+SCU 0/m_dma[0].pending_trigger=0
+SCU 0/m_dma[0].read_address=60d7ffc
+SCU 0/m_dma[0].read_buffer=0
+SCU 0/m_dma[0].read_buffer_valid=1
+SCU 0/m_dma[0].read_offset=4
+SCU 0/m_dma[0].rup=0
+SCU 0/m_dma[0].size=2000
+SCU 0/m_dma[0].src=60d6000
+SCU 0/m_dma[0].src_add=4
+SCU 0/m_dma[0].start_factor=7
+SCU 0/m_dma[0].transfer_penalty=0
+SCU 0/m_dma[0].wup=0
+SCU 0/m_dma[1].bbus_sound_access=0
+SCU 0/m_dma[1].done=0
+SCU 0/m_dma[1].dst=0
+SCU 0/m_dma[1].dst_add=0
+SCU 0/m_dma[1].enable_mask=0
+SCU 0/m_dma[1].index=0
+SCU 0/m_dma[1].indirect_end_flag=0
+SCU 0/m_dma[1].indirect_fetch_phase=0
+SCU 0/m_dma[1].indirect_mode=0
+SCU 0/m_dma[1].live_count=0
+SCU 0/m_dma[1].live_dst=0
+SCU 0/m_dma[1].live_size=0
+SCU 0/m_dma[1].live_src=0
+SCU 0/m_dma[1].mode=0
+SCU 0/m_dma[1].pending_trigger=0
+SCU 0/m_dma[1].read_address=0
+SCU 0/m_dma[1].read_buffer=0
+SCU 0/m_dma[1].read_buffer_valid=0
+SCU 0/m_dma[1].read_offset=0
+SCU 0/m_dma[1].rup=0
+SCU 0/m_dma[1].size=0
+SCU 0/m_dma[1].src=0
+SCU 0/m_dma[1].src_add=0
+SCU 0/m_dma[1].start_factor=7
+SCU 0/m_dma[1].transfer_penalty=0
+SCU 0/m_dma[1].wup=0
+SCU 0/m_dma[2].bbus_sound_access=0
+SCU 0/m_dma[2].done=0
+SCU 0/m_dma[2].dst=0
+SCU 0/m_dma[2].dst_add=0
+SCU 0/m_dma[2].enable_mask=0
+SCU 0/m_dma[2].index=0
+SCU 0/m_dma[2].indirect_end_flag=0
+SCU 0/m_dma[2].indirect_fetch_phase=0
+SCU 0/m_dma[2].indirect_mode=0
+SCU 0/m_dma[2].live_count=0
+SCU 0/m_dma[2].live_dst=0
+SCU 0/m_dma[2].live_size=0
+SCU 0/m_dma[2].live_src=0
+SCU 0/m_dma[2].mode=0
+SCU 0/m_dma[2].pending_trigger=0
+SCU 0/m_dma[2].read_address=0
+SCU 0/m_dma[2].read_buffer=0
+SCU 0/m_dma[2].read_buffer_valid=0
+SCU 0/m_dma[2].read_offset=0
+SCU 0/m_dma[2].rup=0
+SCU 0/m_dma[2].size=0
+SCU 0/m_dma[2].src=0
+SCU 0/m_dma[2].src_add=0
+SCU 0/m_dma[2].start_factor=7
+SCU 0/m_dma[2].transfer_penalty=0
+SCU 0/m_dma[2].wup=0
+SCU 0/m_dma_status=0
+SCU 0/m_ism=bfff
+SCU 0/m_ist=289f
 sound 000000: 0007 7834 0000 0688 0000 0500 0000 0508
 sound 000010: 0000 0510 0000 0518 0000 0520 0000 0528
 sound 000020: 0000 0530 0000 0538 0000 0540 0000 0548
@@ -571,6 +798,65 @@ sound-A6 001f2c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f3c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f4c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f5c: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R1 004e64: 0000 0001 0000 0002 0000 0002 0000 0001
+main-R1 004e74: 0000 0001 ffff 0000 ffff 0000 0000 0005
+main-R1 004e84: 0000 4000 0000 0000 0000 0000 0000 0000
+main-R1 004e94: 0000 0000 015f ffff 0000 0000 00ef ffff
+main-R3 0d6000: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R3 0d6010: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R3 0d6020: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R3 0d6030: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R6 010970: 2f06 2f16 2f26 2f36 2f46 2f56 2f66 2f76
+main-R6 010980: 2f86 2f96 2fa6 2fb6 2fc6 2fd6 2fe6 4f13
+main-R6 010990: 4f02 4f12 4f22 d022 6102 7101 2012 d045
+main-R6 0109a0: e101 2012 d0d9 e101 2012 d08d e100 2011
+main-R9 0fff14: 8011 0000 0000 0000 0000 0000 060d 268c
+main-R9 0fff24: 0609 13e4 060f ff38 060f ff64 0000 f774
+main-R9 0fff34: 0000 f000 0000 6000 0000 a67f ffff a67f
+main-R9 0fff44: 0000 2050 0000 0100 060d 3822 002b 0001
+main-R13 0ffec8: ffff fe03 060f fecb 0000 0006 060f feca
+main-R13 0ffed8: 060f fec9 060f fec8 0000 0000 060d 2530
+main-R13 0ffee8: 0000 0400 0000 0002 0000 0200 0000 0001
+main-R13 0ffef8: 0000 0004 0000 0000 060f ff14 060f ff30
+main-R15 0ffe44: 0601 09da 0600 0928 0000 0000 0000 0000
+main-R15 0ffe54: 0000 0000 ffff fe04 060f fec8 ffff fe05
+main-R15 0ffe64: 0000 0000 0110 2100 060f ff14 0000 0020
+main-R15 0ffe74: 0000 0008 0601 0970 25fe 00a0 ffff f07f
+main-vectors 000100: 0600 0840 0600 0846 0600 08f0 0600 084c
+main-vectors 000110: 0600 0852 0600 0858 0600 085e 0600 0864
+main-vectors 000120: 0600 086a 0600 0870 0600 0876 0600 087c
+main-vectors 000130: 0600 0882 0600 0888 0600 094a 0600 094a
+main-vectors 000140: 0600 088e 0600 0894 0600 089a 0600 08a0
+main-vectors 000150: 0600 08a6 0600 08ac 0600 08b2 0600 08b8
+main-vectors 000160: 0600 08be 0600 08c4 0600 08ca 0600 08d0
+main-vectors 000170: 0600 08d6 0600 08dc 0600 08e2 0600 08e8
+DMA-vector 49=06000870
+DMA-handler 000870: 2f06 a03f e049 2f06 a03c e04a 2f06 a039
+DMA-handler 000880: e04b 2f06 a036 e04c 2f06 a033 e04d 2f06
+DMA-handler 000890: a030 e050 2f06 a02d e051 2f06 a02a e052
+DMA-handler 0008a0: 2f06 a027 e053 2f06 a024 e054 2f06 a021
+DMA-handler 0008b0: e055 2f06 a01e e056 2f06 a01b e057 2f06
+DMA-handler 0008c0: a018 e058 2f06 a015 e059 2f06 a012 e05a
+DMA-handler 0008d0: 2f06 a00f e05b 2f06 a00c e05c 2f06 a009
+DMA-handler 0008e0: e05d 2f06 a006 e05e 2f06 a003 e05f 0009
+DMA-vector 4a=06000876
+DMA-handler 000876: 2f06 a03c e04a 2f06 a039 e04b 2f06 a036
+DMA-handler 000886: e04c 2f06 a033 e04d 2f06 a030 e050 2f06
+DMA-handler 000896: a02d e051 2f06 a02a e052 2f06 a027 e053
+DMA-handler 0008a6: 2f06 a024 e054 2f06 a021 e055 2f06 a01e
+DMA-handler 0008b6: e056 2f06 a01b e057 2f06 a018 e058 2f06
+DMA-handler 0008c6: a015 e059 2f06 a012 e05a 2f06 a00f e05b
+DMA-handler 0008d6: 2f06 a00c e05c 2f06 a009 e05d 2f06 a006
+DMA-handler 0008e6: e05e 2f06 a003 e05f 0009 2f06 e042 2f16
+DMA-vector 4b=0600087c
+DMA-handler 00087c: 2f06 a039 e04b 2f06 a036 e04c 2f06 a033
+DMA-handler 00088c: e04d 2f06 a030 e050 2f06 a02d e051 2f06
+DMA-handler 00089c: a02a e052 2f06 a027 e053 2f06 a024 e054
+DMA-handler 0008ac: 2f06 a021 e055 2f06 a01e e056 2f06 a01b
+DMA-handler 0008bc: e057 2f06 a018 e058 2f06 a015 e059 2f06
+DMA-handler 0008cc: a012 e05a 2f06 a00f e05b 2f06 a00c e05c
+DMA-handler 0008dc: 2f06 a009 e05d 2f06 a006 e05e 2f06 a003
+DMA-handler 0008ec: e05f 0009 2f06 e042 2f16 d118 2f26 6212
 main-PC 07bb80: 6112 6012 2008 8bfc 4f03 92b1 420e e001
 main-PC 07bb90: 2102 d267 d359 d45a 95a6 1230 1230 1241
 main-PC 07bba0: 1241 1252 1252 90a5 1203 1203 e007 1205
@@ -694,6 +980,92 @@ SCSP C/m_udata.data[i]=143
 SCSP D/m_udata.data[i]=1b4
 SCSP E/m_udata.data[i]=ff
 SCSP F/m_udata.data[i]=c0
+SCU 0/m_abus_aref=0
+SCU 0/m_abus_asr=1ff01ff0
+SCU 0/m_abus_pending_ack=0
+SCU 0/m_current_irq_level=0
+SCU 0/m_current_vector=40
+SCU 0/m_dma[0].bbus_sound_access=0
+SCU 0/m_dma[0].done=0
+SCU 0/m_dma[0].dst=5e40000
+SCU 0/m_dma[0].dst_add=2
+SCU 0/m_dma[0].enable_mask=1
+SCU 0/m_dma[0].index=0
+SCU 0/m_dma[0].indirect_end_flag=0
+SCU 0/m_dma[0].indirect_fetch_phase=0
+SCU 0/m_dma[0].indirect_mode=0
+SCU 0/m_dma[0].live_count=0
+SCU 0/m_dma[0].live_dst=5e42000
+SCU 0/m_dma[0].live_size=2000
+SCU 0/m_dma[0].live_src=60d8000
+SCU 0/m_dma[0].mode=0
+SCU 0/m_dma[0].pending_trigger=0
+SCU 0/m_dma[0].read_address=60d7ffc
+SCU 0/m_dma[0].read_buffer=0
+SCU 0/m_dma[0].read_buffer_valid=1
+SCU 0/m_dma[0].read_offset=4
+SCU 0/m_dma[0].rup=0
+SCU 0/m_dma[0].size=2000
+SCU 0/m_dma[0].src=60d6000
+SCU 0/m_dma[0].src_add=4
+SCU 0/m_dma[0].start_factor=7
+SCU 0/m_dma[0].transfer_penalty=0
+SCU 0/m_dma[0].wup=0
+SCU 0/m_dma[1].bbus_sound_access=0
+SCU 0/m_dma[1].done=0
+SCU 0/m_dma[1].dst=0
+SCU 0/m_dma[1].dst_add=0
+SCU 0/m_dma[1].enable_mask=0
+SCU 0/m_dma[1].index=0
+SCU 0/m_dma[1].indirect_end_flag=0
+SCU 0/m_dma[1].indirect_fetch_phase=0
+SCU 0/m_dma[1].indirect_mode=0
+SCU 0/m_dma[1].live_count=0
+SCU 0/m_dma[1].live_dst=0
+SCU 0/m_dma[1].live_size=0
+SCU 0/m_dma[1].live_src=0
+SCU 0/m_dma[1].mode=0
+SCU 0/m_dma[1].pending_trigger=0
+SCU 0/m_dma[1].read_address=0
+SCU 0/m_dma[1].read_buffer=0
+SCU 0/m_dma[1].read_buffer_valid=0
+SCU 0/m_dma[1].read_offset=0
+SCU 0/m_dma[1].rup=0
+SCU 0/m_dma[1].size=0
+SCU 0/m_dma[1].src=0
+SCU 0/m_dma[1].src_add=0
+SCU 0/m_dma[1].start_factor=7
+SCU 0/m_dma[1].transfer_penalty=0
+SCU 0/m_dma[1].wup=0
+SCU 0/m_dma[2].bbus_sound_access=0
+SCU 0/m_dma[2].done=0
+SCU 0/m_dma[2].dst=0
+SCU 0/m_dma[2].dst_add=0
+SCU 0/m_dma[2].enable_mask=0
+SCU 0/m_dma[2].index=0
+SCU 0/m_dma[2].indirect_end_flag=0
+SCU 0/m_dma[2].indirect_fetch_phase=0
+SCU 0/m_dma[2].indirect_mode=0
+SCU 0/m_dma[2].live_count=0
+SCU 0/m_dma[2].live_dst=0
+SCU 0/m_dma[2].live_size=0
+SCU 0/m_dma[2].live_src=0
+SCU 0/m_dma[2].mode=0
+SCU 0/m_dma[2].pending_trigger=0
+SCU 0/m_dma[2].read_address=0
+SCU 0/m_dma[2].read_buffer=0
+SCU 0/m_dma[2].read_buffer_valid=0
+SCU 0/m_dma[2].read_offset=0
+SCU 0/m_dma[2].rup=0
+SCU 0/m_dma[2].size=0
+SCU 0/m_dma[2].src=0
+SCU 0/m_dma[2].src_add=0
+SCU 0/m_dma[2].start_factor=7
+SCU 0/m_dma[2].transfer_penalty=0
+SCU 0/m_dma[2].wup=0
+SCU 0/m_dma_status=0
+SCU 0/m_ism=bfff
+SCU 0/m_ist=289f
 sound 000000: 0007 7834 0000 0688 0000 0500 0000 0508
 sound 000010: 0000 0510 0000 0518 0000 0520 0000 0528
 sound 000020: 0000 0530 0000 0538 0000 0540 0000 0548
@@ -754,6 +1126,65 @@ sound-A6 001f2c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f3c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f4c: 0000 0000 0000 0000 0000 0000 0000 0000
 sound-A6 001f5c: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R1 004e64: 0000 0001 0000 0002 0000 0002 0000 0001
+main-R1 004e74: 0000 0001 ffff 0000 ffff 0000 0000 0005
+main-R1 004e84: 0000 4000 0000 0000 0000 0000 0000 0000
+main-R1 004e94: 0000 0000 015f ffff 0000 0000 00ef ffff
+main-R3 0d6000: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R3 0d6010: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R3 0d6020: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R3 0d6030: 0000 0000 0000 0000 0000 0000 0000 0000
+main-R6 010970: 2f06 2f16 2f26 2f36 2f46 2f56 2f66 2f76
+main-R6 010980: 2f86 2f96 2fa6 2fb6 2fc6 2fd6 2fe6 4f13
+main-R6 010990: 4f02 4f12 4f22 d022 6102 7101 2012 d045
+main-R6 0109a0: e101 2012 d0d9 e101 2012 d08d e100 2011
+main-R9 0fff14: 8011 0000 0000 0000 0000 0000 060d 268c
+main-R9 0fff24: 0609 13e4 060f ff38 060f ff64 0000 f774
+main-R9 0fff34: 0000 f000 0000 6000 0000 a67f ffff a67f
+main-R9 0fff44: 0000 2050 0000 0100 060d 3822 002b 0001
+main-R13 0ffec8: ffff fe03 060f fecb 0000 0006 060f feca
+main-R13 0ffed8: 060f fec9 060f fec8 0000 0000 060d 2530
+main-R13 0ffee8: 0000 0400 0000 0002 0000 0200 0000 0001
+main-R13 0ffef8: 0000 0004 0000 0000 060f ff14 060f ff30
+main-R15 0ffe44: 0601 09da 0600 0928 0000 0000 0000 0000
+main-R15 0ffe54: 0000 0000 ffff fe04 060f fec8 ffff fe05
+main-R15 0ffe64: 0000 0000 0110 2100 060f ff14 0000 0020
+main-R15 0ffe74: 0000 0008 0601 0970 25fe 00a0 ffff f07f
+main-vectors 000100: 0600 0840 0600 0846 0600 08f0 0600 084c
+main-vectors 000110: 0600 0852 0600 0858 0600 085e 0600 0864
+main-vectors 000120: 0600 086a 0600 0870 0600 0876 0600 087c
+main-vectors 000130: 0600 0882 0600 0888 0600 094a 0600 094a
+main-vectors 000140: 0600 088e 0600 0894 0600 089a 0600 08a0
+main-vectors 000150: 0600 08a6 0600 08ac 0600 08b2 0600 08b8
+main-vectors 000160: 0600 08be 0600 08c4 0600 08ca 0600 08d0
+main-vectors 000170: 0600 08d6 0600 08dc 0600 08e2 0600 08e8
+DMA-vector 49=06000870
+DMA-handler 000870: 2f06 a03f e049 2f06 a03c e04a 2f06 a039
+DMA-handler 000880: e04b 2f06 a036 e04c 2f06 a033 e04d 2f06
+DMA-handler 000890: a030 e050 2f06 a02d e051 2f06 a02a e052
+DMA-handler 0008a0: 2f06 a027 e053 2f06 a024 e054 2f06 a021
+DMA-handler 0008b0: e055 2f06 a01e e056 2f06 a01b e057 2f06
+DMA-handler 0008c0: a018 e058 2f06 a015 e059 2f06 a012 e05a
+DMA-handler 0008d0: 2f06 a00f e05b 2f06 a00c e05c 2f06 a009
+DMA-handler 0008e0: e05d 2f06 a006 e05e 2f06 a003 e05f 0009
+DMA-vector 4a=06000876
+DMA-handler 000876: 2f06 a03c e04a 2f06 a039 e04b 2f06 a036
+DMA-handler 000886: e04c 2f06 a033 e04d 2f06 a030 e050 2f06
+DMA-handler 000896: a02d e051 2f06 a02a e052 2f06 a027 e053
+DMA-handler 0008a6: 2f06 a024 e054 2f06 a021 e055 2f06 a01e
+DMA-handler 0008b6: e056 2f06 a01b e057 2f06 a018 e058 2f06
+DMA-handler 0008c6: a015 e059 2f06 a012 e05a 2f06 a00f e05b
+DMA-handler 0008d6: 2f06 a00c e05c 2f06 a009 e05d 2f06 a006
+DMA-handler 0008e6: e05e 2f06 a003 e05f 0009 2f06 e042 2f16
+DMA-vector 4b=0600087c
+DMA-handler 00087c: 2f06 a039 e04b 2f06 a036 e04c 2f06 a033
+DMA-handler 00088c: e04d 2f06 a030 e050 2f06 a02d e051 2f06
+DMA-handler 00089c: a02a e052 2f06 a027 e053 2f06 a024 e054
+DMA-handler 0008ac: 2f06 a021 e055 2f06 a01e e056 2f06 a01b
+DMA-handler 0008bc: e057 2f06 a018 e058 2f06 a015 e059 2f06
+DMA-handler 0008cc: a012 e05a 2f06 a00f e05b 2f06 a00c e05c
+DMA-handler 0008dc: 2f06 a009 e05d 2f06 a006 e05e 2f06 a003
+DMA-handler 0008ec: e05f 0009 2f06 e042 2f16 d118 2f26 6212
 main-PC 07bb80: 6112 6012 2008 8bfc 4f03 92b1 420e e001
 main-PC 07bb90: 2102 d267 d359 d45a 95a6 1230 1230 1241
 main-PC 07bba0: 1241 1252 1252 90a5 1203 1203 e007 1205
