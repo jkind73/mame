@@ -1,5 +1,36 @@
 # VDP2 implementation report and progress tracker
 
+## S02: standalone vertical cell-scroll dispatch — 2026-09-15
+
+Removed the accidental horizontal-line-scroll prerequisite from the existing
+vertical cell-scroll branch. With vertical cell scroll alone enabled, each clipped
+column now goes directly to the basic tile or bitmap renderer; when horizontal
+line scroll is also enabled, it retains the interval scheduler. The existing
+exclusions for vertical line scroll and line zoom remain, rather than enabling
+unqualified nested combinations. Original scroll X/Y are restored after the column
+pass, preventing the final column or downstream normalization from leaking into
+later partial updates.
+
+Primary ST-058 printed p.134 describes vertical cell scroll as its own function;
+SCRCTL's independent VCSC/LSCX enable bits do not require horizontal line scroll.
+Pinned Ymir 6d779960 `vdp_renderer_sw.cpp` independently enables vertical cell scroll
+without requiring horizontal line scroll. Its per-source-cell stepping and mosaic
+priority are comparison points, not behavior implemented by this dispatch fix.
+
+Extended `test_cell_scroll.py` to **85,248 configurations**: standalone and combined
+horizontal-line-scroll paths, direct tile/bitmap dispatch, both table interleaving
+offsets, VRAM sizes/wrapping, negative offsets, partial/empty clips, column call bounds
+and restoration despite downstream coordinate normalization. Prior a562a96f compiles
+and assertion-fails; independent restored-prerequisite and removed-restoration
+mutations compile and fail the appropriate assertions.
+
+All **29 regression scripts / eleven production object builds pass**. This fixture
+records dispatch and offsets, not final hardware pixels. The existing screen-X
+8-dot column convention is preserved, not newly certified: source-coordinate cell
+boundaries, fractional scrolling, zoom/vertical-line combinations, mosaic priority,
+and linked runtime/save/performance qualification keep S02 open.
+
+
 ## S02: line-scroll intervals and partial rendering — 2026-09-15
 
 Reworked line-scroll scheduling around screen-origin interval boundaries. Packed
@@ -520,6 +551,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [ ] **V2-S01** Qualify ordinary fractional scroll/zoom and implement reduction-enable limits.
 - [x] **V2-S01a** Enforce documented ZMCTL restrictions on paired NBG2/NBG3 screens.
 - [ ] **V2-S02** Complete line-scroll, vertical line-scroll, line-zoom and vertical cell-scroll combinations.
+  - [x] **V2-S02b** Dispatch standalone vertical cell scroll and restore column-pass scroll state; keep unqualified combinations excluded.
   - [x] **V2-S02a** Correct packed interval addressing, partial-clip containment, unsigned line zoom and descriptor restoration; retain equivalent-entry batching.
   - [ ] Table stride/interval, simultaneous NBG0/NBG1, screen-left anchoring and wrapping.
   - [ ] Correct per-dot/column behavior without an uncontrolled nested-render cost.
