@@ -1,5 +1,28 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## S01: ZMCTL paired-screen restrictions — 2026-09-15
+
+NBG0 quarter-reduction enable now suppresses NBG2; half-reduction enable does
+so with 256-color NBG0. NBG1 has the corresponding effect on NBG3. This is a
+configured resource restriction, independent of the current coordinate increment
+or the paired source screen's BGON bit. No undocumented increment clamping was added.
+
+Primary: ST-058 printed pp.129–130, Table 5.2 (quarter enable dominates half).
+Pinned MiSTer `VDP2.sv` lines 3137–3138 and 3200–3201 corroborate these gates.
+Pinned Ymir `WriteZMCTL` masks 0x0303 and dirties access patterns, but its related
+access-count multipliers in `vdp_state.hpp` are commented out with a compatibility
+FIXME; it is not an independent passing oracle for this restriction.
+
+`test_vdp2_reduction.py` executes production NBG2/NBG3 setup, actual register
+macros, and cycle-pattern presence checking. **3,456 scenarios** cover the legal
+16/256-color reduction settings, both pairs, all normal BGON combinations, cycle
+presence/absence, three increments, and clearing ZMCTL without reset. The final
+tile renderer is a recording stand-in; prohibited 256-color quarter reduction is
+not assigned a silicon expectation. Baseline 4ff73852 compiles and assertion-fails.
+**28 scripts / eleven production object builds pass**, not linked/runtime/save
+qualification. S01 remains open for fractional scroll/zoom and broader combinations.
+
+
 ## VDP2 rotation coverage update — 2026-09-15
 
 Rotation caches now distinguish opaque black from transparent pixels using existing

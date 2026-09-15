@@ -9429,6 +9429,12 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
 
   current_tilemap.enabled = VDP2_N2ON;
 
+  // ST-058 Table 5.2: quarter reduction on NBG0, or half reduction
+  // with 256 colors, consumes the resources otherwise used by NBG2.
+  // This follows the configured reduction range, not the current increment.
+  if (VDP2_N0ZMQT || (VDP2_N0ZMHF && VDP2_N0CHCN == 1))
+    current_tilemap.enabled = 0;
+
   /* these modes for N0 disable this layer */
   if (VDP2_N0CHCN == 0x03)
     current_tilemap.enabled = 0;
@@ -9530,6 +9536,10 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
   */
 
   current_tilemap.enabled = VDP2_N3ON;
+
+  // The corresponding NBG1 reduction settings disable NBG3 (Table 5.2).
+  if (VDP2_N1ZMQT || (VDP2_N1ZMHF && VDP2_N1CHCN == 1))
+    current_tilemap.enabled = 0;
 
   //  if (!current_tilemap.enabled) return; // stop right now if its disabled
   //  ...
