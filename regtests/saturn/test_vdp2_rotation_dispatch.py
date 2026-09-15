@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear','screen-over'));a=p.parse_args()
 src=subprocess.check_output(['git','show','69995fab:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True) if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text()
 header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -24,6 +24,7 @@ def extract(text,sig):
  return text[start:end]
 functions=[extract(src,'uint8_t saturn_state::vdp2_is_rotation_applied('),extract(src,'void saturn_state::vdp2_draw_rotation_screen(')]
 f='\n'.join(functions)
+if a.mutation=='screen-over':f=f.replace('!(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR)', '(rot_parameter != 0)')
 if a.mutation=='clear':f=f.replace('fill(rgb_t::transparent(),','fill(rgb_t::black(),')
 if a.mutation=='coefficient':
  f=f.replace('!(rot_parameter == 1 ? VDP2_RAKTE : VDP2_RBKTE)', '(rot_parameter != 0)')
@@ -80,11 +81,13 @@ struct saturn_state {
 // UNDEFS
 int main(){
  saturn_state s;bitmap_rgb32 output;unsigned cases=0;
- for(int parameter:{1,2})for(int mode:{0,1,2,3})for(int reason=0;reason<7;++reason)
+ for(int parameter:{1,2})for(int mode:{0,1,2,3})for(int reason=0;reason<11;++reason)
  for(int windows=0;windows<32;++windows)for(int blend:{0,1,2}){
   auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;
   s.regs.VDP2_RPMD=mode;s.regs.VDP2_RAKTE=0;s.regs.VDP2_RBKTE=0;
-  s.dev.hreso=0;s.dev.lsmd=0;
+  s.dev.hreso=0;s.dev.lsmd=0;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;
+  if(reason>=7&&reason<=9){if(parameter==1)s.regs.VDP2_RAOVR=reason-6;else s.regs.VDP2_RBOVR=reason-6;}
+  if(reason==10){if(parameter==1)s.regs.VDP2_RBOVR=1;else s.regs.VDP2_RAOVR=1;}
   if(reason==1){if(parameter==1)s.regs.VDP2_RAKTE=1;else s.regs.VDP2_RBKTE=1;}
   if(reason==2){if(parameter==1)s.regs.VDP2_RBKTE=1;else s.regs.VDP2_RAKTE=1;}
   if(reason==3)r.xst=65536;
@@ -97,11 +100,11 @@ int main(){
   s.current_tilemap={};s.current_tilemap.bitmap_enable=1;s.current_tilemap.bitmap_size=0;
   s.current_tilemap.roz_mode3=mode==3;s.current_tilemap.colour_calculation_enabled=blend!=0;
   // Stale flags from an earlier parameter/render pass must not enter the cache.
-  s.current_tilemap.transparency=1|((mode<2&&(reason==0||reason==2))?0:6);
+  s.current_tilemap.transparency=1|((mode<2&&(reason==0||reason==2||reason==10))?0:6);
   s.RBG0_cache_data={};s.direct=s.copied=s.built=0;
   s.vdp2_draw_rotation_screen(output,{1,14,1,6},parameter);
   assert(s.loaded==parameter);
-  bool fast=mode<2&&(reason==0||reason==2);
+  bool fast=mode<2&&(reason==0||reason==2||reason==10);
   assert(s.direct==int(fast)&&s.copied==int(!fast));
   if(fast){
    auto &w=s.captured.window_control;
