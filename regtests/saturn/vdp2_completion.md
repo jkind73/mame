@@ -1,5 +1,26 @@
 # VDP2 implementation report and progress tracker
 
+## A04/C05: bitmap additive calculation — 2026-09-15
+
+The real bitmap fixture exposed a shared omission: all five bitmap routines used
+ratio alpha calculation even when CCMD requested direct addition. They now select
+saturating addition when calculation is enabled and CCMD=1. Disabled calculation
+still replaces the pixel, and CCMD=0 retains the ratio path. No special-function,
+second-image eligibility or high-resolution resource restriction is newly claimed.
+
+Primary ST-058 printed p.241 defines CCMD=1 as “Add as is” and ignores ratio
+registers. Pinned Ymir `Color888SatAddMasked` and MiSTer `ColorCalc(...CCMD)`
+corroborate the operation; MAME's existing `add_blend_r32` is reused.
+The bitmap suite now has **15,360 image cases** with real palette and windows,
+including additive saturation. An additive-disabled mutation fails the image oracle.
+All **25 scripts / eleven production objects pass**; no linked runtime qualification.
+
+The register ledger also now cross-references MiSTer register write masks, preserving
+conditional alternatives. These remain explicitly separate from the primary
+hardware-mask/reset/latch audit; no broad masking change was applied to production.
+A03/A04 and the full C05 composition task remain open.
+
+
 ## A04/A05: physical CRAM banks and integrated bitmap fixture — 2026-09-15
 
 CRAM now retains physical mode-1 bank order in storage. Mode 2 maps the CPU high

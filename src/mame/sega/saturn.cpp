@@ -7217,6 +7217,8 @@ void saturn_state::draw_4bpp_bitmap(bitmap_rgb32 &bitmap,
 
         if (current_tilemap.colour_calculation_enabled == 0)
           bitmap.pix(ydst, xdst) = m_palette->pen(dot_data);
+        else if (VDP2_CCMD)
+          bitmap.pix(ydst, xdst) = add_blend_r32(bitmap.pix(ydst, xdst), m_palette->pen(dot_data));
         else
           bitmap.pix(ydst, xdst) =
               alpha_blend_r32(bitmap.pix(ydst, xdst), m_palette->pen(dot_data),
@@ -7276,6 +7278,8 @@ void saturn_state::draw_8bpp_bitmap(bitmap_rgb32 &bitmap,
 
         if (current_tilemap.colour_calculation_enabled == 0)
           bitmap.pix(ydst, xdst) = m_palette->pen(dot_data);
+        else if (VDP2_CCMD)
+          bitmap.pix(ydst, xdst) = add_blend_r32(bitmap.pix(ydst, xdst), m_palette->pen(dot_data));
         else
           bitmap.pix(ydst, xdst) =
               alpha_blend_r32(bitmap.pix(ydst, xdst), m_palette->pen(dot_data),
@@ -7333,6 +7337,8 @@ void saturn_state::draw_11bpp_bitmap(bitmap_rgb32 &bitmap,
 
         if (current_tilemap.colour_calculation_enabled == 0)
           bitmap.pix(ydst, xdst) = m_palette->pen(dot_data);
+        else if (VDP2_CCMD)
+          bitmap.pix(ydst, xdst) = add_blend_r32(bitmap.pix(ydst, xdst), m_palette->pen(dot_data));
         else
           bitmap.pix(ydst, xdst) =
               alpha_blend_r32(bitmap.pix(ydst, xdst), m_palette->pen(dot_data),
@@ -7392,6 +7398,8 @@ void saturn_state::draw_rgb15_bitmap(bitmap_rgb32 &bitmap,
 
         if (current_tilemap.colour_calculation_enabled == 0)
           bitmap.pix(ydst, xdst) = rgb_t(r, g, b);
+        else if (VDP2_CCMD)
+          bitmap.pix(ydst, xdst) = add_blend_r32(bitmap.pix(ydst, xdst), rgb_t(r, g, b));
         else
           bitmap.pix(ydst, xdst) = alpha_blend_r32(
               bitmap.pix(ydst, xdst), rgb_t(r, g, b), current_tilemap.alpha);
@@ -7451,6 +7459,8 @@ void saturn_state::draw_rgb32_bitmap(bitmap_rgb32 &bitmap,
 
         if (current_tilemap.colour_calculation_enabled == 0)
           bitmap.pix(ydst, xdst) = rgb_t(r, g, b);
+        else if (VDP2_CCMD)
+          bitmap.pix(ydst, xdst) = add_blend_r32(bitmap.pix(ydst, xdst), rgb_t(r, g, b));
         else
           bitmap.pix(ydst, xdst) = alpha_blend_r32(
               bitmap.pix(ydst, xdst), rgb_t(r, g, b), current_tilemap.alpha);
