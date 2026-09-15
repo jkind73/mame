@@ -1,5 +1,21 @@
 # VDP1 completion audit — 2026-09-14
 
+## After Burner II instrumented follow-up — sound-startup wait
+
+Analyzed and preserved user commit `629e6569`: the first CD read completes and
+boot progresses through 2,351 CD commands. The persistent wait begins after
+SNDON near 17.56 s; main PC remains 06010276/06010278 through 155 s. No new VDP1
+lists are submitted; no pending CD transfer/command remains.
+
+Corrected a source-backed sound IRQ/reset defect: SCSP level changes must reach
+the 68000 even during SNDOFF/reset, otherwise change-only callbacks can lose an
+assertion or leave a stale IRQ at SNDON. Sega SMPC, MiSTer wiring and Ymir were
+cross-checked. Added bounded BOOTCPU instruction/register/sound-state diagnostics.
+64 reset/IRQ transition tests pass; the old-gate mutation fails. All 19 scripts
+and nine production objects pass. **Game boot is not yet confirmed fixed.**
+See `regtests/saturn/afterburner2_boot_analysis.md` for evidence and acceptance.
+OutRun flashing stays user-confirmed fixed; size/offset status stays unconfirmed.
+
 ## After Burner II boot stall — active investigation
 
 The user clarifies that the `822d45ac` capture intentionally shows After Burner II
