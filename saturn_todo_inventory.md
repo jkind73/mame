@@ -1,5 +1,14 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Update — 2026-09-15: active-display erase
+
+Manual/one-cycle erase now follows presented scanlines, with saved progress and
+primary-defined display limits. One-cycle erase owns the displayed bank, not the
+new draw bank. 180 new cases, three failing mutations, 23 passing scripts/11 objects.
+Within-raster arbitration, real save/load and runtime/performance qualification
+remain. See `regtests/saturn/vdp1_completion.md` for source disagreements and limits.
+
+
 ## Update — 2026-09-15: progressive VBlank erase
 
 VBlank erase now has a saved partial-row cursor, remaining budget and raster-level
