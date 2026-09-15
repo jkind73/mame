@@ -2528,6 +2528,10 @@ void sh_common_execution::generate_delay_slot(drcuml_block &block, compiler_stat
 	// update after this returns, so stash them along with the label counter
 	compiler.cycles = compiler_temp.cycles;
 	compiler.labelnum = compiler_temp.labelnum;
+	// LDC [@Rm+,]SR in a delay slot can expose an interrupt. The branch
+	// emits the check after the slot, using the branch target as the return
+	// PC; do not lose the request with the temporary compiler state.
+	compiler.checkints = compiler_temp.checkints;
 }
 
 void sh_common_execution::func_unimplemented()

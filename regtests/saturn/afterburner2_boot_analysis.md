@@ -1,5 +1,73 @@
 # After Burner II boot stall — investigation
 
+## Capture 2f84a960: SH DRC loses delay-slot interrupt check (fixed, boot pending)
+
+The access history now identifies the mask transition, not merely the final
+blocked state:
+
+| Emulated time | Observed access |
+| --- | --- |
+| 20.648060280 | IMS write 0000f774 |
+| 20.648060392 | IST write fffff774 |
+| 20.648087807 | IMS write ffffffff |
+| 20.648087919 | IST write ffffffff |
+| 20.648097790 | VBlank-in vector table read, 06000100 -> 06000840 |
+| 20.648098609 | BIOS callback mask write ffffffff |
+| 20.648155860 | DMA0 start, source 060d6000, destination 25e40000, size 2000 |
+
+At the wait the BIOS mask shadow at 06000348 is FFFFFFFF. The VBlank mask
+table entry is 0000F07F, which ordinarily permits DMA0-end (bit 11 clear),
+but OR-ing it with the all-masked shadow leaves DMA0-end blocked. There is
+no later mask restoration or vector-table read in the capture. DMA0 finishes
+as in the preceding capture. PC values attached to taps are sampled and
+potentially stale; they are not an instruction-by-instruction execution log.
+
+### Source defect and fix
+
+The locally supplied BIOS ChangeSCUMask routine ends with `RTS` / `LDC R1,SR`
+in its delay slot (RAM 060007e2/060007e4 in the inspected BIOS image).
+`sh_common_execution::generate_delay_slot` copies compiler state to a temporary
+object. The SR load sets that temporary object's `checkints`, but the helper
+previously copied back only cycles and labels. Consequently the RTS caller's
+`generate_update_cycles` could omit the interrupt check after restoring SR.
+The interpreter does not lose this request: LDCSR sets `m_test_irq`, and
+execute_run checks it after the branch delay slot has completed.
+
+Copying `checkints` back with the other state fixes the concrete compiler
+state loss. The branch still emits the check **after** its delay slot and
+uses the branch target as the interrupt return PC. No interrupt is injected
+inside a slot. The fix is shared SH DRC logic, not an After Burner workaround.
+This explains how the trace can reach another mask-all operation before
+servicing an outstanding VBlank request; a linked rebuild/game run is still
+needed to confirm that it removes this game's hang.
+
+### Hardware cross-check: do not alter SCU to compensate
+
+Sega ST-097-R5 section 3.5 / figure 3.21 documents active-high masks and the
+BFFF initial value; that figure alone does not document vector-fetch reset
+or withdrawal of an already issued request. Pinned Ymir
+6d779960127ced72087a418c1daefc637d0aaa80, `scu.cpp`, UpdateMasterInterruptLevel,
+retains an issued request until acknowledgement. Pinned MiSTer
+ a95b085038ace57fa621558d60a7adc7a3c53f78, `rtl/Saturn/SCU/SCU.sv`, likewise
+latches interrupt sources under INT_SET and releases them on IVECF_RISE;
+it resets IMS on vector fetch. Both support leaving the SCU latch and mask
+reset intact. DMA timing, interrupt masks, and game RAM flags are unchanged.
+
+### Validation
+
+- 72 production delay-slot state propagation cases pass (recording emitter,
+  not a linked DRC execution test), including both SR-load forms, no-op slots,
+  pre-existing checks, cycle/label propagation and post-slot ordering.
+- Removing the propagation line makes the same fixture fail its assertion.
+- `validate_build.py`: all 22 Python regression scripts and eleven object
+  compilations pass; the added object is the modified shared SH core.
+- No linked game boot or SH-4 runtime acceptance is claimed.
+
+**Next runtime acceptance requires a rebuilt executable**, not another
+probe-only update. Use the existing script to check After Burner II boot and
+that VBlank delivery no longer follows the second mask-all operation.
+
+
 ## Follow-up cc8a7db8/3e4b4384: sound ready; later DMA-related wait
 
 Preserved latest user files: `error.log` (`cc8a7db8`) and
