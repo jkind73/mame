@@ -337,6 +337,9 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
   if (scanline == (vblank_line + 1) * y_step &&
       (VDP1_VBE() || m_vdp1_legacy.vblank_erase_pending))
     vdp1_begin_vblank_erase();
+  else if (scanline && m_vdp1_legacy.vblank_erase_active &&
+           scanline % m_vdp1_legacy.vblank_erase_step == 0)
+    vdp1_advance_vblank_erase(m_vdp1_legacy.vblank_erase_words_per_line);
 }
 
 static const gfx_layout tiles8x8x4_layout = {
@@ -744,6 +747,13 @@ void saturn_state::vdp1_trace(const char *event, int reg, const spoint *bounds) 
   }
 }
 
+// Nominal progress per physical raster from ST-013 Table 4.4 / p.49.
+uint32_t saturn_state::vdp1_vblank_erase_line_capacity() const {
+  const unsigned hreso = m_vdp2->get_hreso();
+  const int clocks = (hreso & 4) ? ((hreso & 1) ? 848 : 852) : ((hreso & 1) ? 1820 : 1708);
+  return clocks - 200;
+}
+
 // VBlank erase has a finite field budget, independent of command drawing.
 uint32_t saturn_state::vdp1_vblank_erase_capacity() const {
   // ST-013 pp.49-50, Tables 4.4/4.5. X erase coordinates count groups of
@@ -751,11 +761,10 @@ uint32_t saturn_state::vdp1_vblank_erase_capacity() const {
   // budget therefore counts words, not packed dots or register X units.
   const unsigned hreso = m_vdp2->get_hreso();
   const bool exclusive = hreso & 4;
-  const int clocks_per_raster = exclusive ? ((hreso & 1) ? 848 : 852) : ((hreso & 1) ? 1820 : 1708);
   const int field_rasters = exclusive ? ((hreso & 1) ? 562 : 525) :
       (m_vdp2->is_pal() ? 313 : 263);
   const int display_rasters = exclusive ? 480 : m_vdp2->get_vblank_start_position() - 1;
-  return (clocks_per_raster - 200) * std::max(0, field_rasters - display_rasters);
+  return vdp1_vblank_erase_line_capacity() * std::max(0, field_rasters - display_rasters);
 }
 
 void saturn_state::vdp1_begin_vblank_erase() {
@@ -770,24 +779,46 @@ void saturn_state::vdp1_begin_vblank_erase() {
   v.vblank_erase_top = v.erase_upper_left & 0x1ff;
   v.vblank_erase_bottom = v.erase_lower_right & 0x1ff;
   v.vblank_erase_budget = vdp1_vblank_erase_capacity();
+  v.vblank_erase_x = v.vblank_erase_left;
+  v.vblank_erase_y = v.vblank_erase_top;
+  v.vblank_erase_words_per_line = vdp1_vblank_erase_line_capacity();
+  // Interlaced screen coordinates have two output rows per physical raster;
+  // exclusive 31-kHz/HDTV output has one, regardless of LSMD.
+  v.vblank_erase_step = (m_vdp2->get_hreso() & 4) ? 1 : m_vdp2->get_ystep_count();
 }
 
-void saturn_state::vdp1_finish_vblank_erase() {
+void saturn_state::vdp1_advance_vblank_erase(uint32_t words) {
   auto &v = m_vdp1_legacy;
   if (!v.vblank_erase_active)
     return;
-  v.vblank_erase_active = false;
-  // Commit at VBlank OUT, before bank exchange, as in Mednafen's coarse
-  // blank-period model. This enforces the primary's capacity without claiming
-  // per-clock erase/scanout arbitration. Pixels beyond the budget stay intact.
-  unsigned remaining = v.vblank_erase_budget;
-  for (unsigned y = v.vblank_erase_top; y <= v.vblank_erase_bottom && remaining; ++y) {
-    for (unsigned x = v.vblank_erase_left; x < v.vblank_erase_right && remaining; ++x) {
-      const unsigned address = ((y * v.vblank_erase_stride) + (x & (v.vblank_erase_stride - 1))) & 0x1ffff;
-      v.framebuffer[v.vblank_erase_bank][address] = v.vblank_erase_data;
-      --remaining;
+  if (v.vblank_erase_left >= v.vblank_erase_right ||
+      v.vblank_erase_y > v.vblank_erase_bottom) {
+    v.vblank_erase_active = false;
+    return;
+  }
+  unsigned remaining = std::min(words, v.vblank_erase_budget);
+  while (remaining && v.vblank_erase_y <= v.vblank_erase_bottom) {
+    const unsigned address = ((v.vblank_erase_y * v.vblank_erase_stride) +
+        (v.vblank_erase_x & (v.vblank_erase_stride - 1))) & 0x1ffff;
+    v.framebuffer[v.vblank_erase_bank][address] = v.vblank_erase_data;
+    --remaining;
+    --v.vblank_erase_budget;
+    if (++v.vblank_erase_x == v.vblank_erase_right) {
+      v.vblank_erase_x = v.vblank_erase_left;
+      ++v.vblank_erase_y;
     }
   }
+  if (!v.vblank_erase_budget || v.vblank_erase_y > v.vblank_erase_bottom)
+    v.vblank_erase_active = false;
+}
+
+void saturn_state::vdp1_finish_vblank_erase() {
+  // Flush only the residual published field budget before bank exchange.
+  // Scanline callbacks expose progress during blanking; the existing VBlank
+  // edge convention can leave a few raster quotas here. This remains a
+  // scanline model, not exact within-raster CPU/erase bus arbitration.
+  vdp1_advance_vblank_erase(m_vdp1_legacy.vblank_erase_budget);
+  m_vdp1_legacy.vblank_erase_active = false;
 }
 
 void saturn_state::vdp1_begin_display_erase() {
@@ -3345,6 +3376,11 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.vblank_erase_top));
   save_item(NAME(m_vdp1_legacy.vblank_erase_bottom));
   save_item(NAME(m_vdp1_legacy.vblank_erase_budget));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_x));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_y));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_words_per_line));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_step));
+
   save_item(NAME(m_vdp1_legacy.draw_eos));
   save_item(NAME(m_vdp1_legacy.lopr));
   save_item(NAME(m_vdp1_legacy.copr));

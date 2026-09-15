@@ -1,5 +1,38 @@
 # Sega SDK hardware-document audit
 
+## Progressive VBlank erase — 2026-09-15
+
+VBlank erase now advances at physical-raster boundaries instead of committing the
+whole operation at VBlank OUT. A saved X/Y cursor and remaining word budget keep
+CPU-visible progress, partial rows and resumed operations consistent. The bank,
+format, payload, per-raster quota and output-row cadence are captured at entry;
+later register writes cannot redirect the erase. ENDR remains independent;
+reset/cancellation stops future writes without undoing the completed prefix.
+A CPU edit behind the saved cursor is not erased again on resumption.
+
+The existing VBlank edge convention can leave a few raster quotas at field end;
+only that residual budget is flushed before bank exchange. This is **scanline-level
+progress, not cycle-exact arbitration**. Active-display erase remains field-coarse.
+
+Sources: ST-013-R3-061694 printed pp.49–50, Tables 4.4/4.5, supplies the unchanged
+per-raster quota and total field capacity. MiSTer VDP1 at
+`a95b085038ace57fa621558d60a7adc7a3c53f78`, `VBLANK_ERASE_EN`/`OUT_X`/`OUT_Y`,
+corroborates progressive traversal during blanking. Ymir `vdp.cpp` at
+`6d779960127ced72087a418c1daefc637d0aaa80` was cross-checked: it uses a **113 rather
+than 200** horizontal penalty with an explicit TODO and title examples, and commits
+erase at blank end. That discrepancy is not hardware proof; this change preserves
+Sega's published capacity and introduces no game-specific adjustment.
+
+Validation: **552 new production-helper slice/restore/cancellation/callback cases**,
+including both banks, five framebuffer modes, partial rows, over-budget requests,
+interlace cadence and exclusive display modes. Mutations disabling scanline progress
+or bypassing the budget cap compile and fail image assertions. All **23 regression
+scripts and eleven production object builds pass**. Saved-field registration is
+checked, but state-copy tests do not certify real MAME save-manager round trips.
+No new linked game acceptance or resolution of the separate title/logo issue is
+claimed; previous user-accepted rendering fixes remain unchanged.
+
+
 ## Screen-coordinate VDP1 scanout — 2026-09-15
 
 Implemented TVM=4 HDTV/31-kHz 2×2 dot replication and unified the VDP2 sprite

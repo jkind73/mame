@@ -1,5 +1,14 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## Update — 2026-09-15: progressive VBlank erase
+
+VBlank erase now has a saved partial-row cursor, remaining budget and raster-level
+progress; only the residual quota is flushed at field end. 552 new cases and two
+negative mutations validated; all 23 regression scripts/11 objects pass. Active
+manual erase and within-raster arbitration remain open. See
+`regtests/saturn/vdp1_completion.md` for source discrepancies and acceptance limits.
+
+
 ## User-verified results — 2026-09-15
 
 The user confirms that **969cc3ae fixes After Burner II explosion transparency
