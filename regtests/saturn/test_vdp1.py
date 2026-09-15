@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('erase_progress','hss_end_pixel','rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
+p.add_argument('--render-mutation',choices=('display_progress','display_order','display_limit','erase_progress','hss_end_pixel','rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -26,7 +26,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
-functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_begin_display_erase()', 'void saturn_state::vdp1_finish_display_erase()', 'void saturn_state::vdp1_draw_rectangle_slice(', 'void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_line_capacity()', 'void saturn_state::vdp1_advance_vblank_erase(', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
+functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_advance_display_erase(', 'void saturn_state::vdp1_begin_display_erase()', 'void saturn_state::vdp1_finish_display_erase()', 'void saturn_state::vdp1_draw_rectangle_slice(', 'void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_line_capacity()', 'void saturn_state::vdp1_advance_vblank_erase(', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
  ('framebuffer',['void saturn_state::vdp1_framebuffer0_w(', 'uint32_t saturn_state::vdp1_framebuffer0_r(']),
@@ -50,9 +50,12 @@ for name in ('line','poly_line'):
     functions+=extract(current,'void saturn_state::vdp1_draw_'+name+'(').replace('saturn_state::vdp1_draw_'+name,'saturn_state::raster_'+name)+'\n'
 if a.render_mutation:
     mutations = {
+        'display_progress': ('vdp1_advance_display_erase(scanline);', '(void)0;'),
+        'display_order': ('m_screen->update_partial((last_row + 1) * e.step - 1);', '(void)0;'),
+        'display_limit': ('e.right = std::min<unsigned>(e.right, ((m_vdp2->get_hreso() & 1) ? 352 : 320) + 4);', '(void)0;'),
         'erase_progress': ('vdp1_advance_vblank_erase(m_vdp1_legacy.vblank_erase_words_per_line);', '(void)0;'),
         'manual_erase_early': ('vdp1_begin_display_erase();\n    }', 'vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);\n    }'),
-        'manual_erase_bank': ('framebuffer[e.bank][(y & 255)', 'framebuffer[m_vdp1_legacy.framebuffer_current_display][(y & 255)'),
+        'manual_erase_bank': ('framebuffer[e.bank][(e.next_row & 255)', 'framebuffer[m_vdp1_legacy.framebuffer_current_display][(e.next_row & 255)'),
         'normal_hidden_end': ('if (preclip && x < cliprect.min_x) // clip x', 'if (x < cliprect.min_x) // clip x'),
         'scaled_preclip': ('const bool preclip_enabled = !(current_sprite.CMDPMOD & 0x0800);', 'const bool preclip_enabled = true;'),
         'native_preclip': ('if (!(current_sprite.CMDPMOD & 0x0800) && major < 2048 &&', 'if (major < 2048 &&'),
@@ -105,7 +108,7 @@ assert 'vdp1_request_termination();' in extract(current,'void saturn_state::vdp1
 for bank in (0,1):
     for name in ('framebuffer','field_framebuffer'):
         assert f'save_pointer(NAME(m_vdp1_legacy.{name}[{bank}]), 0x20000);' in current
-for field in ('pending','bank','data','left','right','top','bottom'):
+for field in ('pending','bank','data','left','right','top','bottom','next_row','step'):
     assert f'save_item(NAME(m_vdp1_display_erase.{field}));' in current
 for name in ('field_valid','draw_field','draw_eos','erase_upper_left','erase_lower_right'):
     assert f'save_item(NAME(m_vdp1_legacy.{name}));' in current
@@ -127,6 +130,7 @@ types+='\n'+extract(header,'struct vdp1_poly_scanline {')+';\n'+extract(header,'
 types+='\n'+extract(header,'struct spoint {')+';'
 harness=r'''
 #include <algorithm>
+#include <functional>
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -180,7 +184,12 @@ struct word_buffer:std::vector<uint16_t> {
  uint16_t *get(){return data();}const uint16_t *get() const{return data();}
 };
 struct vdp2 {bool large=false;int lsmd=0;bool get_vramsz(){return large;}int get_lsmd(){return lsmd;}int hreso=0,total=263,vblank_start=224;int get_hreso(){return hreso;}bool is_pal() const {return total/(lsmd==3?2:1)==313;}int get_vblank_start_position(){return vblank_start;}int ystep=1;int get_ystep_count(){return ystep;}};
+struct screen {
+ std::function<void(int)> present=[](int){};
+ void update_partial(int row){present(row);}
+};
 struct saturn_state {
+ screen display;screen *m_screen=&display;
  // TYPES
  bool m_vdp1_raster_building=false,m_vdp1_raster_running=false,execute_lines=false,execute_quads=false;
  int m_vdp1_raster_budget=0;
@@ -233,7 +242,7 @@ struct saturn_state {
  uint32_t vdp1_vblank_erase_capacity() const;
  uint32_t vdp1_vblank_erase_line_capacity() const;
  void vdp1_advance_vblank_erase(uint32_t);
- void vdp1_begin_vblank_erase();void vdp1_finish_vblank_erase();void vdp1_cancel_erase();void vdp1_begin_display_erase();void vdp1_finish_display_erase();
+ void vdp1_begin_vblank_erase();void vdp1_finish_vblank_erase();void vdp1_cancel_erase();void vdp1_begin_display_erase();void vdp1_finish_display_erase();void vdp1_advance_display_erase(int);
  void scanline_tick(int);
  void raster_scaled(const rectangle&);
  static int vdp1_scaled_coordinate(int,int,int,bool);
@@ -1307,7 +1316,7 @@ int main(){
   s->vdp1_regs_w(1,2,0xffff);s->scanline_tick(224);
   assert(l.framebuffer[draw^1][0]==0x2222&&l.framebuffer_current_draw==draw);
   s->scanline_tick(0);assert(l.framebuffer[draw^1][0]==0x2222&&l.framebuffer[draw][0]==0x1111);
-  assert(s->m_vdp1_display_erase.pending);s->scanline_tick(0);assert(l.framebuffer[draw^1][0]==0xa55a&&!s->m_vdp1_display_erase.pending);
+  assert(s->m_vdp1_display_erase.pending);s->scanline_tick(1);s->scanline_tick(0);assert(l.framebuffer[draw^1][0]==0xa55a&&!s->m_vdp1_display_erase.pending);
   l.framebuffer[draw^1][0]=0x3333;s->scanline_tick(0);assert(l.framebuffer[draw^1][0]==0x3333);
   // Masked-out accesses cannot submit or repeat a request.
   s->vdp1_regs_w(1,3,0);assert(!l.fbcr_accessed);
@@ -1347,6 +1356,8 @@ int main(){
    assert(t->vdp1_display_pixel(0,0,{})==(mode?shown>>8:shown));
    t->scanline_tick(0);assert(t->m_vdp1_display_erase.pending);
    assert(t->vdp1_display_pixel(0,0,{})==(mode?shown>>8:shown));
+   unsigned presentations=0;t->display.present=[&](int row){assert(row==0);assert(l.framebuffer[displayed][0]==shown);++presentations;};
+   t->scanline_tick(1);assert(presentations==1);
    t->vdp1_regs_w(1,3,0xffff);t->scanline_tick(0);
    assert(!t->m_vdp1_display_erase.pending&&l.framebuffer[displayed][0]==0);
    assert(l.framebuffer_current_display==drawing&&l.framebuffer[drawing][0]==0x8600+frame);
@@ -1359,11 +1370,66 @@ int main(){
    // Pending erase owns captured bank/data, not current views or new registers.
    r.ewdr=0xffff;r.erase_upper_left=0x201;r.erase_lower_right=0x401;
    r.framebuffer_current_display=bank;r.framebuffer_current_draw=bank^1;restored->vdp1_state_save_postload();
-   if(cancel)restored->vdp1_cancel_erase();restored->vdp1_finish_display_erase();
+   if(cancel)restored->vdp1_cancel_erase();restored->scanline_tick(1);restored->vdp1_finish_display_erase();
    assert(r.framebuffer[bank][0]==0x8456&&r.framebuffer[bank^1][0]==(cancel?0x8123:0));
    assert(!restored->m_vdp1_display_erase.pending);++manual_erase_cases;
   }
  }
+
+ unsigned display_cases=0;
+ for(int mode : {0,1})for(int bank : {0,1})for(int high : {0,1})for(int step : {1,2})
+ for(int left : {0,8,320,352})for(int right : {16,320,352,512}){
+  if(left>=right)continue;
+  auto t=make_display_state(mode,bank);auto &l=t->m_vdp1_legacy;
+  t->vdp2_.hreso=high;t->vdp2_.vblank_start=225;t->vdp2_.ystep=step;
+  l.erase_upper_left=(left/8<<9)|1;l.erase_lower_right=(right/8<<9)|255;l.ewdr=0xa1b2;
+  for(auto &fb:l.framebuffer)std::fill(fb.begin(),fb.end(),0x5678);
+  const int limit=std::min(right,(high?352:320)+4);
+  unsigned presented_rows=0;
+  t->display.present=[&](int last){
+   // A recording screen consumes newly presented physical rows before writes.
+   for(unsigned y=presented_rows;y<unsigned(last+1)/step;++y)
+    for(int x=left;x<limit;++x)assert(l.framebuffer[bank^1][y*512+x]==0x5678);
+   presented_rows=(last+1)/step;
+  };
+  t->vdp1_begin_display_erase();
+  // No erase until the affected raster has been completely displayed.
+  t->scanline_tick(2*step-1);assert(l.framebuffer[bank^1][512+left]==0x5678);
+  t->scanline_tick(2*step);
+  if(left<limit){assert(presented_rows==2);assert(l.framebuffer[bank^1][512+left]==0xa1b2);}
+  // State-copy restoration keeps the next row and captured display limits.
+  auto restored=make_display_state(mode,bank);auto &r=restored->m_vdp1_legacy;
+  r=l;restored->m_vdp1_display_erase=t->m_vdp1_display_erase;
+  restored->vdp1_state_save_postload();
+  r.ewdr=0xffff;restored->vdp2_.hreso=high^1;restored->vdp2_.ystep=step^3;
+  if(left<limit)r.framebuffer[bank^1][512+left]=0xabcd;
+  restored->vdp1_advance_display_erase(224*step);restored->vdp1_finish_display_erase();
+  if(left<limit)assert(r.framebuffer[bank^1][512+left]==0xabcd);
+  // Cancellation and field-end retirement cannot erase unvisited rows.
+  auto before=l.framebuffer[bank^1];t->vdp1_finish_display_erase();
+  t->scanline_tick(224*step);assert(l.framebuffer[bank^1]==before);
+  for(unsigned i=0;i<0x20000;++i){unsigned y=i/512,x=i%512;
+   if(y==1&&x==unsigned(left)&&left<limit)continue;
+   bool erased=y>=1&&y<224&&x>=unsigned(left)&&x<unsigned(limit);
+   assert(r.framebuffer[bank^1][i]==(erased?0xa1b2:0x5678));
+   assert(r.framebuffer[bank][i]==0x5678);
+  }
+  ++display_cases;
+ }
+
+ // One-cycle mode erases the displayed bank behind readout, not the newly
+ // selected draw bank at swap. The erased bank becomes drawing-owned next field.
+ for(int mode : {0,1})for(int bank : {0,1}){
+  auto t=make_display_state(mode,bank);auto &l=t->m_vdp1_legacy;
+  t->m_vdp1_regs[1]=0;t->scanline_tick(0);
+  assert(l.framebuffer_current_display==bank&&l.framebuffer[bank^1][0]==0x8123);
+  unsigned presentations=0;
+  t->display.present=[&](int row){assert(row==0);assert(l.framebuffer[bank][0]==0x8456);++presentations;};
+  t->scanline_tick(1);assert(presentations==1&&l.framebuffer[bank][0]==0);
+  t->scanline_tick(0);assert(l.framebuffer_current_draw==bank&&l.framebuffer[bank^1][0]==0x8123);
+  ++display_cases;
+ }
+ std::cout<<display_cases<<" active-display erase bounds/progress/restore cases passed\n";
  std::cout<<manual_erase_cases<<" manual display erase presentation/restore cases passed\n";
  unsigned erase_cases=0;
  // Exact published capacities: ST-013 Table 4.5. Horizontal high resolution
