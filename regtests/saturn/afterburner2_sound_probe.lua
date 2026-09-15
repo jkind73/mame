@@ -2,7 +2,7 @@
 -- Run with an existing BOOTCPU build; rebuilding MAME is not necessary:
 -- mame saturnjp aburner2 -verbose -log -autoboot_delay 0 -autoboot_script regtests/saturn/afterburner2_sound_probe.lua
 -- Wait at least 23 emulated seconds. Output: afterburner2-sound-probe.txt
--- Uses CPU state, backing RAM and save-item inspection, never MMIO handlers.
+-- Uses CPU state, backing RAM and SCSP/SCU save-item inspection, never MMIO handlers.
 local output = 'afterburner2-sound-probe.txt'
 local captures = 0
 local next_time = 20
@@ -40,6 +40,27 @@ local function snapshot(machine, now)
     for _, name in ipairs(names) do
         line('SCSP %s=%x', name, emu.item(scsp.items[name]):read(0))
     end
+    -- Sound startup can complete before the next wait. Record SCU state
+    -- directly as well so DMA activity and IRQ delivery can be distinguished
+    -- without reading/acknowledging emulated registers.
+    local scu = machine.devices[':scu']
+    if scu then
+        local fields = {}
+        for name in pairs(scu.items) do
+            if name:find('m_dma', 1, true) or name:find('m_ism', 1, true)
+                or name:find('m_ist', 1, true) or name:find('m_current_irq', 1, true)
+                or name:find('m_current_vector', 1, true)
+                or name:find('m_abus', 1, true) then
+                fields[#fields + 1] = name
+            end
+        end
+        table.sort(fields)
+        for _, name in ipairs(fields) do
+            line('SCU %s=%x', name, emu.item(scu.items[name]):read(0))
+        end
+    else
+        line('SCU unavailable')
+    end
     local function dump(label, share, address, count)
         address = address & ~1
         count = math.min(count, share.size - address)
@@ -61,6 +82,38 @@ local function snapshot(machine, now)
         if entry then
             local addr = entry.value & 0xffffff
             if addr < 0x80000 then dump('sound-A' .. i, ram, addr, 0x80) end
+        end
+    end
+    -- Main CPU wait operands and interrupt vectors are backing RAM, not
+    -- address-space accesses. Include handler code when vectors point into
+    -- high work RAM; ROM/other-space vectors remain visible as pointers only.
+    for i = 0, 15 do
+        local entry = main.state['R' .. i]
+        if entry then
+            local value = entry.value
+            local addr = value & 0x1fffffff
+            if value < 0x40000000 and addr >= 0x6000000 and addr < 0x8000000 then
+                dump('main-R' .. i, work, addr & 0xfffff, 0x40)
+            end
+        end
+    end
+    local vbr = main.state['VBR']
+    if vbr then
+        local addr = vbr.value & 0x1fffffff
+        if vbr.value < 0x40000000 and addr >= 0x6000000 and addr < 0x8000000 then
+            local offset = addr & 0xfffff
+            dump('main-vectors', work, offset + 0x100, 0x80)
+            for vector = 0x49, 0x4b do
+                local at = offset + vector * 4
+                if at + 3 < work.size then
+                    local handler = work:read_u16(at) * 0x10000 + work:read_u16(at + 2)
+                    line('DMA-vector %02x=%08x', vector, handler)
+                    local physical = handler & 0x1fffffff
+                    if handler < 0x40000000 and physical >= 0x6000000 and physical < 0x8000000 then
+                        dump('DMA-handler', work, physical & 0xfffff, 0x80)
+                    end
+                end
+            end
         end
     end
     local pc = main.state['PC'].value & 0x1fffffff

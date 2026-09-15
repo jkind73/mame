@@ -1,5 +1,69 @@
 # After Burner II boot stall — investigation
 
+## Follow-up cc8a7db8/3e4b4384: sound ready; later DMA-related wait
+
+Preserved latest user files: `error.log` (`cc8a7db8`) and
+`afterburner2-sound-probe.txt` (`3e4b4384`). Their SHA-256 values are respectively
+`eeae77b7d0632e5f1c4e17726cd7a834e33f5a3f3fa66ce59cd687ab9e4d1069` and
+`3c7afd44536a42a28cef74fd07c133d746ef7c94ee1bffe48b72aabc71ffe9c0`.
+The console identifies Saturn Japan / After Burner II, 72 seconds at 100% speed.
+
+**The original sound readiness wait is passed in this capture.** All three
+snapshots have sound RAM 04FC = 0007F000. A5=00100000, A6=00001EEC and
+A0=000BF000 show that the clear loop completed without destroying its code and
+initialization reached the SCSP/work-area setup. The sound CPU executes its
+command loop at 06FC–0702 and interrupt routines, with a stable top-level SP.
+This is trace confirmation of progress, not user-confirmed successful game boot.
+
+A later persistent wait is visible from about 21 seconds through the final
+72-second CPU sample:
+
+```text
+0607bbc0 d15e  mov.l @(0x178,pc),r1  ; literal at 0607bd3c -> 060962c4
+0607bbc2 6112  mov.l @r1,r1          ; indirect flag pointer -> 06004e64
+0607bbc4 6012  mov.l @r1,r0
+0607bbc6 2008  tst r0,r0
+0607bbc8 8bfc  bf 0607bbc4
+R1=06004e64, R0=1, SR=0 (SH-2 interrupt mask is not blocking delivery)
+```
+
+The surrounding routine repeatedly programs the SCU DMA register block (literal
+25FE0000) with work-RAM sources and VDP2 destinations. The polled word is a
+software flag, **not a hardware DMA-status register**. No specific DMA channel,
+missing interrupt or illegal transfer has yet been established as its cause.
+The final submitted VDP1 list completes at 20.633709108 seconds; field callbacks
+and framebuffer exchanges continue afterwards but no further lists are submitted.
+
+The current trace lacks the SCU DMA/IRQ state and completion-handler contents.
+Reviewed SCU start validation, completion/IST generation, IRQ selection and vector
+acknowledgement; no new source-backed fault is established from these files alone.
+Do not bypass the flag, fabricate DMA completion or change IRQ masking speculatively.
+
+### Existing-executable SCU snapshot extension
+
+Extended `afterburner2_sound_probe.lua` to capture SCU registered DMA channel
+fields/status, interrupt mask/status/current level/vector and A-Bus state, plus
+main-CPU RAM operands, vector table and high-RAM DMA handlers. Like the sound
+probe, it reads save items/backing RAM only: no MMIO, acknowledgement, or writes
+to emulated state. The same executable can run it; **no rebuild is required**.
+The snapshots still run at/after 20, 21 and 22 seconds, spanning this new wait.
+
+```bat
+mame saturnjp aburner2 -verbose -log -autoboot_delay 0 -autoboot_script regtests/saturn/afterburner2_sound_probe.lua
+```
+
+Use the updated script, leave running at least 23 seconds, and preserve
+`afterburner2-sound-probe.txt`. The new `SCU` lines distinguish an active/waiting
+transfer from completed/masked/undelivered IRQ or a software-handler problem.
+Existing logs have been analyzed; this requests newly exposed state.
+
+Extended standalone Lua mock-binding tests pass for field selection, register
+pointer filtering, vector capture, snapshot timing/cap and failure handling.
+No C++ emulation changes, fresh production-build claims, or new game fix in this
+follow-up. OutRun flashing remains confirmed fixed; Power Drift geometry is a
+separate, unresolved visual report.
+
+
 ## Latest files: IRQ reset works; false 68000 RAM mirror destroys startup code
 
 Retrieved and preserved the user uploads at root:
