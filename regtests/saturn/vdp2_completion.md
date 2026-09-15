@@ -1,5 +1,35 @@
 # VDP2 implementation report and progress tracker
 
+## A04/A05: physical CRAM banks and integrated bitmap fixture — 2026-09-15
+
+CRAM now retains physical mode-1 bank order in storage. Mode 2 maps the CPU high
+word to bank 0 and low word to bank 1 at the same palette index. Reads, masked
+writes and palette rebuilds use that mapping; changing modes does not move data.
+CRKTE coefficient reads retain the physical upper-bank path required in mode 1.
+Primary ST-058 §3.4/Figures 3.9–3.10 specifies the color layouts and writing color
+data after mode selection. The exact cross-mode address permutation is supported
+by pinned Ymir `MapCRAMAddress` and MiSTer `IO_PAL_A`/`IO_PAL_RD`/bank write enables,
+not claimed as a fresh hardware measurement. Reserved CRMD=3 retains mode-2-style
+fallback; prohibited byte accesses and DAC precision are not redefined.
+
+`test_vdp2_palette.py` now checks 9,216 lane/address/palette cases, repeated mode
+changes without memory mutation and upper-bank coefficient reads. The 77d4b989
+layout baseline compiles and fails the read-address oracle.
+
+`test_vdp2_bitmap.py` adds **7,680 image cases** executing the actual five bitmap
+pixel routines, actual CRAM palette rebuild, both window coordinate functions,
+line-window table fetches, keep/reject logic and window cache. Covers RGB/palette,
+transparency, alpha, source wrapping/zoom, normal/high/exclusive window coordinates,
+interlace table cadence and split odd partial clips. Window bypass and reversed
+nibble mutations fail. Layer setup and devices remain stand-ins; this is not full
+NBG tilemap/rotation dispatch, sprite windows, a special-effect oracle or physical
+DAC qualification. The fixture preserves current MAME pal5bit expansion.
+
+All **25 scripts and eleven production object builds pass**. A03's per-bit ledger,
+A04 tilemap/complete layer dispatch, and A05 hardware precision qualification remain
+open; do not mark their parent tasks finished. No linked runtime/save acceptance.
+
+
 ## A03–A05: CRAM broadcast and palette fixture — 2026-09-15
 
 Mode-0 CRAM writes now merge into **both physical 1K-word halves**, rather than
@@ -147,12 +177,14 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
   - [ ] Distinguish defined-but-unused fields from implemented fields.
   - [ ] Separate prohibited combinations and undocumented aliases from legal features.
   - [ ] Reconcile RAMCTL, VRSIZE, TVMD/EXTEN and CRAM-mode behavior.
+- [x] **V2-A04a** Add production bitmap/palette/window pixel fixtures: 7,680 images, two negative mutations.
 - [ ] **V2-A04** Add extracted full-background/compositor image fixtures, with real production palette and window evaluation where practical.
   - [ ] NBG0–3, bitmap/cell, legal color formats, page/plane boundaries, flips and transparency.
   - [ ] Clipped updates versus an equivalent full-frame reference.
   - [ ] Layer-over-layer scenes preserving which source should win and which should blend.
   - [ ] Negative mutations for each newly covered behavior.
 - [x] **V2-A05a** Correct mode-0 write broadcast and test legal word/longword lanes, independent reads and immediate/rebuilt palette agreement.
+- [x] **V2-A05b** Preserve physical CRAM banks across mode changes and test coefficient reads.
 - [ ] **V2-A05** Audit CRAM mode-0 storage/read aliases and legal word/longword writes before relying on the palette as an oracle.
 
 ### P1 — Correct composition and ordinary visual effects

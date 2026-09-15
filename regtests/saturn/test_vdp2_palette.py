@@ -12,15 +12,15 @@ from pathlib import Path
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');a=p.parse_args()
-src=(subprocess.check_output(['git','show','c43dded9:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
-     if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--layout-baseline',action='store_true');a=p.parse_args()
+src=(subprocess.check_output(['git','show',('77d4b989' if a.layout_baseline else 'c43dded9')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
+     if a.baseline or a.layout_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(sig):
     start=src.index(sig);end=src.index('{',start)+1;depth=1
     while depth:
         depth+=(src[end]=='{')-(src[end]=='}');end+=1
     return src[start:end]
-functions='\n'.join(extract(s) for s in ('uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data('))
+functions='\n'.join(extract(s) for s in ('uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_read_rotation_coefficient('))
 code=r'''
 #include <array>
 #include <cassert>
@@ -34,15 +34,21 @@ struct palette {std::array<uint32_t,2048> pens{};
  void set_pen_color(unsigned i,int r,int g,int b){set_pen_color(i,rgb_t(r,g,b));}
 };
 struct saturn_state {
- unsigned mode=0;bool dirty=false;std::array<uint32_t,1024> m_vdp2_cram{};
+ unsigned mode=0;bool dirty=false;bool coefficient_cram=true;std::array<uint32_t,0x40000> m_vdp2_vram{};std::array<uint32_t,1024> m_vdp2_cram{};
  palette pal;palette *m_palette=&pal;
  void mark_fade_effects_dirty(){dirty=true;}
- uint32_t vdp2_cram_r(offs_t);void vdp2_cram_w(offs_t,uint32_t,uint32_t);void refresh_palette_data();
+ uint32_t vdp2_read_rotation_coefficient(uint32_t);uint32_t vdp2_cram_r(offs_t);void vdp2_cram_w(offs_t,uint32_t,uint32_t);void refresh_palette_data();
 };
 #define VDP2_CRMD mode
+#define VDP2_CRKTE coefficient_cram
 #define COMBINE_DATA(p) (*(p)=(*(p)&~mem_mask)|(data&mem_mask))
 // FUNCTIONS
 uint32_t color555(unsigned v){return rgb_t(pal5bit(v&31),pal5bit((v>>5)&31),pal5bit((v>>10)&31));}
+uint32_t cpu_read(const std::array<uint32_t,1024>& words,unsigned address,unsigned mode){
+ if(mode<2)return words[address];
+ auto half=[&](unsigned bank){unsigned i=bank*512+address/2;return (words[i]>>(address%2?0:16))&65535;};
+ return (half(0)<<16)|half(1);
+}
 int main(){
  saturn_state s;unsigned cases=0;
  for(unsigned mode : {0,1,2})for(unsigned address=0;address<1024;++address)
@@ -51,17 +57,24 @@ int main(){
   for(unsigned i=0;i<1024;++i)s.m_vdp2_cram[i]=0x84211234u^(i*0x01010101u);
   auto expected=s.m_vdp2_cram;
   constexpr uint32_t data=0xdead801f;
-  expected[address]=(expected[address]&~mask)|(data&mask);
+  if(mode==2){
+   for(unsigned bank=0;bank<2;++bank){
+    unsigned i=bank*512+address/2,shift=address%2?0:16;
+    uint32_t lane_mask=((mask>>(bank?0:16))&65535)<<shift;
+    uint32_t lane_data=((data>>(bank?0:16))&65535)<<shift;
+    expected[i]=(expected[i]&~lane_mask)|(lane_data&lane_mask);
+   }
+  }else expected[address]=(expected[address]&~mask)|(data&mask);
   if(mode==0)expected[address^512]=(expected[address^512]&~mask)|(data&mask);
   s.refresh_palette_data();s.dirty=false;
   s.vdp2_cram_w(address+4096,data,mask);assert(s.dirty);
   assert(s.m_vdp2_cram==expected);
-  for(unsigned i=0;i<1024;++i)assert(s.vdp2_cram_r(i+4096)==expected[i]);
+  for(unsigned i=0;i<1024;++i)assert(s.vdp2_cram_r(i+4096)==cpu_read(expected,i,mode));
   // Compare every displayed pen after rebuilding, independently decoded.
   s.refresh_palette_data();
   for(unsigned pen=0;pen<2048;++pen){
    unsigned v;
-   if(mode==2){auto raw=expected[pen&1023];v=uint32_t(rgb_t(raw&255,(raw>>8)&255,(raw>>16)&255));}
+   if(mode==2){auto raw=cpu_read(expected,pen&1023,mode);v=uint32_t(rgb_t(raw&255,(raw>>8)&255,(raw>>16)&255));}
    else {unsigned index=mode==0?pen&1023:pen;auto raw=expected[index/2];v=color555(raw>>(index%2?0:16));}
    assert(s.pal.pens[pen]==v);
   }
@@ -76,6 +89,15 @@ int main(){
  s.mode=0;assert(s.vdp2_cram_r(0)==0x11112222&&s.vdp2_cram_r(512)==0x33334444);
  s.vdp2_cram_w(512,0xabcd0000,0xffff0000);
  assert(s.vdp2_cram_r(0)==0xabcd2222&&s.vdp2_cram_r(512)==0xabcd4444);
+ // Mode changes reinterpret addresses without moving or rewriting memory.
+ auto physical=s.m_vdp2_cram;
+ for(unsigned mode : {1,2,0,2,1}){
+  s.mode=mode;s.refresh_palette_data();assert(s.m_vdp2_cram==physical);
+  for(unsigned i=0;i<1024;++i)assert(s.vdp2_cram_r(i)==cpu_read(physical,i,mode));
+ }
+ // CRKTE is legal with mode 1: coefficient reads use the physical upper bank.
+ s.mode=1;
+ for(unsigned a=0;a<8192;a+=4)assert(s.vdp2_read_rotation_coefficient(a)==physical[((a|0x800)&0xfff)/4]);
  auto memory=s.m_vdp2_cram;auto pens=s.pal.pens;s.dirty=false;
  s.vdp2_cram_w(0,0,0);assert(!s.dirty&&s.m_vdp2_cram==memory&&s.pal.pens==pens);
  std::cout<<cases<<" CRAM lane/address/palette cases and mode-transition checks passed\n";

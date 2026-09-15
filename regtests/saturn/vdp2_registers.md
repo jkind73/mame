@@ -164,7 +164,7 @@ palette data. They do not generally preserve already-scanned output before mutat
 - [x] Preserve independent reads and unwritten lanes in halves that differ after a mode change; cross-checked with Ymir/MiSTer.
 - [ ] Transcribe hardware writable/readable masks, resets and latch points for all entries.
 - [ ] Verify reserved offsets, bits and prohibited accesses without inventing behavior.
-- [ ] Audit mode-2 physical bank mapping across mode changes and coefficient reads.
+- [x] Implement/test mode-2 physical bank mapping across mode changes and mode-1 coefficient reads (cross-implementation evidence; silicon qualification open).
 - [ ] Audit physical RGB555 expansion (manual zero-fill versus MAME pal5bit), separately from CRAM storage.
 
 The manual prohibits byte access; no new ignore rule is imposed. CRMD=3 remains a
