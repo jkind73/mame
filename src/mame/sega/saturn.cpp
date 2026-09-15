@@ -8334,140 +8334,60 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
   }
 }
 
-#define VDP2_READ_VERTICAL_LINESCROLL(_val, _address)                          \
-  {                                                                            \
-    _val = util::sext(m_vdp2_vram[(_address) & 0x3ffff] & 0x07ffff00, 27);     \
-  }
-
 void saturn_state::vdp2_check_tilemap_with_linescroll(
     bitmap_rgb32 &bitmap, const rectangle &cliprect) {
-  rectangle mycliprect;
-  int cur_line = cliprect.top();
-  int address;
-  int active_functions = 0;
-  int32_t scroll_values[3], prev_scroll_values[3];
-  int i;
-  int scroll_values_equal;
-  int lines;
-  int16_t main_scrollx, main_scrolly;
-  //  int32_t incx;
-  int linescroll_enable, vertical_linescroll_enable, linezoom_enable;
-  int vertical_linescroll_index = -1;
+  // ST-058 pp.131-138: entries are packed H, V, zoom and held for the
+  // selected interval. Table position and vertical interpolation are anchored
+  // to the screen origin, never to the current partial-update rectangle.
+  int const interval = std::max<int>(1, current_tilemap.linescroll_interval);
+  int const main_scrollx = current_tilemap.scrollx;
+  int const main_scrolly = current_tilemap.scrolly;
+  int32_t const main_incx = current_tilemap.incx;
+  unsigned const stride = bool(current_tilemap.linescroll_enable) +
+      bool(current_tilemap.vertical_linescroll_enable) + bool(current_tilemap.linezoom_enable);
+  auto const values_at = [&](int first_line) {
+    unsigned address = current_tilemap.linescroll_table_address / 4 +
+        (first_line / interval) * stride;
+    auto const read = [&]() { return m_vdp2_vram[address++ & 0x3ffff]; };
+    std::array<int32_t, 3> values{main_scrollx, main_scrolly, main_incx};
+    if (current_tilemap.linescroll_enable)
+      values[0] += util::sext(read() & 0x07ffff00, 27) >> 16;
+    if (current_tilemap.vertical_linescroll_enable) {
+      int32_t const vertical = util::sext(read() & 0x07ffff00, 27);
+      // Basic renderers add screen Y * incy. Cancel it at the entry's
+      // first line, not at the beginning of this rendering pass.
+      int32_t const origin = uint32_t(vertical) - uint32_t(int64_t(first_line) * current_tilemap.incy);
+      values[1] += origin >> 16;
+    }
+    if (current_tilemap.linezoom_enable)
+      values[2] = read() & 0x0007ff00; // unsigned 3.8 increment, not signed
+    return values;
+  };
 
-  // read original scroll values
-  main_scrollx = current_tilemap.scrollx;
-  main_scrolly = current_tilemap.scrolly;
-  //  incx = current_tilemap.incx;
-
-  // prepare linescroll flags
-  linescroll_enable = current_tilemap.linescroll_enable;
-  //  current_tilemap.linescroll_enable = 0;
-  vertical_linescroll_enable = current_tilemap.vertical_linescroll_enable;
-  //  current_tilemap.vertical_linescroll_enable = 0;
-  linezoom_enable = current_tilemap.linezoom_enable;
-  //  current_tilemap.linezoom_enable = 0;
-
-  // prepare working clipping rectangle
-  memcpy(&mycliprect, &cliprect, sizeof(rectangle));
-
-  // calculate the number of active functions
-  if (linescroll_enable)
-    active_functions++;
-  if (vertical_linescroll_enable) {
-    vertical_linescroll_index = active_functions;
-    active_functions++;
+  for (int line = cliprect.top(); line <= cliprect.bottom();) {
+    int const first_line = (line / interval) * interval;
+    auto const values = values_at(first_line);
+    int end = first_line + interval;
+    // Keep the existing batching benefit when adjacent entries produce the
+    // same renderer state, but do not fetch past the final needed entry.
+    while (end <= cliprect.bottom() && values_at(end) == values)
+      end += interval;
+    rectangle clip = cliprect;
+    clip.sety(line, std::min(end - 1, cliprect.bottom()));
+    current_tilemap.scrollx = values[0];
+    current_tilemap.scrolly = values[1];
+    current_tilemap.incx = values[2];
+    if (current_tilemap.bitmap_enable)
+      vdp2_draw_basic_bitmap(bitmap, clip);
+    else
+      vdp2_draw_basic_tilemap(bitmap, clip);
+    line = end;
   }
-  if (linezoom_enable)
-    active_functions++;
-
-  // address of data table
-  /* linescroll_table_address is (LSTA & base_mask) * 2, so like the other VDP2
-     table addresses it can already be the last byte of VRAM before the per-line
-     stride below is added to it; every index derived from it is wrapped inside
-     VRAM rather than read past the allocation */
-  address = current_tilemap.linescroll_table_address +
-            active_functions * 4 * cliprect.top();
-
-  // get the first scroll values
-  for (i = 0; i < active_functions; i++) {
-    if (i == vertical_linescroll_index) {
-      VDP2_READ_VERTICAL_LINESCROLL(prev_scroll_values[i], (address / 4) + i);
-      prev_scroll_values[i] -= (cur_line * current_tilemap.incy);
-    } else {
-      prev_scroll_values[i] = m_vdp2_vram[((address / 4) + i) & 0x3ffff];
-    }
-  }
-
-  while (cur_line <= cliprect.bottom()) {
-    lines = 0;
-    do {
-      // update address
-      address += active_functions * 4;
-
-      // update lines count
-      lines += current_tilemap.linescroll_interval;
-
-      // get scroll values
-      for (i = 0; i < active_functions; i++) {
-        if (i == vertical_linescroll_index) {
-          VDP2_READ_VERTICAL_LINESCROLL(scroll_values[i], (address / 4) + i);
-          scroll_values[i] -= (cur_line + lines) * current_tilemap.incy;
-        } else {
-          scroll_values[i] = m_vdp2_vram[((address / 4) + i) & 0x3ffff];
-        }
-      }
-
-      // compare scroll values
-      scroll_values_equal = 1;
-      for (i = 0; i < active_functions; i++) {
-        scroll_values_equal &= (scroll_values[i] == prev_scroll_values[i]);
-      }
-    } while (scroll_values_equal && ((cur_line + lines) <= cliprect.bottom()));
-
-    // determined how many lines can be drawn
-    // prepare clipping rectangle
-    mycliprect.sety(cur_line, cur_line + lines - 1);
-
-    // prepare scroll values
-    i = 0;
-    // linescroll
-    if (linescroll_enable) {
-      prev_scroll_values[i] =
-          util::sext(prev_scroll_values[i] & 0x07ffff00, 27);
-      current_tilemap.scrollx = main_scrollx + (prev_scroll_values[i] >> 16);
-      i++;
-    }
-    // vertical line scroll
-    if (vertical_linescroll_enable) {
-      current_tilemap.scrolly = main_scrolly + (prev_scroll_values[i] >> 16);
-      i++;
-    }
-
-    // linezooom
-    if (linezoom_enable) {
-      prev_scroll_values[i] =
-          util::sext(prev_scroll_values[i] & 0x0007ff00, 19);
-      current_tilemap.incx = prev_scroll_values[i];
-      i++;
-    }
-
-    //      LOGMASKED(LOG_VDP2, "Linescroll: y < %d, %d >, scrollx = %d, scrolly
-    //      = %d, incx = %f\n", mycliprect.top(), mycliprect.bottom(),
-    //      current_tilemap.scrollx, current_tilemap.scrolly,
-    //      (float)current_tilemap.incx/65536.0);
-    // render current tilemap portion
-    if (current_tilemap.bitmap_enable) // this layer is a bitmap
-    {
-      vdp2_draw_basic_bitmap(bitmap, mycliprect);
-    } else {
-      // vdp2_apply_window_on_layer(mycliprect);
-      vdp2_draw_basic_tilemap(bitmap, mycliprect);
-    }
-
-    // update parameters for next iteration
-    memcpy(prev_scroll_values, scroll_values, sizeof(scroll_values));
-    cur_line += lines;
-  }
+  // Downstream renderers can normalize these fields. Do not leak the last
+  // entry into a later partial update or vertical-cell-scroll column.
+  current_tilemap.scrollx = main_scrollx;
+  current_tilemap.scrolly = main_scrolly;
+  current_tilemap.incx = main_incx;
 }
 
 void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
