@@ -31,8 +31,8 @@
     * June 6, 2011       (AS) Rewrote DMA from scratch, Darius 2 relies on it.
 */
 
-#include "scsp.h"
 #include "emu.h"
+#include "scsp.h"
 
 
 #include <algorithm>
@@ -289,11 +289,38 @@ void scsp_device::device_reset() {
   set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
   set_rate(31250);
 
-  // no interrupt is being requested to the sound CPU after a reset
-  m_current_level = 0;
+  reset_irq_timers();
 
   // the noise generator restarts from a known state
   m_lfsr = 1;
+}
+
+// A device reset (including SMPC clock change) must discard the previous
+// program's interrupt/timer setup, not just forget the cached output level.
+// Otherwise CheckPendingIRQ reasserts the old request at the next update.
+void scsp_device::reset_irq_timers() {
+  // Retain the old level until its physical CPU input has been released.
+  if (m_current_level != 0)
+    m_irq_cb(m_current_level, CLEAR_LINE);
+  m_current_level = 0;
+
+  for (unsigned reg = 0x18 / 2; reg < 0x30 / 2; ++reg)
+    m_udata.data[reg] = 0;
+  m_mcieb = 0;
+  m_mcipd = 0;
+  update_main_irq();
+
+  for (int i = 0; i < 3; ++i) {
+    auto &t = m_timers[i];
+    t.counter = 0;
+    t.prescale = 0;
+    t.reload = 0;
+    t.reload_pending = false;
+    t.base_time = machine().time();
+    // Replaces any pre-reset deadline. Counters run from zero, but their
+    // requests cannot reach either CPU until software enables them again.
+    timer_arm(i);
+  }
 }
 
 //-------------------------------------------------
