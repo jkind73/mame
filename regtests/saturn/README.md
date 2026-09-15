@@ -1,5 +1,22 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## Latest: explosion rectangles still present (d0166ac6)
+
+User confirms the 94cc6b24 RGB correction did **not** resolve After Burner II's
+explosion transparency. The new archive contains 670,624 scaled command records;
+every one uses color mode 1 (4-bit lookup table), not RGB texture mode 5. That
+rules out describing the preceding RGB fix as this symptom's solution. The boot
+fix remains user-confirmed. No new emulation change is justified from these
+records alone: texture/LUT contents and framebuffer words are not logged.
+
+Added `regtests/saturn/video_capture.lua`: on F12, capture the visible image,
+VDP1 texture/LUT/command RAM, both framebuffer banks, VDP2 RAM/CRAM/registers
+and small VDP1 state together. No rebuild or verbose log is needed. Standalone
+Lua mocks pass (schema, byte bounds, cap, collisions, missing-item failure);
+live MAME capture delivery is not yet tested. Instructions and binary format:
+`regtests/saturn/video_capture.md`. Geometry and explosion artifacts remain open.
+
+
 ## Current: boot confirmed; visual follow-up (d402162b)
 
 The user confirms After Burner II boots with d68770ea. Startup is no longer an
