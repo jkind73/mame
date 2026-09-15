@@ -138,8 +138,8 @@ Please don't remove them if for no reason you truly want to mess with this.
 -------------------------- WARNING WARNING WARNING --------------------------
 
 Framebuffer TODO:
-- finish manual erase
-- add proper framebuffer erase
+- qualify scanline-level manual/one-cycle erase against hardware
+- implement within-raster erase/readout/CPU bus arbitration
 - packed 8-bit storage, interlace fields and rotated readout are implemented;
   verify remaining erase/transfer timing against hardware
 
@@ -333,6 +333,8 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
   // VDP2's screen coordinate zero is the field-start transition.
   if (scanline == 0)
     vdp1_video_update();
+  else
+    vdp1_advance_display_erase(scanline);
 
   if (scanline == (vblank_line + 1) * y_step &&
       (VDP1_VBE() || m_vdp1_legacy.vblank_erase_pending))
@@ -831,22 +833,43 @@ void saturn_state::vdp1_begin_display_erase() {
   e.right = ((v.erase_lower_right >> 9) & 0x7f) * 8;
   e.top = v.erase_upper_left & 0x1ff;
   e.bottom = v.erase_lower_right & 0x1ff;
+  // ST-013 p.49: erase follows display readout, with only four extra
+  // words (four 16-bit dots / eight packed dots) after active horizontal data.
+  e.right = std::min<unsigned>(e.right, ((m_vdp2->get_hreso() & 1) ? 352 : 320) + 4);
+  e.bottom = std::min<unsigned>(e.bottom, m_vdp2->get_vblank_start_position() - 2);
+  e.next_row = e.top;
+  e.step = m_vdp2->get_ystep_count();
   vdp1_trace("display-erase-begin");
 }
 
-void saturn_state::vdp1_finish_display_erase() {
+void saturn_state::vdp1_advance_display_erase(int scanline) {
   auto &e = m_vdp1_display_erase;
-  if (!e.pending)
+  if (!e.pending || scanline <= 0)
     return;
-  // ST-013 pp.39/49: manual erase uses the display period. The displayed
-  // pixels must be read before they are erased, not cleared at field start.
-  // Commit coarsely after presentation and before bank exchange; this is not
-  // a per-HBlank bus model. Both normal/hi-res banks have 512 words per row.
-  for (unsigned y = e.top; y <= e.bottom; ++y)
+  if (e.left >= e.right || e.next_row > e.bottom) {
+    e.pending = false;
+    return;
+  }
+  // At the start of the next physical raster, both output rows of an
+  // interlaced raster must have been presented before its stored row is erased.
+  const unsigned completed_rows = unsigned(scanline) / e.step;
+  if (e.next_row >= completed_rows)
+    return;
+  const unsigned last_row = std::min<unsigned>(e.bottom, completed_rows - 1);
+  m_screen->update_partial((last_row + 1) * e.step - 1);
+  for (; e.next_row <= last_row; ++e.next_row)
     for (unsigned x = e.left; x < e.right; ++x)
-      m_vdp1_legacy.framebuffer[e.bank][(y & 255) * 512 + (x & 511)] = e.data;
-  e.pending = false;
-  vdp1_trace("display-erase-end");
+      m_vdp1_legacy.framebuffer[e.bank][(e.next_row & 255) * 512 + (x & 511)] = e.data;
+  if (e.next_row > e.bottom) {
+    e.pending = false;
+    vdp1_trace("display-erase-end");
+  }
+}
+
+void saturn_state::vdp1_finish_display_erase() {
+  // Field end must not erase unscanned rows or replay an already erased prefix.
+  // Normal scheduler execution presents/erases eligible rows during display.
+  m_vdp1_display_erase.pending = false;
 }
 
 void saturn_state::vdp1_cancel_erase() {
@@ -3224,7 +3247,7 @@ void saturn_state::vdp1_video_update() {
     if (blank_only)
       m_vdp1_legacy.vblank_erase_pending = true;
     else
-      vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_draw);
+      vdp1_begin_display_erase();
     framebuffer_changed = true;
     break;
   case 2: // One-field manual erase request, without exchanging banks
@@ -3328,6 +3351,8 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_display_erase.right));
   save_item(NAME(m_vdp1_display_erase.top));
   save_item(NAME(m_vdp1_display_erase.bottom));
+  save_item(NAME(m_vdp1_display_erase.next_row));
+  save_item(NAME(m_vdp1_display_erase.step));
 
   save_item(NAME(m_vdp1_texture_end));
   save_item(NAME(current_sprite.CMDCTRL));

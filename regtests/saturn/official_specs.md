@@ -1,5 +1,45 @@
 # Sega SDK hardware-document audit
 
+## Active-display erase — 2026-09-15
+
+Manual and one-cycle display erase now advance behind scanout, instead of clearing
+at a field boundary. Each affected physical row is presented with
+`screen_device::update_partial` before its framebuffer words are erased. Interlaced
+output waits for both output rows. The captured bank/data/window and saved next-row
+cursor prevent register writes or restoration from restarting an erased prefix.
+Field end only retires the operation; it cannot erase unscanned/offscreen rows.
+
+One-cycle mode now schedules erase on the newly displayed bank; the next swap makes
+that already-erased bank drawing-owned. It no longer clears the newly selected draw
+bank wholesale at swap. Normal/packed-8 display erase is limited vertically to active
+rows and horizontally to active words plus four words (four normal or eight packed
+dots), following ST-013-R3-061694 printed p.49. Blank-only TV modes retain the separate
+progressive VBlank implementation.
+
+Cross-checks: MiSTer VDP1 `FRAME_ERASE_EN`, `FB_ERASE_A` and `OUT_Y` at
+`a95b085038ace57fa621558d60a7adc7a3c53f78` erase the display bank during active scanout.
+Ymir `vdp.cpp` and `VDP1DoEraseFramebuffer` at
+`6d779960127ced72087a418c1daefc637d0aaa80` also select the display bank, but their coarse
+whole-operation erase clamps horizontal words to 400/428 rather than the primary's
+active-width-plus-four limit. MiSTer's counter also is not an exact boundary oracle.
+This change follows the primary bound; those implementation differences still need
+hardware qualification, not a claim of three-source agreement on every edge.
+
+Validation: **180 new active-display cases** cover bounds, packed payloads, both
+banks, interlace cadence, presentation-before-write, partial-state restoration,
+CPU edits behind the cursor, retirement without a final bulk clear, and one-cycle
+ownership. The existing 24 manual-field presentation cases now run actual row ticks.
+Mutations removing scanline progress, removing presentation, or removing the
+horizontal bound all compile and fail assertions. **23 scripts and eleven production
+object builds pass.** The screen is a recording stand-in in extracted tests; these
+are not linked MAME visual tests or real save-manager round trips.
+
+Remaining: within-raster CPU/readout/erase arbitration, precise latch/edge timing,
+performance and real runtime/save-load qualification. The accepted HSS/ECD pixel
+logic was not changed, but the broader timing change has no new game acceptance.
+Separate title/logo geometry is still open. Full VDP1 completion is not claimed.
+
+
 ## Progressive VBlank erase — 2026-09-15
 
 VBlank erase now advances at physical-raster boundaries instead of committing the
