@@ -1,5 +1,19 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## After Burner II follow-up 366ac068 — still hangs
+
+User confirms `436988f9` did not fix boot. Decoded the new BOOTCPU capture: SH-2
+loops on a zero longword at sound RAM 04FC (R1=25A004FC). The running sound CPU
+repeatedly samples its level-2 handler at 07E6, with intended Timer B/SCIRE accesses
+through A5. Missing sound A5 and SCSP enable/pending state prevent an exact cause
+claim; no new interrupt suppression or game workaround is applied.
+
+Added a read-only Lua snapshot probe that runs on the existing executable, without
+a rebuild, plus a passing standalone mock-binding test. See
+`regtests/saturn/afterburner2_boot_analysis.md` for decoded instructions and the
+command. The earlier IRQ/reset correction remains separately tested, not an
+After Burner II boot fix. OutRun flashing remains user-confirmed resolved.
+
 ## After Burner II instrumented follow-up — sound-startup wait
 
 Analyzed and preserved user commit `629e6569`: the first CD read completes and
