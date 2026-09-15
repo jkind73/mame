@@ -109,6 +109,9 @@ protected:
     uint16_t vblank_erase_left = 0, vblank_erase_right = 0;
     uint16_t vblank_erase_top = 0, vblank_erase_bottom = 0;
     uint32_t vblank_erase_budget = 0;
+    uint16_t vblank_erase_x = 0, vblank_erase_y = 0;
+    uint16_t vblank_erase_words_per_line = 0;
+    uint8_t vblank_erase_step = 1;
     std::unique_ptr<uint16_t *[]> framebuffer_draw_lines;
     std::unique_ptr<uint8_t[]> gfx_decode;
     uint16_t lopr = 0;
@@ -292,6 +295,8 @@ protected:
 
   void vdp1_clear_framebuffer(int which_framebuffer);
   uint32_t vdp1_vblank_erase_capacity() const;
+  uint32_t vdp1_vblank_erase_line_capacity() const;
+  void vdp1_advance_vblank_erase(uint32_t words);
   void vdp1_begin_vblank_erase();
   void vdp1_finish_vblank_erase();
   void vdp1_cancel_erase();
