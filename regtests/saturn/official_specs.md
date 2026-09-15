@@ -1,5 +1,35 @@
 # Sega SDK hardware-document audit
 
+## A03–A05: CRAM broadcast and palette fixture — 2026-09-15
+
+Mode-0 CRAM writes now merge into **both physical 1K-word halves**, rather than
+writing one location and updating pens from another. Each masked word lane is
+merged independently into each half; reads remain independent. A mode change
+alone must not destroy differing unwritten data. Masked-out writes have no effect.
+
+Primary: ST-058 §3.4, printed pp.43–46 (especially p.46), specifies simultaneous
+writes to the two halves. Ymir `VDP2Memory::WriteCRAM` in `vdp_state.hpp` at
+6d779960127ced72087a418c1daefc637d0aaa80 and MiSTer `IO_PAL0_WE`/`IO_PAL1_WE` at
+a95b085038ace57fa621558d60a7adc7a3c53f78 also broadcast accesses addressed through
+the upper half. The manual explicitly describes lower-half writes; upper-half
+broadcast and independent reads are cross-implementation evidence, not a new
+hardware measurement. No byte-write ignore rule is invented.
+
+`test_vdp2_palette.py` extracts production CRAM reads/writes and palette rebuilds:
+**9,216 address/lane/palette cases** plus mode-transition and zero-mask checks pass
+under ASan/UBSan. The prior c43dded9 implementation compiles and fails the raw-memory
+oracle. All **24 regression scripts and eleven production object builds pass**.
+No linked runtime or real save/load acceptance is claimed.
+
+[A03 register ledger](vdp2_registers.md) now inventories all halfwords through 0x11E
+and the remaining backing-file range. Per-bit hardware masks/reset/latch verification
+is still open. A04 has a real palette fixture, not yet a full-background/window
+fixture. A05's mode-0 write defect is fixed; mode-2 physical layout across mode
+changes, coefficient interactions and physical color-output precision remain open.
+Current MAME `pal5bit` expansion is preserved; the manual's zero-filled low bits
+require a separate pipeline audit. None of the parent A03–A05 tasks is marked done.
+
+
 ## Current workstream: VDP2 audit and progress tracker — 2026-09-15
 
 See [VDP2 implementation report and checklist](vdp2_completion.md) for the current
