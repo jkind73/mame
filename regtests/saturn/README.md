@@ -1651,3 +1651,17 @@ now adds bounded register-write/vector-read history and BIOS mask/dispatch
 RAM snapshots to distinguish mask restoration from a later acknowledgement.
 Sound startup is fixed; game boot remains unverified. See
 `regtests/saturn/afterburner2_boot_analysis.md` for evidence and trace caveats.
+
+
+### After Burner II / SH DRC delay-slot IRQ correction (2f84a960 evidence)
+
+The new trace shows VBlank delivery after software has masked all interrupts
+again. The shared SH DRC discarded `checkints` set by an SR load in a branch
+delay slot; Saturn BIOS ChangeSCUMask restores SR in the RTS delay slot.
+Propagate that compiler state so the caller checks interrupts after the slot.
+SCU latch/mask reset and DMA timing remain unchanged (Ymir/MiSTer corroborate
+the latch). Regression: 72 cases pass, old-state mutation fails; all 22 Python
+scripts and eleven objects pass, including the modified SH core. This is a
+concrete code correction, not confirmed game-boot acceptance. A rebuilt
+executable is now required; the existing probe needs no further change.
+See `regtests/saturn/afterburner2_boot_analysis.md` for ordering and limits.
