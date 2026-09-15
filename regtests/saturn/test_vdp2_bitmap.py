@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('window','nibble'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('window','nibble','additive'));a=p.parse_args()
 source=(ROOT/'src/mame/sega/saturn.cpp').read_text();header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(src,sig):
     start=src.index(sig);end=src.index('{',start)+1;depth=1
@@ -25,6 +25,7 @@ sigs+=['void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_
 funcs=[extract(source,s) for s in sigs]
 decls='\n'.join(f[:f.index('{')].replace('saturn_state::','').strip()+';' for f in funcs)
 functions=extract(source,'static void fixup_window_x(')+'\n'+'\n'.join(funcs)
+if a.mutation=='additive':functions=functions.replace('else if (VDP2_CCMD)', 'else if (false && VDP2_CCMD)')
 if a.mutation=='window':functions=functions.replace('if (!vdp2_window_process(xdst, ydst))','if (false)')
 if a.mutation=='nibble':functions=functions.replace('((xsrc & 1) ? 0 : 4)','((xsrc & 1) ? 4 : 0)')
 macros=sorted(set(re.findall(r'VDP2_\w+',functions)))
@@ -41,6 +42,7 @@ using offs_t=uint32_t;
 struct rgb_t {uint32_t v;rgb_t(uint32_t a):v(a){}rgb_t(int r,int g,int b):v((r<<16)|(g<<8)|b){}operator uint32_t()const{return v;}};
 int pal5bit(int v){return (v<<3)|(v>>2);}
 uint32_t alpha_blend_r32(uint32_t d,uint32_t s,unsigned a){uint32_t result=0;for(int sh:{0,8,16})result|=((((s>>sh)&255)*a+((d>>sh)&255)*(256-a))>>8)<<sh;return result;}
+uint32_t add_blend_r32(uint32_t d,uint32_t s){uint32_t out=0;for(int sh:{0,8,16})out|=std::min(255u,((d>>sh)&255)+((s>>sh)&255))<<sh;return out;}
 struct rectangle {int l,r,t,b;int left()const{return l;}int right()const{return r;}int top()const{return t;}int bottom()const{return b;}};
 struct bitmap_rgb32 {std::array<uint32_t,96> pixels{};uint32_t &pix(int y,int x){assert(x>=0&&x<12&&y>=0&&y<8);return pixels.at(y*12+x);}};
 struct palette {std::array<uint32_t,6144> pens{};void set_pen_color(unsigned i,uint32_t c){pens.at(i)=c;}void set_pen_color(unsigned i,int r,int g,int b){set_pen_color(i,rgb_t(r,g,b));}uint32_t pen(unsigned i){return pens.at(i);}};
@@ -76,7 +78,8 @@ int main(){
  draw drawers[]={&saturn_state::draw_4bpp_bitmap,&saturn_state::draw_8bpp_bitmap,&saturn_state::draw_11bpp_bitmap,&saturn_state::draw_rgb15_bitmap,&saturn_state::draw_rgb32_bitmap};
  unsigned cases=0;
  for(unsigned format=0;format<5;++format)for(int hreso:{0,2,4,6})for(int interlace:{0,3})
- for(int line:{0,1})for(int config=0;config<32;++config)for(int scale:{32768,65536,98304}){
+ for(int line:{0,1})for(int config=0;config<32;++config)for(int scale:{32768,65536,98304})for(int additive:{0,1}){
+  s.regs.VDP2_CCMD=additive;
   s.device.hreso=hreso;s.device.lsmd=interlace;
   auto &w=c.window_control;w.enabled[0]=config&1;w.enabled[1]=(config>>1)&1;w.area[0]=(config>>2)&1;w.area[1]=(config>>3)&1;w.logic=config>>4;
   s.regs.VDP2_W0SY=1;s.regs.VDP2_W0EY=6;s.regs.VDP2_W1SY=2;s.regs.VDP2_W1EY=5;
@@ -114,7 +117,10 @@ int main(){
    if(format<3){unsigned index=raw+(format<2?768:0);unsigned word=s.m_vdp2_cram[index/2]>>(index%2?0:16);color=rgb_t(pal5bit(word&31),pal5bit((word>>5)&31),pal5bit((word>>10)&31));}
    else if(format==3)color=rgb_t(pal5bit(raw&31),pal5bit((raw>>5)&31),pal5bit((raw>>10)&31));
    else color=rgb_t(raw&255,(raw>>8)&255,(raw>>16)&255);
-   expected.pix(y,x)=c.colour_calculation_enabled?alpha_blend_r32(0x204060,color,128):color;
+   uint32_t blended;
+   if(additive)blended=rgb_t(std::min(255u,32+((color>>16)&255)),std::min(255u,64+((color>>8)&255)),std::min(255u,96+(color&255)));
+   else blended=alpha_blend_r32(0x204060,color,128);
+   expected.pix(y,x)=c.colour_calculation_enabled?blended:color;
   }
   assert(expected.pixels==image.pixels);++cases;
  }
