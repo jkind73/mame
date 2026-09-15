@@ -10046,6 +10046,14 @@ uint16_t saturn_state::vdp2_regs_r(offs_t offset) {
 // physical halves different until the guest writes the corresponding words.
 uint32_t saturn_state::vdp2_cram_r(offs_t offset) {
   offset &= (0xfff) >> (2);
+  if (VDP2_CRMD & 2) {
+    // Physical CRAM is two 1K-word banks. In 24-bit mode address bit 1
+    // selects the bank instead of bit 11 (MiSTer IO_PAL_RD/IO_PAL_A;
+    // Ymir MapCRAMAddress). Keep storage in mode-1 physical-bank order.
+    const unsigned shift = (offset & 1) ? 0 : 16;
+    return ((m_vdp2_cram[offset >> 1] >> shift) & 0xffff) << 16 |
+           ((m_vdp2_cram[(offset >> 1) | 0x200] >> shift) & 0xffff);
+  }
   return m_vdp2_cram[offset];
 }
 
@@ -10061,7 +10069,17 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
   cmode0 = (VDP2_CRMD & 3) == 0;
 
   offset &= (0xfff) >> (2);
-  COMBINE_DATA(&m_vdp2_cram[offset]);
+  if (VDP2_CRMD & 2) {
+    const unsigned shift = (offset & 1) ? 0 : 16;
+    auto &bank0 = m_vdp2_cram[offset >> 1];
+    auto &bank1 = m_vdp2_cram[(offset >> 1) | 0x200];
+    const uint32_t mask0 = (mem_mask >> 16) << shift;
+    const uint32_t mask1 = (mem_mask & 0xffff) << shift;
+    bank0 = (bank0 & ~mask0) | (((data >> 16) << shift) & mask0);
+    bank1 = (bank1 & ~mask1) | (((data & 0xffff) << shift) & mask1);
+  } else {
+    COMBINE_DATA(&m_vdp2_cram[offset]);
+  }
   // ST-058 section 3.4: mode-0 writes reach both 1K-word halves.
   // Ymir WriteCRAM and MiSTer IO_PAL0/1_WE also broadcast upper-half
   // accesses. Merge each half separately: unwritten lanes may differ after
@@ -10077,9 +10095,10 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
   case 3: {
     // offset &= (0xfff) >> 2;
 
-    b = ((m_vdp2_cram[offset] & 0x00ff0000) >> 16);
-    g = ((m_vdp2_cram[offset] & 0x0000ff00) >> 8);
-    r = ((m_vdp2_cram[offset] & 0x000000ff) >> 0);
+    const uint32_t color = vdp2_cram_r(offset);
+    b = (color >> 16) & 0xff;
+    g = (color >> 8) & 0xff;
+    r = color & 0xff;
     m_palette->set_pen_color(offset, rgb_t(r, g, b));
     m_palette->set_pen_color(offset ^ 0x400, rgb_t(r, g, b));
   } break;
@@ -10119,9 +10138,10 @@ void saturn_state::refresh_palette_data() {
   case 2:
   case 3: {
     for (c_i = 0; c_i < 0x400; c_i++) {
-      b = ((m_vdp2_cram[c_i] & 0x00ff0000) >> 16);
-      g = ((m_vdp2_cram[c_i] & 0x0000ff00) >> 8);
-      r = ((m_vdp2_cram[c_i] & 0x000000ff) >> 0);
+      const uint32_t color = vdp2_cram_r(c_i);
+      b = (color >> 16) & 0xff;
+      g = (color >> 8) & 0xff;
+      r = color & 0xff;
       m_palette->set_pen_color(c_i, rgb_t(r, g, b));
       m_palette->set_pen_color(c_i + 0x400, rgb_t(r, g, b));
     }
