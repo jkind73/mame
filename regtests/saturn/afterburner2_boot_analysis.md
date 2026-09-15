@@ -1,5 +1,94 @@
 # After Burner II boot stall — investigation
 
+## Supplied SOUNDPROBE: stale SCSP interrupt state across clock change
+
+The user supplied all three snapshots (20.011778927, 21.015714325 and
+22.019649722 s). They resolve the missing operands; another probe is not needed
+before testing the correction.
+
+### Evidence and decoded startup
+
+All three show A5=00009CC0, A6=00009BA0, SCSP current IRQ level 2. Save-item index
+prefixes are hexadecimal: `F/m_udata.data[i]` is SCIEB=0080;
+`10/m_udata.data[i]` is SCIPD=05C0; `13/m_udata.data[i]` is SCILV1=0080.
+Thus Timer B is enabled, pending and assigned level 2. Its stored reload remains
+D4, whereas the new driver's timer setup and handler request B4. Lazy counters
+read as FF in the snapshot; this alone does not mean counting has stopped.
+
+The sound reset vector is PC=00000688, SP=00077834. Relevant words decode to:
+
+```text
+00000688  46fc 2000                 move.w #$2000,sr       ; unmask IRQs
+000006c4  4bf9 0010 0000            lea $00100000,a5       ; SCSP base
+000006f0  23fc 0007 f000 0000 04fc  move.l #$0007f000,$4fc ; publish ready pointer
+000007ee  3b7c 01b4 041a            move.w #$01b4,$041a(a5)
+000007f4  006d 0080 0422            ori.w #$0080,$0422(a5)
+```
+
+An old IRQ preempts the new driver before A5 is initialized. With A5=9CC0, the
+handler writes **A0DA/A0E2 in RAM**, not SCSP Timer B/SCIRE at 10041A/100422.
+It cannot clear the actual IRQ and repeatedly returns to the interrupted startup.
+The SH-2 keeps waiting for the unexecuted ready-pointer write at 06F0. This
+particular handshake is a RAM write, not a 68000 RESET opcode; the separate RESET
+opcode compatibility path used by other software is unchanged.
+
+### Why the BIOS interrupt survives
+
+`afterburner2-bootLog.log` records CKCHG320 starting near 13.28 s (lines 8944–8961;
+five phase messages for one command). Saturn's existing `dot_select_w` calls
+`m_scsp->reset()`. Previously, SCSP `device_reset()` only reset serial framing,
+the noise seed and **m_current_level**. It left SCIEB, SCIPD, SCILV, MCIEB/MCIPD,
+timer reloads/counters and scheduled timer callbacks intact. Clearing only the
+cached level also failed to lower the old physical interrupt input, and the next
+IRQ evaluation could reassert the retained BIOS request.
+
+That is a concrete reset defect matching the supplied startup failure, rather
+than a need to suppress interrupts during SNDON or special-case After Burner II.
+
+### Correction and source checks
+
+SCSP device reset now resets its interrupt/timer domain: releases the previously
+driven sound IRQ, clears interrupt enables/pending/acknowledgement/level registers
+and main-IRQ caches/output, and rebases all three timers from zero with reset
+prescalers/reloads. Old timer deadlines are replaced; new timer requests remain
+masked until software configures them. This does not change SNDON/SNDOFF behavior,
+write the game's ready pointer, alter sound RAM, or bypass its handler.
+
+- Sega [ST-169-R1](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-169-R1-072694.pdf),
+  printed pp.30–31: CKCHG352/320 return **VDP1, VDP2, SCU and SCSP to power-on
+  defaults**. The driver already routes this reset correctly; the SCSP endpoint
+  was incomplete.
+- Sega [ST-077-R2](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-077-R2-052594.pdf),
+  printed p.5: SCSP reset initializes internal registers; pp.96–99 define the
+  interrupt enable/pending/reset and level registers. Exact 30-microsecond reset
+  initialization/access timing is not implemented by this correction.
+- [MiSTer SCSP](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/SCSP/SCSP.sv),
+  lines 1755–1800 reset the common timer/IRQ registers, including CR8–CR19.
+- [Ymir SCSP Reset](https://github.com/StrikerX3/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/scsp/scsp.cpp),
+  lines 115–124 reset timers, both interrupt masks/pending sets, and sound IRQ
+  level assignments. Only this interrupt/timer behavior is used as a cross-check;
+  its broader sound-RAM/DSP reset implementation is not copied.
+
+### Regression and scope
+
+New `test_scsp_reset.py` runs the production reset, priority resolver and timer
+functions against a deterministic clock/event queue. Twenty-four dirty-state
+cases cover every old output level, pending reloads, old deadlines, both IRQ
+outputs, post-reset masked timer events, repeated reset and later IRQ re-enable.
+Restoring the old partial reset fails. It also source-checks the clock-change
+reset connection. This is not execution of the game or the actual 68000 core.
+
+Build validation now includes the SCSP translation unit, in addition to the nine
+Saturn/ST-V objects. Its first standalone compile exposed a pre-existing include
+order dependency on the precompiled header; `emu.h` now precedes `scsp.h`.
+Full validation: **20 regression scripts and ten production-object compilations
+pass**. No linked/game/save-manager acceptance is claimed.
+
+This is a scoped interrupt/timer reset fix, not a claim that all SCSP slot, DSP,
+FIFO or common-control reset defaults/timing are complete. Rebuild and test
+After Burner II; successful game boot remains the runtime acceptance criterion.
+
+
 ## Capture 366ac068: IRQ/reset change did NOT fix boot
 
 The user explicitly reports the same boot hang after `436988f9`. Preserved upload

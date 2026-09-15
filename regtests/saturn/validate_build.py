@@ -50,7 +50,9 @@ with tempfile.TemporaryDirectory(prefix="saturn-objects-") as directory:
                  "saturn_cd_hle", "saturn_cdb", "smpc"):
         run([os.environ.get("CXX", "g++"), *flags, "-I", directory, f"src/mame/sega/{name}.cpp",
              "-o", str(Path(directory) / (name + ".o"))])
-print("Regressions and nine object compilations passed (not a linked MAME build).", flush=True)
+    run([os.environ.get("CXX", "g++"), *flags, "-I", directory,
+         "src/devices/sound/scsp.cpp", "-o", str(Path(directory) / "scsp.o")])
+print("Regressions and ten object compilations passed (not a linked MAME build).", flush=True)
 
 if args.full:
     run(["make", f"-j{args.jobs}", "SUBTARGET=saturn", "REGENIE=1", "SYMBOLS=0", "OPTIMIZE=1",
