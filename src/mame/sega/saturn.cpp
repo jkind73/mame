@@ -251,10 +251,10 @@ void saturn_state::m68k_reset_callback(int state) {
 }
 
 void saturn_state::scsp_irq(offs_t offset, uint8_t data) {
-  // don't bother the 68k if it's off
-  if (!m_en_68k) {
-    return;
-  }
+  // SNDON/SNDOFF control the 68000 RESET input, not the SCSP's IPL
+  // output. Keep tracking both assertions and clears while reset is held:
+  // the SCSP reports level changes, so dropping one here can leave a lost
+  // or stale interrupt after SNDON without another transition to repair it.
 
   if (offset != 0) {
     if (data == ASSERT_LINE)
@@ -624,9 +624,82 @@ uint16_t saturn_state::vdp1_regs_r(offs_t offset) {
 
 // Opt-in regression diagnostics: use -verbose -log and capture a short run.
 // This is observational only; never alter emulated timing or register state.
+// Debug-only raw RAM inspection: never access MMIO, advance a peripheral,
+// or use the CPU address-space handlers (which may charge bus wait states).
+bool saturn_state::boot_trace_word(u32 address, bool sound, u16 &word) {
+  if (sound) {
+    if (address >= 0x00100000)
+      return false;
+    word = m_sound_ram[(address & 0x7ffff) >> 1];
+    return true;
+  }
+  if (address >= 0x40000000)
+    return false; // cache arrays/purge space are not physical RAM aliases
+  address &= 0x1fffffff; // SH-2 cache-through alias
+  if (address >= 0x06000000 && address < 0x08000000) {
+    word = m_workram_h[(address & 0xfffff) >> 2] >> ((address & 2) ? 0 : 16);
+    return true;
+  }
+  if (address >= 0x00200000 && address < 0x00300000) {
+    word = m_workram_l[(address & 0xfffff) >> 2] >> ((address & 2) ? 0 : 16);
+    return true;
+  }
+  if (address >= 0x05a00000 && address < 0x05b00000) {
+    word = m_sound_ram[(address & 0x7ffff) >> 1];
+    return true;
+  }
+  return false;
+}
+
+void saturn_state::trace_boot_cpu() {
+  if (!machine().options().verbose())
+    return;
+  const int64_t second = machine().time().seconds();
+  if (m_boot_trace_second == second)
+    return;
+  m_boot_trace_second = second;
+  logerror("BOOTCPU t=%s mainpc=%08x sr=%08x pr=%08x soundpc=%08x soundsr=%04x "
+           "soundsp=%08x soundcycles=%llu enabled=%d lastirq=%d "
+           "soundreset=%d soundhalt=%d systemhalt=%d dmahalt=%d\n",
+           machine().time().as_string(), u32(m_maincpu->pc()),
+           u32(m_maincpu->state_int(SH_SR)), u32(m_maincpu->state_int(SH4_PR)),
+           u32(m_audiocpu->pc()), u32(m_audiocpu->state_int(M68K_SR)),
+           u32(m_audiocpu->state_int(M68K_SP)),
+           (unsigned long long)m_audiocpu->total_cycles(), m_en_68k, m_scsp_last_line,
+           m_audiocpu->suspended(SUSPEND_REASON_RESET),
+           m_audiocpu->suspended(SUSPEND_REASON_HALT), m_system_halt, m_sound_dma_halt);
+  for (unsigned sound = 0; sound < 2; ++sound) {
+    const u32 pc = sound ? m_audiocpu->pc() : m_maincpu->pc();
+    const u32 base = pc & ~u32(15);
+    logerror("BOOTCPU %s code @%08x:", sound ? "sound" : "main", base);
+    for (unsigned i = 0; i < 16; ++i) {
+      u16 word;
+      if (boot_trace_word(base + i * 2, sound, word))
+        logerror(" %04x", word);
+      else
+        logerror(" ----");
+    }
+    logerror("\n");
+  }
+  for (unsigned i = 0; i < 16; ++i) {
+    const u32 value = m_maincpu->state_int(SH4_R0 + i);
+    logerror("BOOTCPU R%u=%08x ram @%08x:", i, value, value & ~u32(1));
+    for (unsigned j = 0; j < 4; ++j) {
+      u16 word;
+      if (boot_trace_word((value & ~u32(1)) + j * 2, false, word))
+        logerror(" %04x", word);
+      else
+        logerror(" ----");
+    }
+    logerror("\n");
+  }
+}
+
 void saturn_state::vdp1_trace(const char *event, int reg, const spoint *bounds) {
   if (!machine().options().verbose())
     return;
+  if (!strcmp(event, "field"))
+    trace_boot_cpu();
   const auto &v = m_vdp1_legacy;
   logerror("VDP1TRACE t=%s event=%s TVMR=%04x FBCR=%04x PTMR=%04x EDSR=%04x "
            "draw=%d display=%d busy=%d COPR=%04x LOPR=%04x pc=%04x "
