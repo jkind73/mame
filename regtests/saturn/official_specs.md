@@ -1,5 +1,49 @@
 # Sega SDK hardware-document audit
 
+## R01: screen-over-pattern pixels implemented — 2026-09-15
+
+Rotation screen-over mode 1 now repeats the character selected by OVPNRA/OVPNRB
+outside the full screen extent, instead of discarding those pixels. The selected
+name is decoded as one word regardless of ordinary map pattern-name size, using
+PNCR supplement/flip controls, 8×8 or 16×16 characters, all five legal color formats,
+CRAO offsets, raw-dot transparency and VRAM address wrapping. Bitmap mode is not
+assigned an invented pattern behavior; its existing outside clipping is retained.
+
+The character is decoded into at most 256 unblended pixels per output pass. This
+keeps per-output-dot lookup cheap and avoids new persistent cache invalidation or
+save-state fields: register, palette and character-data changes are read anew.
+Both coefficient paths use the same pattern lookup, ordinary/parameter windows,
+coverage test and final color-offset/calculation stages. The unity-transform shortcut
+now requires screen-over repeat mode; other modes cannot bypass their boundaries.
+
+Primary: ST-058 printed pp.115–116, one-word bit layouts pp.69–74, and palette offset
+rules p.215. Pinned MiSTer `VDP2.sv` lines 2872–2873 supplies OVPNR through `PNData`;
+`VDP2_pkg.sv` `PNData` and `RxCHAddr` corroborate supplement/flip/cell addressing.
+Pinned Ymir `VDP2DrawRotationCharBG` has a RepeatChar branch calling its one-word
+extractor, corroborating the mode, but its low-three-bit dot coordinates are not
+used as an oracle for 16×16 cell selection. Sega's character-size rule and MiSTer's
+four-cell addressing are the basis for that case.
+
+Validation:
+- **2,560 decoding configurations**, each checked at 324 positive/negative coordinates
+  against a separate bit-wiring/bitstream oracle; color formats, supplement modes,
+  flips, sizes, transparency, both VRAM sizes, palette offsets and address wrapping.
+- **2,880 screen-over images** through the production compositor: A/B, both ordinary
+  pattern-name sizes, no/line/dot coefficients, ordinary and parameter windows,
+  opaque/ratio/additive output, source boundaries, and whole/split clips.
+- **8,448 dispatch configurations**, including each selected screen-over mode and
+  nonselected-parameter controls. Existing 9,216 rotation images and 360 coverage
+  images still pass.
+- Separate missing-pattern, wrong-A/B-name, missing-flip and shortcut-bypass mutations
+  compile and assertion-fail. Full **28 scripts / eleven object builds pass**.
+
+Palette lookup, coefficient fetch and window inputs remain controlled stand-ins;
+RGB555 conversion retains MAME's current expansion rather than claiming DAC accuracy.
+R01's base pixel path is implemented, but shared special-priority/calculation metadata,
+parameter-switching qualification, linked gameplay, save/load and performance remain
+open. No D-Xhird gameplay result or hardware certification is claimed.
+
+
 ## A03/C01: color-depth screen restrictions — 2026-09-15
 
 Applied the remaining normal-screen color-count exclusions from ST-058 printed
