@@ -88,12 +88,12 @@ int main(){
  assert(s->boot_trace_word(0x20200000,false,word)&&word==0x9abc);
  assert(s->boot_trace_word(0x00200002,false,word)&&word==0xdef0);
  for(auto a:{0x05a00000u,0x25a00000u,0x05a80000u})assert(s->boot_trace_word(a,false,word)&&word==0x1357);
- for(auto a:{0u,0x80000u})assert(s->boot_trace_word(a,true,word)&&word==0x1357);
+ for(auto a:{0u})assert(s->boot_trace_word(a,true,word)&&word==0x1357);
  for(auto a:{0u,0x05800000u,0x05b00000u,0x08000000u,0x66000000u,0xc6000000u,0xffffffffu})assert(!s->boot_trace_word(a,false,word));
- for(auto a:{0x100000u,0xffffffffu})assert(!s->boot_trace_word(a,true,word));
+ for(auto a:{0x80000u,0xffffeu,0x100000u,0xffffffffu})assert(!s->boot_trace_word(a,true,word));
  s->m_workram_h.back()=0x2468ace0;s->m_sound_ram.back()=0xace0;
  assert(s->boot_trace_word(0x07fffffe,false,word)&&word==0xace0);
- assert(s->boot_trace_word(0xffffe,true,word)&&word==0xace0);
+ assert(s->boot_trace_word(0x7fffe,true,word)&&word==0xace0);
  s->trace_boot_cpu();assert(s->logs.empty()&&s->m_boot_trace_second==-1);
  s->opts_.enabled=true;s->main.pc_=0x06000002;s->sound.pc_=0x7fffe;
  s->main.state[SH4_R0]=0x05a00000;s->trace_boot_cpu();

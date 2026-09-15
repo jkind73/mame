@@ -11,7 +11,7 @@ local function share(size)
 end
 local main = {state={PC={value=0x06010276}, R1={value=0x25a004fc}}}
 local sound = {state={PC={value=0x7ea}, SR={value=0x2700},
-    A5={value=0x100000}, A7={value=0x7fffe}}}
+    A2={value=0x806bc}, A5={value=0x100000}, A7={value=0x7fffe}}}
 local scsp = {items={['15/m_udata.data[i]']=0x80,
     ['0/m_current_level']=2, ['0/m_timers[i].counter']=0xff,
     ['0/m_Slots[slot].active']=999}}
@@ -32,6 +32,7 @@ assert(a:find('SCSP 15/m_udata.data[i]=80',1,true))
 assert(a:find('ready 0004f0:',1,true))
 assert(a:find('sound-A7 07fffe: fffe',1,true)) -- clamped at RAM boundary
 assert(not a:find('m_Slots',1,true))
+assert(not a:find('sound-A2 ',1,true)) -- uninstalled expansion is not a RAM alias
 assert(not a:find('sound-A5 ',1,true)) -- never read SCSP MMIO via A5
 callback();assert(reads==n and readfile()==a)
 now=21;callback();now=22;callback();local b=readfile()

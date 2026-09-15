@@ -719,8 +719,10 @@ void sat_console_state::sound_mem(address_map &map) {
   map(0x000000, 0x07ffff)
       .before_delay(NAME([](offs_t) { return 1; }))
       .ram()
-      .mirror(0x80000)
       .share("sound_ram");
+  // ST-077 Figure 1.3: the upper 512 KiB is uninstalled expansion RAM,
+  // not a mirror. Writes here must not overwrite the sound program below.
+  map(0x080000, 0x0fffff).nopw();
   map(0x100000, 0x100fff)
       .before_delay(NAME([](offs_t) { return 1; }))
       .rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write))
