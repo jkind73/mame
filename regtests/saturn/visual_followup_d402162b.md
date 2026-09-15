@@ -1,5 +1,36 @@
 # Visual follow-up: d402162b (2026-09-15)
 
+## Latest: explosion rectangles still present (d0166ac6)
+
+User confirms the 94cc6b24 RGB correction did **not** resolve After Burner II's
+explosion transparency. The new archive contains 670,624 scaled command records;
+every one uses color mode 1 (4-bit lookup table), not RGB texture mode 5. That
+rules out describing the preceding RGB fix as this symptom's solution. The boot
+fix remains user-confirmed. No new emulation change is justified from these
+records alone: texture/LUT contents and framebuffer words are not logged.
+
+Added `regtests/saturn/video_capture.lua`: on F12, capture the visible image,
+VDP1 texture/LUT/command RAM, both framebuffer banks, VDP2 RAM/CRAM/registers
+and small VDP1 state together. No rebuild or verbose log is needed. Standalone
+Lua mocks pass (schema, byte bounds, cap, collisions, missing-item failure);
+live MAME capture delivery is not yet tested. Instructions and binary format:
+`regtests/saturn/video_capture.md`. Geometry and explosion artifacts remain open.
+
+### d0166ac6 evidence details
+
+`regtests/saturn/error.zip` contains one 276,239,113-byte error.log. The new
+console identifies After Burner II, unlike the preceding multi-game console.
+Scaled commands are overwhelmingly PMOD=0808 (LUT, SPD=0, ECD=0, preclip disabled),
+with some 1808 HSS commands. Examples include COLR=0bc4 (LUT byte address 05e20),
+SRCA=7980/79f0 and CMDSIZE=0437, drawing two oppositely oriented 32x55 halves.
+These examples are not proven to be the explosion commands. SPCTL=1325 appears
+in the active game: mixed RGB/palette, sprite type 5. A LUT texel may therefore
+produce RGB, palette, or special sprite data depending on the table entry.
+The raw 4-bit index, resolved 16-bit LUT word and displayed framebuffer pixel
+are the missing discriminators. Do not add a LUT-MSB transparency rule: LUT
+indices are not RGB texture words, and palette output is legal.
+
+
 ## Acceptance and evidence
 
 The user confirms **After Burner II now boots**, following the shared SH DRC
