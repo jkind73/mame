@@ -628,9 +628,9 @@ uint16_t saturn_state::vdp1_regs_r(offs_t offset) {
 // or use the CPU address-space handlers (which may charge bus wait states).
 bool saturn_state::boot_trace_word(u32 address, bool sound, u16 &word) {
   if (sound) {
-    if (address >= 0x00100000)
-      return false;
-    word = m_sound_ram[(address & 0x7ffff) >> 1];
+    if (address >= 0x00080000)
+      return false; // uninstalled expansion area is not a sound-CPU RAM alias
+    word = m_sound_ram[address >> 1];
     return true;
   }
   if (address >= 0x40000000)
