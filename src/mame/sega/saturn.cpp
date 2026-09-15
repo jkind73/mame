@@ -6110,6 +6110,7 @@ uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
       RP.xst == _FIXED_0 && RP.yst == _FIXED_0 &&
       !(rot_parameter == 1 ? VDP2_RAKTE : VDP2_RBKTE) &&
       m_vdp2->get_lsmd() != 3 && !(m_vdp2->get_hreso() & 2) &&
+      !(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR) &&
       VDP2_RPMD < 2) // only a unit-step, coefficient-free translation
   {
     return 0;
@@ -8737,6 +8738,56 @@ static inline uint32_t coef_delta(int32_t delta, int32_t count) {
   return uint32_t(s64(delta) * count);
 }
 
+// ST-058 pp.115-116: OVPNR always uses the one-word pattern-name format,
+// regardless of the ordinary map's pattern_data_size. Decode an unblended dot;
+// the rotation compositor applies windows, color offset and calculation once.
+rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) {
+  unsigned code;
+  if (current_tilemap.character_number_supplement) {
+    code = current_tilemap.tile_size
+        ? ((data & 0x0fff) << 2) | (current_tilemap.supplementary_character_bits & 3) |
+              ((current_tilemap.supplementary_character_bits & 0x10) << 10)
+        : (data & 0x0fff) | ((current_tilemap.supplementary_character_bits & 0x1c) << 10);
+  } else {
+    code = current_tilemap.tile_size
+        ? ((data & 0x03ff) << 2) | (current_tilemap.supplementary_character_bits & 3) |
+              ((current_tilemap.supplementary_character_bits & 0x1c) << 10)
+        : (data & 0x03ff) | (current_tilemap.supplementary_character_bits << 10);
+    if (data & 0x0400) x = ~x;
+    if (data & 0x0800) y = ~y;
+  }
+  unsigned const depth = current_tilemap.colour_depth;
+  if (depth > 4)
+    return rgb_t::transparent(); // prohibited color format
+  unsigned const bytes_per_cell = 32U << (depth == 4 ? 3 : depth >= 2 ? 2 : depth);
+  unsigned const cell = current_tilemap.tile_size ? ((x & 8) >> 3) + ((y & 8) >> 2) : 0;
+  unsigned const dot = (y & 7) * 8 + (x & 7);
+  unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  unsigned address = code * 32 + cell * bytes_per_cell + dot * bytes_per_cell / 64;
+  auto const read = [this, mask](unsigned a) { return m_vdp2_legacy.gfx_decode[a & mask]; };
+  uint32_t raw = read(address);
+  if (depth == 0)
+    raw = (raw >> ((~x & 1) * 4)) & 15;
+  else if (depth >= 2) {
+    raw = (raw << 8) | read(address + 1);
+    if (depth == 4)
+      raw = (raw << 16) | (read(address + 2) << 8) | read(address + 3);
+    else if (depth == 2)
+      raw &= 0x7ff;
+  }
+  bool const covered = depth < 3 ? raw != 0 : (raw & (depth == 3 ? 0x8000 : 0x80000000)) != 0;
+  if (!covered && !(current_tilemap.transparency & STV_TRANSPARENCY_NONE))
+    return rgb_t::transparent();
+  if (depth == 3)
+    return rgb_t(pal5bit(raw), pal5bit(raw >> 5), pal5bit(raw >> 10));
+  if (depth == 4)
+    return rgb_t(raw & 255, (raw >> 8) & 255, (raw >> 16) & 255);
+  unsigned const palette = depth == 0
+      ? ((data >> 12) | (current_tilemap.supplementary_palette_bits << 4)) << 4
+      : depth == 1 ? (data & 0x7000) >> 4 : 0;
+  return m_palette->pen(((palette | raw) + (current_tilemap.colour_ram_address_offset << 8)) & 0x7ff);
+}
+
 void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                                         bitmap_rgb32 &roz_bitmap,
                                         const rectangle &cliprect, int iRP,
@@ -8820,6 +8871,18 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     }
   }
 
+  // Rebuild this small character each output pass, so OVPNR, palette and
+  // character VRAM writes cannot leave a stale pattern in the map cache.
+  rgb_t over_pattern[16 * 16];
+  bool const repeat_pattern = screen_over_process == 1 && !current_tilemap.bitmap_enable;
+  int const over_mask = current_tilemap.tile_size ? 15 : 7;
+  if (repeat_pattern) {
+    uint16_t const name = iRP == 1 ? VDP2_OVPNRA : VDP2_OVPNRB;
+    for (int py = 0; py <= over_mask; ++py)
+      for (int px = 0; px <= over_mask; ++px)
+        over_pattern[py * 16 + px] = vdp2_screen_over_pattern_pixel(name, px, py);
+  }
+
   /* clipping */
   switch (screen_over_process) {
   case 0:
@@ -8828,8 +8891,6 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     break;
   case 1:
     /* screen over pattern */
-    // TODO: not supported, cfr. VDP2_OVPNRA / VDP2_OVPNRB
-    // D-Xhird uses this on practice stage
     clipxmask = ~planesizex;
     clipymask = ~planesizey;
     break;
@@ -8961,7 +9022,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         x = xs >> 16;
         y = ys >> 16;
 
-        if (x & clipxmask || y & clipymask)
+        bool const outside = (x & clipxmask) || (y & clipymask);
+        if (outside && !repeat_pattern)
           continue;
         if (vdp2_roz_window(hcnt, vcnt) == false)
           continue;
@@ -8971,7 +9033,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             continue;
         }
 
-        pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
+        pix = outside ? over_pattern[(y & over_mask) * 16 + (x & over_mask)]
+                      : rgb_t(roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex));
         if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
           if (pix.a()) {
             if (current_tilemap.fade_control & 1)
@@ -9069,7 +9132,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         x >>= 16;
         y >>= 16;
 
-        if (x & clipxmask || y & clipymask)
+        bool const outside = (x & clipxmask) || (y & clipymask);
+        if (outside && !repeat_pattern)
           continue;
         // Coefficient lookup granularity does not bypass either window.
         if (!vdp2_roz_window(hcnt, vcnt))
@@ -9078,7 +9142,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             !vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1))
           continue;
 
-        pix = roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex);
+        pix = outside ? over_pattern[(y & over_mask) * 16 + (x & over_mask)]
+                      : rgb_t(roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex));
         if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
           if (pix.a()) {
             if (current_tilemap.fade_control & 1)

@@ -431,6 +431,7 @@ protected:
   void vdp2_check_tilemap_with_linescroll(bitmap_rgb32 &bitmap,
                                           const rectangle &cliprect);
   void vdp2_check_tilemap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
+  rgb_t vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y);
   void vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap, bitmap_rgb32 &roz_bitmap,
                             const rectangle &cliprect, int iRP, int planesizex,
                             int planesizey, int planerenderedsizex,

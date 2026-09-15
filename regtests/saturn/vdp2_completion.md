@@ -1,5 +1,49 @@
 # VDP2 implementation report and progress tracker
 
+## R01: screen-over-pattern pixels implemented — 2026-09-15
+
+Rotation screen-over mode 1 now repeats the character selected by OVPNRA/OVPNRB
+outside the full screen extent, instead of discarding those pixels. The selected
+name is decoded as one word regardless of ordinary map pattern-name size, using
+PNCR supplement/flip controls, 8×8 or 16×16 characters, all five legal color formats,
+CRAO offsets, raw-dot transparency and VRAM address wrapping. Bitmap mode is not
+assigned an invented pattern behavior; its existing outside clipping is retained.
+
+The character is decoded into at most 256 unblended pixels per output pass. This
+keeps per-output-dot lookup cheap and avoids new persistent cache invalidation or
+save-state fields: register, palette and character-data changes are read anew.
+Both coefficient paths use the same pattern lookup, ordinary/parameter windows,
+coverage test and final color-offset/calculation stages. The unity-transform shortcut
+now requires screen-over repeat mode; other modes cannot bypass their boundaries.
+
+Primary: ST-058 printed pp.115–116, one-word bit layouts pp.69–74, and palette offset
+rules p.215. Pinned MiSTer `VDP2.sv` lines 2872–2873 supplies OVPNR through `PNData`;
+`VDP2_pkg.sv` `PNData` and `RxCHAddr` corroborate supplement/flip/cell addressing.
+Pinned Ymir `VDP2DrawRotationCharBG` has a RepeatChar branch calling its one-word
+extractor, corroborating the mode, but its low-three-bit dot coordinates are not
+used as an oracle for 16×16 cell selection. Sega's character-size rule and MiSTer's
+four-cell addressing are the basis for that case.
+
+Validation:
+- **2,560 decoding configurations**, each checked at 324 positive/negative coordinates
+  against a separate bit-wiring/bitstream oracle; color formats, supplement modes,
+  flips, sizes, transparency, both VRAM sizes, palette offsets and address wrapping.
+- **2,880 screen-over images** through the production compositor: A/B, both ordinary
+  pattern-name sizes, no/line/dot coefficients, ordinary and parameter windows,
+  opaque/ratio/additive output, source boundaries, and whole/split clips.
+- **8,448 dispatch configurations**, including each selected screen-over mode and
+  nonselected-parameter controls. Existing 9,216 rotation images and 360 coverage
+  images still pass.
+- Separate missing-pattern, wrong-A/B-name, missing-flip and shortcut-bypass mutations
+  compile and assertion-fail. Full **28 scripts / eleven object builds pass**.
+
+Palette lookup, coefficient fetch and window inputs remain controlled stand-ins;
+RGB555 conversion retains MAME's current expansion rather than claiming DAC accuracy.
+R01's base pixel path is implemented, but shared special-priority/calculation metadata,
+parameter-switching qualification, linked gameplay, save/load and performance remain
+open. No D-Xhird gameplay result or hardware certification is claimed.
+
+
 ## A03/C01: color-depth screen restrictions — 2026-09-15
 
 Applied the remaining normal-screen color-count exclusions from ST-058 printed
@@ -280,7 +324,7 @@ The largest functional gaps are:
 
 - **Complete per-pixel composition:** special priority, special color calculation, sprite-window masking, destination-layer-aware shadows and additional color-calculation modes.
 - **Line-color screen and mosaic integration:** helper functions exist, but their normal background postprocessing calls are disabled by `TEST_FUNCTIONS == 0`. The mosaic test does not mean the feature is enabled.
-- **Rotation edge cases:** screen-over-pattern mode is explicitly unsupported; parameter switching and window behavior have incomplete paths.
+- **Rotation edge cases:** screen-over-pattern base pixels are implemented; shared special-function metadata and parameter switching still need qualification.
 - **Scroll combinations and reduction controls:** only a subset of combined vertical cell scroll/line scroll is handled; reduction-enable controls are defined but not applied by a complete limiter implementation.
 - **Raster-visible register/memory changes:** the renderer supports clip rectangles, but generic VDP2 writes do not first preserve the already-scanned image. The new VDP1 erase-driven partial updates are not a general VDP2 raster-effects implementation.
 - **VRAM access scheduling:** cycle patterns are checked for access-command presence, not modeled as a bank/slot-accurate fetch and CPU-contention system.
@@ -329,7 +373,7 @@ Function names are the durable anchors; line numbers move as implementation prog
 | RBG1 | Routed through the NBG0 configuration/rotation path | Resource conflicts, priority/window integration and cycle-pattern checks are incomplete; not equivalent to a separately qualified full RBG1 implementation |
 | Rotation coefficients | VRAM and CRAM coefficient-source paths; coefficient-size/mode handling | Addressing, signed stepping, coefficient flags, line-color use and all modes need independent image tests |
 | Rotation parameter switching | Multiple parameter paths and rotation-window preparation exist | Mode-3/no-transform path has a documented limitation; parameter switching/read-control edge cases remain |
-| Screen-over processing | Repeat and transparent-outside paths, including 512×512 restriction | Mode 1 does not draw OVPNRA/OVPNRB screen-over characters; it falls back to clipping behavior |
+| Screen-over processing | Repeat, transparent-outside, 512×512 restriction and OVPNRA/OVPNRB character pixels | Screen-over fixture coverage added; special-function metadata and linked/runtime qualification remain open |
 | Back screen | Single-color and per-line color, DISP/BDCLMD handling and color offsets | Dedicated partial-update/table-wrap tests and the historical Biohazard symptom need verification |
 | Line-color screen | `vdp2_draw_line`, table access and configuration fields exist | Ordinary postprocessing invocation is gated off; correct insertion into the color-calculation pipeline is incomplete |
 | Mosaic | Bounds-aware helper and focused clipping tests exist | Production invocation is gated off; per-layer source sampling/composition and rotation behavior are not complete |
@@ -438,7 +482,8 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [ ] **V2-S02** Complete line-scroll, vertical line-scroll, line-zoom and vertical cell-scroll combinations.
   - [ ] Table stride/interval, simultaneous NBG0/NBG1, screen-left anchoring and wrapping.
   - [ ] Correct per-dot/column behavior without an uncontrolled nested-render cost.
-- [ ] **V2-R01** Implement screen-over-pattern mode using OVPNRA/OVPNRB.
+- [ ] **V2-R01** Implement and qualify screen-over-pattern mode using OVPNRA/OVPNRB. Base pixel path implemented; shared special-function and runtime qualification remain open.
+  - [x] **V2-R01a** Decode and composite repeated OVPNRA/OVPNRB character pixels, with bounded per-pass decoding and clip/dispatch regression coverage.
 - [ ] **V2-R02** Qualify rotation A/B parameters, fixed-point precision and coefficient tables.
   - [ ] VRAM/CRAM, short/long coefficient entries, signed increments and flags.
   - [ ] Repeat, transparent and 512×512 screen-over modes.
