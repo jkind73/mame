@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear'));a=p.parse_args()
 src=subprocess.check_output(['git','show','69995fab:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True) if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text()
 header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -24,6 +24,7 @@ def extract(text,sig):
  return text[start:end]
 functions=[extract(src,'uint8_t saturn_state::vdp2_is_rotation_applied('),extract(src,'void saturn_state::vdp2_draw_rotation_screen(')]
 f='\n'.join(functions)
+if a.mutation=='clear':f=f.replace('fill(rgb_t::transparent(),','fill(rgb_t::black(),')
 if a.mutation=='coefficient':
  f=f.replace('!(rot_parameter == 1 ? VDP2_RAKTE : VDP2_RBKTE)', '(rot_parameter != 0)')
 if a.mutation=='blend':
@@ -35,9 +36,10 @@ code=r'''
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include "palette.h"
 struct rectangle {int min_x=0,max_x=0,min_y=0,max_y=0;rectangle()=default;rectangle(int l,int r,int t,int b):min_x(l),max_x(r),min_y(t),max_y(b){}};
-struct bitmap_rgb32 {bool source=false;bool valid()const{return source;}void allocate(int x,int y){assert(x==4096&&y==4096);source=true;}void fill(uint32_t,const rectangle&){} };
-struct palette {uint32_t black_pen(){return 0;}};
+struct bitmap_rgb32 {bool source=false;bool valid()const{return source;}void allocate(int x,int y){assert(x==4096&&y==4096);source=true;}void fill(uint32_t color,const rectangle&){assert(color==0);} };
+struct palette {uint32_t black_pen(){return rgb_t::black();}};
 struct device {int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}};
 struct profiler {int start(int){return 0;}} g_profiler;
 struct saturn_state {
@@ -123,5 +125,5 @@ code=code.replace('// REGS','\n'.join('int '+n+'=0;' for n in names)).replace('/
 code=code.replace('// MACROS','\n'.join('#define '+n+' regs.'+n for n in names)).replace('// FUNCTIONS',f).replace('// UNDEFS','\n'.join('#undef '+n for n in names))
 with tempfile.TemporaryDirectory(prefix='saturn-vdp2-dispatch-') as d:
  cpp=Path(d)/'test.cpp';exe=Path(d)/'test';cpp.write_text(code)
- subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-O1','-Wall','-Wextra','-Werror','-Wno-unused-variable','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)
+ subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-I',str(ROOT/'src/lib/util'),'-O1','-Wall','-Wextra','-Werror','-Wno-unused-variable','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)
  subprocess.run([str(exe)],check=True)
