@@ -1,5 +1,13 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## Current workstream — VDP2
+
+The source-audited feature matrix and prioritized, stable-ID checklist are now in
+[regtests/saturn/vdp2_completion.md](regtests/saturn/vdp2_completion.md).
+Use that report to track VDP2 implementation, tests and hardware/runtime acceptance;
+older dated notes below are historical. No new emulation change in this audit.
+
+
 ## Update — 2026-09-15: active-display erase
 
 Manual/one-cycle erase now follows presented scanlines, with saved progress and
