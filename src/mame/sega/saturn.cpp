@@ -9334,6 +9334,10 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   */
   current_tilemap.enabled = VDP2_N1ON;
 
+  // ST-058 p.61: RGB888 NBG0 excludes all other normal screens.
+  if (VDP2_N0CHCN == 0x04)
+    current_tilemap.enabled = 0;
+
   //  if (!current_tilemap.enabled) return; // stop right now if its disabled
   //  ...
 
@@ -9435,10 +9439,8 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
   if (VDP2_N0ZMQT || (VDP2_N0ZMHF && VDP2_N0CHCN == 1))
     current_tilemap.enabled = 0;
 
-  /* these modes for N0 disable this layer */
-  if (VDP2_N0CHCN == 0x03)
-    current_tilemap.enabled = 0;
-  if (VDP2_N0CHCN == 0x04)
+  // ST-058 p.61: 2048-color and both RGB formats exclude NBG2.
+  if (VDP2_N0CHCN == 0x02 || VDP2_N0CHCN == 0x03 || VDP2_N0CHCN == 0x04)
     current_tilemap.enabled = 0;
 
   //  if (!current_tilemap.enabled) return; // stop right now if its disabled
@@ -9544,10 +9546,8 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
   //  if (!current_tilemap.enabled) return; // stop right now if its disabled
   //  ...
 
-  /* these modes for N1 disable this layer */
-  if (VDP2_N1CHCN == 0x03)
-    current_tilemap.enabled = 0;
-  if (VDP2_N1CHCN == 0x04)
+  // ST-058 p.61: RGB888 NBG0, or 2048-color/RGB555 NBG1, excludes NBG3.
+  if (VDP2_N0CHCN == 0x04 || VDP2_N1CHCN == 0x02 || VDP2_N1CHCN == 0x03)
     current_tilemap.enabled = 0;
 
   // current_tilemap.trans_enabled = VDP2_N3TPON;
