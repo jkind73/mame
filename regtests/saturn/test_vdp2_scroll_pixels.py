@@ -14,15 +14,18 @@ import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route','11bpp-stride','flip-axis','mosaic-origin'))
+p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route','11bpp-stride','flip-axis','mosaic-origin','fetch-pn','fetch-cp','fetch-vcsc'))
 a=p.parse_args();src=(ROOT/'src/mame/sega/saturn.cpp').read_text();head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
  start=text.index(sig);end=text.index('{',start)+1;depth=1
  while depth:
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
-funcs=[extract(src,sig) for sig in ('void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
+funcs=[extract(src,sig) for sig in ('void saturn_state::vdp2_prepare_vram_access(', 'bool saturn_state::vdp2_normal_vram_access(', 'void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
 f=extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
+if a.mutation=='fetch-vcsc':f=f.replace('cell_y = vdp2_normal_vram_access(address, 0x0c + (t.layer_name & 1))', 'cell_y = true')
+if a.mutation=='fetch-pn':f=f.replace('!vdp2_normal_vram_access(address, current_tilemap.layer_name)', 'false')
+if a.mutation=='fetch-cp':f=f.replace('!vdp2_normal_vram_access(address, current_tilemap.layer_name + 4)', 'false')
 # ST-058 table 4.2: 2048-color cells occupy 128 bytes, not 64.
 # The pinned Ymir character-cell index uses the latter stride; keep that
 # discrepancy visible rather than adopting the emulator as an oracle.
@@ -63,6 +66,9 @@ uint32_t blend(uint32_t d,uint32_t s,unsigned a,bool add){uint32_t r=0xff000000;
 uint32_t alpha_blend_r32(uint32_t d,uint32_t s,unsigned a){return blend(d,s,a,false);}
 uint32_t add_blend_r32(uint32_t d,uint32_t s){return blend(d,s,0,true);}
 struct saturn_state {
+ bool m_vdp2_fetch_access_active=false;
+ std::array<std::array<uint8_t,16>,4> m_vdp2_fetch_slots{};
+
  bool m_vdp2_composition_active=false;
  bitmap_rgb32 m_vdp2_raw_top,m_vdp2_raw_under;
  struct {uint8_t data[24*16]{};uint8_t &pix(int y,int x){assert(x>=0&&x<24&&y>=0&&y<16);return data[y*24+x];}} m_vdp2_raw_alpha,m_vdp2_raw_meta,m_vdp2_under_meta;
@@ -220,12 +226,57 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
   else {assert((pixel.a()&0x80)&&((pixel.a()>>2)&7)==priority&&(pixel.a()&1));assert((uint32_t(pixel)&0xffffff)==0x123456);}
   ++metadata_cases;
  }
+ unsigned access_cases=0;s.m_vdp2_fetch_access_active=true;s.m_vdp2_priority_pass=-1;
+ for(bool size:{false,true})for(unsigned layer=0;layer<4;++layer)for(unsigned bank=0;bank<4;++bank)
+ for(bool bitmap:{false,true})for(bool names:{false,true})for(bool characters:{false,true}){
+  if(bitmap&&layer>=2)continue;
+  s.regs={};s.regs.VDP2_RAMCTL=0x300;s.vid.size=size;
+  uint16_t *cycles[]={&s.regs.VDP2_CYCA0L,&s.regs.VDP2_CYCA0U,&s.regs.VDP2_CYCA1L,&s.regs.VDP2_CYCA1U,
+                      &s.regs.VDP2_CYCA2L,&s.regs.VDP2_CYCA2U,&s.regs.VDP2_CYCA3L,&s.regs.VDP2_CYCA3U};
+  for(auto word:cycles)*word=0xffff;
+  unsigned cp_base=bank<<(size?18:17),pn_bank=bank^1,pn_base=pn_bank<<(size?18:17);
+  *cycles[(characters?bank:bank^2)*2]=0xf0ff|((layer+4)<<8);
+  *cycles[(names?pn_bank:pn_bank^2)*2]=0x0fff|(layer<<12);
+  s.vdp2_prepare_vram_access();
+  t={};t.enabled=1;t.layer_name=layer;t.bitmap_enable=bitmap;t.pattern_data_size=0;t.map_count=4;
+  t.bitmap_map=cp_base/0x20000;t.transparency=1;t.incx=t.incy=65536;
+  for(unsigned m=0;m<4;++m)t.map_offset[m]=pn_base/0x4000;
+  put(cp_base/4,0x11111111);put(pn_base/4,cp_base/32);
+  bool allowed=characters&&(bitmap||names);
+  rgb_t sample=s.vdp2_scroll_pixel(0,0);
+  assert(uint32_t(sample)==(allowed?s.pal.pen(1):0));
+  bitmap_rgb32 out,expected;
+  if(allowed)expected.pix(0,0)=s.pal.pen(1);
+  s.route(out,{0,0,0,0});assert(out.data==expected.data);++access_cases;
+ }
+ unsigned vertical_access_cases=0;
+ for(unsigned layer=0;layer<2;++layer)for(bool both:{false,true})for(unsigned fault=0;fault<3;++fault){
+  s.regs={};s.regs.VDP2_RAMCTL=0x300;s.vid.size=false;
+  s.regs.VDP2_N0VCSC=layer==0||both;s.regs.VDP2_N1VCSC=layer==1;
+  s.regs.VDP2_VCSTAU=2;
+  s.regs.VDP2_CYCA0L=s.regs.VDP2_CYCA0U=(layer+4)*0x1111;
+  s.regs.VDP2_CYCA1L=s.regs.VDP2_CYCA1U=0xffff;
+  s.regs.VDP2_CYCA2L=s.regs.VDP2_CYCA2U=s.regs.VDP2_CYCA3L=s.regs.VDP2_CYCA3U=0xffff;
+  auto &slotword=fault==2?s.regs.VDP2_CYCA3L:s.regs.VDP2_CYCA2L;
+  unsigned slot=fault==1?3:layer==1&&both?1:0,shift=12-slot*4;
+  slotword=(slotword&~(15<<shift))|((12+layer)<<shift);
+  if(layer==1&&both)slotword=(slotword&0x0fff)|0xc000;
+  s.vdp2_prepare_vram_access();
+  t={};t.enabled=1;t.layer_name=layer;t.bitmap_enable=1;t.vertical_cell_scroll_enable=1;
+  t.incx=t.incy=65536;t.linescroll_interval=1;
+  put(0,0x11111111);put(256/4,0x22222222);
+  put(0x40000/4+(layer==1&&both?1:0),65536);
+  bitmap_rgb32 out;s.vdp2_draw_scroll_screen(out,{0,0,0,0});
+  assert(out.pix(0,0)==s.pal.pen(fault==0?2:1));++vertical_access_cases;
+ }
+ std::cout<<vertical_access_cases<<" real VCSC fetch-gated scroll images passed\n";
+ std::cout<<access_cases<<" real PN/CP addressed-bank and normal-route images passed\n";
  std::cout<<metadata_cases<<" all-layer priority/code metadata cases passed\n";
  std::cout<<cases<<" fractional tile/bitmap and combined scroll/mosaic images passed\n";
 }
 '''
 code=code.replace('// ROUTE',route)
-code=code.replace('// TILEMAP',extract(head,'struct vdp2_tilemap_capabilities {')+' current_tilemap;').replace('// REGS','\n'.join('unsigned '+n+'=0;' for n in names)).replace('// DECLS','\n'.join(x[:x.index('{')].replace('saturn_state::','')+';' for x in funcs)).replace('// MACROS','\n'.join('#define '+n+' regs.'+n for n in names)).replace('// FUNCTIONS',f).replace('// UNDEFS','\n'.join('#undef '+n for n in names))
+code=code.replace('// TILEMAP',extract(head,'struct vdp2_tilemap_capabilities {')+' current_tilemap;').replace('// REGS','\n'.join(('uint16_t ' if n.startswith('VDP2_CYCA') else 'unsigned ')+n+'=0;' for n in names)).replace('// DECLS','\n'.join(x[:x.index('{')].replace('saturn_state::','')+';' for x in funcs)).replace('// MACROS','\n'.join('#define '+n+' regs.'+n for n in names)).replace('// FUNCTIONS',f).replace('// UNDEFS','\n'.join('#undef '+n for n in names))
 with tempfile.TemporaryDirectory(prefix='saturn-scroll-pixels-') as d:
  cpp=Path(d)/'test.cpp';exe=Path(d)/'test';cpp.write_text(code)
  subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-I',str(ROOT/'src/lib/util'),'-O1','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)

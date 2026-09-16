@@ -47,6 +47,9 @@ struct palette {uint32_t black_pen(){return rgb_t::black();}};
 struct device {bool large=false;bool get_vramsz(){return large;}int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}};
 struct profiler {int start(int){return 0;}} g_profiler;
 struct saturn_state {
+ // Fetch scheduling is independently exercised by test_vdp2_cycle_patterns.py.
+ bool m_vdp2_fetch_access_active=false;
+
  bool m_vdp2_composition_active=false;
  static constexpr int ROTATION_SCANLINES=1024;bool m_rotation_line_valid[ROTATION_SCANLINES]{};
  // DECLS

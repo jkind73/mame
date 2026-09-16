@@ -259,6 +259,7 @@ local function configure(c)
     reg(0x0e,0x1000)
     local cp=layer+4
     local cycle=c.cell and ((layer<<12)|(cp<<8)|(cp<<4)|cp) or cp*0x1111
+    c.cycle=cycle
     for offset=0x10,0x1e,2 do reg(offset,cycle) end
     local bytes=({0.5,1,2,2,4})[c.depth+1]
     local dot=c.depth==0 and 0x11111111 or c.depth==1 and 0x01010101 or c.depth==2 and 0x00010001 or c.depth==3 and 0x801f801f or 0x800000ff
@@ -493,6 +494,25 @@ local function configure(c)
     c.address=(c.table_bases or c.line_color) and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
     if c.shadow and c.shadow.target==4 then c.address=0x20000;c.dot=0x00060006 end
 end
+-- Leave the requested command in the other physical RAM group. The old
+-- global-presence gate would still allow rendering; only addressed-bank
+-- consumers can reject these reads. RAMCTL leaves each A/B group unsplit.
+-- The blue fallback is this renderer's no-fetch policy, not a hardware
+-- assertion about stale fetch-latch pixels from an illegal schedule.
+local function deny_normal_fetch(c,pattern_name)
+    local command=c.layer+(pattern_name and 0 or 4)
+    local address=pattern_name and (0x80000%c.capacity) or c.address
+    local base=address<c.capacity//2 and 0x10 or 0x18
+    local cycle=0
+    for shift=0,12,4 do
+        local value=(c.cycle>>shift)&15
+        cycle=cycle|((value==command and 15 or value)<<shift)
+    end
+    for offset=base,base+6,2 do reg(offset,cycle) end
+end
+local function restore_normal_fetch(c)
+    for offset=0x10,0x1e,2 do reg(offset,c.cycle) end
+end
 local function paint_sprite_framebuffer(inverted)
     -- CPU framebuffer accesses target only the drawing bank (ST-013 p.38).
     -- 16-bit 512x256 mode: alternate transparent and test-data pixels.
@@ -662,8 +682,23 @@ local function step()
     elseif wait>0 then wait=wait-1
     elseif phase=='sprite-draw' then
         paint_sprite_framebuffer(false);phase='render';wait=3
+    elseif phase=='bus-denied-data' then
+        pixels(0x0000ff);restore_normal_fetch(cases[index])
+        if cases[index].cell then
+            deny_normal_fetch(cases[index],true);phase='bus-denied-name'
+        else phase='bus-restore' end
+        wait=3
+    elseif phase=='bus-denied-name' then
+        pixels(0x0000ff);restore_normal_fetch(cases[index]);phase='bus-restore';wait=3
+    elseif phase=='bus-restore' then
+        cases[index].bus_qualified=true;phase='render'
     elseif phase=='render' then
-        pixels(cases[index].expected or 0xff0000);reference=screen:pixels();assert(#reference>0)
+        pixels(cases[index].expected or 0xff0000)
+        if not composition and not cases[index].rotation and not cases[index].bus_qualified then
+            deny_normal_fetch(cases[index],false);phase='bus-denied-data';wait=3
+            return
+        end
+        reference=screen:pixels();assert(#reference>0)
         saved=false;os.remove(output..'/runtime.sta');machine:save(output..'/runtime.sta');phase='save';wait=3
     elseif phase=='save' then
         assert(saved,'save notification missing')

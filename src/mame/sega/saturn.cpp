@@ -6182,6 +6182,45 @@ void saturn_state::vdp2_check_fade_control_for_layer() {
 #define VDP2_CP_NBG2_CPDR 0x6
 #define VDP2_CP_NBG3_CPDR 0x7
 
+// ST-058 pp.31-32,149-150: a normal fetch must address the bank that
+// actually schedules its command. Keep the slot positions, rather than just
+// global presence, for the remaining bandwidth/arbitration work.
+void saturn_state::vdp2_prepare_vram_access() {
+  uint16_t const cycles[] = {VDP2_CYCA0L, VDP2_CYCA0U, VDP2_CYCA1L, VDP2_CYCA1U,
+                            VDP2_CYCA2L, VDP2_CYCA2U, VDP2_CYCA3L, VDP2_CYCA3U};
+  unsigned const slots = (m_vdp2->get_hreso() & 6) ? 4 : 8;
+  for (unsigned bank = 0; bank < 4; ++bank) {
+    auto &commands = m_vdp2_fetch_slots[bank];
+    commands.fill(0);
+    unsigned const effective = (VDP2_RAMCTL & (0x100U << (bank / 2))) ? bank : bank & ~1U;
+    if ((bank >= 2 && VDP2_R1ON) ||
+        (VDP2_R0ON && ((VDP2_RAMCTL >> (effective * 2)) & 3)))
+      continue;
+    for (unsigned slot = 0; slot < slots; ++slot) {
+      unsigned const command = (cycles[effective * 2 + slot / 4] >> (12 - (slot % 4) * 4)) & 15;
+      commands[command] |= 1U << slot;
+    }
+  }
+}
+
+bool saturn_state::vdp2_normal_vram_access(uint32_t address, unsigned command) const {
+  if (!m_vdp2_fetch_access_active)
+    return true; // retained isolated renderer helpers, outside screen scanout
+  unsigned const bank = (address >> (m_vdp2->get_vramsz() ? 18 : 17)) & 3;
+  uint8_t const slots = m_vdp2_fetch_slots[bank][command & 15];
+  // ST-058 p.35: VCSC has an early fetch window; if both surfaces use it,
+  // NBG0 precedes NBG1 in that same physical bank.
+  if (command == 0x0c)
+    return (slots & 3) != 0;
+  if (command == 0x0d) {
+    if (!VDP2_N0VCSC)
+      return (slots & 7) != 0;
+    auto const first = m_vdp2_fetch_slots[bank][0x0c];
+    return ((first & 1) && (slots & 6)) || ((first & 2) && (slots & 4));
+  }
+  return slots != 0;
+}
+
 uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
     uint8_t access_command_pnmdr, uint8_t access_command_cpdr,
     uint8_t bitmap_enable) {
@@ -8558,7 +8597,8 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
   // fractions, line/cell combinations and mosaic before final composition.
   // Rotation source caches continue to use their unscrolled tile/bitmap path.
   if (current_tilemap.layer_name < 4 &&
-      ((current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
+      (m_vdp2_fetch_access_active ||
+       (current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
        m_vdp2_composition_active || current_tilemap.scrollx_fraction || current_tilemap.scrolly_fraction ||
        current_tilemap.incx != 0x10000 || current_tilemap.incy != 0x10000 ||
        current_tilemap.linescroll_enable || current_tilemap.vertical_linescroll_enable ||
@@ -9073,6 +9113,9 @@ rgb_t saturn_state::vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned
 // the rotation compositor applies windows, color offset and calculation once.
 rgb_t saturn_state::vdp2_dot_pixel(uint32_t address, int x, unsigned palette) {
   unsigned const depth = current_tilemap.colour_depth;
+  if (current_tilemap.layer_name < 4 &&
+      !vdp2_normal_vram_access(address, current_tilemap.layer_name + 4))
+    return rgb_t::transparent();
   unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   auto const read = [this, mask](unsigned a) { return m_vdp2_legacy.gfx_decode[a & mask]; };
   uint32_t raw = read(address);
@@ -9197,6 +9240,9 @@ rgb_t saturn_state::vdp2_scroll_pixel(int32_t x, int32_t y) {
   unsigned const name_index = ((sy & 511) / cell_size) * page_columns + ((sx & 511) / cell_size);
   unsigned const address = (base_page + page) * page_bytes + name_index * name_bytes;
   unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
+  if (current_tilemap.layer_name < 4 &&
+      !vdp2_normal_vram_access(address, current_tilemap.layer_name))
+    return rgb_t::transparent();
   uint32_t data = m_vdp2_vram[(address / 4) & word_mask];
   if (name_bytes == 2)
     data = (address & 2) ? data & 0xffff : data >> 16;
@@ -9248,7 +9294,9 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
       if (cell_scroll) {
         unsigned const cell = unsigned((source_x >> 19) - first_cell);
         if (cell != last_cell) {
-          cell_y = util::sext(m_vdp2_vram[(cell_base + cell * cell_stride) & word_mask] & 0x07ffff00, 27);
+          unsigned const address = ((cell_base + cell * cell_stride) & word_mask) * 4;
+          cell_y = vdp2_normal_vram_access(address, 0x0c + (t.layer_name & 1))
+              ? util::sext(m_vdp2_vram[address / 4] & 0x07ffff00, 27) : 0;
           last_cell = cell;
         }
       }
@@ -11598,6 +11646,8 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
   m_vdp2_composition_active = false;
   vdp2_window_cache_invalidate();
 
+  vdp2_prepare_vram_access();
+  m_vdp2_fetch_access_active = true;
   vdp2_fade_effects();
 
   vdp2_draw_back(m_tmpbitmap, cliprect);
@@ -11639,6 +11689,7 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
 
   m_vdp2_priority_pass = -1;
   m_vdp2_composition_active = false;
+  m_vdp2_fetch_access_active = false;
   copybitmap(bitmap, m_tmpbitmap, 0, 0, 0, 0, cliprect);
 
 #if 0

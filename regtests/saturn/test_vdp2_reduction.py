@@ -50,6 +50,9 @@ code=r'''
 struct rectangle {};
 struct bitmap_rgb32 {bool drawn=false;};
 struct saturn_state {
+ // Fetch scheduling is independently exercised by test_vdp2_cycle_patterns.py.
+ bool m_vdp2_fetch_access_active=false;
+
  uint16_t m_vdp2_regs[256]{};
  struct device {int get_hreso(){return 0;}int get_vramsz(){return 0;}int get_lsmd(){return 0;}} video;
  device *m_vdp2=&video;

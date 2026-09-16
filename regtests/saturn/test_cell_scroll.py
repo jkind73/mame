@@ -64,6 +64,9 @@ struct table {
   }
 };
 struct saturn_state {
+ // Fetch scheduling is independently exercised by test_vdp2_cycle_patterns.py.
+ bool m_vdp2_fetch_access_active=false;
+
   struct tilemap {
     bool linescroll_enable = true, vertical_cell_scroll_enable = true;
     bool vertical_linescroll_enable = false, linezoom_enable = false, bitmap_enable = false;
