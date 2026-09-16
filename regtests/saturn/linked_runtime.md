@@ -1,5 +1,29 @@
 # Linked Saturn / ST-V qualification
 
+
+
+## V2-A04c: expanded linked-background fixture — 2026-09-16
+
+The linked fixture now defines **46 cases per system**: NBG0 cells/bitmaps at five
+depths, NBG1 cells/bitmaps at four depths, NBG2/NBG3 cells at two depths, and the
+existing RBG0 11-bit cell case, each at both VRAM capacities. Normal 16x16 cells
+use four distinct 8x8 colors and alternating horizontal/vertical pattern-name flips;
+independent screen-coordinate expectations distinguish swapped H/V decoding.
+The same real-save/memory/palette/mode/priority mutation and full-image replay
+checks apply. This is authored coverage, **not yet linked execution evidence**.
+
+ST-058 printed pp.60–61 and 69–75 were re-read from the pinned SDK blob for legal
+formats, character-number supplements and flip encoding. No new production fix is
+inferred from an unexecuted fixture. The runner now requires every ordered case
+record plus an exact completion marker; BIOS markers must match the selected system.
+
+**47 regression scripts pass**, including 28 fake-executable runner-protocol cases;
+the Lua syntax check passes. The fake executable tests failure detection, not video.
+The unchanged production sources retain the earlier eleven-object compilation pass.
+The full build was reduced to one job to avoid concurrent high-memory GCC units;
+link/validate and current-checkout BIOS/synthetic replay remain pending. Parent A04
+and full VDP2 acceptance remain open.
+
 ## Recovery status — 2026-09-16
 
 The sandbox restoration lost unpushed commit `ade338f9` and its linked executable,
@@ -45,9 +69,9 @@ must be supplied by the user. Outputs, SDK, generated objects, snapshots and sav
 states stay outside Git. The runner checks PASS markers, not merely exit status:
 Lua assertions may otherwise leave an emulator process exit code of zero.
 
-Synthetic mode settles 180 frames then holds both SH-2s in RAM loops. Fourteen cases
-cover five NBG0 bitmap depths and NBG0/RBG0 11-bit palette cells at both capacities.
-Each checks sixteen red probes, schedules a real save, mutates VRAM, CRAM, priority,
+Synthetic mode settles 180 frames then holds both SH-2s in RAM loops. The expanded
+46-case matrix is specified above. Each checks sixteen independently expected
+color probes, schedules a real save, mutates VRAM, CRAM, priority,
 CRAM mode and VRSIZE to blue output, loads, checks restored state and full-image
 identity. It exercises the linked CPU maps, renderer and save manager, not games.
 
