@@ -1,5 +1,33 @@
 # Sega SDK hardware-document audit
 
+## V2-A04d / C05 linked two-background qualification — 2026-09-16
+
+Continued from isolated backgrounds into real linked composition. **138 additional
+cases per configuration pass** on JP/PAL/ST-V DRC and JP interpreter (552 new cases):
+NBG0/NBG1 tie order, NBG1 above NBG0, priority-zero suppression, all 32 color ratios
+using both top- and second-screen ratio selection, additive saturation, and disabled
+calculation on the top screen despite calculation enabled below it. Both physical
+VRAM capacities are covered. Each scene uses the real palette, bitmap consumers,
+compositor and save manager; sixteen expected-color probes plus restored memory and
+full-image replay are checked. The additive scene uses red over yellow to force
+red-channel saturation, not merely disjoint-channel addition.
+
+Current total: **736 synthetic cases (552 DRC / 184 interpreter), four visible BIOS
+replays, 47 regression scripts, eleven production objects and a clean focused link /
+`-validate` for 122 runnable systems**. The runner now distinguishes the 46-case
+background suite from the optional 138-case `--composition` suite. Its 44 fake-
+executable protocol cases pass; they are not renderer evidence. Production ratio
+and disabled-second-ratio mutations also compile and fail image/state assertions.
+
+Primary basis: ST-058 pp.241–244 for calculation enable, ratio source, /32 weights
+and additive mode. Normal-resolution 512x256 bitmaps and 16x16 one-word cells are
+bounded coverage, not every size, pattern format, partial clip, resource conflict or
+combined effect. C05/A04 parents remain open for those combinations and hardware
+qualification. Full VDP2, exact bus/latch timing, external video, games/title placement
+and comparative performance are not declared complete. Evidence and capture hashes
+are in `regtests/saturn/linked_runtime_results.json`; reproduction is in
+`regtests/saturn/linked_runtime.md`.
+
 ## Fresh linked qualification — 2026-09-16
 
 The reconstructed executable now **links and passes `-validate` for 122 runnable
