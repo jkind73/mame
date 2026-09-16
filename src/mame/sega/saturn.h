@@ -151,11 +151,21 @@ protected:
   bitmap_rgb32 m_tmpbitmap;
   bitmap_rgb32 m_vdp2_raw_top;
   bitmap_ind8 m_vdp2_raw_alpha;
+  bitmap_ind8 m_vdp2_raw_meta;
+  bitmap_rgb32 m_vdp2_raw_under;
+  bitmap_ind8 m_vdp2_under_meta;
+  bool m_vdp2_extended_active = false;
+  bool m_vdp2_gradation_active = false;
+  bool m_vdp2_gradation_capture = false;
+  unsigned m_vdp2_gradation_layer = 7;
+  bitmap_rgb32 m_vdp2_gradation_source;
+  void vdp2_capture_gradation(const rectangle &cliprect);
+  bool vdp2_calculation_window(int x, int y);
   bool m_vdp2_composition_active = false;
   void vdp2_begin_composition(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void vdp2_compose_pixel(bitmap_rgb32 &bitmap, int x, int y, rgb_t color,
-                          bool calculate, unsigned alpha, bool insert_line, rgb_t line_color);
-  void vdp2_shadow_pixel(bitmap_rgb32 &bitmap, int x, int y);
+                          bool calculate, unsigned alpha, bool insert_line, rgb_t line_color, unsigned source);
+  void vdp2_shadow_pixel(bitmap_rgb32 &bitmap, int x, int y, bool layer_select);
 
   int m_scsp_last_line = 0;
 
@@ -370,8 +380,8 @@ protected:
   // Per the manual, when the W0, W1 and SW enable bits of a screen are all zero
   // the logic bit alone decides the outcome: OR (0) leaves the whole screen
   // outside of the window effective area, AND (1) puts the whole screen inside
-  // of it. The sprite window is not emulated as a window source, so when it is
-  // the only window in use keep drawing the screen instead of blanking it.
+  // of it. Enabled sprite windows are evaluated in the cached row, including
+  // their area selection; this helper is used only when all windows are off.
   // Inline: this is the common case, most layers run without any window.
   int vdp2_window_all_disabled() const {
     if (current_tilemap.window_control.sprite_window)
@@ -533,7 +543,7 @@ protected:
       uint8_t logic = 0;
       uint8_t enabled[2]{};
       uint8_t area[2]{};
-      uint8_t sprite_window = 0;
+      uint8_t sprite_window = 0; // bit 0 enable, bit 1 area
     } window_control;
 
     uint8_t line_screen_enabled = 0;
