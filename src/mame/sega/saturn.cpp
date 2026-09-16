@@ -4176,10 +4176,10 @@ N2CHCN   | N2CHSZ   |
 #define VDP2_MPOFN_ (m_vdp2_regs[0x03c / 2])
 
 /* Higher 3 bits of the map offset for each layer */
-#define VDP2_N3MP_ ((VDP2_MPOFN_ & 0x3000) >> 12)
-#define VDP2_N2MP_ ((VDP2_MPOFN_ & 0x0300) >> 8)
-#define VDP2_N1MP_ ((VDP2_MPOFN_ & 0x0030) >> 4)
-#define VDP2_N0MP_ ((VDP2_MPOFN_ & 0x0003) >> 0)
+#define VDP2_N3MP_ ((VDP2_MPOFN_ & 0x7000) >> 12)
+#define VDP2_N2MP_ ((VDP2_MPOFN_ & 0x0700) >> 8)
+#define VDP2_N1MP_ ((VDP2_MPOFN_ & 0x0070) >> 4)
+#define VDP2_N0MP_ ((VDP2_MPOFN_ & 0x0007) >> 0)
 
 /* 18003E - Map Offset (Rotation Parameter A,B)
  bit->
@@ -4193,8 +4193,8 @@ N2CHCN   | N2CHSZ   |
 
 #define VDP2_MPOFR_ (m_vdp2_regs[0x03e / 2])
 
-#define VDP2_RBMP_ ((VDP2_MPOFR_ & 0x0030) >> 4)
-#define VDP2_RAMP_ ((VDP2_MPOFR_ & 0x0003) >> 0)
+#define VDP2_RBMP_ ((VDP2_MPOFR_ & 0x0070) >> 4)
+#define VDP2_RAMP_ ((VDP2_MPOFR_ & 0x0007) >> 0)
 
 /* 180040 - MPABN0 - Map (NBG0, Plane A,B)
  bit->
@@ -8558,7 +8558,8 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
   // fractions, line/cell combinations and mosaic before final composition.
   // Rotation source caches continue to use their unscrolled tile/bitmap path.
   if (current_tilemap.layer_name < 4 &&
-      (m_vdp2_composition_active || current_tilemap.scrollx_fraction || current_tilemap.scrolly_fraction ||
+      ((current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
+       m_vdp2_composition_active || current_tilemap.scrollx_fraction || current_tilemap.scrolly_fraction ||
        current_tilemap.incx != 0x10000 || current_tilemap.incy != 0x10000 ||
        current_tilemap.linescroll_enable || current_tilemap.vertical_linescroll_enable ||
        current_tilemap.linezoom_enable || current_tilemap.vertical_cell_scroll_enable ||
@@ -8680,9 +8681,6 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
     vdp2_draw_mosaic(bitmap, cliprect, current_tilemap.layer_name & 0x80);
 
   {
-    if (current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable)
-      popmessage("2048 color mode used on a non-bitmap plane");
-
     //      if(VDP2_SCXDN0 || VDP2_SCXDN1 || VDP2_SCYDN0 || VDP2_SCYDN1)
     //          popmessage("Fractional part scrolling write");
 
@@ -9384,7 +9382,8 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   }
 
   bool const special_priority = vdp2_special_priority_mode() != 0;
-  bool const sample_attributes = special_priority || (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode());
+  bool const sample_attributes = (current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
+      special_priority || (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode());
   bool have_source = false;
   int last_source_x = 0, last_source_y = 0;
   rgb_t source_pixel;
@@ -10431,7 +10430,10 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
   // Special functions need dot attributes that the RGB-only source cache
   // cannot retain. Decode bounded output samples directly, including all 16
   // rotation maps, rather than rebuilding a full multi-megapixel cache.
-  if (vdp2_special_priority_mode() ||
+  // The legacy cell decoder has only 4/8-bit palette layouts. Decode
+  // 11-bit palette cells directly as well, even with no special effects.
+  if ((current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
+      vdp2_special_priority_mode() ||
       (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode())) {
     vdp2_copy_roz_bitmap(bitmap, m_vdp2_legacy.roz_bitmap[iRP - 1], cliprect,
         iRP, planesizex, planesizey, planesizex, planesizey);

@@ -20,6 +20,12 @@ def extract(sig):
     while depth:
         depth += (src[end]=='{')-(src[end]=='}'); end += 1
     return src[start:end]
+# Preserve the high aperture bit until the size-aware handler sees it.
+for filename in ('sat_console.cpp', 'stv.cpp'):
+    driver = (ROOT/'src/mame/sega'/filename).read_text()
+    start = driver.index('map(0x05e00000,')
+    mapping = driver[start:driver.index('map(0x05f00000,', start)]
+    assert '0x05efffff' in mapping and '.mirror(' not in mapping
 funcs = [extract('uint32_t saturn_state::vdp2_vram_r('), extract('void saturn_state::vdp2_vram_w(')]
 if a.mutation:
     index = 0 if a.mutation == 'read' else 1
