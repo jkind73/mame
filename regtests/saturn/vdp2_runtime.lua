@@ -141,9 +141,21 @@ if composition then
                 end
             end
         end
+        -- All three enabled windows: cross every area polarity with both
+        -- active-area LOG settings. Expected retained predicates use De Morgan.
+        for area=0,7 do
+            for logic=0,1 do
+                for _,calculation in ipairs({false,true}) do
+                    local c=add('mixed-window-'..area..'-'..logic..'-'..tostring(calculation),
+                        0x0102,calculation and 1 or 0,15,0xff0000)
+                    c.sprite_window={sprite_type=2,calculation=calculation,inside=(area&4)~=0,
+                        mixed={area=area,logic=logic}}
+                end
+            end
+        end
     end
 end
-assert(#cases==(composition and 386 or 46))
+assert(#cases==(composition and 450 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -301,6 +313,13 @@ local function configure(c)
         space:write_u16(0x05d00000,0);space:write_u16(0x05d00002,3)
         reg(0xe0,0x10|c.sprite_window.sprite_type)
         local control=0x20|(c.sprite_window.inside and 0x10 or 0)
+        if c.sprite_window.mixed then
+            local m=c.sprite_window.mixed
+            control=control|0x0a|(m.area&1)|((m.area&2)<<1)|(m.logic<<7)
+            -- Normal-resolution window X coordinates are doubled in registers.
+            reg(0xc0,31*2);reg(0xc2,17);reg(0xc4,127*2);reg(0xc6,63)
+            reg(0xc8,63*2);reg(0xca,31);reg(0xcc,255*2);reg(0xce,127)
+        end
         if c.sprite_window.calculation then reg(0xd6,control<<8)
         else reg(0xd0,control) end
     end
@@ -339,6 +358,13 @@ local function pixels(expected)
             if c.sprite_window and expected~=0x0000ff then
                 local inside=(x//13+y//9)%2==0
                 local keep=inside==c.sprite_window.inside
+                if c.sprite_window.mixed then
+                    local m=c.sprite_window.mixed
+                    local a=(x>=31 and x<=127 and y>=17 and y<=63)==((m.area&1)~=0)
+                    local b=(x>=63 and x<=255 and y>=31 and y<=127)==((m.area&2)~=0)
+                    if m.logic==0 then keep=keep and a and b
+                    else keep=keep or a or b end
+                end
                 if c.sprite_window.calculation then want=keep and 0x7f7f00 or 0xff0000
                 else want=keep and 0xff0000 or 0x00ff00 end
             end

@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('window','nibble','additive','fraction'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('window','nibble','additive','fraction','sprite-logic'));a=p.parse_args()
 source=(ROOT/'src/mame/sega/saturn.cpp').read_text();header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(src,sig):
     start=src.index(sig);end=src.index('{',start)+1;depth=1
@@ -26,6 +26,10 @@ sigs+=['void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_
 funcs=[extract(source,s) for s in sigs]
 decls='\n'.join(f[:f.index('{')].replace('saturn_state::','').strip()+';' for f in funcs)
 functions=extract(source,'static void fixup_window_x(')+'\n'+'\n'.join(funcs)
+if a.mutation=='sprite-logic':
+    old='res = logic_or ? (res | keep) : (res & keep);'
+    assert functions.count(old)==1
+    functions=functions.replace(old,'res = logic_or ? (res & keep) : (res | keep);')
 if a.mutation=='additive':functions=functions.replace('else if (VDP2_CCMD)', 'else if (false && VDP2_CCMD)')
 if a.mutation=='window':functions=functions.replace('if (!vdp2_window_process(xdst, ydst))','if (false)')
 if a.mutation=='nibble':functions=functions.replace('((xsrc & 1) ? 0 : 4)','((xsrc & 1) ? 4 : 0)')
