@@ -1,5 +1,35 @@
 # VDP2 implementation report and progress tracker
 
+## V2-T03e: legacy cell-map physical addressing — 2026-09-16
+
+Legacy tilemap base calculation now uses the configured 512 KiB/1 MiB byte mask,
+instead of forcing 512 KiB under a historical game-specific comment. Both one-word
+and two-word pattern-name fetches also mask their complete final longword index.
+The existing map/page geometry, name decoding and character rendering are unchanged.
+Rotation-cache map watches use the same physical bases and complete plane lengths;
+the redundant extra-page extension is removed. A defensive wrapped-range fallback
+covers the physical allocation. The separate character watch is unchanged.
+
+Primary evidence: ST-058 pp.82–83, table 4.8, gives map selection address units for
+one/two-word names, 8/16-dot characters and each legal plane size, and explicitly
+omits the highest used bit only at 4 Mbit. Capacity rules are pp.26–28. The pinned
+Ymir shared physical-address wrapping cross-check remains limited to 512 KiB;
+1-MiB address expectations here are derived from Sega's map table.
+
+**43 scripts and eleven production object builds pass**. New fixture executes the
+production base loop, pattern-name read expressions and map-watch setup against
+independent page-byte/alignment arithmetic: **24,576** both-size/name/tile/plane/
+4-or-16-map/register configurations and **3,442,688** fetch probes. Legal aligned
+planes do not straddle physical memory; extra synthetic offset probes separately
+exercise defensive final-index wrapping. Base-mask, final-fetch-mask and oversized
+watch mutations compile and fail assertions. Geometry and memory are controlled;
+this is not a complete legacy tile-renderer image or linked-game test.
+
+T03 remains partial for character-pixel fetch/decode tails, including physical-end
+wrapping in retained render helpers. Hardware fetch timing, linked save/load/game
+acceptance and performance qualification remain open. No measured speedup claimed.
+
+
 ## V2-T03d: CPU VRAM physical aliases and write coherence — 2026-09-16
 
 CPU VRAM read/write handlers now normalize the longword offset to the configured
@@ -1171,6 +1201,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [x] **V2-T03b** Configured bitmap and legacy scroll-table wrapping; format/size-aware bitmap watch ranges and VRAM-size cache keys.
 - [x] **V2-T03c** Wrap every rotation-parameter and retained line-color table fetch to physical size; decoding/latch/line indexing unchanged.
 - [x] **V2-T03d** CPU read/write physical aliases and decode/cache/preservation coherence; extracted handler tests, not bus timing.
+- [x] **V2-T03e** Legacy cell-map bases, final name-fetch masks and physical plane watch extents; extracted arithmetic tests.
 - [ ] **V2-T03** Qualify VRAM size/address masking and cache invalidation for all consumers.
 
 ### P4 — Display timing and external interfaces
