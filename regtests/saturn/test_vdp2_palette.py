@@ -12,7 +12,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--layout-baseline',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--layout-baseline',action='store_true');p.add_argument('--mutation',choices=('mirror-preserve','redundant-preserve','late-preserve'));a=p.parse_args()
 src=(subprocess.check_output(['git','show',('77d4b989' if a.layout_baseline else 'c43dded9')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
      if a.baseline or a.layout_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(sig):
@@ -22,6 +22,25 @@ def extract(sig):
         depth+=(text[end]=='{')-(text[end]=='}');end+=1
     return text[start:end]
 functions='\n'.join(extract(s) for s in ('static constexpr bool vdp2_per_dot_coefficients(', 'uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_read_rotation_coefficient('))
+if a.mutation=='mirror-preserve':
+    old='(cmode0 && ((vdp2_cram_r(offset ^ 0x200) ^ data) & mem_mask))'
+    assert functions.count(old)==1
+    functions=functions.replace(old,'false')
+if a.mutation=='late-preserve':
+    old='  offset &= (0xfff) >> (2);'
+    # Preserve the writer's decision, but invoke the callback too late.
+    start=functions.index('void saturn_state::vdp2_cram_w(')
+    point=functions.index(old,start)+len(old)
+    functions=functions[:point]+'\n  bool preserve = false;'+functions[point:]
+    functions=functions.replace('    m_vdp2->preserve_scanned_output();','    preserve = true;')
+    old='  mark_fade_effects_dirty();'
+    start=functions.index('void saturn_state::vdp2_cram_w(')
+    point=functions.index(old,start)
+    functions=functions[:point]+'  if (preserve) m_vdp2->preserve_scanned_output();\n'+functions[point:]
+if a.mutation=='redundant-preserve':
+    old='    m_vdp2->preserve_scanned_output();'
+    assert functions.count(old)==1
+    functions=functions.replace(old,'    (void)0;\n  m_vdp2->preserve_scanned_output();')
 code=r'''
 #include <array>
 #include <cassert>
@@ -36,7 +55,7 @@ struct palette {std::array<uint32_t,2048> pens{};
 };
 struct saturn_state {
  unsigned mode=0;bool dirty=false;bool coefficient_cram=true;std::array<uint32_t,0x40000> m_vdp2_vram{};std::array<uint32_t,1024> m_vdp2_cram{};
- unsigned ramctl=0;struct video{void preserve_scanned_output(){}bool large=false;bool get_vramsz(){return large;}} dev;video *m_vdp2=&dev;
+ unsigned ramctl=0;struct video{unsigned preserves=0;std::array<uint32_t,1024> *physical=nullptr;std::array<uint32_t,1024> scanned{};void preserve_scanned_output(){++preserves;if(physical)scanned=*physical;}bool large=false;bool get_vramsz(){return large;}} dev;video *m_vdp2=&dev;
  palette pal;palette *m_palette=&pal;
  void mark_fade_effects_dirty(){dirty=true;}
  uint32_t vdp2_read_rotation_coefficient(uint32_t);uint32_t vdp2_cram_r(offs_t);void vdp2_cram_w(offs_t,uint32_t,uint32_t);void refresh_palette_data();
@@ -87,6 +106,56 @@ int main(){
   assert(s.pal.pens==immediate);
   ++cases;
  }
+ // Stateful byte-array oracle: CPU addressing is modeled independently of
+ // the production packed-word lane operations. Mode switches rebuild decoded
+ // pens explicitly; this is not the real RAMCTL write or raster scheduler.
+ std::array<uint8_t,4096> bytes{};
+ uint32_t rng=0x6d2b79f5;
+ auto random=[&](){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;};
+ for(auto &b:bytes)b=random()&255;
+ for(unsigned i=0;i<1024;++i)s.m_vdp2_cram[i]=(uint32_t(bytes[i*4])<<24)|(uint32_t(bytes[i*4+1])<<16)|(uint32_t(bytes[i*4+2])<<8)|bytes[i*4+3];
+ auto location=[](unsigned address,unsigned lane,unsigned mode){
+  return mode==2?(lane/2)*2048+address*2+lane%2:address*4+lane;
+ };
+ auto read=[&](unsigned address,unsigned mode){
+  uint32_t value=0;for(unsigned lane=0;lane<4;++lane)value=(value<<8)|bytes[location(address,lane,mode)];return value;
+ };
+ s.dev.physical=&s.m_vdp2_cram;
+ unsigned sequence_cases=0,mirror_only=0,redundant=0;
+ for(unsigned step=0;step<4096;++step){
+  unsigned mode=(step/7)%3,address=random()%1024;
+  s.mode=mode;s.refresh_palette_data();
+  uint32_t data=random(),mask=std::array<uint32_t,3>{0xffff0000,0x0000ffff,0xffffffff}[step%3];
+  if(step%4==0)data=read(address,mode); // also catches mirror-only changes
+  auto before=bytes;bool addressed_changes=((read(address,mode)^data)&mask)!=0;
+  for(unsigned lane=0;lane<4;++lane){
+   unsigned shift=24-lane*8;
+   if(!((mask>>shift)&255))continue;
+   unsigned index=location(address,lane,mode);bytes[index]=(data>>shift)&255;
+   if(mode==0)bytes[index^2048]=(data>>shift)&255;
+  }
+  bool changed=bytes!=before;
+  mirror_only+=changed&&!addressed_changes;redundant+=!changed;
+  auto old_physical=s.m_vdp2_cram;
+  auto calls=s.dev.preserves;s.dirty=false;
+  s.vdp2_cram_w(address+4096,data,mask);
+  assert(s.dev.preserves-calls==unsigned(changed));assert(s.dirty);
+  if(changed)assert(s.dev.scanned==old_physical);
+  for(unsigned i=0;i<1024;++i){
+   uint32_t physical=0;for(unsigned b=0;b<4;++b)physical=(physical<<8)|bytes[i*4+b];
+   assert(s.m_vdp2_cram[i]==physical);assert(s.vdp2_cram_r(i)==read(i,mode));
+  }
+  for(unsigned pen=0;pen<2048;++pen){
+   uint32_t expected;
+   if(mode==2){auto raw=read(pen%1024,mode);expected=rgb_t(raw&255,(raw>>8)&255,(raw>>16)&255);}
+   else {unsigned index=(mode==0?pen%1024:pen)*2;expected=color555((unsigned(bytes[index])<<8)|bytes[index+1]);}
+   assert(s.pal.pens[pen]==expected);
+  }
+  auto immediate=s.pal.pens;s.refresh_palette_data();assert(s.pal.pens==immediate);
+  ++sequence_cases;
+ }
+ assert(mirror_only>0&&redundant>0);
+ std::cout<<sequence_cases<<" stateful CRAM writes passed ("<<mirror_only<<" mirror-only changes, "<<redundant<<" redundant writes)\n";
  // Mode selection alone must not mirror reads or destroy physical half data.
  s.mode=1;s.vdp2_cram_w(0,0x11112222,~0u);s.vdp2_cram_w(512,0x33334444,~0u);
  s.mode=0;assert(s.vdp2_cram_r(0)==0x11112222&&s.vdp2_cram_r(512)==0x33334444);
