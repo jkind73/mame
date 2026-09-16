@@ -57,24 +57,26 @@ private:
   emu_timer *m_video_sync_timer;
 
   bool m_is_pal;
-  bool m_dotsel_352;
+  bool m_dotsel_352 = false;
 
   // The startup clock notification can configure the CRTC before reset.
   u16 m_tvmd = 0, m_old_tvmd = 0xffff;
   u8 m_disp = 0, m_bdclmd = 0, m_lsmd = 0, m_vreso = 0, m_hreso = 0;
-  bool m_odd_bit;
-  u16 m_exten;
-  bool m_exlten, m_exsyen, m_dasel, m_exbgen;
+  bool m_odd_bit = true;
+  u16 m_exten = 0;
+  bool m_exlten = false, m_exsyen = false, m_dasel = false, m_exbgen = false;
 
-  u16 m_hcounter_latch, m_vcounter_latch;
+  // Deterministic startup readback before the first latch, not a claim
+  // about unspecified hardware counter contents at power-on.
+  u16 m_hcounter_latch = 0, m_vcounter_latch = 0;
 
-  bool m_exltfg, m_exsyfg;
+  bool m_exltfg = false, m_exsyfg = false;
 
-  u16 m_hdisplay, m_vdisplay;
+  u16 m_hdisplay = 0, m_vdisplay = 0;
   // size = 313 for PAL
   u16 true_vcount[313][4]{};
 
-  bool m_vramsz;
+  bool m_vramsz = false;
 
   TIMER_CALLBACK_MEMBER(sync_timer_cb);
 
