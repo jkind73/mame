@@ -189,6 +189,8 @@ struct screen {
  void update_partial(int row){present(row);}
 };
 struct saturn_state {
+ void vdp2_latch_rotation_parameters(int) {} // independently exercised by the VDP2 latch fixture
+
  screen display;screen *m_screen=&display;
  // TYPES
  bool m_vdp1_raster_building=false,m_vdp1_raster_running=false,execute_lines=false,execute_quads=false;
