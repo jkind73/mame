@@ -8521,7 +8521,7 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
   // fractions, line/cell combinations and mosaic before final composition.
   // Rotation source caches continue to use their unscrolled tile/bitmap path.
   if (current_tilemap.layer_name < 4 &&
-      (current_tilemap.scrollx_fraction || current_tilemap.scrolly_fraction ||
+      (m_vdp2_composition_active || current_tilemap.scrollx_fraction || current_tilemap.scrolly_fraction ||
        current_tilemap.incx != 0x10000 || current_tilemap.incy != 0x10000 ||
        current_tilemap.linescroll_enable || current_tilemap.vertical_linescroll_enable ||
        current_tilemap.linezoom_enable || current_tilemap.vertical_cell_scroll_enable ||
@@ -8752,6 +8752,58 @@ static constexpr bool vdp2_per_dot_coefficients(uint16_t ramctl) {
 
 static inline uint32_t coef_delta(int32_t delta, int32_t count) {
   return uint32_t(s64(delta) * count);
+}
+
+// ST-058 pp.235/241-244: calculate the top against the raw second image,
+// not against a lower layer's already-calculated displayed result. These are
+// derived partial-render buffers; no image history survives screen_update.
+void saturn_state::vdp2_begin_composition(bitmap_rgb32 &bitmap, const rectangle &cliprect) {
+  m_vdp2_composition_active = false;
+  // With no possible top-image calculation, keep ordinary cached/fast paths.
+  if (!(VDP2_CCCR & 0x5f))
+    return;
+  if (m_vdp2_raw_top.width() != bitmap.width() || m_vdp2_raw_top.height() != bitmap.height()) {
+    m_vdp2_raw_top.allocate(bitmap.width(), bitmap.height());
+    m_vdp2_raw_alpha.allocate(bitmap.width(), bitmap.height());
+  }
+  unsigned const alpha = vdp2_cc_blend_level((VDP2_CCRLB >> 8) & 31);
+  for (int y = cliprect.top(); y <= cliprect.bottom(); ++y)
+    for (int x = cliprect.left(); x <= cliprect.right(); ++x) {
+      m_vdp2_raw_top.pix(y, x) = bitmap.pix(y, x);
+      m_vdp2_raw_alpha.pix(y, x) = alpha;
+    }
+  m_vdp2_composition_active = true;
+}
+
+void saturn_state::vdp2_compose_pixel(bitmap_rgb32 &bitmap, int x, int y, rgb_t color,
+                                      bool calculate, unsigned alpha, bool insert_line, rgb_t line_color) {
+  uint32_t &dest = bitmap.pix(y, x);
+  if (!calculate) {
+    dest = color;
+  } else {
+    rgb_t const second = insert_line ? line_color : rgb_t(m_vdp2_composition_active
+        ? m_vdp2_raw_top.pix(y, x) : dest);
+    unsigned const selected_alpha = !(VDP2_CCCR & 0x200) ? alpha : insert_line
+        ? vdp2_cc_blend_level(VDP2_CCRLB & 31) : m_vdp2_composition_active
+        ? m_vdp2_raw_alpha.pix(y, x) : alpha;
+    dest = VDP2_CCMD ? add_blend_r32(second, color) : alpha_blend_r32(second, color, selected_alpha);
+  }
+  if (m_vdp2_composition_active) {
+    // Store the source and its own ratio even if its calculation is disabled.
+    // A line-color insertion belongs only to the current top image, not to
+    // this layer when a later higher-priority source makes it the second.
+    m_vdp2_raw_top.pix(y, x) = color;
+    m_vdp2_raw_alpha.pix(y, x) = alpha;
+  }
+}
+
+void saturn_state::vdp2_shadow_pixel(bitmap_rgb32 &bitmap, int x, int y) {
+  rgb_t p = bitmap.pix(y, x);
+  bitmap.pix(y, x) = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+  if (m_vdp2_composition_active) {
+    p = m_vdp2_raw_top.pix(y, x);
+    m_vdp2_raw_top.pix(y, x) = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+  }
 }
 
 unsigned saturn_state::vdp2_special_color_mode() const {
@@ -9030,16 +9082,10 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
       if (special_priority && m_vdp2_priority_pass >= 0 &&
           ((pixel.a() >> 2) & 7) != unsigned(m_vdp2_priority_pass))
         continue;
-      uint32_t &dest = bitmap.pix(y, x);
       rgb_t const color = rgb_t(uint32_t(pixel) | 0xff000000);
-      if (!t.colour_calculation_enabled || !(pixel.a() & 1))
-        dest = color;
-      else {
-        rgb_t const second = t.line_screen_enabled ? vdp2_line_color(y, false, 0) : rgb_t(dest);
-        unsigned const alpha = t.line_screen_enabled && (VDP2_CCCR & 0x200)
-            ? vdp2_cc_blend_level(VDP2_CCRLB & 31) : t.alpha;
-        dest = VDP2_CCMD ? add_blend_r32(second, color) : alpha_blend_r32(second, color, alpha);
-      }
+      bool const calculate = t.colour_calculation_enabled && (pixel.a() & 1);
+      vdp2_compose_pixel(bitmap, x, y, color, calculate, t.alpha, t.line_screen_enabled,
+          calculate && t.line_screen_enabled ? vdp2_line_color(y, false, 0) : rgb_t(0));
     }
   }
 }
@@ -9060,7 +9106,6 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   uint32_t coeff_table_offset;
   int32_t coeff_table_val;
   uint32_t address;
-  uint32_t *line;
   // Source writers set rgb_t alpha on every drawn dot, including black.
   // Transparent dots leave the cleared cache untouched. Coverage must not
   // be inferred from RGB intensity or applied a second time after decoding.
@@ -9204,7 +9249,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
 
   auto const second_image = [&](int hx, int vy) -> rgb_t {
     if (!current_tilemap.line_screen_enabled)
-      return rgb_t(line[hx]);
+      return rgb_t(bitmap.pix(vy, hx));
     bool const from_a = VDP2_RPMD == 2 || VDP2_R1ON || iRP == 1;
     bool const enabled = from_a ? VDP2_RAKTE && VDP2_RAKLCE && !VDP2_RAKDBS
                                : VDP2_RBKTE && VDP2_RBKLCE && !VDP2_RBKDBS;
@@ -9222,8 +9267,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     }
     return vdp2_line_color(vy, enabled, color);
   };
-  unsigned const blend_alpha = current_tilemap.line_screen_enabled && (VDP2_CCCR & 0x200)
-      ? vdp2_cc_blend_level(VDP2_CCRLB & 31) : current_tilemap.alpha;
+
 
   /* clipping */
   switch (screen_over_process) {
@@ -9281,7 +9325,6 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     ysp = vdp2_wrap_sum(mul_fixed32(RP.D, start_x), mul_fixed32(RP.E, start_y),
         mul_fixed32(RP.F, vdp2_wrap_sub(RP.zst, RP.pz)));
 
-    line = &bitmap.pix(vcnt);
 
     // TODO: nuke this spaghetti code
     if (!use_coeff_table || coefficient_dx == 0) {
@@ -9378,32 +9421,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           continue;
         bool const calculate = pix.a() & 1;
         pix = rgb_t(uint32_t(pix) | 0xff000000);
-        if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA)) {
-          if (pix.a()) {
-            if (current_tilemap.fade_control & 1)
-              vdp2_compute_color_offset_UINT32(
-                  &pix, current_tilemap.fade_control & 2);
-
-            line[hcnt] =
-                alpha_blend_r32(second_image(hcnt, vcnt), pix, blend_alpha);
-          }
-        } else if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND)) {
-          if (pix.a()) {
-            if (current_tilemap.fade_control & 1)
-              vdp2_compute_color_offset_UINT32(
-                  &pix, current_tilemap.fade_control & 2);
-
-            line[hcnt] = add_blend_r32(second_image(hcnt, vcnt), pix);
-          }
-        } else {
-          if (pix.a()) {
-            if (current_tilemap.fade_control & 1)
-              vdp2_compute_color_offset_UINT32(
-                  &pix, current_tilemap.fade_control & 2);
-
-            line[hcnt] = pix;
-          }
-        }
+        if (current_tilemap.fade_control & 1)
+          vdp2_compute_color_offset_UINT32(&pix, current_tilemap.fade_control & 2);
+        bool const blend = current_tilemap.colour_calculation_enabled && calculate;
+        vdp2_compose_pixel(bitmap, hcnt, vcnt, pix, blend, current_tilemap.alpha,
+            current_tilemap.line_screen_enabled,
+            blend && current_tilemap.line_screen_enabled ? second_image(hcnt, vcnt) : rgb_t(0));
       }
     } else {
       for (hcnt = cliprect.left(); hcnt <= cliprect.right(); hcnt++) {
@@ -9494,32 +9517,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           continue;
         bool const calculate = pix.a() & 1;
         pix = rgb_t(uint32_t(pix) | 0xff000000);
-        if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA)) {
-          if (pix.a()) {
-            if (current_tilemap.fade_control & 1)
-              vdp2_compute_color_offset_UINT32(
-                  &pix, current_tilemap.fade_control & 2);
-
-            line[hcnt] =
-                alpha_blend_r32(second_image(hcnt, vcnt), pix, blend_alpha);
-          }
-        } else if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND)) {
-          if (pix.a()) {
-            if (current_tilemap.fade_control & 1)
-              vdp2_compute_color_offset_UINT32(
-                  &pix, current_tilemap.fade_control & 2);
-
-            line[hcnt] = add_blend_r32(second_image(hcnt, vcnt), pix);
-          }
-        } else {
-          if (pix.a()) {
-            if (current_tilemap.fade_control & 1)
-              vdp2_compute_color_offset_UINT32(
-                  &pix, current_tilemap.fade_control & 2);
-
-            line[hcnt] = pix;
-          }
-        }
+        if (current_tilemap.fade_control & 1)
+          vdp2_compute_color_offset_UINT32(&pix, current_tilemap.fade_control & 2);
+        bool const blend = current_tilemap.colour_calculation_enabled && calculate;
+        vdp2_compose_pixel(bitmap, hcnt, vcnt, pix, blend, current_tilemap.alpha,
+            current_tilemap.line_screen_enabled,
+            blend && current_tilemap.line_screen_enabled ? second_image(hcnt, vcnt) : rgb_t(0));
       }
     }
   }
@@ -9682,9 +9685,10 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   //  ...
 
   // current_tilemap.trans_enabled = VDP2_N0TPON;
+  current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N0CCRT);
   if (VDP2_N0CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N0CCRT);
+
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -9802,9 +9806,10 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   //  ...
 
   // current_tilemap.trans_enabled = VDP2_N1TPON;
+  current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N1CCRT);
   if (VDP2_N1CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N1CCRT);
+
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -9913,9 +9918,10 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
   //  ...
 
   // current_tilemap.trans_enabled = VDP2_N2TPON;
+  current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N2CCRT);
   if (VDP2_N2CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N2CCRT);
+
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -10022,9 +10028,10 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
     current_tilemap.enabled = 0;
 
   // current_tilemap.trans_enabled = VDP2_N3TPON;
+  current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N3CCRT);
   if (VDP2_N3CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_N3CCRT);
+
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -10236,7 +10243,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     return;
   }
 
-  if (vdp2_is_rotation_applied(iRP) == 0) {
+  if (!m_vdp2_composition_active && vdp2_is_rotation_applied(iRP) == 0) {
     current_tilemap.scrollx = current_rotation_table.mx >> 16;
     current_tilemap.scrolly = current_rotation_table.my >> 16;
 
@@ -10369,9 +10376,10 @@ void saturn_state::vdp2_draw_RBG0(bitmap_rgb32 &bitmap,
   //  ...
 
   // current_tilemap.trans_enabled = VDP2_R0TPON;
+  current_tilemap.alpha = vdp2_cc_blend_level(VDP2_R0CCRT);
   if (VDP2_R0CCEN) {
     current_tilemap.colour_calculation_enabled = 1;
-    current_tilemap.alpha = vdp2_cc_blend_level(VDP2_R0CCRT);
+
   } else {
     current_tilemap.colour_calculation_enabled = 0;
   }
@@ -10724,6 +10732,7 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
 }
 
 void saturn_state::vdp2_state_save_postload() {
+  m_vdp2_composition_active = false;
   vdp2_window_cache_invalidate();
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
   int offset;
@@ -11198,7 +11207,6 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
   int i;
   uint16_t pix;
   const auto rotation = vdp1_rotation_parameters();
-  uint32_t *bitmap_line;
   static const uint16_t sprite_colormask_table[] = {
       0x07ff, 0x07ff, 0x07ff, 0x07ff, 0x03ff, 0x07ff, 0x03ff, 0x01ff,
       0x007f, 0x003f, 0x003f, 0x003f, 0x00ff, 0x00ff, 0x00ff, 0x00ff};
@@ -11330,7 +11338,6 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
           continue;
 
-      bitmap_line = &bitmap.pix(y);
 
       for (x = cliprect.left(); x <= cliprect.right(); x++) {
         if (!vdp2_window_process(x, y))
@@ -11355,7 +11362,8 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
             vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
           }
 
-          bitmap_line[x] = rgb_t(r, g, b);
+          vdp2_compose_pixel(bitmap, x, y, rgb_t(r, g, b), false,
+              vdp2_cc_blend_level(sprite_ccr[0]), false, rgb_t(0));
         } else {
           priority = sprite_priorities[(pix >> sprite_priority_shift) &
                                        sprite_priority_mask];
@@ -11371,16 +11379,15 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
           // TODO: seldomly Game Tengoku shadows aren't drawn properly
           // TODO: allegedly can't enable this with sprite window (verify)
           if (pix & 0x8000 && VDP2_SDCTL & 0x100 && !sprite_window) {
-            rgb_t p = bitmap_line[x];
-            bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+            vdp2_shadow_pixel(bitmap, x, y);
           } else {
+            ccr = sprite_ccr[(pix >> sprite_ccrr_shift) & sprite_ccrr_mask];
             pix &= sprite_colormask;
             if (pix == (sprite_colormask - 1)) {
               /*shadow - in reality, we should check from what layer pixel
                * beneath comes...*/
               if (VDP2_SDCTL & 0x3f) {
-                rgb_t p = bitmap_line[x];
-                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+                vdp2_shadow_pixel(bitmap, x, y);
               }
               /* note that when shadows are disabled, "shadow" palette entries
                * are not drawn */
@@ -11388,15 +11395,15 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
               pix += (VDP2_SPCAOS << 8);
               pix &= 0x7ff;
               pix += color_offset_pal;
-              bitmap_line[x] = m_palette->pen(pix);
+              vdp2_compose_pixel(bitmap, x, y, m_palette->pen(pix), false,
+                  vdp2_cc_blend_level(ccr), false, rgb_t(0));
             }
           }
 
           /* TODO: I don't think this one makes much sense ... (1) */
           if (pix & sprite_shadow) {
             if (pix & ~sprite_shadow) {
-              rgb_t p = bitmap_line[x];
-              bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+              vdp2_shadow_pixel(bitmap, x, y);
             }
           }
         }
@@ -11409,7 +11416,6 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         if (vdp1_sprite_priorities_in_fb_line[y][pri] == 0)
           continue;
 
-      bitmap_line = &bitmap.pix(y);
 
       for (x = cliprect.left(); x <= cliprect.right(); x++) {
         if (!vdp2_window_process(x, y))
@@ -11434,12 +11440,8 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
             vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
           }
           ccr = sprite_ccr[0];
-          if (VDP2_CCMD) {
-            bitmap_line[x] = add_blend_r32(bitmap_line[x], rgb_t(r, g, b));
-          } else {
-            bitmap_line[x] = alpha_blend_r32(bitmap_line[x], rgb_t(r, g, b),
-                                             vdp2_cc_blend_level(ccr));
-          }
+          vdp2_compose_pixel(bitmap, x, y, rgb_t(r, g, b), true,
+              vdp2_cc_blend_level(ccr), false, rgb_t(0));
         } else {
           priority = sprite_priorities[(pix >> sprite_priority_shift) &
                                        sprite_priority_mask];
@@ -11461,8 +11463,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
               /*shadow - in reality, we should check from what layer pixel
                * beneath comes...*/
               if (VDP2_SDCTL & 0x3f) {
-                rgb_t p = bitmap_line[x];
-                bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+                vdp2_shadow_pixel(bitmap, x, y);
               }
               /* note that when shadows are disabled, "shadow" palette entries
                * are not drawn */
@@ -11470,25 +11471,15 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
               pix += (VDP2_SPCAOS << 8);
               pix &= 0x7ff;
               pix += color_offset_pal;
-              if (calculate_color) {
-                if (VDP2_CCMD) {
-                  bitmap_line[x] =
-                      add_blend_r32(bitmap_line[x], m_palette->pen(pix));
-                } else {
-                  bitmap_line[x] =
-                      alpha_blend_r32(bitmap_line[x], m_palette->pen(pix),
-                                      vdp2_cc_blend_level(ccr));
-                }
-              } else
-                bitmap_line[x] = m_palette->pen(pix);
+              vdp2_compose_pixel(bitmap, x, y, m_palette->pen(pix), calculate_color,
+                  vdp2_cc_blend_level(ccr), false, rgb_t(0));
             }
           }
 
           /* TODO: (1) */
           if (pix & sprite_shadow) {
             if (pix & ~sprite_shadow) {
-              rgb_t p = bitmap_line[x];
-              bitmap_line[x] = rgb_t(p.r() >> 1, p.g() >> 1, p.b() >> 1);
+              vdp2_shadow_pixel(bitmap, x, y);
             }
           }
         }
@@ -11502,6 +11493,7 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
 uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
                                           bitmap_rgb32 &bitmap,
                                           const rectangle &cliprect) {
+  m_vdp2_composition_active = false;
   vdp2_window_cache_invalidate();
 
   vdp2_fade_effects();
@@ -11509,6 +11501,7 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
   vdp2_draw_back(m_tmpbitmap, cliprect);
 
   if (m_vdp2->get_disp()) {
+    vdp2_begin_composition(m_tmpbitmap, cliprect);
     uint8_t pri;
 
     vdp1_sprite_priorities_usage_valid = 0;
@@ -11542,6 +11535,7 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
   }
 
   m_vdp2_priority_pass = -1;
+  m_vdp2_composition_active = false;
   copybitmap(bitmap, m_tmpbitmap, 0, 0, 0, 0, cliprect);
 
 #if 0

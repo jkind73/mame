@@ -22,7 +22,7 @@ def extract(text,sig):
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
 bitmap_functions=[extract(src,'void saturn_state::draw_'+name+'_bitmap(') for name in ('4bpp','8bpp','11bpp','rgb15','rgb32')]
-over_helpers=[extract(src,sig) for sig in ('unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(')]
+over_helpers=[extract(src,sig) for sig in ('void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(')]
 over_function='\n'.join(over_helpers)+'\n'+extract(src,'rgb_t saturn_state::vdp2_screen_over_pattern_pixel(')
 f=extract(src,'static constexpr bool vdp2_per_dot_coefficients(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sum(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sub(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+over_function+'\n'+'\n'.join(bitmap_functions)+'\n'+extract(src,'static inline uint32_t coef_delta(')+'\n'+extract(src,'void saturn_state::vdp2_copy_roz_bitmap(')
 real_windows=[extract(src,sig) for sig in ('inline bool saturn_state::vdp2_roz_window(', 'inline bool saturn_state::vdp2_roz_mode3_window(', 'inline int saturn_state::get_roz_window_pixel(')]
@@ -71,6 +71,11 @@ struct palette {
  uint32_t pen(unsigned index){if(indexed)return 0xff000000|(index*7919&0xffffff);return index==2?rgb_t(255,0,0):rgb_t::black();}
 };
 struct saturn_state {
+ bool m_vdp2_composition_active=false;
+ bitmap_rgb32 m_vdp2_raw_top{16,8};
+ struct {uint8_t data[16*8]{};uint8_t &pix(int y,int x){assert(x>=0&&x<16&&y>=0&&y<8);return data[y*16+x];}} m_vdp2_raw_alpha;
+
+ void vdp2_compose_pixel(bitmap_rgb32&,int,int,rgb_t,bool,unsigned,bool,rgb_t);
  int m_vdp2_priority_pass=-1;
  uint32_t m_vdp2_cram[1024]{};
  uint32_t vdp2_cram_r(unsigned i){return m_vdp2_cram[i];}
@@ -546,6 +551,24 @@ int main(){
   }
  }
  std::cout<<special_cases<<" rotation/map/screen-over special-calculation images passed\n";
+
+ s.regs.VDP2_SFPRMD=s.regs.VDP2_SFCCMD=0;s.m_vdp2_priority_pass=-1;s.real_windows=s.window=false;
+ s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;s.dev.hreso=s.dev.lsmd=0;
+ for(int parameter:{1,2})for(bool enabled:{false,true})for(bool second:{false,true})for(bool add:{false,true}){
+  s.m_vdp2_composition_active=true;s.regs.VDP2_RPMD=parameter-1;s.regs.VDP2_CCCR=second?0x200:0;s.regs.VDP2_CCMD=add;
+  s.current_tilemap={};s.current_tilemap.colour_calculation_enabled=enabled;s.current_tilemap.alpha=120;
+  auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;
+  bitmap_rgb32 cache(16,16),out(16,8),expected(16,8);
+  for(int y=0;y<16;++y)for(int x=0;x<16;++x)cache.pix(y,x)=(x+y)%5?0xff102030+x*59+y*31:0;
+  std::fill(s.m_vdp2_raw_top.pixels.begin(),s.m_vdp2_raw_top.pixels.end(),0x812b47);std::fill_n(s.m_vdp2_raw_alpha.data,128,96);
+  s.vdp2_copy_roz_bitmap(out,cache,{1,14,1,6},parameter,16,16,16,16);
+  for(int y=1;y<=6;++y)for(int x=1;x<=14;++x){uint32_t color=cache.pix(y,x);if(!color)continue;
+   expected.pix(y,x)=!enabled?color:add?add_blend_r32(0x812b47,color):alpha_blend_r32(0x812b47,color,second?96:120);
+   assert(s.m_vdp2_raw_top.pix(y,x)==color&&s.m_vdp2_raw_alpha.pix(y,x)==120);
+  }
+  assert(out.pixels==expected.pixels);
+ }
+ std::cout<<"16 active raw-second-image rotation integration cases passed\n";
  std::cout<<coverage_cases<<" bitmap-to-rotation opaque-black/transparent coverage images passed\n";
  std::cout<<cases<<" rotation coefficient/window/split-clip images passed\n";
 }

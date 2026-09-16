@@ -45,6 +45,7 @@ struct palette {uint32_t black_pen(){return rgb_t::black();}};
 struct device {int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}};
 struct profiler {int start(int){return 0;}} g_profiler;
 struct saturn_state {
+ bool m_vdp2_composition_active=false;
  static constexpr int ROTATION_SCANLINES=1024;bool m_rotation_line_valid[ROTATION_SCANLINES]{};
  // DECLS
  // ROTATION
@@ -145,6 +146,9 @@ int main(){
  s.regs.VDP2_SFCCMD=0;s.regs.VDP2_SFPRMD=1;s.current_tilemap.colour_calculation_enabled=0;
  s.RBG0_cache_data.is_cache_dirty=3;s.built=s.copied=s.direct=0;s.vdp2_draw_rotation_screen(output,{1,14,2,2},1);
  assert(s.built==0&&s.direct==0&&s.copied==1);
+ s.regs.VDP2_SFCCMD=s.regs.VDP2_SFPRMD=0;s.m_vdp2_composition_active=true;s.current_rotation_table.xst=0;
+ s.RBG0_cache_data.is_cache_dirty=3;s.built=s.copied=s.direct=0;s.vdp2_draw_rotation_screen(output,{1,14,2,2},1);
+ assert(s.built==1&&s.direct==0&&s.copied==1);
  std::cout<<"Latched-row dispatch reuses the untransformed cache across clips\n";
 }
 '''
