@@ -6293,6 +6293,22 @@ void saturn_state::vdp2_compute_color_offset_UINT32(rgb_t *rgb, int cor) {
   *rgb = rgb_t(_r, _g, _b);
 }
 
+const uint8_t *saturn_state::vdp2_get_palette_cell(gfx_element *gfx, uint32_t code,
+                                                    uint8_t (&wrapped)[64]) {
+  unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  code &= mask >> 5;
+  if (gfx->granularity() == 256 && code == (mask >> 5)) {
+    // Eight-bit cells contain 64 bytes but start on 32-byte boundaries.
+    // The final cell wraps; the generic decoder assumes contiguous storage.
+    // Read this rare cell directly, also avoiding stale decode-cache tails
+    // when CPU writes change its wrapped first-memory bytes.
+    for (unsigned i = 0; i < 64; ++i)
+      wrapped[i] = m_vdp2_legacy.gfx_decode[(code * 32 + i) & mask];
+    return wrapped;
+  }
+  return gfx->get_data(code % gfx->elements());
+}
+
 void saturn_state::vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,
                                     const rectangle &clip, gfx_element *gfx,
                                     uint32_t code, uint32_t color, int flipx,
@@ -6300,6 +6316,9 @@ void saturn_state::vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,
                                     int scalex, int scaley,
                                     int sprite_screen_width,
                                     int sprite_screen_height, int alpha) {
+  code &= m_vdp2->get_vramsz() ? 0x7fff : 0x3fff;
+  uint8_t wrapped[64];
+
   rectangle myclip;
 
   if (!scalex || !scaley)
@@ -6333,7 +6352,7 @@ void saturn_state::vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,
   if (gfx) {
     const pen_t *pal = &m_palette->pen(
         gfx->colorbase() + gfx->granularity() * (color % gfx->colors()));
-    const uint8_t *source_base = gfx->get_data(code % gfx->elements());
+    const uint8_t *source_base = vdp2_get_palette_cell(gfx, code, wrapped);
 
     // int sprite_screen_height = (scaley*gfx->height()+0x8000)>>16;
     // int sprite_screen_width = (scalex*gfx->width()+0x8000)>>16;
@@ -7063,9 +7082,12 @@ void saturn_state::vdp2_drawgfx_alpha(bitmap_rgb32 &dest_bmp,
                                       uint32_t code, uint32_t color, int flipx,
                                       int flipy, int offsx, int offsy,
                                       int transparency, int alpha) {
+  code &= m_vdp2->get_vramsz() ? 0x7fff : 0x3fff;
+  uint8_t wrapped[64];
+
   const pen_t *pal = &m_palette->pen(
       gfx->colorbase() + gfx->granularity() * (color % gfx->colors()));
-  const uint8_t *source_base = gfx->get_data(code % gfx->elements());
+  const uint8_t *source_base = vdp2_get_palette_cell(gfx, code, wrapped);
   int x_index_base, y_index, sx, sy, ex, ey;
   int xinc, yinc;
 
@@ -7130,9 +7152,12 @@ void saturn_state::vdp2_drawgfx_transpen(bitmap_rgb32 &dest_bmp,
                                          uint32_t color, int flipx, int flipy,
                                          int offsx, int offsy,
                                          int transparency) {
+  code &= m_vdp2->get_vramsz() ? 0x7fff : 0x3fff;
+  uint8_t wrapped[64];
+
   const pen_t *pal = &m_palette->pen(
       gfx->colorbase() + gfx->granularity() * (color % gfx->colors()));
-  const uint8_t *source_base = gfx->get_data(code % gfx->elements());
+  const uint8_t *source_base = vdp2_get_palette_cell(gfx, code, wrapped);
   int x_index_base, y_index, sx, sy, ex, ey;
   int xinc, yinc;
 
@@ -8068,9 +8093,6 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
         gfx = 2;
         pal = pal >> 4;
         tilecode &= 0x7fff;
-        if (tilecode == 0x7fff)
-          tilecode--; /* prevents crash but unsure what should happen; wrapping?
-                       */
         tilecodespacing = 2;
       } else if (current_tilemap.colour_depth == 0) {
         gfx = 0;
