@@ -1,5 +1,32 @@
 # Sega SDK hardware-document audit
 
+## V2-C04c: linked per-dot priority and special calculation — 2026-09-16
+
+Added **96 special-function scenes per configuration** using transparent/red/green
+NBG0 bitmap dots over an opaque blue NBG1. Priority modes 0–2 are crossed with bitmap
+attributes and both special-code selectors; separate scenes verify base-zero promotion
+and effective-zero suppression. All four special-calculation modes are crossed with
+attribute state, selector and top-screen CC enable. Red has its CRAM MSB set while
+green does not. Combined scenes exercise per-dot priority and MSB-selected calculation
+simultaneously. Each scene checks 144 independent coordinate/color probes plus real
+save/mutate/load/full-image replay. Special mode, code and attribute registers are
+explicitly cleared during mutation. Both combined-selector captures were inspected.
+
+**1,536 synthetic cases pass** (1,152 DRC / 384 interpreter): 338 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays pass, all 47 regression scripts pass, and `-validate` has no diagnostics.
+The unchanged production executable retains its full-link/eleven-object evidence.
+Priority-zero, priority-attribute, special-MSB and special-code mutations compile and
+fail extracted assertions. The 44 fake-executable runner-protocol cases pass.
+
+Primary basis: ST-058 pp.228–229 and 245–247, corroborated by pinned Ymir/MiSTer
+priority/eligibility logic. No prohibited priority mode 3 or RGB mode-2 combinations
+are treated as legal. No production correction was needed. C04c qualifies the bounded
+normal-resolution NBG0 four-bit bitmap matrix, not all cell formats, layers, rotation,
+CRAM/display modes or effects. Exact bus/latches, external video, games/title and
+comparative performance remain open. Full VDP2 is not declared complete. Older totals
+below describe earlier checkpoints.
+
 ## V2-C07a: linked line-color insertion, ratios and table wrapping — 2026-09-16
 
 Added **16 line-color scenes per configuration**: single/per-line tables, top-screen
