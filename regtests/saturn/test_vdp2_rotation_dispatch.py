@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear','screen-over'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear','screen-over','size'));a=p.parse_args()
 src=subprocess.check_output(['git','show','69995fab:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True) if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text()
 header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -24,6 +24,7 @@ def extract(text,sig):
  return text[start:end]
 functions=[extract((ROOT/'src/mame/sega/saturn.cpp').read_text(),'unsigned saturn_state::vdp2_special_priority_mode('),extract((ROOT/'src/mame/sega/saturn.cpp').read_text(),'unsigned saturn_state::vdp2_special_color_mode('),extract(src,'uint8_t saturn_state::vdp2_is_rotation_applied('),extract(src,'void saturn_state::vdp2_draw_rotation_screen(')]
 f='\n'.join(functions)
+if a.mutation=='size':f=f.replace('RBG0_cache_data.vram_size[iRP - 1] != m_vdp2->get_vramsz() ||', '')
 if a.mutation=='screen-over':f=f.replace('!(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR)', '(rot_parameter != 0)')
 if a.mutation=='clear':f=f.replace('fill(rgb_t::transparent(),','fill(rgb_t::black(),')
 if a.mutation=='coefficient':
@@ -42,7 +43,7 @@ code=r'''
 struct rectangle {int min_x=0,max_x=0,min_y=0,max_y=0;int top()const{return min_y;}int bottom()const{return max_y;}void sety(int t,int b){min_y=t;max_y=b;}rectangle()=default;rectangle(int l,int r,int t,int b):min_x(l),max_x(r),min_y(t),max_y(b){}};
 struct bitmap_rgb32 {bool source=false;bool valid()const{return source;}void allocate(int x,int y){assert(x==4096&&y==4096);source=true;}void fill(uint32_t color,const rectangle&){assert(color==0);} };
 struct palette {uint32_t black_pen(){return rgb_t::black();}};
-struct device {int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}};
+struct device {bool large=false;bool get_vramsz(){return large;}int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}};
 struct profiler {int start(int){return 0;}} g_profiler;
 struct saturn_state {
  bool m_vdp2_composition_active=false;
@@ -57,7 +58,7 @@ struct saturn_state {
  struct {int logic=0,enabled[2]{},sprite_window=0,area[2]{};} window_control;
  } current_tilemap;
  struct {bitmap_rgb32 roz_bitmap[2];} m_vdp2_legacy;
- struct cache {int is_cache_dirty=3,watch_vdp2_vram_writes=0;tilemap layer_data[2]{};int map_offset_min[2]{},map_offset_max[2]{},tile_offset_min[2]{},tile_offset_max[2]{};} RBG0_cache_data;
+ struct cache {bool vram_size[2]{};int is_cache_dirty=3,watch_vdp2_vram_writes=0;tilemap layer_data[2]{};int map_offset_min[2]{},map_offset_max[2]{},tile_offset_min[2]{},tile_offset_max[2]{};} RBG0_cache_data;
  struct {int map_offset_min=0,map_offset_max=0,tile_offset_min=0,tile_offset_max=0;} vdp2_layer_data;
  device dev;device *m_vdp2=&dev;palette pal;palette *m_palette=&pal;
  std::vector<int> loaded_lines;
@@ -149,6 +150,20 @@ int main(){
  s.regs.VDP2_SFCCMD=s.regs.VDP2_SFPRMD=0;s.m_vdp2_composition_active=true;s.current_rotation_table.xst=0;
  s.RBG0_cache_data.is_cache_dirty=3;s.built=s.copied=s.direct=0;s.vdp2_draw_rotation_screen(output,{1,14,2,2},1);
  assert(s.built==1&&s.direct==0&&s.copied==1);
+ // Changing only VRSIZE must rebuild each independent A/B source cache.
+ unsigned size_cases=0;
+ for(bool bitmap:{false,true}){
+  s.current_tilemap={};s.current_tilemap.bitmap_enable=bitmap;s.current_tilemap.transparency=1;
+  s.RBG0_cache_data={};bool valid[2]{},cached_size[2]{};
+  for(bool large:{false,true,true,false,false})for(int parameter:{1,2}){
+   s.dev.large=large;s.built=0;s.vdp2_draw_rotation_screen(output,{1,14,2,2},parameter);
+   bool rebuild=!valid[parameter-1]||cached_size[parameter-1]!=large;
+   assert(s.built==int(rebuild));assert(s.RBG0_cache_data.vram_size[parameter-1]==large);
+   valid[parameter-1]=true;cached_size[parameter-1]=large;
+   s.built=0;s.vdp2_draw_rotation_screen(output,{5,9,2,2},parameter);assert(!s.built);++size_cases;
+  }
+ }
+ std::cout<<size_cases<<" cell/bitmap A/B cache size-transition and reuse cases passed\n";
  std::cout<<"Latched-row dispatch reuses the untransformed cache across clips\n";
 }
 '''

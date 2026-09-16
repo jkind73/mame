@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = "a562a96f"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--baseline", action="store_true")
-parser.add_argument("--mutation", choices=("gate", "restore"))
+parser.add_argument("--mutation", choices=("gate", "restore", "size"))
 args = parser.parse_args()
 path = "src/mame/sega/saturn.cpp"
 source = (subprocess.check_output(["git", "show", BASE + ":" + path], cwd=ROOT, text=True)
@@ -30,6 +30,9 @@ if args.mutation == "gate":
     branch = branch.replace("if (current_tilemap.vertical_cell_scroll_enable &&", "if (current_tilemap.linescroll_enable && current_tilemap.vertical_cell_scroll_enable &&")
 if args.mutation == "restore":
     branch = branch.replace("    current_tilemap.scrollx = base_scrollx;\n    current_tilemap.scrolly = base_scrolly;", "")
+
+if args.mutation == "size":
+    branch = branch.replace("cur_address & (base_mask >> 1)", "cur_address & 0x3ffff")
 
 harness = r'''
 #include <algorithm>
@@ -57,7 +60,7 @@ struct table {
     assert(index < 0x40000);
     reads.push_back(index);
     // Exercise positive and negative 11-bit scrolls without allocating VRAM.
-    return ((index * 617u + 1031u) & 0x7ff) << 16;
+    return ((index * 617u + (index >> 17) * 71u + 1031u) & 0x7ff) << 16;
   }
 };
 struct saturn_state {
@@ -141,13 +144,13 @@ int main() {
                 assert(s.calls == expected_calls);
                 assert(s.m_vdp2_vram.reads.size() == unsigned(expected_calls));
                 for (int i = 0; i < expected_calls; ++i)
-                  assert(s.m_vdp2_vram.reads[i] == ((base + (left/8+i)*stride + offset) & 0x3ffff));
+                  assert(s.m_vdp2_vram.reads[i] == ((base + (left/8+i)*stride + offset) & (size ? 0x3ffff : 0x1ffff)));
                 for (int y = 0; y < 5; ++y)
                   for (int x = 0; x < 37; ++x) {
                     int expected = -9999;
                     if (!clip.empty() && x >= left && x <= right && y >= clip.t && y <= clip.b) {
-                      unsigned index = (base + (x/8)*stride + offset) & 0x3ffff;
-                      int scroll = (index*617u + 1031u) & 0x7ff;
+                      unsigned index = (base + (x/8)*stride + offset) & (size ? 0x3ffff : 0x1ffff);
+                      int scroll = (index*617u + (index>>17)*71u + 1031u) & 0x7ff;
                       if (scroll >= 1024) scroll -= 2048;
                       expected = 23 + scroll;
                     }

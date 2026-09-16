@@ -1,5 +1,45 @@
 # Sega SDK hardware-document audit
 
+## V2-T03b/R04d: bitmap/scroll size masks and source-cache validity — 2026-09-16
+
+All five retained bitmap renderers now use the configured 512 KiB/1 MiB physical
+mask, matching the point sampler rather than always folding upper bitmap data into
+512 KiB. Legacy line-scroll and vertical-cell-scroll fallback reads now mask the
+complete table index to the configured size. Their row/column indexing, fractional
+math, batching and dispatch policy are unchanged; normal complex scroll continues
+to use the shared point sampler.
+
+The audit also found that bitmap cache construction did not establish source watch
+ranges. Rotation bitmaps now clear stale name-table ranges and watch their complete
+format/size-dependent source surface. Wrapping/oversized surfaces conservatively
+watch the physical memory rather than omit the low wrapped portion. Normal and
+disabled bitmap draws leave cache metadata alone. Finally, each A/B source-cache
+key includes VRAM size: changing only VRSIZE rebuilds the relevant cache instead of
+reusing pixels decoded with the previous wrap. This is derived cache state, reset
+by the existing postload invalidation, not new saved hardware state.
+
+Primary evidence: ST-058 pp.26–28 (memory capacity/map), p.95/table 4.11 (bitmap
+surface lengths, 20000H base alignment and oversized-surface repetition), and
+pp.140–142 (line/vertical-cell table addressing). Pinned Ymir 6d779960's shared
+ReadVRAM/MapVRAMAddress path corroborates 512 KiB final-address wrapping; its larger
+memory mode remains TODO and is not used as an 8-Mbit oracle. The 1 MiB cases use
+Sega's capacity/layout rules and independent byte-address arithmetic.
+
+Validation: **41 scripts and eleven production object builds pass**. New bitmap
+fixture: **17,280** all-format size/bank/wrap/coverage/blend/split-clip images using
+production renderers and MAME blend primitives. Expanded legacy line-scroll tests:
+**33,600** cases across both sizes, with poisoned inactive table rings. Existing
+**85,248** cell-scroll cases now check physical-size addresses. Production cache
+setup/write handlers pass **5,120** bitmap invalidation probes in addition to the
+character suite; production rotation dispatch passes **20** cell/bitmap A/B size
+transition/reuse cases. Ten old-mask/range/name/size-key mutations fail assertions.
+
+**T03/R04 remain partial:** CPU-visible VRAM aliases, remaining legacy fetch consumers,
+fetch-slot timing, and actual linked save/load/game/performance qualification are
+not established by these extracted tests. Conservative wrapped watch ranges may
+invalidate on unrelated writes; no frame-time improvement is claimed.
+
+
 ## V2-T03a: line-window and back-table physical wrapping — 2026-09-16
 
 W0/W1 line-table reads and per-line back-screen reads now apply the configured
