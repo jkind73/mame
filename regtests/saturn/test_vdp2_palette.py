@@ -36,7 +36,7 @@ struct palette {std::array<uint32_t,2048> pens{};
 };
 struct saturn_state {
  unsigned mode=0;bool dirty=false;bool coefficient_cram=true;std::array<uint32_t,0x40000> m_vdp2_vram{};std::array<uint32_t,1024> m_vdp2_cram{};
- unsigned ramctl=0;struct video{bool large=false;bool get_vramsz(){return large;}} dev;video *m_vdp2=&dev;
+ unsigned ramctl=0;struct video{void preserve_scanned_output(){}bool large=false;bool get_vramsz(){return large;}} dev;video *m_vdp2=&dev;
  palette pal;palette *m_palette=&pal;
  void mark_fade_effects_dirty(){dirty=true;}
  uint32_t vdp2_read_rotation_coefficient(uint32_t);uint32_t vdp2_cram_r(offs_t);void vdp2_cram_w(offs_t,uint32_t,uint32_t);void refresh_palette_data();
