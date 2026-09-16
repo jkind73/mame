@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank','rotation-mosaic'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -38,6 +38,7 @@ if a.mutation=='line-color':f=f.replace('color = (color & 0x780) | (coefficient_
 if a.mutation=='overflow':f=f.replace('return uint32_t(a) + uint32_t(b) + uint32_t(c) + uint32_t(d) + uint32_t(e);','return a + b + c + d + e;')
 if a.mutation=='viewpoint':f=f.replace('xp = uint32_t(coeff_table_val) << 8;', 'xp = coeff_table_val;')
 if a.mutation=='per-dot-bank':f=f.replace('bool const per_dot_coefficients = vdp2_per_dot_coefficients(VDP2_RAMCTL);', 'bool const per_dot_coefficients = (vdp2_per_dot_coefficients(VDP2_RAMCTL), true);')
+if a.mutation=='rotation-mosaic':f=f.replace('return x - x % mosaic_width;', 'return x - (x % mosaic_width) * 0;')
 names=sorted(set(re.findall(r'VDP2_\w+',f))|{'VDP2_OVPNRB'})
 code=r'''
 #include <algorithm>
@@ -73,7 +74,7 @@ struct saturn_state {
  struct { // REGS
  } regs;
  struct {int colour_calculation_enabled=0,transparency=1,fade_control=0,alpha=120;
- int line_screen_enabled=0;
+ int line_screen_enabled=0,mosaic_screen_enabled=0;
  int scrollx_fraction=0,scrolly_fraction=0;
  int pattern_data_size=0,bitmap_enable=0,tile_size=0,colour_depth=0,character_number_supplement=0,supplementary_character_bits=0,supplementary_palette_bits=0;
  int incx=65536,incy=65536,scrollx=0,scrolly=0,bitmap_map=0,bitmap_size=0;
@@ -84,8 +85,10 @@ struct saturn_state {
  device dev;device *m_vdp2=&dev;
  bool window=false;unsigned coefficient=65536;bool blank_coefficient=false;
  std::vector<uint32_t> b_reads;
+ unsigned coefficient_reads=0;
  bool selection_test=false,selection_short=false,line_color_test=false,line_color_short=false,line_color_switch=false;
  uint32_t vdp2_read_rotation_coefficient(uint32_t address){
+  ++coefficient_reads;
   if(line_color_test){
    if(line_color_short)return 0x04000400;
    bool a=address<0x40000;unsigned index=(address-(a?0:0x40000))/4;
@@ -364,30 +367,64 @@ int main(){
   assert(out.pixels==expected.pixels);++overflow_cases;
  }
  std::cout<<overflow_cases<<" signed-limit wrapping-coordinate images passed\n";
+
+ unsigned mosaic_cases=0;s.line_color_test=true;s.line_color_short=false;s.selection_test=false;s.blank_coefficient=false;
+ s.regs.VDP2_RAMCTL=0x355;s.regs.VDP2_RAKMD=s.regs.VDP2_RBKMD=0;
+ s.regs.VDP2_RAKDBS=s.regs.VDP2_RBKDBS=0;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;
+ s.regs.VDP2_RAKTAOS=0;s.regs.VDP2_RBKTAOS=1;
+ for(int mode=0;mode<4;++mode)for(bool rbg1:{false,true})for(int path:{0,1,2})for(int width=1;width<=16;++width)
+ for(int blend:{0,1,2})for(bool hires:{false,true})for(bool interlace:{false,true})for(bool window:{false,true}){
+  if(rbg1&&mode!=0)continue;
+  s.regs.VDP2_RPMD=mode;s.regs.VDP2_R1ON=rbg1;s.line_color_switch=mode==2;
+  s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=path!=0;s.regs.VDP2_MZSZH=width-1;s.regs.VDP2_CCMD=blend==2;
+  s.dev.hreso=hires?2:0;s.dev.lsmd=interlace?3:0;s.window=window;
+  s.current_tilemap={};s.current_tilemap.mosaic_screen_enabled=1;s.current_tilemap.roz_mode3=mode==3;
+  s.current_tilemap.colour_calculation_enabled=blend!=0;s.current_tilemap.alpha=120;
+  auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;r.xst=3*65536;r.yst=2*65536;r.dkast=65536;r.dkax=path==2?65536:0;s.parameter_a=r;
+  bitmap_rgb32 ca(64,64),cb(64,64),out(24,8),split(24,8),expected(24,8);
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x){bool covered=(x+2*y)%5!=0;ca.pix(y,x)=covered?(0xff400000|(y<<8)|x):0;cb.pix(y,x)=covered?(0xff004000|(y<<8)|x):0;}
+  for(int y=0;y<8;++y)for(int x=0;x<24;++x)out.pix(y,x)=split.pix(y,x)=expected.pix(y,x)=0x123456+x*37+y*53;
+  auto render=[&](bitmap_rgb32 &dest,rectangle clip){
+   if(rbg1||mode!=0){r=s.parameter_a;s.vdp2_copy_roz_bitmap(dest,cb,clip,2,64,64,64,64);}
+   if(!rbg1&&mode!=1){r=s.parameter_a;s.vdp2_copy_roz_bitmap(dest,ca,clip,1,64,64,64,64);}
+  };
+  s.coefficient_reads=0;render(out,{1,22,1,6});assert(s.coefficient_reads<=18u*(22/(width*(hires?2:1))+1));render(split,{1,7,1,6});render(split,{8,22,1,3});render(split,{8,22,4,6});
+  for(int y=1;y<=6;++y)for(int x=1;x<=22;++x){
+   if(window&&!(x>=3&&x<=11&&y>=2&&y<=5))continue;
+   int anchor=x/(width*(hires?2:1))*(width*(hires?2:1));
+   int sx=3+anchor/(hires?2:1),sy=2+y/(interlace?2:1);
+   bool b=rbg1||mode==1||(mode==2&&path&&((y/(interlace?2:1)+(path==2?anchor:0))%3==1))||(mode==3&&((anchor+y)&1));
+   uint32_t color=b?cb.pix(sy,sx):ca.pix(sy,sx);if(!color)continue;
+   uint32_t back=expected.pix(y,x);expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(back,color,120):add_blend_r32(back,color);
+  }
+  assert(out.pixels==expected.pixels);assert(split.pixels==expected.pixels);++mosaic_cases;
+ }
+ std::cout<<mosaic_cases<<" horizontal rotation mosaic images and split clips passed\n";
  unsigned line_color_cases=0;s.line_color_test=true;s.selection_test=false;s.window=false;s.blank_coefficient=false;s.dev.vramsz=0;
  s.regs.VDP2_RAKMD=s.regs.VDP2_RBKMD=0;s.regs.VDP2_LCTA=0x3ffff;s.pal.indexed=true;
  for(unsigned n=0;n<16;++n){unsigned address=(0x7fffe + n*2)&0x7ffff;uint16_t value=0x522+n*3;s.m_vdp2_legacy.gfx_decode[address]=value>>8;s.m_vdp2_legacy.gfx_decode[(address+1)&0x7ffff]=value;}
  for(int mode=0;mode<4;++mode)for(bool rbg1:{false,true})for(int path:{0,1,2})for(bool short_data:{false,true})
- for(int klce=0;klce<4;++klce)for(bool lncl:{false,true})for(bool per_line:{false,true})for(int lsmd:{0,2,3})for(bool add:{false,true})for(bool second_ratio:{false,true})for(bool banks:{false,true}){
+ for(int klce=0;klce<4;++klce)for(bool lncl:{false,true})for(bool per_line:{false,true})for(int lsmd:{0,2,3})for(bool add:{false,true})for(bool second_ratio:{false,true})for(bool banks:{false,true})for(int mosaic:{0,3,15}){
   if(rbg1&&mode!=0)continue; // RBG1 requires RPMD 0
   s.regs.VDP2_RAMCTL=banks?0x355:0;s.dev.lsmd=lsmd;s.dev.hreso=0;s.line_color_short=short_data;s.line_color_switch=mode==2;
   s.regs.VDP2_RPMD=mode;s.regs.VDP2_R1ON=rbg1;s.regs.VDP2_CCMD=add;s.regs.VDP2_CCCR=second_ratio?0x200:0;s.regs.VDP2_CCRLB=19;
   s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=path!=0;s.regs.VDP2_RAKDBS=s.regs.VDP2_RBKDBS=short_data;
   s.regs.VDP2_RAKLCE=klce&1;s.regs.VDP2_RBKLCE=(klce>>1)&1;s.regs.VDP2_LCCLMD=per_line;
   s.regs.VDP2_RAKTAOS=0;s.regs.VDP2_RBKTAOS=1;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;
-  s.current_tilemap={};s.current_tilemap.line_screen_enabled=lncl;s.current_tilemap.colour_calculation_enabled=1;s.current_tilemap.alpha=120;s.current_tilemap.roz_mode3=mode==3;
+  s.regs.VDP2_MZSZH=mosaic;s.current_tilemap={};s.current_tilemap.mosaic_screen_enabled=mosaic!=0;s.current_tilemap.line_screen_enabled=lncl;s.current_tilemap.colour_calculation_enabled=1;s.current_tilemap.alpha=120;s.current_tilemap.roz_mode3=mode==3;
   auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;r.dkast=65536;r.dkax=path==2?65536:0;s.parameter_a=r;
   bitmap_rgb32 ca(16,16),cb(16,16),out(16,8),expected(16,8);std::fill(ca.pixels.begin(),ca.pixels.end(),0xff800000);std::fill(cb.pixels.begin(),cb.pixels.end(),0xff008000);
   if(rbg1||mode!=0)s.vdp2_copy_roz_bitmap(out,cb,{1,14,1,6},2,16,16,16,16);
   if(!rbg1&&mode!=1){r=s.parameter_a;s.vdp2_copy_roz_bitmap(out,ca,{1,14,1,6},1,16,16,16,16);}
   for(int y=1;y<=6;++y)for(int x=1;x<=14;++x){
-   unsigned a_index=(y>>(lsmd==3))+(path==2&&banks?x:0);
-   bool b=rbg1||mode==1||(mode==2&&path&&!short_data&&a_index%3==1)||(mode==3&&((x+y)&1));
+   unsigned anchor=x/(mosaic+1)*(mosaic+1);
+   unsigned a_index=(y>>(lsmd==3))+(path==2&&banks?anchor:0);
+   bool b=rbg1||mode==1||(mode==2&&path&&!short_data&&a_index%3==1)||(mode==3&&((anchor+y)&1));
    bool coefficient_a=rbg1||mode==2||!b;
    unsigned line_index=per_line?(lsmd==2?y/2:y):(lsmd==3?y%2:0);
    unsigned pen=0x522+line_index*3;
    if(path&&!short_data&&(klce&(coefficient_a?1:2))){
-    unsigned index=coefficient_a?a_index:(y>>(lsmd==3))+(path==2&&banks?x:0);
+    unsigned index=coefficient_a?a_index:(y>>(lsmd==3))+(path==2&&banks?anchor:0);
     pen=(pen/128)*128+((coefficient_a?0x10:0x40)+index)%128;
    }
    uint32_t second=lncl?s.pal.pen(pen):0x123456,first=b?0xff008000:0xff800000;
