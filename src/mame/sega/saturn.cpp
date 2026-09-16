@@ -8980,7 +8980,8 @@ rgb_t saturn_state::vdp2_special_priority_pixel(rgb_t pixel, bool attribute) {
     return pixel;
   unsigned const layer = current_tilemap.layer_name == 0x81 ? 0 :
       current_tilemap.layer_name == 0x80 ? 4 : current_tilemap.layer_name;
-  unsigned const priorities[] = {VDP2_N0PRIN, VDP2_N1PRIN, VDP2_N2PRIN, VDP2_N3PRIN, VDP2_R0PRIN};
+  unsigned const priorities[] = {unsigned(VDP2_N0PRIN), unsigned(VDP2_N1PRIN),
+      unsigned(VDP2_N2PRIN), unsigned(VDP2_N3PRIN), unsigned(VDP2_R0PRIN)};
   bool const low = attribute && (mode == 1 ||
       (current_tilemap.colour_depth < 3 && (pixel.a() & 2)));
   unsigned const priority = (priorities[layer] & 6) | unsigned(low);

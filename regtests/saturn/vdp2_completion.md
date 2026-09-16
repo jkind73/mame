@@ -1,5 +1,20 @@
 # VDP2 implementation report and progress tracker
 
+## Build correction: priority initializer narrowing — 2026-09-16
+
+Explicitly convert all five masked priority-register expressions to unsigned in
+`vdp2_special_priority_pixel`. The underlying 16-bit registers promote to `int`;
+list-initializing the unsigned array from these runtime expressions caused the
+user's production `-Werror=narrowing` build failure. Values remain 0–7 and rendering
+semantics are unchanged. Previous local object builds emitted these five warnings
+but did not reject them; their reported success did not establish compatibility
+with the production warning policy.
+
+`validate_build.py` now enables `-Werror=narrowing` for every production object.
+All **43 scripts and eleven production object builds pass** with that flag. This
+fix addresses the reported diagnostic, not full linking or runtime acceptance.
+
+
 ## V2-T03e: legacy cell-map physical addressing — 2026-09-16
 
 Legacy tilemap base calculation now uses the configured 512 KiB/1 MiB byte mask,
