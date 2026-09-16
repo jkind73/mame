@@ -9,7 +9,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',nargs='?',const='sharing',choices=('sharing','calc-boundary','calc-disabled'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 def extract(sig):
  start=src.index(sig);end=src.index('{',start)+1;depth=1
@@ -18,7 +18,9 @@ def extract(sig):
  return src[start:end]
 funcs=[extract('bool saturn_state::vdp2_calculation_window('),extract('inline bool saturn_state::vdp2_roz_window('),extract('inline int saturn_state::get_roz_window_pixel('),extract('inline bool saturn_state::vdp2_roz_mode3_window(')]
 f='\n'.join(funcs)
-if a.mutation:f=f.replace('layer_name == 0x81', 'layer_name == 0x82')
+if a.mutation=='sharing':f=f.replace('layer_name == 0x81', 'layer_name == 0x82')
+if a.mutation=='calc-boundary':f=f.replace('x <= m_roz_win_e_x[window]', 'x < m_roz_win_e_x[window]')
+if a.mutation=='calc-disabled':f=f.replace('bool keep = !logic_or;', 'bool keep = true;')
 names=sorted(set(re.findall(r'VDP2_\w+',f)))
 code=r'''
 #include <cassert>

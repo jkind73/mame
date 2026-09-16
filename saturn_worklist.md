@@ -1,5 +1,33 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## V2-C03a / C05b: linked windows and color offsets — 2026-09-16
+
+The pushed composition work was extended to **194 cases per configuration**. Added
+post-blend color offsets, exclusion of the lower screen's offset from calculation,
+positive/negative saturation, and A/B offset selection. W0/W1 coverage and calculation-
+only windows now cover inclusive boundaries and immediately adjacent dots, overlap,
+inside/outside selection, a disabled peer, and all-disabled behavior under both LOG
+values. The reference predicates describe retained pixels; the hardware LOG bit
+combines the complementary active/suppressed areas (ST-058 p.194), not those predicates.
+Window scenes use **144 boundary probes**, versus sixteen probes in other scenes.
+Save/load tests now explicitly clear window and offset registers during mutation.
+
+**All 960 synthetic cases pass** (720 DRC / 240 interpreter): 46 background plus 194
+composition cases on JP/PAL/ST-V DRC and JP interpreter. All four visible BIOS replays
+were rerun and passed; `-validate` was rerun with no diagnostics. The 47-script suite
+passes, and the unchanged production sources retain eleven-object/focused-link
+qualification. The 44 fake-executable runner cases pass. Production offset-order,
+calculation-window endpoint and disabled-window mutations compile and fail assertions.
+Coverage-window and calculation-only-window captures were inspected separately.
+
+Primary sources re-read: ST-058 pp.189–195 and 250–252. Pinned Ymir's final-output
+color-offset pass and MiSTer's signed `ColorOffset` helper corroborate offset ordering/
+selection, but are not hardware oracles. No production correction was required by
+these new tests. This closes bounded C03a/C05b qualification, not their parent items:
+line/sprite windows, rotation combinations, other display modes, exact raster/bus
+behavior, external video, games/title and performance remain open. Full VDP2 is not
+claimed complete. Older totals below are historical checkpoints.
+
 ## V2-A04d / C05 linked two-background qualification — 2026-09-16
 
 Continued from isolated backgrounds into real linked composition. **138 additional
