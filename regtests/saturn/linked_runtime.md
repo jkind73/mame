@@ -1,5 +1,33 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C03a / C05b: linked windows and color offsets — 2026-09-16
+
+The pushed composition work was extended to **194 cases per configuration**. Added
+post-blend color offsets, exclusion of the lower screen's offset from calculation,
+positive/negative saturation, and A/B offset selection. W0/W1 coverage and calculation-
+only windows now cover inclusive boundaries and immediately adjacent dots, overlap,
+inside/outside selection, a disabled peer, and all-disabled behavior under both LOG
+values. The reference predicates describe retained pixels; the hardware LOG bit
+combines the complementary active/suppressed areas (ST-058 p.194), not those predicates.
+Window scenes use **144 boundary probes**, versus sixteen probes in other scenes.
+Save/load tests now explicitly clear window and offset registers during mutation.
+
+**All 960 synthetic cases pass** (720 DRC / 240 interpreter): 46 background plus 194
+composition cases on JP/PAL/ST-V DRC and JP interpreter. All four visible BIOS replays
+were rerun and passed; `-validate` was rerun with no diagnostics. The 47-script suite
+passes, and the unchanged production sources retain eleven-object/focused-link
+qualification. The 44 fake-executable runner cases pass. Production offset-order,
+calculation-window endpoint and disabled-window mutations compile and fail assertions.
+Coverage-window and calculation-only-window captures were inspected separately.
+
+Primary sources re-read: ST-058 pp.189–195 and 250–252. Pinned Ymir's final-output
+color-offset pass and MiSTer's signed `ColorOffset` helper corroborate offset ordering/
+selection, but are not hardware oracles. No production correction was required by
+these new tests. This closes bounded C03a/C05b qualification, not their parent items:
+line/sprite windows, rotation combinations, other display modes, exact raster/bus
+behavior, external video, games/title and performance remain open. Full VDP2 is not
+claimed complete. Older totals below are historical checkpoints.
+
 ## V2-A04d / C05 linked two-background qualification — 2026-09-16
 
 Continued from isolated backgrounds into real linked composition. **138 additional
@@ -139,7 +167,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the two-background composition matrix, add `--composition` (mutually exclusive
+For the 194-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -149,10 +177,11 @@ python regtests/saturn/run_vdp2_runtime.py \
 ```
 
 Within each capacity, composition cases 1–3 cover priorities, 4–35 top-selected
-ratios, 36–67 second-selected ratios, 68 additive saturation, and 69 disabled top
-calculation. Cases 70–138 repeat at the larger capacity. Sources are red over green;
-additive saturation changes the lower source to yellow. Scene selection and expected
-colors are independent of production renderer routines. Output screenshots are not
+ratios, 36–67 second-selected ratios, 68 additive saturation, 69 disabled top
+calculation, 70–73 offsets, 74–85 coverage windows and 86–97 calculation-only windows.
+Cases 98–194 repeat at the larger capacity. Sources are red over green;
+additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
+Scene selection and expected colors are independent of production renderer routines. Output screenshots are not
 hardware-derived reference images.
 
 Repeat for `saturneu` and `stvbios`; omit `--drc` for interpreter execution. ROMs
@@ -197,3 +226,17 @@ effects/interlace and hardware/precision discrepancies, title/game acceptance, o
 comparative performance. The extended-color CRMD0 line-color table's printed
 2:1:0 versus implemented/cross-emulator 2:1:1 remains an explicit primary-source
 discrepancy. No hardware certification or measured speedup is claimed.
+
+## Offset/window cross-check locations
+
+- Sega SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-058 PDF blob
+  `64ba1bac76427b122bf4c10a557d1a3cec29c3a1`: pp.189–195 distinguish active
+  window areas from their retained complements; pp.250–252 specify post-calculation
+  top-screen offset enable/select and signed saturation.
+- Ymir `6d779960127ced72087a418c1daefc637d0aaa80`, renderer lines 4187–4195:
+  final-output offset uses the top layer's selected offset bank.
+- MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`, VDP2 package lines
+  2423–2429: signed offset, bank selection and saturation. The `WinTest` helper's
+  all-disabled branch returns zero for either LOG value; that helper alone is not
+  a complete caller-level comparison. The fixture follows Sega's explicit p.194
+  all-disabled rule rather than importing that helper's result as an oracle.

@@ -1,5 +1,33 @@
 # VDP2 implementation report and progress tracker
 
+## V2-C03a / C05b: linked windows and color offsets — 2026-09-16
+
+The pushed composition work was extended to **194 cases per configuration**. Added
+post-blend color offsets, exclusion of the lower screen's offset from calculation,
+positive/negative saturation, and A/B offset selection. W0/W1 coverage and calculation-
+only windows now cover inclusive boundaries and immediately adjacent dots, overlap,
+inside/outside selection, a disabled peer, and all-disabled behavior under both LOG
+values. The reference predicates describe retained pixels; the hardware LOG bit
+combines the complementary active/suppressed areas (ST-058 p.194), not those predicates.
+Window scenes use **144 boundary probes**, versus sixteen probes in other scenes.
+Save/load tests now explicitly clear window and offset registers during mutation.
+
+**All 960 synthetic cases pass** (720 DRC / 240 interpreter): 46 background plus 194
+composition cases on JP/PAL/ST-V DRC and JP interpreter. All four visible BIOS replays
+were rerun and passed; `-validate` was rerun with no diagnostics. The 47-script suite
+passes, and the unchanged production sources retain eleven-object/focused-link
+qualification. The 44 fake-executable runner cases pass. Production offset-order,
+calculation-window endpoint and disabled-window mutations compile and fail assertions.
+Coverage-window and calculation-only-window captures were inspected separately.
+
+Primary sources re-read: ST-058 pp.189–195 and 250–252. Pinned Ymir's final-output
+color-offset pass and MiSTer's signed `ColorOffset` helper corroborate offset ordering/
+selection, but are not hardware oracles. No production correction was required by
+these new tests. This closes bounded C03a/C05b qualification, not their parent items:
+line/sprite windows, rotation combinations, other display modes, exact raster/bus
+behavior, external video, games/title and performance remain open. Full VDP2 is not
+claimed complete. Older totals below are historical checkpoints.
+
 ## V2-A04d / C05 linked two-background qualification — 2026-09-16
 
 Continued from isolated backgrounds into real linked composition. **138 additional
@@ -1249,9 +1277,9 @@ bounded extracted tests, not complete hardware or linked-game qualification.
 ## 5. What has actually been tested
 
 The current checkout passed **47 Saturn regression scripts and eleven production
-object compilations**, not 46 dedicated VDP2 scripts. All six map-mask truncations
+object compilations**, not 47 dedicated VDP2 scripts. All six map-mask truncations
 and three plain 11-bit routing mutations compiled and failed assertions. The
-external dependency bootstrap executed successfully. The fresh full link/validate passes. The linked matrix passes 736 synthetic
+external dependency bootstrap executed successfully. The fresh full link/validate passes. The linked matrix passes 960 synthetic
 cases and four visible BIOS replays, as recorded at the top of this report.
 
 | Fixture family | Evidence | Limit |
@@ -1308,6 +1336,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
 - [x] **V2-C03b** Preserve no-transform rotation windows and audit shortcut eligibility; test wrapper/cache configuration.
 - [x] **V2-C03c** Calculation-only W0/W1/SW windows and normal/sprite SW area/cache integration.
 - [ ] **V2-C03** Complete window behavior.
+  - [x] **V2-C03a** Linked W0/W1 coverage/calculation-only boundary, overlap and disabled-window matrix passes in normal resolution at both VRAM capacities. Not line/sprite/rotation/all-mode coverage.
   - [ ] Window 0/1 boundaries, line windows, AND/OR and disabled-window neutral values.
   - [ ] Sprite-derived mask as a real window input.
   - [ ] Calculation-only windows and rotation-parameter windows.
@@ -1320,6 +1349,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
 - [x] **V2-C05b** Ordinary raw-second ratio provenance, CCRTMD including sprite selectors and disabled lower-layer calculation, and line/back CCRLB.
 - [x] **V2-C05c** Top-only post-calculation signed A/B offsets and table-12.1 second-format restrictions.
 - [ ] **V2-C05** Qualify ordinary ratio/additive calculation and color-offset ordering.
+  - [x] **V2-C05b** Linked post-calculation top offset, lower-offset isolation, signed saturation and A/B selection pass, including register mutation/save/load.
   - [x] **V2-C05a** Linked two-background all-32-ratio/top-or-second-source, top-enable and additive saturation matrix passes; offsets and other combinations remain open.
   - [ ] Ratio extremes, integer rounding and overflow/clamping.
   - [ ] Correct second-image eligibility and sprite condition modes.
