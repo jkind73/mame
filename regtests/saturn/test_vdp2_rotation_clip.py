@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank','rotation-mosaic','sprite-window','special-attribute','special-msb','special-code','priority-attribute','priority-match','priority-zero'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank','rotation-mosaic','sprite-window','special-attribute','special-msb','special-code','priority-attribute','priority-match','priority-zero','11bpp'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -28,6 +28,7 @@ f=extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static 
 real_windows=[extract(src,sig) for sig in ('inline bool saturn_state::vdp2_roz_window(', 'inline bool saturn_state::vdp2_roz_mode3_window(', 'inline int saturn_state::get_roz_window_pixel(')]
 real_windows=[fn.replace('saturn_state::vdp2_roz_window(', 'saturn_state::real_roz_window(').replace('saturn_state::vdp2_roz_mode3_window(', 'saturn_state::real_mode3_window(') for fn in real_windows]
 f+='\n'+'\n'.join(real_windows)
+if a.mutation=='11bpp':f=f.replace('(current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||', '')
 if a.mutation=='origin':
  f=f.replace('xs = uint32_t(xs) + uint32_t(int64_t(dxs) * cliprect.left());','(void)0;').replace('ys = uint32_t(ys) + uint32_t(int64_t(dys) * cliprect.left());','(void)0;')
 if a.mutation=='window':
@@ -291,7 +292,7 @@ int main(){
    if(!s.vdp2_roz_window(x,y))continue;
    if(parameter_window&&!s.vdp2_roz_mode3_window(x,y,parameter-1))continue;
    int sx=x-8,sy=y-4;bool outside=sx<0||sy<0||sx>=16||sy>=16;
-   uint32_t color=outside?reference(parameter==1?0xad35:0x5937,sx,sy):0xffabcdef;
+   uint32_t color=outside?reference(parameter==1?0xad35:0x5937,sx,sy):(depth==2?reference(0,sx,sy):0xffabcdef);
    if(!(color>>24))continue;
    expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(0x123456,color,120):add_blend_r32(0x123456,color);
   }

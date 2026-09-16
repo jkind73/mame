@@ -1240,8 +1240,9 @@ void stv_state::stv_mem(address_map &map) {
   map(0x05d00000, 0x05d0001f)
       .rw(FUNC(stv_state::vdp1_regs_r), FUNC(stv_state::vdp1_regs_w));
   /* VDP2 */
-  map(0x05e00000, 0x05e7ffff)
-      .mirror(0x80000)
+  // The handlers apply VRSIZE-dependent physical wrapping. A fixed map
+  // mirror would discard the upper address bit even in 8-Mbit mode.
+  map(0x05e00000, 0x05efffff)
       .rw(FUNC(stv_state::vdp2_vram_r), FUNC(stv_state::vdp2_vram_w));
   map(0x05f00000, 0x05f7ffff)
       .rw(FUNC(stv_state::vdp2_cram_r), FUNC(stv_state::vdp2_cram_w));
@@ -2619,7 +2620,7 @@ ROM_LOAD16_WORD_SWAP(
 // was reused for 3 different games and on both Naomi and ST-V!)
 ROM_PARAMETER(":315_5881:key", "052e2901")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(bakubaku)
@@ -2644,7 +2645,7 @@ ROM_LOAD16_WORD_SWAP("mpr17973.5", 0x1000000, 0x0400000,
                      CRC(5f6e0e8b)
                          SHA1(eeb5efb5216ab8b8fdee4656774bbd5a2a5b2d42)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(colmns97)
@@ -2662,7 +2663,7 @@ ROM_LOAD16_WORD_SWAP("mpr19555.3", 0x800000, 0x400000,
                      CRC(74f6e6b8)
                          SHA1(8080860550eb770e04447e344fb337748a249761)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(cotton2)
@@ -2694,7 +2695,7 @@ ROM_LOAD16_WORD_SWAP("mpr20123.8", 0x1c00000, 0x0400000,
                      CRC(35f1b89f)
                          SHA1(1d6007c380f817def734fc3030d4fe56df4a15be)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(cottonbm)
@@ -2723,7 +2724,7 @@ ROM_LOAD16_WORD_SWAP("mpr21069.1", 0x1800000, 0x0400000,
                      CRC(6a28e3c5)
                          SHA1(60454b71db49b872e0cb89fae2259fed601588bd)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(decathlt)
@@ -2763,7 +2764,7 @@ ROM_LOAD16_WORD_SWAP(
 	ROM_LOAD( "dec2",    0x0000000, 0x80000, CRC(d1e08bc9) SHA1(3c5867de81a380bfc181d57214b86ce891b05f06) ) // on select char screen
 #endif
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(decathlto)
@@ -2795,7 +2796,7 @@ ROM_LOAD16_WORD_SWAP(
     CRC(45c64fca)
         SHA1(ae2f678b9885426ce99b615b7f62a451f9ef83f9)) // good (was .5)
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(diehard) /* must use USA, Europe or Taiwan BIOS */
@@ -2820,7 +2821,7 @@ ROM_LOAD16_WORD_SWAP("mpr19118.5", 0x1000000, 0x0400000,
                      CRC(2c9702f0)
                          SHA1(5c2c66de83f2ccbe97d3b1e8c7e65999e1fa2de1)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(dnmtdeka)
@@ -2844,7 +2845,7 @@ ROM_LOAD16_WORD_SWAP("mpr19118.5", 0x1000000, 0x0400000,
                      CRC(2c9702f0)
                          SHA1(5c2c66de83f2ccbe97d3b1e8c7e65999e1fa2de1)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(ejihon)
@@ -2872,7 +2873,7 @@ ROM_LOAD16_WORD_SWAP("mpr18142.6", 0x1400000, 0x0400000,
                      CRC(cf259541)
                          SHA1(51e2c8d16506d6074f6511112ec4b6b44bed4886)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(elandore)
@@ -2915,7 +2916,7 @@ ROM_LOAD16_WORD_SWAP(
 // 610-0374-126   1998     317-5043-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "05226d41")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(ffrevng10)
@@ -2954,7 +2955,7 @@ ROM_LOAD16_WORD_SWAP(
 // 610-0374-128   1998     317-5049-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "0524ac01")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(ffreveng)
@@ -2997,7 +2998,7 @@ ROM_LOAD16_WORD_SWAP(
 // 610-0374-128   1998     317-5049-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "0524ac01")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* set system to 1 player to test rom */
@@ -3124,7 +3125,7 @@ ROM_LOAD16_WORD_SWAP("mpr18260.5", 0x1000000, 0x0400000,
                          SHA1(806ad85a187a23a5cf867f2f3dea7d8150065b8e)) // good
 ROM_RELOAD(0x2000000, 0x0400000)
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(gaxeduel)
@@ -3155,7 +3156,7 @@ ROM_LOAD16_WORD_SWAP("mpr17767.1", 0x1800000, 0x0400000,
                      CRC(9ba1e7b1)
                          SHA1(f297c3697d2e8ba4476d672267163f91f371b362)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(grdforce)
@@ -3181,7 +3182,7 @@ ROM_LOAD16_WORD_SWAP("mpr20843.6", 0x1400000, 0x0400000,
                      CRC(263e49cc)
                          SHA1(67979861ca2784b3ce39d87e7994e6e7351b40e5)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(groovef)
@@ -3216,7 +3217,7 @@ ROM_LOAD16_WORD_SWAP("mpr19822.9", 0x2000000, 0x0200000,
                      CRC(5e8c4b5f)
                          SHA1(1d146fbe3d0bfa68993135ba94ef18081ab65d31)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(hanagumi)
@@ -3260,7 +3261,7 @@ ROM_LOAD16_WORD_SWAP("mpr20148.12", 0x2c00000, 0x0400000,
                      CRC(5337ccb0)
                          SHA1(a998bb116eb10c4044410f065c5ddeb845f9dab5)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(introdon)
@@ -3293,7 +3294,7 @@ ROM_LOAD16_WORD_SWAP("mpr18938.1", 0x1800000, 0x0400000,
                      CRC(580ecb83)
                          SHA1(6c59f7da408b53f9fa7aa32c1b53328b5fd6334d)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* set system to 1 player to test rom */
@@ -3355,7 +3356,7 @@ ROM_LOAD16_WORD_SWAP("mpr20443.9", 0x2000000, 0x0400000,
                      CRC(8ac288f5)
                          SHA1(0c08874e6ab2b07b17438721fb535434a626115f)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* set system to 1 player to test rom */
@@ -3413,7 +3414,7 @@ ROM_LOAD16_WORD_SWAP("mpr20966.5", 0x1000000, 0x0400000,
                      CRC(b94b83de)
                          SHA1(ba1b3135d0ad057f0786f94c9d06b5e347bedea8)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(pblbeach)
@@ -3439,7 +3440,7 @@ ROM_LOAD16_WORD_SWAP("mpr18856.5", 0x1000000, 0x0400000,
                      CRC(214cef24)
                          SHA1(f62b462170b377cff16bb6c6126cbba00b013a87)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(prikura)
@@ -3462,7 +3463,7 @@ ROM_LOAD16_WORD_SWAP("mpr19336.5", 0x1000000, 0x0400000,
                      CRC(2363fa4b)
                          SHA1(f45e53352520be4ea313eeab87bcab83f479d5a8)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(puyosun)
@@ -3500,7 +3501,7 @@ ROM_LOAD16_WORD_SWAP("mpr19539.9", 0x2000000, 0x0400000,
                      CRC(72a297e5)
                          SHA1(679987e62118dd1bf7c074f4b88678e1a1187437)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(rsgun)
@@ -3531,7 +3532,7 @@ ROM_LOAD16_WORD_SWAP(
 // 610-0374-96   1998     317-5041-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "05272d01")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(sandor)
@@ -3559,7 +3560,7 @@ ROM_LOAD16_WORD_SWAP("mpr18638.11", 0x2800000, 0x0400000,
                          SHA1(a77bdcc27d183896c0ed576eeebcc1785d93669e)) // good
 ROM_RELOAD(0x1000000, 0x0400000)
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /*
@@ -3600,7 +3601,7 @@ ROM_LOAD16_WORD_SWAP("th-e-5.ic5", 0x1000000, 0x0400000,
                      CRC(3914b805)
                          SHA1(1331ce82ba0bdfc76fe3456a5252e69c00e2cf1f))
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(thuntk)
@@ -3625,7 +3626,7 @@ ROM_LOAD("bom210-13.ic5", 0x2800000, 0x0400000,
          CRC(5ece1d5c) SHA1(6d88f71b485bf2b3c164fa22f1c7ecaba4b3f5b1))
 ROM_RELOAD(0x1000000, 0x0400000)
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(sanjeon)
@@ -3669,7 +3670,7 @@ ROM_LOAD("ic12", 0x1800000, 0x0400000,
          CRC(d5ebc84e)
              SHA1(f990b793cdfadbbac69c680191660f4a2f282ba2)) // ic1 good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(sasissu)
@@ -3699,7 +3700,7 @@ ROM_LOAD16_WORD_SWAP("mpr20543.1", 0x1800000, 0x0400000,
                      CRC(1f688cdf)
                          SHA1(a90c1011119adb50e0d9d5cd3d7616a307b2d7e8)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* set to 1 player to test */
@@ -3752,7 +3753,7 @@ ROM_LOAD16_WORD_SWAP("mpr18340.2", 0x0400000, 0x0200000,
                      CRC(8db23212)
                          SHA1(85d604a5c6ab97188716dbcd77d365af12a238fe)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(shienryu)
@@ -3800,7 +3801,7 @@ ROM_LOAD16_WORD_SWAP("mpr18782.12", 0x2c00000, 0x0200000,
                      CRC(9be2270a)
                          SHA1(f2de5cd6b269f123305e30bed2b474019e4f05b8)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(sokyugrt)
@@ -3824,7 +3825,7 @@ ROM_LOAD16_WORD_SWAP("mpr19192.5", 0x1000000, 0x0200000,
                      CRC(cb544a1e)
                          SHA1(eb3ba9758487d0e8c4bbfc41453fe35b35cce3bf)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* set to 1 player to test */
@@ -3899,7 +3900,7 @@ ROM_LOAD16_WORD_SWAP("mpr17842.9", 0x2000000, 0x0400000,
                      CRC(ac8deed7)
                          SHA1(370eb2216b8080d3ddadbd32804db63c4ebac76f)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(twcup98)
@@ -3931,7 +3932,7 @@ ROM_LOAD16_WORD_SWAP(
 // 610-0374-89   1998     317-5039-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "05200913")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(twsoc98)
@@ -3963,7 +3964,7 @@ ROM_LOAD16_WORD_SWAP(
 // 610-0374-91   1998     317-5039-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "05200913")
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(vfkids)
@@ -4002,7 +4003,7 @@ ROM_LOAD16_WORD_SWAP("mpr18923.12", 0x2c00000, 0x0400000,
                      CRC(30a41ae9)
                          SHA1(78a3d88b5e6cf669b660460ac967daf408038883)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(vfremix)
@@ -4034,7 +4035,7 @@ ROM_LOAD16_WORD_SWAP("mpr17945.1", 0x1800000, 0x0200000,
                      CRC(03ede188)
                          SHA1(849c7fab5b97e043fea3deb8df6cc195ccced0e0)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* set to 1 player to test */
@@ -4103,7 +4104,7 @@ ROM_LOAD16_WORD_SWAP("mpr20115.8", 0x1c00000, 0x0400000,
                      CRC(dd01f2ad)
                          SHA1(3bb48dc8670d9460fea2a67400ddb573472c2f4f)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(znpwfv)
@@ -4143,7 +4144,7 @@ ROM_LOAD16_WORD_SWAP("mpr20407.10", 0x2400000, 0x0400000,
                      CRC(58356050)
                          SHA1(f8fb5a14f4ec516093c785891b05d55ae345754e)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(znpwfvt)
@@ -4184,7 +4185,7 @@ ROM_LOAD16_WORD_SWAP("mpr20407.10", 0x2400000, 0x0400000,
                      CRC(58356050)
                          SHA1(f8fb5a14f4ec516093c785891b05d55ae345754e)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(danchih)
@@ -4207,7 +4208,7 @@ ROM_LOAD16_WORD_SWAP("mpr21973.5", 0x1000000, 0x0400000,
                      CRC(b0f23f14)
                          SHA1(4e7076c29fd57bb3ef9af50a6104e39ecda94e06)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(danchiq)
@@ -4245,7 +4246,7 @@ ROM_LOAD16_WORD_SWAP(
     "ic25", 0x1400000, 0x0200000,
     CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) //(Untested)
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(mausuke)
@@ -4280,7 +4281,7 @@ ROM_LOAD16_WORD_SWAP("mcj-06.8", 0x1c00000, 0x0200000,
                      CRC(1ab8e90e)
                          SHA1(8e22f03c1791a983eb330b2a9199e5349a0b1baa)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* acclaim game, not a standard cart ... */
@@ -4329,7 +4330,7 @@ ROM_LOAD("snd2.u50", 0x800000, 0x200000,
 ROM_LOAD("snd3.u51", 0xa00000, 0x200000,
          CRC(31af26ae) SHA1(2c9f4c078afec55964b5c2a4d00f5c43f2661a04))
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /*
@@ -4474,7 +4475,7 @@ DISK_IMAGE_READONLY("cdp-00428", 0,
 
 ROM_REGION32_BE(0x3000000, "abus", ROMREGION_ERASE00) /* SH2 code */
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(sfish2j)
@@ -4504,7 +4505,7 @@ DISK_IMAGE_READONLY("cdp-00386b", 0,
 
 ROM_REGION32_BE(0x3000000, "abus", ROMREGION_ERASE00) /* SH2 code */
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(magzun)
@@ -4592,7 +4593,7 @@ ROM_LOAD16_WORD_SWAP("mpr-21299.ic11", 0x2800000, 0x0400000,
                      CRC(ecc521c6)
                          SHA1(f7ed4dd1cbe179652fdfdde34929b41a1fdcf9e2)) // good
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 /* the rom test for this is in 'each game test'  */
@@ -5354,7 +5355,7 @@ ROM_LOAD16_WORD_SWAP(
 
 // TODO: add 1p eeprom default
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(pclub2pe) // set to 1p
@@ -5536,7 +5537,7 @@ ROM_LOAD16_WORD_SWAP("ic32.bin", 0x0c00000, 0x200000,
 
 // TODO: add 1p eeprom default
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // 昭和レトロ プリント倶楽部2
@@ -5556,6 +5557,8 @@ ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
 	ROM_REGION( 0x400, "plds", ROMREGION_ERASE00 )
 	ROM_LOAD( "315-6055.ic12", 0x000, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the front side of the cart
 	ROM_LOAD( "315-6056.ic13", 0x200, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the back side of the cart
+	ROM_REGION16_BE(0x80, "eeprom",
+	                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // プリント倶楽部2 ラムチョップ＆フレンズ Ver.
@@ -5572,6 +5575,37 @@ ROM_START( pclub2lc ) // 837-12765-02 ROM BD, protection device not present
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic32",    0x0c00000, 0x0200000, CRC(3438c564) SHA1(8da287c22290bd82d7d7a1a2b55ed82711934d3c) ) // tests good, 1xxxxxxxxxxxxxxxxxxx = 0x00
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic34",    0x0e00000, 0x0200000, CRC(8d89877e) SHA1(7d76d48d64d7ac5411d714a4bb83f37e3e5b8df6) ) // 0x00 filled but present, not tested by ROM test
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic36",    0x1000000, 0x0200000, CRC(8d89877e) SHA1(7d76d48d64d7ac5411d714a4bb83f37e3e5b8df6) ) // 0x00 filled but present, not tested by ROM test
+
+	// TODO: add 1p eeprom default
+
+	ROM_REGION( 0x400, "plds", ROMREGION_ERASE00 )
+	ROM_LOAD( "315-6055.ic12", 0x000, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the front side of the cart
+	ROM_LOAD( "315-6056.ic13", 0x200, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the back side of the cart
+	ROM_REGION16_BE(0x80, "eeprom",
+	                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
+ROM_END
+
+// PRINT CLUB 2 BANPRESTO ぼのぼの
+ROM_START( pclub2bb ) // 837-12765-01 ROM BD, protection device not present
+	STV_BIOS
+
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASE00 ) /* SH2 code */
+
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic22",    0x0200000, 0x0200000, CRC(525d9690) SHA1(e8a46276cfdfe285b2a451a81ae465c015249ea0) ) // tests good
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic24",    0x0400000, 0x0200000, CRC(8bde60c5) SHA1(c8ab3ab506d4c407771b528e4b89a6ac2d8c6073) ) // tests good
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic26",    0x0600000, 0x0200000, CRC(c057b121) SHA1(4bb73622c2ea79422bbd56aa9e4ff56f6d7622fd) ) // tests good, 1xxxxxxxxxxxxxxxxxxxx = 0x00
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic28",    0x0800000, 0x0200000, CRC(5ca801e6) SHA1(c42989410a4e779bc123d611fa770e089fc261a6) ) // not tested in ROM test
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic30",    0x0a00000, 0x0200000, CRC(03b9eacf) SHA1(d69c10f7613d9f52042dd6cce64e74e2b1ecc2d8) ) // not tested in ROM test
+
+	// TODO: add 1p eeprom default
+
+	ROM_REGION( 0x400, "plds", ROMREGION_ERASE00 )
+	ROM_LOAD( "315-6055.ic12", 0x000, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the front side of the cart
+	ROM_LOAD( "315-6056.ic13", 0x200, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the back side of the cart
+	ROM_REGION16_BE(0x80, "eeprom",
+	                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
+ROM_END
+
 // PRINT CLUB 2 BANPRESTO ULTRAMAN
 ROM_START( pclub2bu ) // 837-12765-01 ROM BD, protection device not present
 	STV_BIOS
@@ -5589,6 +5623,8 @@ ROM_START( pclub2bu ) // 837-12765-01 ROM BD, protection device not present
 	ROM_REGION( 0x400, "plds", ROMREGION_ERASE00 )
 	ROM_LOAD( "315-6055.ic12", 0x000, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the front side of the cart
 	ROM_LOAD( "315-6056.ic13", 0x200, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the back side of the cart
+	ROM_REGION16_BE(0x80, "eeprom",
+	                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // PRINT CLUB 2 EVANGELION
@@ -5608,6 +5644,8 @@ ROM_START( pclub2ev ) // 837-12765-01 ROM BD, protection device not present
 	ROM_REGION( 0x400, "plds", ROMREGION_ERASE00 )
 	ROM_LOAD( "315-6055.ic12", 0x000, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the front side of the cart
 	ROM_LOAD( "315-6056.ic13", 0x200, 0x117, NO_DUMP ) // PALCE16V8H-10JC on the back side of the cart
+	ROM_REGION16_BE(0x80, "eeprom",
+	                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // プリント倶楽部 ナイトメアビフォアクリスマス
@@ -5645,7 +5683,7 @@ ROM_LOAD("315-6055.ic12", 0x000, 0x117,
 ROM_LOAD("315-6056.ic13", 0x200, 0x117,
          NO_DUMP) // PALCE16V8H-10JC on the back side of the cart
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // PRINT CLUB 2 ツブヤキシロー
@@ -5691,7 +5729,7 @@ ROM_LOAD("315-6055.ic12", 0x000, 0x117,
 ROM_LOAD("315-6056.ic13", 0x200, 0x117,
          NO_DUMP) // PALCE16V8H-10JC on the back side of the cart
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(prc298au) // set to 1p
@@ -6127,7 +6165,7 @@ ROM_LOAD16_WORD_SWAP("lh28f016sut.ic30", 0x0a00000, 0x0200000,
 
 // TODO: add 1p eeprom default
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // Name Club / Name Club vol.2
@@ -6246,7 +6284,7 @@ ROM_LOAD16_WORD_SWAP(
     CRC(9a4109e5)
         SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) // empty / FF filled
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(wasafari)
@@ -6303,7 +6341,7 @@ ROM_LOAD16_WORD_SWAP("ic36", 0x1000000, 0x200000,
                      CRC(5b83914c)
                          SHA1(3d0f96345cdf22116d34eb67d51c1000a417889d))
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(dfeverg)
@@ -6347,7 +6385,7 @@ ROM_LOAD16_WORD_SWAP("11", 0x2800000, 0x400000,
 // backgrounds
 ROM_LOAD16_WORD_SWAP("12", 0x2c00000, 0x400000, NO_DUMP)
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // スロット バトラー
@@ -6479,7 +6517,7 @@ ROM_LOAD16_WORD_SWAP("mpr-21444.ic8", 0x1c00000, 0x0400000,
                      CRC(a82ff33b)
                          SHA1(9559ee4cf1ec487c3847df40d10aa2a4eaee97d2))
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 ROM_START(yattrmnp) // ROM board stickered 837-13598
@@ -6541,7 +6579,7 @@ ROM_REGION(0x200, "plds", ROMREGION_ERASE00)
 ROM_LOAD("315-5930.ic19", 0x000, 0x117,
          CRC(d1201563) SHA1(a133b07240c0a4eb8bae4b438d98fc6148fb7f4f))
 ROM_REGION16_BE(0x80, "eeprom",
-                0) /* no dump: the driver synthesises the factory defaults */
+                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
 // つりぼり大会 (Tsuribori Taikai)

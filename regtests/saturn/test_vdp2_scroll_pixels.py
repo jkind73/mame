@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority'))
+p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route'))
 a=p.parse_args();src=(ROOT/'src/mame/sega/saturn.cpp').read_text();head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
  start=text.index(sig);end=text.index('{',start)+1;depth=1
@@ -31,6 +31,7 @@ if a.mutation=='special-color':f=f.replace('bool(current_tilemap.special_colour_
 if a.mutation=='metadata':f=f.replace('pixel = rgb_t((uint32_t(pixel) & 0xffffff) | metadata);', '(void)metadata; pixel = rgb_t(uint32_t(pixel) | 0xff000000);')
 if a.mutation=='priority':f=f.replace('if (!priority)', 'if (false && !priority)').replace('return rgb_t((uint32_t(pixel) & ~0x1c000000U) | (priority << 26));', 'return rgb_t((uint32_t(pixel) & ~0x1c000000U) | ((priority | 1) << 26));')
 route=extract(src,'  if (current_tilemap.layer_name < 4 &&')
+if a.mutation=='11bpp-route':route=route.replace('(current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||', '')
 names=sorted(set(re.findall(r'VDP2_\w+',f)))
 code=r'''
 #include <algorithm>
@@ -192,6 +193,9 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
  s.m_vdp2_composition_active=true;s.regs.VDP2_SFPRMD=s.regs.VDP2_SFCCMD=0;t.alpha=88;
  s.route(unit,{0,1,0,1});assert(s.m_vdp2_raw_top.pix(0,0)==unit.pix(0,0)&&s.m_vdp2_raw_alpha.pix(0,0)==88);
  s.m_vdp2_composition_active=false;
+ // Plain 11-bit palette cells must not fall through to the 4-bit decoder.
+ t.colour_depth=2;t.bitmap_enable=0;t.colour_calculation_enabled=0;
+ bitmap_rgb32 plain,reference;s.route(plain,{0,1,0,1});s.vdp2_draw_scroll_screen(reference,{0,1,0,1});assert(plain.data==reference.data);
  unsigned metadata_cases=0;
  unsigned *priorities[]={&s.regs.VDP2_N0PRIN,&s.regs.VDP2_N1PRIN,&s.regs.VDP2_N2PRIN,&s.regs.VDP2_N3PRIN,&s.regs.VDP2_R0PRIN};
  for(int name:{0,1,2,3,0x80,0x81})for(unsigned base=0;base<8;++base)for(unsigned mode:{1u,2u})for(bool attribute:{false,true})for(unsigned bank:{0u,1u})for(unsigned raw=0;raw<256;++raw){

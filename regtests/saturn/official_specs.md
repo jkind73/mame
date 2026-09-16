@@ -1,5 +1,27 @@
 # Sega SDK hardware-document audit
 
+## Integrated recovery — 2026-09-16
+
+Reconstructed the unpushed integration lost during sandbox restoration: all six
+three-bit map offsets, capacity-aware full console/ST-V CPU apertures, ordinary
+11-bit palette-cell sampler routing at all three dispatch/source sites, explicit
+FF initialization for 60 undumped EEPROM placeholders, and the full validator's
+actual executable path. Existing 4/8-bit cached paths and dumped EEPROMs are kept.
+
+**Current evidence: 46 scripts and eleven production object compilations pass;
+nine targeted mutations fail assertions.** External SDK provisioning also passes.
+Linked synthetic/save-manager and visible BIOS replay tools have been restored,
+but current-checkout linked/runtime acceptance is pending. The earlier unpushed
+checkout's successful full build and 42 synthetic/three DRC BIOS runs are historical:
+the executable and captures were lost, so they do not certify this reconstruction.
+See [reproduction, evidence and limits](linked_runtime.md).
+
+Full VDP2 is not complete; exact contention/latching, external video, combined-effect
+hardware qualification, mid-field reconstruction, games and performance remain open.
+The dated sections below preserve earlier checkpoints; their test totals describe
+those checkpoints, not the current regression count. No additional parent acceptance
+checkbox is closed merely by reconstructing historically tested work.
+
 ## V2-T03g: retained palette-cell boundary source selection — 2026-09-16
 
 Zoom, alpha and transparent-pen palette helpers now normalize character numbers

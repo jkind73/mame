@@ -689,8 +689,9 @@ void sat_console_state::saturn_mem(address_map &map) {
       .rw(FUNC(sat_console_state::vdp1_regs_r),
           FUNC(sat_console_state::vdp1_regs_w));
   /* VDP2 */
-  map(0x05e00000, 0x05e7ffff)
-      .mirror(0x80000)
+  // The handlers apply VRSIZE-dependent physical wrapping. A fixed map
+  // mirror would discard the upper address bit even in 8-Mbit mode.
+  map(0x05e00000, 0x05efffff)
       .rw(FUNC(sat_console_state::vdp2_vram_r),
           FUNC(sat_console_state::vdp2_vram_w));
   map(0x05f00000, 0x05f7ffff)

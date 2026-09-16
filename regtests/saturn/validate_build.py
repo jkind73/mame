@@ -62,5 +62,5 @@ if args.full:
          "SOURCES=src/mame/sega/saturn.cpp,src/mame/sega/sat_console.cpp,src/mame/sega/stv.cpp",
          "USE_QTDEBUG=0", "NO_X11=1", "NO_USE_XINPUT=1", "NO_OPENGL=1",
          "NO_USE_MIDI=1", "NO_USE_PORTAUDIO=1", "NO_USE_PULSEAUDIO=1", "NO_USE_PIPEWIRE=1"])
-    run([str(ROOT / "mamesaturn"), "-validate"])
+    run([str(ROOT / "saturn"), "-validate"])
     print("Focused executable linked and MAME configuration validation passed; no games booted.")
