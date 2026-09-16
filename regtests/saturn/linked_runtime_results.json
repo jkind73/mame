@@ -23,7 +23,7 @@
       "engine": "drc",
       "fixture": "runtime",
       "pass_marker": "VDP2_RUNTIME PASS cases=46",
-      "log_sha256": "49be0b321ca75b9123a21d737c28f4cb6e9536e76cd3f70ce48219cbf4776e96",
+      "log_sha256": "3f7e5dd16f89a8f7cef0df9539be8ae2500e0c2319599ccce05a03c555f46b6e",
       "captures": [
         {
           "name": "case-01.png",
@@ -211,14 +211,14 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturnjp",
       "engine": "drc",
       "fixture": "composition",
       "pass_marker": "VDP2_RUNTIME PASS cases=466",
-      "log_sha256": "42fd71ec775a1023fc887647d59a297de2d3f76a96effeb4378088ef8d3f5a24",
+      "log_sha256": "b472429a3e541da2e5171db2e17cda23e7458bdc04db8fb381bfca7171d2d224",
       "captures": [
         {
           "name": "case-01.png",
@@ -2086,37 +2086,37 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturnjp",
       "engine": "drc",
       "fixture": "bios",
-      "pass_marker": "BIOS_RUNTIME PASS system=saturnjp time=15.560998664 pc=06040228 full-image replay identical",
-      "log_sha256": "a3d28abd802b8ee7ff3cdb8ba67bc067dc237e66bd2669b28feb7f74e646a386",
+      "pass_marker": "BIOS_RUNTIME PASS system=saturnjp time=15.560998664 pc=06040226 full-image replay identical",
+      "log_sha256": "98c39be7e7d157b0b7f192f191c55638699b42baadf4994346ba52b3da955890",
       "captures": [
         {
           "name": "bios-boot.png",
-          "sha256": "3f6853b10bf8b3fceb40a69024efa005c2a78f405858f9ae8a4be32b7e938b2b"
+          "sha256": "aef3cac35789083991a0f7ebff5f2b4b8cdec6887cfe39ecb15be98b3fd54d8b"
         },
         {
           "name": "bios-reference.png",
-          "sha256": "8d0482167c379d195731c37af166414fc5ac71edb77c9dce31e86407d3cde02d"
+          "sha256": "60c7f07062ad2031a0e63b80debe78763b35f9f75b4c07181df3e3f9e1bc835b"
         },
         {
           "name": "bios-replay.png",
-          "sha256": "8d0482167c379d195731c37af166414fc5ac71edb77c9dce31e86407d3cde02d"
+          "sha256": "60c7f07062ad2031a0e63b80debe78763b35f9f75b4c07181df3e3f9e1bc835b"
         }
       ],
       "fixture_sha256": "2e40dcb923912009685d1be75e5e0964d902ecc20f268ea2df02bfc296bd4d3f",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturneu",
       "engine": "drc",
       "fixture": "runtime",
       "pass_marker": "VDP2_RUNTIME PASS cases=46",
-      "log_sha256": "41312cad883f3885f64467daaeb1b687b1929e97fc7e46869ee501b5748181e2",
+      "log_sha256": "71618889ca4632f78d18755e0b74c3fd4b858825e91630f15789f81704108c01",
       "captures": [
         {
           "name": "case-01.png",
@@ -2304,14 +2304,14 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturneu",
       "engine": "drc",
       "fixture": "composition",
       "pass_marker": "VDP2_RUNTIME PASS cases=466",
-      "log_sha256": "9563ba65de7a1eb398a64c25521b75719268dc870a5b234bd60d7d9ccc794883",
+      "log_sha256": "9534df26a67629fffd775c91ade33acb3f671c010628dd801a682a39b221d0ca",
       "captures": [
         {
           "name": "case-01.png",
@@ -4179,14 +4179,14 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturneu",
       "engine": "drc",
       "fixture": "bios",
       "pass_marker": "BIOS_RUNTIME PASS system=saturneu time=18.439710253 pc=060402e6 full-image replay identical",
-      "log_sha256": "76f4c74fe2001892182b4f8a5c0247eecdd033cca957bfcbdd2ef75cc3ab2df1",
+      "log_sha256": "f5ae56a9b5ae8c9eca35311aa5c35805d07a45a49ad69603d6e158b38209ad75",
       "captures": [
         {
           "name": "bios-boot.png",
@@ -4202,14 +4202,14 @@
         }
       ],
       "fixture_sha256": "2e40dcb923912009685d1be75e5e0964d902ecc20f268ea2df02bfc296bd4d3f",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "stvbios",
       "engine": "drc",
       "fixture": "runtime",
       "pass_marker": "VDP2_RUNTIME PASS cases=46",
-      "log_sha256": "fa46117dd8f271f19641ca5fb84dac160a988980714ee048b69f538d045b8ee4",
+      "log_sha256": "0374eb1a17460a155c456f37b52c448617ccdec8d17f6bb11d66f2b52affec8a",
       "captures": [
         {
           "name": "case-01.png",
@@ -4397,14 +4397,14 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "stvbios",
       "engine": "drc",
       "fixture": "composition",
       "pass_marker": "VDP2_RUNTIME PASS cases=466",
-      "log_sha256": "42ae5dedc09a1920a45696560b327dc5f2bac9e5bfb21fc2544634d3518454f4",
+      "log_sha256": "5759228fcd7f11b8cb0df24560a622c078d3246395cd4a3289ad8df5f9005a4f",
       "captures": [
         {
           "name": "case-01.png",
@@ -6272,14 +6272,14 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "stvbios",
       "engine": "drc",
       "fixture": "bios",
       "pass_marker": "BIOS_RUNTIME PASS system=stvbios time=15.543578728 pc=060154b8 full-image replay identical",
-      "log_sha256": "aab4498ad6f34544753a76f638d78f98fbf0820e123c8b94cc44fd65159707da",
+      "log_sha256": "ed48a90776aa61d61f5c67da25398e60567db4e014bb0418472805c1e4a4e3dc",
       "captures": [
         {
           "name": "bios-boot.png",
@@ -6295,14 +6295,14 @@
         }
       ],
       "fixture_sha256": "2e40dcb923912009685d1be75e5e0964d902ecc20f268ea2df02bfc296bd4d3f",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturnjp",
       "engine": "interpreter",
       "fixture": "runtime",
       "pass_marker": "VDP2_RUNTIME PASS cases=46",
-      "log_sha256": "afb06f490cd3a0561784c916cf15c923c5eadf216201eb07e84922201110cacc",
+      "log_sha256": "f41230cbac04b79b2d5aafc422b483c0b377176162e80200fa572b3e8254440e",
       "captures": [
         {
           "name": "case-01.png",
@@ -6490,14 +6490,14 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturnjp",
       "engine": "interpreter",
       "fixture": "composition",
       "pass_marker": "VDP2_RUNTIME PASS cases=466",
-      "log_sha256": "45458890102f1387ce38fb4c714934d5f2bf2c3edebffa03f2443e24dd265ead",
+      "log_sha256": "7e0bbc3096a2aee869a4d7d703ee708e45b2cfb1f226f7bf9050b695eff0c42e",
       "captures": [
         {
           "name": "case-01.png",
@@ -8365,30 +8365,30 @@
         }
       ],
       "fixture_sha256": "6e99a3d1b13a7b685512a6b5a400c33d333aa9f82c70c2ad213ff99eaa210d3c",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     },
     {
       "system": "saturnjp",
       "engine": "interpreter",
       "fixture": "bios",
-      "pass_marker": "BIOS_RUNTIME PASS system=saturnjp time=15.560998664 pc=06040226 full-image replay identical",
-      "log_sha256": "c51ed47cf31099ff8df00043f84e0155d99acaf9f33618ea93c53c109ccbfa20",
+      "pass_marker": "BIOS_RUNTIME PASS system=saturnjp time=15.560998664 pc=06040228 full-image replay identical",
+      "log_sha256": "cdae72f146e20bd7f881aee1c22cda360b03e1d27366d9c30e88d128ba7c236b",
       "captures": [
         {
           "name": "bios-boot.png",
-          "sha256": "8427760ba7e2af9ed91335bd67f94a251502e923cf2f49fe12bd574e795c69f0"
+          "sha256": "8079721760330fa76f92e20c5fc9555732cf68c50574525ce198ad9b2c9dbfe4"
         },
         {
           "name": "bios-reference.png",
-          "sha256": "fd45026a1b037ff859e9dc48085bf0c68cc3621ed390acb2b933043062c7afaa"
+          "sha256": "aef3cac35789083991a0f7ebff5f2b4b8cdec6887cfe39ecb15be98b3fd54d8b"
         },
         {
           "name": "bios-replay.png",
-          "sha256": "fd45026a1b037ff859e9dc48085bf0c68cc3621ed390acb2b933043062c7afaa"
+          "sha256": "aef3cac35789083991a0f7ebff5f2b4b8cdec6887cfe39ecb15be98b3fd54d8b"
         }
       ],
       "fixture_sha256": "2e40dcb923912009685d1be75e5e0964d902ecc20f268ea2df02bfc296bd4d3f",
-      "evidence_checkpoint": "linked gradation following ecb58edb"
+      "evidence_checkpoint": "fresh rebuild and replay after 192f00fb"
     }
   ],
   "source_commit_scope": "Last production-source change; later commits change fixtures, tests and evidence.",
@@ -8415,5 +8415,19 @@
   "mixed_window_cases_per_run": 64,
   "mixed_window_probes_per_case": 144,
   "gradation_cases_per_run": 16,
-  "gradation_probes_per_case": 48
+  "gradation_probes_per_case": 48,
+  "rebuild": {
+    "checkout_commit": "192f00fb",
+    "result": "PASS",
+    "identical_to_previous_executable": true,
+    "regressions_and_eleven_objects_log_sha256": "de30c89ba1fee482d3fa94c73f06a3e5ba210757a3ab2ee52afecadd00cffdd5",
+    "dependency_log_sha256": "644a0ff246e1e7588c6119bd1bea7646924c0df91387997b86bcbc53665aee23",
+    "initial_build_log_sha256": "5923b0b9738ed8e4a9e7834af6712e53604559d0893f7aca733514c7e53ef04f",
+    "resumed_build_log_sha256": "efab9902528ea21bd77f19d029cef3c043bcce9cc0eab823ca26e4615b29f5a3",
+    "validate_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "initial_jobs": 2,
+    "resumed_jobs": 1,
+    "initial_failure": "cc1plus killed while compiling luaengine.cpp; resumed with one job",
+    "limits": "Build and headless linked qualification; not hardware, gameplay, GPU or comparative performance acceptance."
+  }
 }
