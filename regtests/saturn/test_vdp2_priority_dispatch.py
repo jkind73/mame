@@ -57,6 +57,7 @@ void copybitmap(bitmap_rgb32 &d,bitmap_rgb32 &s,int,int,int,int,const rectangle 
  for(int y=c.t;y<=c.b;++y)for(int x=c.l;x<=c.r;++x)d.pix(y,x)=s.pix(y,x);
 }
 struct saturn_state {
+ void vdp2_capture_gradation(const rectangle&){}
  bool m_vdp2_composition_active=false;
  void vdp2_begin_composition(bitmap_rgb32&,const rectangle&){m_vdp2_composition_active=true;}
  unsigned modes=0,base[5]{},sprite_priority=0,seed=0;

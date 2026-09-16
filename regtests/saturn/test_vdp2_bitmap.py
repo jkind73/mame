@@ -4,7 +4,8 @@
 """Production bitmap pixels + real palette rebuild + real window/cache evaluation.
 
 The layer configuration and memory arrays are fixtures, not full device dispatch.
-Does not certify tilemaps, special effects, sprite windows or physical DAC timing.
+Sprite mask dots are controlled inputs; the production framebuffer mask is tested
+by test_sprite_scanout.py. This does not certify physical DAC timing.
 """
 import argparse
 import os
@@ -49,11 +50,12 @@ struct bitmap_rgb32 {std::array<uint32_t,96> pixels{};uint32_t &pix(int y,int x)
 struct palette {std::array<uint32_t,6144> pens{};void set_pen_color(unsigned i,uint32_t c){pens.at(i)=c;}void set_pen_color(unsigned i,int r,int g,int b){set_pen_color(i,rgb_t(r,g,b));}uint32_t pen(unsigned i){return pens.at(i);}};
 struct vdp2 {int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}bool get_vramsz(){return false;}};
 struct saturn_state {
+ bool vdp2_sprite_window(int x,int y){return (x+2*y)%3==0;}
  // DECLS
  struct { // REGS
  } regs;
  struct { // FIELDS
-  struct {int logic=0,enabled[2]{},area[2]{};bool sprite_window=false;} window_control;
+  struct {int logic=0,enabled[2]{},area[2]{};unsigned sprite_window=0;} window_control;
  } current_tilemap;
  palette pal;palette *m_palette=&pal;
  vdp2 device;vdp2 *m_vdp2=&device;
@@ -79,10 +81,10 @@ int main(){
  draw drawers[]={&saturn_state::draw_4bpp_bitmap,&saturn_state::draw_8bpp_bitmap,&saturn_state::draw_11bpp_bitmap,&saturn_state::draw_rgb15_bitmap,&saturn_state::draw_rgb32_bitmap};
  unsigned cases=0;
  for(unsigned format=0;format<5;++format)for(int hreso:{0,2,4,6})for(int interlace:{0,3})
- for(int line:{0,1})for(int config=0;config<32;++config)for(int scale:{32768,65536,98304})for(int additive:{0,1})for(int phase:{0,0x4000,0xff00}){
+ for(int line:{0,1})for(int config=0;config<128;++config)for(int scale:{32768,65536,98304})for(int additive:{0,1})for(int phase:{0,0x4000,0xff00}){
   s.regs.VDP2_CCMD=additive;
   s.device.hreso=hreso;s.device.lsmd=interlace;
-  auto &w=c.window_control;w.enabled[0]=config&1;w.enabled[1]=(config>>1)&1;w.area[0]=(config>>2)&1;w.area[1]=(config>>3)&1;w.logic=config>>4;
+  auto &w=c.window_control;w.enabled[0]=config&1;w.enabled[1]=(config>>1)&1;w.area[0]=(config>>2)&1;w.area[1]=(config>>3)&1;w.logic=(config>>4)&1;w.sprite_window=(config&32)?1|((config&64)?2:0):0;
   s.regs.VDP2_W0SY=1;s.regs.VDP2_W0EY=6;s.regs.VDP2_W1SY=2;s.regs.VDP2_W1EY=5;
   s.regs.VDP2_WPSX0=4;s.regs.VDP2_WPEX0=10;s.regs.VDP2_WPSX1=8;s.regs.VDP2_WPEX1=16;
   s.regs.VDP2_W0LWE=line;s.regs.VDP2_W1LWE=0;s.regs.VDP2_W0LWTA=0;
@@ -105,6 +107,7 @@ int main(){
    bool allowed=w.logic?false:true;
    if(w.enabled[0]){bool value=w.area[0]?in0:!in0;allowed=w.logic?(allowed||value):(allowed&&value);}
    if(w.enabled[1]){bool value=w.area[1]?in1:!in1;allowed=w.logic?(allowed||value):(allowed&&value);}
+   if(w.sprite_window){bool value=((x+2*y)%3==0)==bool(config&64);allowed=w.logic?(allowed||value):(allowed&&value);}
    if(!allowed)continue;
    unsigned sx=((x*scale+phase)/65536+509)%512,sy=((y*scale+phase)/65536+254)%256;
    unsigned dot=sx+sy*512,bytes=format==0?dot/2:format==1?dot:format==4?dot*4:dot*2;

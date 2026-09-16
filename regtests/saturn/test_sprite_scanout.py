@@ -22,7 +22,7 @@ a = p.parse_args()
 source = (subprocess.check_output(['git','show',('baf9b069' if a.ratio_baseline else '9f6d2ccc')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
           if a.old or a.ratio_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(signature):
-    text=(ROOT/'src/mame/sega/saturn.cpp').read_text() if signature.startswith(('bool saturn_state::vdp2_sprite_window','void saturn_state::vdp2_compose_pixel','void saturn_state::vdp2_shadow_pixel')) else source
+    text=(ROOT/'src/mame/sega/saturn.cpp').read_text() if signature.startswith(('bool saturn_state::vdp2_sprite_window','void saturn_state::vdp2_compose_pixel','void saturn_state::vdp2_shadow_pixel','static uint32_t vdp2_extended_color','static uint32_t vdp2_gradation_color')) else source
     start=text.index(signature);end=text.index('{',start)+1;depth=1
     while depth:
         depth+=(text[end]=='{')-(text[end]=='}');end+=1
@@ -30,7 +30,7 @@ def extract(signature):
 functions='\n'.join(extract(sig) for sig in ('void saturn_state::draw_sprites(',
  'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_read_pixel(',
  'int saturn_state::vdp1_rotation_coordinate('))
-functions=extract('void saturn_state::vdp2_compose_pixel(')+'\n'+extract('void saturn_state::vdp2_shadow_pixel(')+'\n'+extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
+functions=extract('static uint32_t vdp2_gradation_color(')+'\n'+extract('static uint32_t vdp2_extended_color(')+'\n'+extract('void saturn_state::vdp2_compose_pixel(')+'\n'+extract('void saturn_state::vdp2_shadow_pixel(')+'\n'+extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
 if a.sprite_window_mutation:functions=functions.replace('& 0x8000) != 0;', '& 0x8000) == 0;')
 functions=extract('static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+functions
 assert 'vdp2_window_cache_invalidate();' in (ROOT/'src/mame/sega/saturn.cpp').read_text().split('void saturn_state::vdp2_state_save_postload() {',1)[1].split('void saturn_state::vdp2_exit()',1)[0]
@@ -47,7 +47,7 @@ harness=r'''
 #include <vector>
 struct rgb_t {
  uint32_t v;
- rgb_t(uint32_t p):v(p){} rgb_t(int r,int g,int b):v((r<<16)|(g<<8)|b){}
+ rgb_t(uint32_t p=0):v(p){} rgb_t(int r,int g,int b):v((r<<16)|(g<<8)|b){}
  operator uint32_t()const{return v;}
  int r()const{return (v>>16)&255;}int g()const{return (v>>8)&255;}int b()const{return v&255;}
 };
@@ -67,10 +67,14 @@ struct vdp2 {int hreso=0,lsmd=0;int get_hreso()const{return hreso;}int get_lsmd(
 struct palette {uint32_t pen(int n){return (n&255)*0x010101;}};
 struct saturn_state {
  bool m_vdp2_composition_active=false;
- bitmap_rgb32 m_vdp2_raw_top;
- struct {std::array<uint8_t,48> data{};uint8_t &pix(int y,int x){assert(x>=0&&x<8&&y>=0&&y<6);return data[y*8+x];}} m_vdp2_raw_alpha;
- void vdp2_compose_pixel(bitmap_rgb32&,int,int,rgb_t,bool,unsigned,bool,rgb_t);
- void vdp2_shadow_pixel(bitmap_rgb32&,int,int);
+ bitmap_rgb32 m_vdp2_raw_top,m_vdp2_raw_under;
+ struct {std::array<uint8_t,48> data{};uint8_t &pix(int y,int x){assert(x>=0&&x<8&&y>=0&&y<6);return data[y*8+x];}} m_vdp2_raw_alpha,m_vdp2_raw_meta,m_vdp2_under_meta;
+ bool vdp2_calculation_window(int,int){return true;}
+ bool m_vdp2_extended_active=false;bool m_vdp2_gradation_active=false,m_vdp2_gradation_capture=false;unsigned m_vdp2_gradation_layer=7;bitmap_rgb32 m_vdp2_gradation_source;
+ rgb_t vdp2_line_color(int,bool,unsigned){return rgb_t(0x876543);}
+ void vdp2_compute_color_offset_UINT32(rgb_t*,int){assert(!settings.CLOFEN);}
+ void vdp2_compose_pixel(bitmap_rgb32&,int,int,rgb_t,bool,unsigned,bool,rgb_t,unsigned);
+ void vdp2_shadow_pixel(bitmap_rgb32&,int,int,bool);
  static constexpr int WINDOW_CACHE_WIDTH=1024;
  int m_sprite_window_y=-1;uint8_t m_sprite_window_line[WINDOW_CACHE_WIDTH]{};
  bool vdp2_sprite_window(int,int);
@@ -145,20 +149,20 @@ int main(){
  // Normal/MSB shadow and transparent dots must operate on each destination
  // independently, not copy a pre-blended source dot to its replicated peer.
  for(int mode : {0,4})for(int blend : {0,1})for(uint16_t dot : {0,0x8000,0x7fe,0x8001}){
-  // MSB-shadow handling in the alpha path is a separate existing VDP2 gap.
-  if(blend&&(dot&0x8000))continue;
+
   s.tvm=mode;s.device.hreso=mode==4?4:2;s.device.lsmd=3;s.window=true;
   v.framebuffer_double_interlace=0;
   v.framebuffer[1].data.fill(dot);
   for(int y=0;y<512;++y)v.framebuffer_display_lines[y]=v.framebuffer[1].get()+((y*512)&0x1ffff);
-  s.settings.SPCLMD=0;s.settings.SPCCEN=blend;s.settings.CCMD=0;s.settings.SDCTL=0x101;
+  s.settings.SPCLMD=0;s.settings.SPCCEN=blend;s.settings.CCMD=0;s.settings.SDCTL=0x120;s.settings.SPTYPE=2;
   s.vdp1_sprite_priorities_usage_valid=0;
   bitmap_rgb32 result,expected;
   for(int y=0;y<6;++y)for(int x=0;x<8;++x){
    uint32_t color=rgb_t(x*31,y*41,210);
    result.pix(y,x)=expected.pix(y,x)=color;
    if(dot&&x>=1&&x<=6&&y>=1&&y<=4&&(x+2*y)%3!=1)
-    expected.pix(y,x)=(color&0xfefefe)>>1;
+    {uint32_t shaded=dot==0x8001?(blend?alpha_blend_r32(color,s.pal.pen(1),120):s.pal.pen(1)):color;
+     expected.pix(y,x)=(shaded&0xfefefe)>>1;}
   }
   s.draw_sprites(result,{1,6,1,4},1);
   assert(result.p==expected.p);++images;
@@ -198,10 +202,10 @@ int main(){
  s.settings.SDCTL=0;s.settings.SPTYPE=0;s.settings.SPCCN=2;
  for(unsigned ratio=0;ratio<32;++ratio)for(unsigned selector=0;selector<8;++selector)
  for(int condition=0;condition<4;++condition)for(int priority : {1,2,3})
- for(bool msb : {false,true})for(bool mixed : {false,true})for(bool enabled : {false,true})for(bool add : {false,true})for(bool history:{false,true})for(bool second:{false,true}){
+ for(bool msb : {false,true})for(bool mixed : {false,true})for(bool enabled : {false,true})for(bool add : {false,true})for(bool history:{false,true})for(bool second:{false,true})for(bool line:{false,true}){
   bool rgb=msb&&mixed;
   if(rgb&&selector)continue; // RGB dots select CCRT0, not palette selector bits.
-  s.m_vdp2_composition_active=history;s.settings.CCCR=second?0x200:0;
+  s.m_vdp2_composition_active=history;s.settings.CCCR=second?0x200:0;s.settings.SPLCEN=line;s.settings.CCRLB=7;
   s.m_vdp2_raw_top.p.fill(0x714923);s.m_vdp2_raw_alpha.data.fill((31-((ratio+11)%32))*8);
   s.settings.SPCCCS=condition;s.settings.SPCLMD=mixed;s.settings.SPCCEN=enabled;s.settings.CCMD=add;
   // RATIO_PRI
@@ -216,8 +220,8 @@ int main(){
   bool calculate=enabled&&(condition==0?priority<=2:condition==1?priority==2:condition==2?priority>=2:msb);
   uint32_t color=rgb?uint32_t(rgb_t(pal5bit(7),0,0)):s.pal.pen(7);
   unsigned own_ratio=(ratio+(rgb?0:selector))&31;
-  unsigned selected_ratio=history&&second?(ratio+11)%32:own_ratio;
-  uint32_t background=history?0x714923:0x234567;
+  unsigned selected_ratio=second&&line?7:history&&second?(ratio+11)%32:own_ratio;
+  uint32_t background=line?0x876543:history?0x714923:0x234567;
   uint32_t out=color;
   if(calculate){
    if(add)out=rgb_t(std::min(255u,((background>>16)&255)+((color>>16)&255)),std::min(255u,((background>>8)&255)+((color>>8)&255)),std::min(255u,(background&255)+(color&255)));
@@ -226,11 +230,38 @@ int main(){
   for(int y=1;y<=4;++y)for(int x=1;x<=6;++x){expected.pix(y,x)=out;if(history){assert(s.m_vdp2_raw_top.pix(y,x)==color);assert(s.m_vdp2_raw_alpha.pix(y,x)==(31-own_ratio)*8);}}
   assert(image.p==expected.p);++ratio_cases;
  }
+
+ unsigned shadow_cases=0;s.settings.SPLCEN=0;s.settings.CCMD=0;s.settings.CCCR=0;s.settings.SPCLMD=0;s.settings.SPCCN=7;s.window=false;
+ s.m_vdp2_composition_active=true;
+ // SHADOW_PRI
+ // SHADOW_CCR
+ constexpr unsigned masks[]={2047,2047,2047,2047,1023,2047,1023,511,127,63,63,63,255,255,255,255};
+ for(unsigned type=0;type<16;++type)for(unsigned layer=0;layer<7;++layer)
+ for(unsigned select:{0u,1u<<layer,1u<<((layer+1)%6),63u})for(unsigned kind=0;kind<6;++kind)
+ for(unsigned calculation=0;calculation<3;++calculation)for(bool transparent:{false,true})for(bool window:{false,true}){
+  s.tvm=type<8?0:1;s.device.hreso=s.device.lsmd=0;s.settings.SPTYPE=type;s.settings.SDCTL=(select&63)|(transparent?256:0);
+  s.settings.SPCCEN=calculation!=0;s.settings.SPCCCS=calculation==2?3:0;s.settings.SPWINEN=window;
+  unsigned inputs[]={0,masks[type]-1,32768,32769,32768+masks[type]-1,7};unsigned dot=inputs[kind];if(type>=8)dot&=255;
+  v.framebuffer[1].data.fill(type<8?dot:dot*257);
+  for(int y=0;y<512;++y)v.framebuffer_display_lines[y]=v.framebuffer[1].get()+((y*512)&0x1ffff);
+  s.m_vdp2_raw_top.p.fill(0x314159);s.m_vdp2_raw_alpha.data.fill(120);s.m_vdp2_raw_meta.data.fill(layer);
+  bitmap_rgb32 image,expected;image.p.fill(0x314159);expected=image;s.vdp1_sprite_priorities_usage_valid=0;
+  s.draw_sprites(image,{1,6,1,4},1);
+  unsigned code=dot&masks[type];bool msb=type>=2&&type<=7&&!window&&(dot&32768);
+  bool normal=code==masks[type]-1,transparent_shadow=msb&&!(dot&32767);
+  uint32_t out=0x314159;
+  if(normal||transparent_shadow){if((select&63)&(1u<<layer))if(normal||transparent)out=(out&0xfefefe)>>1;}
+  else if(code){out=s.pal.pen(code);bool calculate=calculation==1||(calculation==2&&(dot&32768));if(calculate)out=alpha_blend_r32(0x314159,out,120);if(msb)out=(out&0xfefefe)>>1;}
+  for(int y=1;y<=4;++y)for(int x=1;x<=6;++x)expected.pix(y,x)=out;
+  assert(image.p==expected.p);++shadow_cases;
+ }
+ std::cout<<shadow_cases<<" all-sprite-type shadow/SDCTL/CC/MSB/window images passed\n";
  std::cout<<ratio_cases<<" sprite ratio/selector/eligibility images passed\n";
  std::cout<<images<<" production sprite scanout/compositor images passed\n";
 }
 '''
 harness=harness.replace('// FIELDS',fields).replace('// MACROS',macros).replace('// FUNCTIONS',functions)
+harness=harness.replace('// SHADOW_PRI',''.join(f's.settings.S{i}PRIN=1;' for i in range(8))).replace('// SHADOW_CCR',''.join(f's.settings.S{i}CCRT=16;' for i in range(8)))
 harness=harness.replace('// RATIO_PRI',''.join(f's.settings.S{i}PRIN=priority;' for i in range(8)))
 harness=harness.replace('// RATIO_CCR',''.join(f's.settings.S{i}CCRT=(ratio+{i})&31;' for i in range(8)))
 harness=harness.replace('// PRI_INIT',''.join(f's.settings.S{i}PRIN=1;' for i in range(8)))

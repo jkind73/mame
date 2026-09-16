@@ -16,7 +16,7 @@ def extract(sig):
  while depth:
   depth+=(src[end]=='{')-(src[end]=='}');end+=1
  return src[start:end]
-funcs=[extract('inline bool saturn_state::vdp2_roz_window('),extract('inline int saturn_state::get_roz_window_pixel('),extract('inline bool saturn_state::vdp2_roz_mode3_window(')]
+funcs=[extract('bool saturn_state::vdp2_calculation_window('),extract('inline bool saturn_state::vdp2_roz_window('),extract('inline int saturn_state::get_roz_window_pixel('),extract('inline bool saturn_state::vdp2_roz_mode3_window(')]
 f='\n'.join(funcs)
 if a.mutation:f=f.replace('layer_name == 0x81', 'layer_name == 0x82')
 names=sorted(set(re.findall(r'VDP2_\w+',f)))
@@ -58,11 +58,12 @@ int main(){saturn_state s;unsigned cases=0;
  for(unsigned cfg=0;cfg<128;++cfg){
   s.regs.VDP2_RPW0E=cfg&1;s.regs.VDP2_RPW1E=(cfg>>1)&1;s.regs.VDP2_RPW0A=(cfg>>2)&1;s.regs.VDP2_RPW1A=(cfg>>3)&1;
   s.regs.VDP2_RPLOG=(cfg>>4)&1;s.regs.VDP2_RPSWE=(cfg>>5)&1;s.regs.VDP2_RPSWA=(cfg>>6)&1;
+  s.regs.VDP2_WCTLD=((cfg&1?2:0)|(cfg&2?8:0)|(cfg&4?1:0)|(cfg&8?4:0)|(cfg&16?128:0)|(cfg&32?32:0)|(cfg&64?16:0))<<8;
   for(int y=0;y<8;++y)for(int x=0;x<16;++x){
    bool inside[]={x>=3&&x<=11&&y>=2&&y<=5,x>=7&&x<=14&&y>=1&&y<=4,(x+2*y)%3==0};
    bool expected=!(cfg&16);
    for(int w=0;w<3;++w){unsigned enable=w==2?32:1u<<w,area=w==2?64:4u<<w;if(cfg&enable){bool keep=bool(cfg&area)==inside[w];expected=(cfg&16)?expected||keep:expected&&keep;}}
-   assert(s.vdp2_roz_mode3_window(x,y,0)==expected);assert(s.vdp2_roz_mode3_window(x,y,1)!=expected);++parameter_cases;
+   assert(s.vdp2_calculation_window(x,y)==expected);assert(s.vdp2_roz_mode3_window(x,y,0)==expected);assert(s.vdp2_roz_mode3_window(x,y,1)!=expected);++parameter_cases;
   }
  }
  std::cout<<parameter_cases<<" W0/W1/sprite-window A/B selection pixels passed\n";
