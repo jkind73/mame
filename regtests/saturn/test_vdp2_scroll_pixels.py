@@ -14,14 +14,14 @@ import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata'))
+p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority'))
 a=p.parse_args();src=(ROOT/'src/mame/sega/saturn.cpp').read_text();head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
  start=text.index(sig);end=text.index('{',start)+1;depth=1
  while depth:
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
-funcs=[extract(src,sig) for sig in ('unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
+funcs=[extract(src,sig) for sig in ('unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
 f=extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
 if a.mutation=='phase':f=f.replace('+ t.scrollx_fraction','+ 0').replace('+ t.scrolly_fraction','+ 0')
 if a.mutation=='cell':f=f.replace('unsigned((source_x >> 19) - first_cell)','unsigned(sample_x / 8 + first_cell * 0)')
@@ -29,6 +29,7 @@ if a.mutation=='mosaic':f=f.replace('t.vertical_cell_scroll_enable && !mosaic','
 if a.mutation=='two-word':f=f.replace('code = data & 0x7fff;', 'code = data & 0x3fff;')
 if a.mutation=='special-color':f=f.replace('bool(current_tilemap.special_colour_control_register)', 'true').replace('!(bitmap_flags & 0x10)', 'false && !(bitmap_flags & 0x10)')
 if a.mutation=='metadata':f=f.replace('pixel = rgb_t((uint32_t(pixel) & 0xffffff) | metadata);', '(void)metadata; pixel = rgb_t(uint32_t(pixel) | 0xff000000);')
+if a.mutation=='priority':f=f.replace('if (!priority)', 'if (false && !priority)').replace('return rgb_t((uint32_t(pixel) & ~0x1c000000U) | (priority << 26));', 'return rgb_t((uint32_t(pixel) & ~0x1c000000U) | ((priority | 1) << 26));')
 route=extract(src,'  if (current_tilemap.layer_name < 4 &&')
 names=sorted(set(re.findall(r'VDP2_\w+',f)))
 code=r'''
@@ -50,6 +51,7 @@ uint32_t blend(uint32_t d,uint32_t s,unsigned a,bool add){uint32_t r=0xff000000;
 uint32_t alpha_blend_r32(uint32_t d,uint32_t s,unsigned a){return blend(d,s,a,false);}
 uint32_t add_blend_r32(uint32_t d,uint32_t s){return blend(d,s,0,true);}
 struct saturn_state {
+ int m_vdp2_priority_pass=-1;
  uint32_t m_vdp2_cram[1024]{};
  uint32_t vdp2_cram_r(unsigned i){return m_vdp2_cram[i];}
  // TILEMAP
@@ -78,11 +80,13 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
  auto floorq=[](int64_t value,int64_t divisor){return value>=0?value/divisor:-((-value+divisor-1)/divisor);};
  for(bool bitmap:{false,true})for(unsigned depth=0;depth<5;++depth)for(unsigned large:{0u,1u})
  for(unsigned one:{0u,1u})for(unsigned flags=0;flags<16;++flags)for(unsigned layer:{0u,1u})
- for(unsigned phase:{0u,0x8000u})for(unsigned variant=0;variant<6;++variant)for(bool line_color:{false,true})for(unsigned special=0;special<4;++special){
-  if(special==2&&depth>=3)continue;
+ for(unsigned phase:{0u,0x8000u})for(unsigned variant=0;variant<6;++variant)for(bool line_color:{false,true})for(unsigned special=0;special<4;++special)for(unsigned priority_mode=0;priority_mode<3;++priority_mode){
+  if((special==2||priority_mode==2)&&depth>=3)continue;
+  unsigned base_priority=(flags+variant)%8;s.m_vdp2_priority_pass=(flags/2+variant)%8;
+  s.regs.VDP2_SFPRMD=priority_mode<<(layer*2);s.regs.VDP2_N0PRIN=layer?(base_priority^6):base_priority;s.regs.VDP2_N1PRIN=layer?base_priority:(base_priority^6);
   s.regs.VDP2_SFCCMD=special<<(layer*2);s.regs.VDP2_SFSEL=(variant&1)<<layer;s.regs.VDP2_SFCODE=0xa55a;s.regs.VDP2_CRMD=variant%3;
-  s.regs.VDP2_BMPNA=(variant&2)?0x1010:0;
-  t={};t.special_colour_control_register=bool(variant&2);t.enabled=1;t.bitmap_enable=bitmap;t.colour_depth=depth;t.tile_size=large;t.pattern_data_size=one;
+  s.regs.VDP2_BMPNA=((variant&2)?0x1010:0)|((variant&1)?0x2020:0);
+  t={};t.special_priority_register=variant&1;t.special_colour_control_register=bool(variant&2);t.enabled=1;t.bitmap_enable=bitmap;t.colour_depth=depth;t.tile_size=large;t.pattern_data_size=one;
   t.bitmap_size=variant%4;t.bitmap_map=variant%4;t.bitmap_palette_number=3;t.colour_ram_address_offset=2;
   t.character_number_supplement=variant%2;t.supplementary_character_bits=21;t.supplementary_palette_bits=5;
   unsigned planes[]={0,1,3};t.plane_size=planes[variant%3];t.map_count=4;
@@ -108,7 +112,7 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
   auto read=[&](unsigned a){return s.m_vdp2_legacy.gfx_decode[a%memsize];};
   auto bits=[&](unsigned address,unsigned bitpos,unsigned count){uint32_t raw=0;for(unsigned b=0;b<count;++b){unsigned pos=bitpos+b;raw=(raw<<1)|((read(address+pos/8)>>(7-pos%8))&1);}return raw;};
   auto pixel=[&](int X,int Y){
-   bool attribute=variant&2;unsigned address,pal=0,bitpos=0,bpd[]={4,8,16,16,32};
+   bool attribute=variant&2,priority_attribute=variant&1;unsigned address,pal=0,bitpos=0,bpd[]={4,8,16,16,32};
    if(bitmap){unsigned W=(t.bitmap_size&2)?1024:512,H=(t.bitmap_size&1)?512:256;
     unsigned dot=(unsigned(Y)%H)*W+unsigned(X)%W;address=t.bitmap_map*0x20000;bitpos=dot*bpd[depth];pal=3*256;
    }else{
@@ -117,7 +121,7 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
     unsigned page=(XW%W)/512+((YW%H)/512)*(W/512),N=512/C,nb=one?2:4,pgsize=N*N*nb;
     unsigned base=(t.map_offset[map]%(0x100000/pgsize))/(W*H/(512*512))*(W*H/(512*512));
     unsigned off=(base+page)*pgsize+((YW%512)/C*N+(XW%512)/C)*nb;
-    uint32_t name=bits(off,0,nb*8);if(!one)attribute=(name>>28)&1;unsigned code=0,flip=0;
+    uint32_t name=bits(off,0,nb*8);if(!one){attribute=(name>>28)&1;priority_attribute=(name>>29)&1;}unsigned code=0,flip=0;
     if(one){unsigned low=t.character_number_supplement?12:10;
      for(unsigned b=0;b<low;++b)if(name&(1u<<b))code|=1u<<(b+(large?2:0));
      for(unsigned b=0;b<5;++b)if(t.supplementary_character_bits&(1u<<b)){
@@ -140,6 +144,7 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
    if(special==1)eligible=attribute;
    if(special==2)eligible=attribute&&((0xa55a>>((variant%2)*8+(raw/2)%8))&1);
    if(special==3&&depth<3){unsigned mode=variant%3;if(mode<2){pen%=mode==0?1024:2048;eligible=(s.m_vdp2_cram[pen/2]>>(pen%2?15:31))&1;}else eligible=(s.m_vdp2_cram[pen%1024]>>31)&1;}
+   if(priority_mode){bool match=(0xa55a>>((variant%2)*8+(raw/2)%8))&1;unsigned priority=(base_priority&6)|unsigned(priority_attribute&&(priority_mode==1||match));if(!priority||priority!=unsigned(s.m_vdp2_priority_pass))return 0u;}
    return color|(eligible?0xff000000u:0xfe000000u);
   };
   bitmap_rgb32 out,split,expected;s.m_vdp2_vram.reads=0;
@@ -171,6 +176,25 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
   assert(out.data==expected.data);assert(split.data==expected.data);
   assert(t.scrollx_fraction==phase&&t.scrolly_fraction==phase);++cases;
  }
+ // Unit-step priority-only layers must not fall through to the legacy path.
+ t={};t.enabled=1;t.incx=t.incy=65536;t.transparency=1;t.pattern_data_size=1;t.special_priority_register=1;
+ s.regs.VDP2_SFPRMD=1;s.regs.VDP2_N0PRIN=1;s.m_vdp2_priority_pass=1;s.window=false;
+ bitmap_rgb32 unit;s.route(unit,{0,1,0,1});assert(unit.pix(0,0)!=0xff102030);
+
+ unsigned metadata_cases=0;
+ unsigned *priorities[]={&s.regs.VDP2_N0PRIN,&s.regs.VDP2_N1PRIN,&s.regs.VDP2_N2PRIN,&s.regs.VDP2_N3PRIN,&s.regs.VDP2_R0PRIN};
+ for(int name:{0,1,2,3,0x80,0x81})for(unsigned base=0;base<8;++base)for(unsigned mode:{1u,2u})for(bool attribute:{false,true})for(unsigned bank:{0u,1u})for(unsigned raw=0;raw<256;++raw){
+  unsigned layer=name==0x81?0:name==0x80?4:name;t.layer_name=name;t.colour_depth=1;
+  for(unsigned i=0;i<5;++i)*priorities[i]=(base+i+2)%8;
+  *priorities[layer]=base;s.regs.VDP2_SFPRMD=(1023&~(3u<<(layer*2)))|(mode<<(layer*2));
+  s.regs.VDP2_SFCCMD=0;s.regs.VDP2_SFSEL=bank<<layer;s.regs.VDP2_SFCODE=0x96e1;
+  rgb_t pixel=s.vdp2_special_color_pixel(rgb_t(0xff123456),raw,raw);pixel=s.vdp2_special_priority_pixel(pixel,attribute);
+  bool match=((bank?0x96:0xe1)>>(raw%16/2))&1;unsigned priority=(base/2)*2+unsigned(attribute&&(mode==1||match));
+  if(!priority)assert(uint32_t(pixel)==0);
+  else {assert((pixel.a()&0x80)&&((pixel.a()>>2)&7)==priority&&(pixel.a()&1));assert((uint32_t(pixel)&0xffffff)==0x123456);}
+  ++metadata_cases;
+ }
+ std::cout<<metadata_cases<<" all-layer priority/code metadata cases passed\n";
  std::cout<<cases<<" fractional tile/bitmap and combined scroll/mosaic images passed\n";
 }
 '''
