@@ -431,6 +431,11 @@ protected:
   void vdp2_check_tilemap_with_linescroll(bitmap_rgb32 &bitmap,
                                           const rectangle &cliprect);
   void vdp2_check_tilemap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
+  rgb_t vdp2_line_color(int y, bool use_coefficient, uint8_t coefficient_color);
+  rgb_t vdp2_dot_pixel(uint32_t address, int x, unsigned palette);
+  rgb_t vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int y);
+  rgb_t vdp2_scroll_pixel(int32_t x, int32_t y);
+  void vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   rgb_t vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y);
   void vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap, bitmap_rgb32 &roz_bitmap,
                             const rectangle &cliprect, int iRP, int planesizex,
@@ -440,6 +445,9 @@ protected:
   inline bool vdp2_roz_mode3_window(int x, int y, int rot_parameter);
   inline int get_roz_window_pixel(int s_x, int e_x, int s_y, int e_y, int x,
                                   int y, uint8_t winenable, uint8_t winarea);
+  void vdp2_reset_rotation_latches();
+  void vdp2_latch_rotation_parameters(int scanline);
+  void vdp2_load_rotation_line(uint8_t parameter, int line);
   void vdp2_fill_rotation_parameter_table(uint8_t rot_parameter);
   uint8_t vdp2_check_vram_cycle_pattern_registers(uint8_t access_command_pnmdr,
                                                   uint8_t access_command_cpdr,
@@ -571,6 +579,13 @@ protected:
     int32_t dkax = 0;
 
   } current_rotation_table;
+
+  static constexpr int ROTATION_SCANLINES = 1024;
+  rotation_table m_rotation_lines[ROTATION_SCANLINES][2]{};
+  bool m_rotation_line_valid[ROTATION_SCANLINES]{};
+  bool m_rotation_latch_valid = false;
+  uint32_t m_rotation_x[2]{}, m_rotation_y[2]{}, m_rotation_k[2]{};
+
 
   struct _vdp2_layer_data {
     uint32_t map_offset_min = 0;

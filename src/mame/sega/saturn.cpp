@@ -198,6 +198,7 @@ void saturn_state::reset_halt_state() {
 }
 
 void saturn_state::machine_reset() {
+  vdp2_reset_rotation_latches();
   vdp1_reset_framebuffers();
   vdp1_abort_draw();
   vdp1_cancel_erase();
@@ -321,6 +322,7 @@ void saturn_state::hint_callback(int state) {
 // TODO: stuff that should really be in VDP1
 TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline) {
   int scanline = param;
+  vdp2_latch_rotation_parameters(scanline);
   int y_step, vblank_line;
 
   vblank_line = m_vdp2->get_vblank_start_position();
@@ -452,6 +454,7 @@ void saturn_state::system_reset_w(int state) {
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
+  vdp2_reset_rotation_latches();
   memset(m_vdp2_regs.get(), 0x00, 0x000200);
   memset(m_vdp2_vram.get(), 0x00, 0x100000);
   memset(m_vdp2_cram.get(), 0x00, 0x001000);
@@ -6001,37 +6004,8 @@ void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
       ((m_vdp2_vram[(address / 4 + 23) & 0x3ffff] & 0x02000000) ? 0xfc000000
                                                                 : 0x00000000);
 
-  // check rotation parameter read control, override if specific bits are
-  // disabled (Batman Forever The Riddler stage relies on this)
-  switch (rot_parameter) {
-  case 1:
-    // TODO: disable read control if these undocumented bits are on (Radiant
-    // Silvergun Xiga final boss)
-    if (!VDP2_RAUNK) {
-      if (!VDP2_RAXSTRE)
-        current_rotation_table.xst = 0;
-
-      if (!VDP2_RAYSTRE)
-        current_rotation_table.yst = 0;
-
-      if (!VDP2_RAKASTRE)
-        current_rotation_table.dkax = 0;
-    }
-    break;
-  case 2:
-    // same as above
-    if (!VDP2_RBUNK) {
-      if (!VDP2_RBXSTRE)
-        current_rotation_table.xst = 0;
-
-      if (!VDP2_RBYSTRE)
-        current_rotation_table.yst = 0;
-
-      if (!VDP2_RBKASTRE)
-        current_rotation_table.dkax = 0;
-    }
-    break;
-  }
+  // Xst/Yst/KAst are raw table values here. RPRCTL is consumed by the
+  // scanline latch, not interpreted as an enable/disable mask for data.
 
 #define RP current_rotation_table
 
@@ -6098,6 +6072,56 @@ void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
   }
 }
 
+void saturn_state::vdp2_reset_rotation_latches() {
+  std::fill(std::begin(m_rotation_line_valid), std::end(m_rotation_line_valid), false);
+  m_rotation_latch_valid = false;
+}
+
+void saturn_state::vdp2_latch_rotation_parameters(int scanline) {
+  if (scanline == 0)
+    vdp2_reset_rotation_latches();
+  int const step = m_vdp2->get_ystep_count();
+  if (scanline < 0 || scanline >= ROTATION_SCANLINES || scanline % step ||
+      scanline >= m_vdp2->get_vblank_start_position() * step || !(VDP2_R0ON || VDP2_R1ON))
+    return;
+  rotation_table const saved = current_rotation_table;
+  unsigned const control = VDP2_RPRCTL;
+  unsigned const counter = scanline / step;
+  for (unsigned p = 0; p < 2; ++p) {
+    vdp2_fill_rotation_parameter_table(p + 1);
+    auto &r = current_rotation_table;
+    unsigned const reload = control >> (p * 8);
+    // ST-058 pp.152/158: the first parameter fetch loads all starts. A
+    // subsequent request reloads once; otherwise accumulate the current
+    // table's delta. Request bits are not coordinate-enable bits.
+    if (!m_rotation_latch_valid || (reload & 1)) m_rotation_x[p] = r.xst;
+    else m_rotation_x[p] += uint32_t(r.dxst);
+    if (!m_rotation_latch_valid || (reload & 2)) m_rotation_y[p] = r.yst;
+    else m_rotation_y[p] += uint32_t(r.dyst);
+    if (!m_rotation_latch_valid || (reload & 4)) m_rotation_k[p] = r.kast;
+    else m_rotation_k[p] += uint32_t(r.dkast);
+    // The compositor uses absolute output counters. Normalize the latched
+    // starts back to that origin, preserving the existing interlace stepping.
+    r.xst = m_rotation_x[p] - uint32_t(int64_t(r.dxst) * counter);
+    r.yst = m_rotation_y[p] - uint32_t(int64_t(r.dyst) * counter);
+    r.kast = m_rotation_k[p] - uint32_t(int64_t(r.dkast) * counter);
+    for (int row = scanline; row < std::min(scanline + step, ROTATION_SCANLINES); ++row)
+      m_rotation_lines[row][p] = r;
+  }
+  for (int row = scanline; row < std::min(scanline + step, ROTATION_SCANLINES); ++row)
+    m_rotation_line_valid[row] = true;
+  m_rotation_latch_valid = true;
+  m_vdp2_regs[0xb2 / 2] &= ~0x0707; // consumed at this parameter read
+  current_rotation_table = saved;
+}
+
+void saturn_state::vdp2_load_rotation_line(uint8_t parameter, int line) {
+  if (line >= 0 && line < ROTATION_SCANLINES && m_rotation_line_valid[line])
+    current_rotation_table = m_rotation_lines[line][parameter - 1];
+  else
+    vdp2_fill_rotation_parameter_table(parameter);
+}
+
 /* check if RGB layer has rotation applied */
 uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
 #define _FIXED_1 (0x00010000)
@@ -6111,7 +6135,7 @@ uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
       !(rot_parameter == 1 ? VDP2_RAKTE : VDP2_RBKTE) &&
       m_vdp2->get_lsmd() != 3 && !(m_vdp2->get_hreso() & 2) &&
       !(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR) &&
-      current_tilemap.layer_name != 0x81 &&
+      current_tilemap.layer_name != 0x81 && !current_tilemap.line_screen_enabled &&
       VDP2_RPMD < 2) // only a unit-step, coefficient-free translation
   {
     return 0;
@@ -8492,6 +8516,20 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
   //  int window_applied = 0;
   rectangle mycliprect = cliprect;
 
+  // Normal-scroll point sampler: a single bounded output pass handles zoom,
+  // fractions, line/cell combinations and mosaic before final composition.
+  // Rotation source caches continue to use their unscrolled tile/bitmap path.
+  if (current_tilemap.layer_name < 4 &&
+      (current_tilemap.scrollx_fraction || current_tilemap.scrolly_fraction ||
+       current_tilemap.incx != 0x10000 || current_tilemap.incy != 0x10000 ||
+       current_tilemap.linescroll_enable || current_tilemap.vertical_linescroll_enable ||
+       current_tilemap.linezoom_enable || current_tilemap.vertical_cell_scroll_enable ||
+       current_tilemap.mosaic_screen_enabled ||
+       (current_tilemap.line_screen_enabled && current_tilemap.colour_calculation_enabled))) {
+    vdp2_draw_scroll_screen(bitmap, cliprect);
+    return;
+  }
+
   //	if (current_tilemap.vertical_cell_scroll_enable)
   //		popmessage("%d %d %d %d", current_tilemap.linescroll_enable,
   //current_tilemap.vertical_linescroll_enable, current_tilemap.linezoom_enable,
@@ -8690,6 +8728,25 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
    produces, so nothing observable changes, and it matches the 32-bit
    accumulator the hardware uses - vdp2_copy_roz_bitmap() already multiplies
    its rotation matrix terms this way, through mul_fixed32(). */
+// MiSTer RotCoord_t/MultRC and the existing Q16 compositor use wrapping
+// 32-bit coordinates. Make additions/subtractions explicit rather than relying
+// on signed C++ overflow when legal parameter fields approach their limits.
+static inline int32_t vdp2_wrap_sum(int32_t a, int32_t b, int32_t c = 0, int32_t d = 0, int32_t e = 0) {
+  return uint32_t(a) + uint32_t(b) + uint32_t(c) + uint32_t(d) + uint32_t(e);
+}
+
+static inline int32_t vdp2_wrap_sub(int32_t a, int32_t b) {
+  return uint32_t(a) - uint32_t(b);
+}
+
+// ST-058 pp.150/163: per-line VRAM coefficients need no dedicated bank;
+// per-dot coefficients require CRAM or an effective coefficient-data bank.
+static constexpr bool vdp2_per_dot_coefficients(uint16_t ramctl) {
+  return (ramctl & 0x8000) || (ramctl & 3) == 1 || ((ramctl >> 4) & 3) == 1 ||
+      ((ramctl & 0x100) && ((ramctl >> 2) & 3) == 1) ||
+      ((ramctl & 0x200) && ((ramctl >> 6) & 3) == 1);
+}
+
 static inline uint32_t coef_delta(int32_t delta, int32_t count) {
   return uint32_t(s64(delta) * count);
 }
@@ -8697,29 +8754,9 @@ static inline uint32_t coef_delta(int32_t delta, int32_t count) {
 // ST-058 pp.115-116: OVPNR always uses the one-word pattern-name format,
 // regardless of the ordinary map's pattern_data_size. Decode an unblended dot;
 // the rotation compositor applies windows, color offset and calculation once.
-rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) {
-  unsigned code;
-  if (current_tilemap.character_number_supplement) {
-    code = current_tilemap.tile_size
-        ? ((data & 0x0fff) << 2) | (current_tilemap.supplementary_character_bits & 3) |
-              ((current_tilemap.supplementary_character_bits & 0x10) << 10)
-        : (data & 0x0fff) | ((current_tilemap.supplementary_character_bits & 0x1c) << 10);
-  } else {
-    code = current_tilemap.tile_size
-        ? ((data & 0x03ff) << 2) | (current_tilemap.supplementary_character_bits & 3) |
-              ((current_tilemap.supplementary_character_bits & 0x1c) << 10)
-        : (data & 0x03ff) | (current_tilemap.supplementary_character_bits << 10);
-    if (data & 0x0400) x = ~x;
-    if (data & 0x0800) y = ~y;
-  }
+rgb_t saturn_state::vdp2_dot_pixel(uint32_t address, int x, unsigned palette) {
   unsigned const depth = current_tilemap.colour_depth;
-  if (depth > 4)
-    return rgb_t::transparent(); // prohibited color format
-  unsigned const bytes_per_cell = 32U << (depth == 4 ? 3 : depth >= 2 ? 2 : depth);
-  unsigned const cell = current_tilemap.tile_size ? ((x & 8) >> 3) + ((y & 8) >> 2) : 0;
-  unsigned const dot = (y & 7) * 8 + (x & 7);
   unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
-  unsigned address = code * 32 + cell * bytes_per_cell + dot * bytes_per_cell / 64;
   auto const read = [this, mask](unsigned a) { return m_vdp2_legacy.gfx_decode[a & mask]; };
   uint32_t raw = read(address);
   if (depth == 0)
@@ -8738,10 +8775,176 @@ rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) 
     return rgb_t(pal5bit(raw), pal5bit(raw >> 5), pal5bit(raw >> 10));
   if (depth == 4)
     return rgb_t(raw & 255, (raw >> 8) & 255, (raw >> 16) & 255);
-  unsigned const palette = depth == 0
-      ? ((data >> 12) | (current_tilemap.supplementary_palette_bits << 4)) << 4
-      : depth == 1 ? (data & 0x7000) >> 4 : 0;
+  if (depth == 1) palette &= 0x700;
+  if (depth == 2) palette = 0;
   return m_palette->pen(((palette | raw) + (current_tilemap.colour_ram_address_offset << 8)) & 0x7ff);
+}
+
+rgb_t saturn_state::vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int y) {
+  unsigned code;
+  if (!one_word) {
+    code = data & 0x7fff;
+    if (data & 0x40000000) x = ~x;
+    if (data & 0x80000000) y = ~y;
+  } else if (current_tilemap.character_number_supplement) {
+    code = current_tilemap.tile_size
+        ? ((data & 0x0fff) << 2) | (current_tilemap.supplementary_character_bits & 3) |
+              ((current_tilemap.supplementary_character_bits & 0x10) << 10)
+        : (data & 0x0fff) | ((current_tilemap.supplementary_character_bits & 0x1c) << 10);
+  } else {
+    code = current_tilemap.tile_size
+        ? ((data & 0x03ff) << 2) | (current_tilemap.supplementary_character_bits & 3) |
+              ((current_tilemap.supplementary_character_bits & 0x1c) << 10)
+        : (data & 0x03ff) | (current_tilemap.supplementary_character_bits << 10);
+    if (data & 0x0400) x = ~x;
+    if (data & 0x0800) y = ~y;
+  }
+  unsigned const depth = current_tilemap.colour_depth;
+  if (depth > 4)
+    return rgb_t::transparent(); // prohibited color format
+  unsigned const bytes_per_cell = 32U << (depth == 4 ? 3 : depth >= 2 ? 2 : depth);
+  unsigned const cell = current_tilemap.tile_size ? ((x & 8) >> 3) + ((y & 8) >> 2) : 0;
+  unsigned const dot = (y & 7) * 8 + (x & 7);
+  unsigned const address = code * 32 + cell * bytes_per_cell + dot * bytes_per_cell / 64;
+  unsigned const palette = !one_word ? ((data >> 16) & 0x7f) << 4 : depth == 0
+      ? ((data >> 12) | (current_tilemap.supplementary_palette_bits << 4)) << 4
+      : (data & 0x7000) >> 4;
+  return vdp2_dot_pixel(address, x, palette);
+}
+
+rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) {
+  return vdp2_pattern_pixel(data, true, x, y);
+}
+
+// ST-058 pp.164/172: coefficient bits replace the low seven palette-address
+// bits. Line color has no CRAO addition and is the inserted second image.
+rgb_t saturn_state::vdp2_line_color(int y, bool use_coefficient, uint8_t coefficient_color) {
+  unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  unsigned const index = VDP2_LCCLMD
+      ? (m_vdp2->get_lsmd() == 2 ? y / 2 : y)
+      : (m_vdp2->get_lsmd() == 3 ? y & 1 : 0);
+  unsigned const address = (VDP2_LCTA * 2 + index * 2) & mask;
+  uint8_t const *const data = m_vdp2_legacy.gfx_decode.get();
+  unsigned color = ((data[address] << 8) | data[(address + 1) & mask]) & 0x7ff;
+  if (use_coefficient)
+    color = (color & 0x780) | (coefficient_color & 0x7f);
+  return m_palette->pen(color);
+}
+
+// Point sampling avoids inverse-zoom tile placement rounding and the nested
+// column-by-line redraw used by the legacy paths. All coordinate fractions are
+// retained until the final source dot is selected (ST-058 sections 5.1-5.3).
+rgb_t saturn_state::vdp2_scroll_pixel(int32_t x, int32_t y) {
+  unsigned const depth = current_tilemap.colour_depth;
+  if (depth > 4)
+    return rgb_t::transparent();
+  if (current_tilemap.bitmap_enable) {
+    unsigned const width = (current_tilemap.bitmap_size & 2) ? 1024 : 512;
+    unsigned const height = (current_tilemap.bitmap_size & 1) ? 512 : 256;
+    unsigned const dot = (unsigned(y) & (height - 1)) * width + (unsigned(x) & (width - 1));
+    unsigned const bytes = depth == 4 ? 4 : depth >= 2 ? 2 : 1;
+    unsigned const address = current_tilemap.bitmap_map * 0x20000 +
+        (depth == 0 ? dot / 2 : dot * bytes);
+    return vdp2_dot_pixel(address, x, current_tilemap.bitmap_palette_number << 8);
+  }
+
+  unsigned const cell_size = current_tilemap.tile_size ? 16 : 8;
+  unsigned const page_columns = 512 / cell_size;
+  unsigned const name_bytes = current_tilemap.pattern_data_size ? 2 : 4;
+  unsigned const page_bytes = page_columns * page_columns * name_bytes;
+  unsigned const pages_x = (current_tilemap.plane_size & 1) ? 2 : 1;
+  unsigned const pages_y = (current_tilemap.plane_size & 2) ? 2 : 1;
+  unsigned const plane_x = pages_x * 512, plane_y = pages_y * 512;
+  unsigned const sx = unsigned(x) & (plane_x * 2 - 1);
+  unsigned const sy = unsigned(y) & (plane_y * 2 - 1);
+  unsigned const map = sx / plane_x + (sy / plane_y) * 2;
+  unsigned const page = ((sx & (plane_x - 1)) / 512) +
+      ((sy & (plane_y - 1)) / 512) * pages_x;
+  unsigned const upper_mask = 0x1ff >> ((1 - current_tilemap.pattern_data_size) |
+      ((1 - current_tilemap.tile_size) << 1));
+  unsigned const base_page = (current_tilemap.map_offset[map] & upper_mask) & ~(pages_x * pages_y - 1);
+  unsigned const name_index = ((sy & 511) / cell_size) * page_columns + ((sx & 511) / cell_size);
+  unsigned const address = (base_page + page) * page_bytes + name_index * name_bytes;
+  unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
+  uint32_t data = m_vdp2_vram[(address / 4) & word_mask];
+  if (name_bytes == 2)
+    data = (address & 2) ? data & 0xffff : data >> 16;
+  return vdp2_pattern_pixel(data, name_bytes == 2, x, y);
+}
+
+void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle &cliprect) {
+  if (!current_tilemap.enabled || cliprect.empty())
+    return;
+  auto const &t = current_tilemap;
+  unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
+  int const interval = std::max<int>(1, t.linescroll_interval);
+  unsigned const stride = bool(t.linescroll_enable) + bool(t.vertical_linescroll_enable) + bool(t.linezoom_enable);
+  bool const mosaic = t.mosaic_screen_enabled;
+  unsigned const mosaic_x = mosaic ? VDP2_MZSZH + 1 : 1;
+  unsigned const mosaic_y = mosaic ? (VDP2_MZSZV + 1) * (m_vdp2->get_lsmd() == 3 ? 2 : 1) : 1;
+  bool const cell_scroll = t.vertical_cell_scroll_enable && !mosaic;
+  unsigned const cell_stride = VDP2_N0VCSC && VDP2_N1VCSC ? 2 : 1;
+  unsigned const cell_base = ((((VDP2_VCSTAU << 16) | VDP2_VCSTAL) * 2) / 4) +
+      (cell_stride == 2 ? (t.layer_name & 1) : 0);
+  bool have_pixel = false;
+  int32_t last_x = 0, last_y = 0;
+  rgb_t pixel;
+  for (int y = cliprect.top(); y <= cliprect.bottom(); ++y) {
+    int const sample_y = y - y % mosaic_y;
+    int const first_line = sample_y / interval * interval;
+    unsigned table = t.linescroll_table_address / 4 + (first_line / interval) * stride;
+    auto const read = [&]() { return m_vdp2_vram[table++ & word_mask]; };
+    int64_t start_x = int64_t(t.scrollx) * 65536 + t.scrollx_fraction;
+    int64_t start_y = int64_t(t.scrolly) * 65536 + t.scrolly_fraction;
+    uint32_t incx = t.incx;
+    if (t.linescroll_enable)
+      start_x += util::sext(read() & 0x07ffff00, 27);
+    if (t.vertical_linescroll_enable)
+      start_y += util::sext(read() & 0x07ffff00, 27) + int64_t(sample_y - first_line) * t.incy;
+    else
+      start_y += int64_t(sample_y) * t.incy;
+    if (t.linezoom_enable)
+      incx = read() & 0x0007ff00;
+    // The first entry belongs to the first source cell encountered at screen
+    // X=0. Count source-cell boundaries, not fixed eight-dot output columns.
+    int64_t const first_cell = start_x >> 19;
+    unsigned last_cell = ~0U;
+    int32_t cell_y = 0;
+    for (int x = cliprect.left(); x <= cliprect.right(); ++x) {
+      int const sample_x = x - x % mosaic_x;
+      int64_t const source_x = start_x + int64_t(sample_x) * incx;
+      if (cell_scroll) {
+        unsigned const cell = unsigned((source_x >> 19) - first_cell);
+        if (cell != last_cell) {
+          cell_y = util::sext(m_vdp2_vram[(cell_base + cell * cell_stride) & word_mask] & 0x07ffff00, 27);
+          last_cell = cell;
+        }
+      }
+      if (!vdp2_window_process(x, y))
+        continue;
+      int32_t const sx = int32_t(source_x >> 16);
+      int32_t const sy = int32_t((start_y + cell_y) >> 16);
+      if (!have_pixel || sx != last_x || sy != last_y) {
+        pixel = vdp2_scroll_pixel(sx, sy);
+        if (pixel.a() && (t.fade_control & 1))
+          vdp2_compute_color_offset_UINT32(&pixel, t.fade_control & 2);
+        last_x = sx;
+        last_y = sy;
+        have_pixel = true;
+      }
+      if (!pixel.a())
+        continue;
+      uint32_t &dest = bitmap.pix(y, x);
+      if (!t.colour_calculation_enabled)
+        dest = pixel;
+      else {
+        rgb_t const second = t.line_screen_enabled ? vdp2_line_color(y, false, 0) : rgb_t(dest);
+        unsigned const alpha = t.line_screen_enabled && (VDP2_CCCR & 0x200)
+            ? vdp2_cc_blend_level(VDP2_CCRLB & 31) : t.alpha;
+        dest = VDP2_CCMD ? add_blend_r32(second, pixel) : alpha_blend_r32(second, pixel, alpha);
+      }
+    }
+  }
 }
 
 void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
@@ -8765,7 +8968,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   // Transparent dots leave the cleared cache untouched. Coverage must not
   // be inferred from RGB intensity or applied a second time after decoding.
   rgb_t pix;
-  // uint32_t coeff_line_color_screen_data;
+  uint8_t coeff_line_color_screen_data = 0;
   int32_t clipxmask = 0, clipymask = 0;
 
   vcnt_shift = m_vdp2->get_lsmd() == 3;
@@ -8843,14 +9046,15 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   // not a second background beneath A (ST-058 Table 6.4). In particular an
   // absent A dot must expose the previous screen, not a pre-rendered B dot.
   rotation_table parameter_a = current_rotation_table;
-  if (VDP2_RPMD == 2 && iRP == 2) {
+  if (iRP == 2 && (VDP2_RPMD == 2 || (current_tilemap.line_screen_enabled && VDP2_R1ON))) {
     rotation_table const parameter_b = current_rotation_table;
-    vdp2_fill_rotation_parameter_table(1);
+    vdp2_load_rotation_line(1, cliprect.top());
     parameter_a = current_rotation_table;
     current_rotation_table = parameter_b;
   }
   // When A reads coefficients per dot in mode 2, B may only read per line.
-  int32_t const coefficient_dx = VDP2_RPMD == 2 && iRP == 2 &&
+  bool const per_dot_coefficients = vdp2_per_dot_coefficients(VDP2_RAMCTL);
+  int32_t const coefficient_dx = !per_dot_coefficients ? 0 : VDP2_RPMD == 2 && iRP == 2 &&
       VDP2_RAKTE && parameter_a.dkax != 0 ? 0 : RP.dkax;
   uint32_t last_a_address = 0, last_a_entry = 0;
   bool have_a_entry = false;
@@ -8861,7 +9065,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       return false;
     uint32_t const index = (parameter_a.kast +
         coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
-        coef_delta(parameter_a.dkax, hx)) >> 16;
+        coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, hx)) >> 16;
     uint32_t const a_address = VDP2_RAKDBS
         ? (VDP2_RAKTAOS & 7) * 0x20000 + index * 2
         : (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
@@ -8875,6 +9079,29 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     return VDP2_RAKDBS ? bool(last_a_entry & ((a_address & 2) ? 0x8000 : 0x80000000))
                       : bool(last_a_entry & 0x80000000);
   };
+
+  auto const second_image = [&](int hx, int vy) -> rgb_t {
+    if (!current_tilemap.line_screen_enabled)
+      return rgb_t(line[hx]);
+    bool const from_a = VDP2_RPMD == 2 || VDP2_R1ON || iRP == 1;
+    bool const enabled = from_a ? VDP2_RAKTE && VDP2_RAKLCE && !VDP2_RAKDBS
+                               : VDP2_RBKTE && VDP2_RBKLCE && !VDP2_RBKDBS;
+    uint8_t color = coeff_line_color_screen_data;
+    if (enabled && from_a && iRP == 2) {
+      uint32_t const index = (parameter_a.kast + coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
+          coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, hx)) >> 16;
+      uint32_t const a_address = (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
+      if (!have_a_entry || last_a_address != a_address) {
+        last_a_entry = vdp2_read_rotation_coefficient(a_address);
+        last_a_address = a_address;
+        have_a_entry = true;
+      }
+      color = (last_a_entry >> 24) & 0x7f;
+    }
+    return vdp2_line_color(vy, enabled, color);
+  };
+  unsigned const blend_alpha = current_tilemap.line_screen_enabled && (VDP2_CCCR & 0x200)
+      ? vdp2_cc_blend_level(VDP2_CCRLB & 31) : current_tilemap.alpha;
 
   /* clipping */
   switch (screen_over_process) {
@@ -8899,44 +9126,24 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     break;
   }
 
-  // dx  = (RP.A * RP.dx) + (RP.B * RP.dy);
-  // dy  = (RP.D * RP.dx) + (RP.E * RP.dy);
-  dx = mul_fixed32(RP.A, RP.dx) + mul_fixed32(RP.B, RP.dy);
-  dy = mul_fixed32(RP.D, RP.dx) + mul_fixed32(RP.E, RP.dy);
-
-  // xp  = RP.A * ( RP.px - RP.cx ) + RP.B * ( RP.py - RP.cy ) + RP.C * ( RP.pz
-  // - RP.cz ) + RP.cx + RP.mx; yp  = RP.D * ( RP.px - RP.cx ) + RP.E * ( RP.py
-  // - RP.cy ) + RP.F * ( RP.pz - RP.cz ) + RP.cy + RP.my;
-  xp = mul_fixed32(RP.A, RP.px - RP.cx) + mul_fixed32(RP.B, RP.py - RP.cy) +
-       mul_fixed32(RP.C, RP.pz - RP.cz) + RP.cx + RP.mx;
-  yp = mul_fixed32(RP.D, RP.px - RP.cx) + mul_fixed32(RP.E, RP.py - RP.cy) +
-       mul_fixed32(RP.F, RP.pz - RP.cz) + RP.cy + RP.my;
+  dx = vdp2_wrap_sum(mul_fixed32(RP.A, RP.dx), mul_fixed32(RP.B, RP.dy));
+  dy = vdp2_wrap_sum(mul_fixed32(RP.D, RP.dx), mul_fixed32(RP.E, RP.dy));
+  xp = vdp2_wrap_sum(mul_fixed32(RP.A, vdp2_wrap_sub(RP.px, RP.cx)),
+      mul_fixed32(RP.B, vdp2_wrap_sub(RP.py, RP.cy)),
+      mul_fixed32(RP.C, vdp2_wrap_sub(RP.pz, RP.cz)), RP.cx, RP.mx);
+  yp = vdp2_wrap_sum(mul_fixed32(RP.D, vdp2_wrap_sub(RP.px, RP.cx)),
+      mul_fixed32(RP.E, vdp2_wrap_sub(RP.py, RP.cy)),
+      mul_fixed32(RP.F, vdp2_wrap_sub(RP.pz, RP.cz)), RP.cy, RP.my);
 
   for (vcnt = cliprect.top(); vcnt <= cliprect.bottom(); vcnt++) {
-    /*xsp = RP.A * ( ( RP.xst + RP.dxst * (vcnt << 16) ) - RP.px ) +
-          RP.B * ( ( RP.yst + RP.dyst * (vcnt << 16) ) - RP.py ) +
-          RP.C * ( RP.zst - RP.pz);
-    ysp = RP.D * ( ( RP.xst + RP.dxst * (vcnt << 16) ) - RP.px ) +
-          RP.E * ( ( RP.yst + RP.dyst * (vcnt << 16) ) - RP.py ) +
-          RP.F * ( RP.zst - RP.pz );*/
-    xsp = mul_fixed32(RP.A,
-                      RP.xst + mul_fixed32(RP.dxst, vcnt << (16 - vcnt_shift)) -
-                          RP.px) +
-          mul_fixed32(RP.B,
-                      RP.yst + mul_fixed32(RP.dyst, vcnt << (16 - vcnt_shift)) -
-                          RP.py) +
-          mul_fixed32(RP.C, RP.zst - RP.pz);
-    ysp = mul_fixed32(RP.D,
-                      RP.xst + mul_fixed32(RP.dxst, vcnt << (16 - vcnt_shift)) -
-                          RP.px) +
-          mul_fixed32(RP.E,
-                      RP.yst + mul_fixed32(RP.dyst, vcnt << (16 - vcnt_shift)) -
-                          RP.py) +
-          mul_fixed32(RP.F, RP.zst - RP.pz);
-    // xp  = RP.A * ( RP.px - RP.cx ) + RP.B * ( RP.py - RP.cy ) + RP.C * (
-    // RP.pz - RP.cz ) + RP.cx + RP.mx; yp  = RP.D * ( RP.px - RP.cx ) + RP.E *
-    // ( RP.py - RP.cy ) + RP.F * ( RP.pz - RP.cz ) + RP.cy + RP.my; dx  = (RP.A
-    // * RP.dx) + (RP.B * RP.dy); dy  = (RP.D * RP.dx) + (RP.E * RP.dy);
+    int32_t const start_x = vdp2_wrap_sub(vdp2_wrap_sum(RP.xst,
+        mul_fixed32(RP.dxst, vcnt << (16 - vcnt_shift))), RP.px);
+    int32_t const start_y = vdp2_wrap_sub(vdp2_wrap_sum(RP.yst,
+        mul_fixed32(RP.dyst, vcnt << (16 - vcnt_shift))), RP.py);
+    xsp = vdp2_wrap_sum(mul_fixed32(RP.A, start_x), mul_fixed32(RP.B, start_y),
+        mul_fixed32(RP.C, vdp2_wrap_sub(RP.zst, RP.pz)));
+    ysp = vdp2_wrap_sum(mul_fixed32(RP.D, start_x), mul_fixed32(RP.E, start_y),
+        mul_fixed32(RP.F, vdp2_wrap_sub(RP.zst, RP.pz)));
 
     line = &bitmap.pix(vcnt);
 
@@ -8949,8 +9156,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
               coeff_table_offset +
               ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift)) >> 16) * 4;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
-          // coeff_line_color_screen_data = (coeff_table_val & 0x7f000000) >>
-          // 24;
+          coeff_line_color_screen_data = (uint32_t(coeff_table_val) >> 24) & 0x7f;
           coeff_msb = (coeff_table_val & 0x80000000) > 0;
           if (coeff_table_val & 0x00800000) {
             coeff_table_val |= 0xff000000;
@@ -8967,14 +9173,14 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             coeff_table_val >>= 16;
           }
           coeff_table_val &= 0xffff;
-          // coeff_line_color_screen_data = 0;
+          coeff_line_color_screen_data = 0;
           coeff_msb = (coeff_table_val & 0x8000) > 0;
           if (coeff_table_val & 0x4000) {
             coeff_table_val |= 0xffff8000;
           } else {
             coeff_table_val &= 0x3fff;
           }
-          coeff_table_val <<= 6; /* to form 16.16 fixed point val */
+          coeff_table_val = uint32_t(coeff_table_val) << 6; /* to form 16.16 fixed point val */
           break;
         default:
           coeff_msb = 1;
@@ -8994,15 +9200,15 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           ky = coeff_table_val;
           break;
         case 3:
-          xp = coeff_table_val;
+          xp = uint32_t(coeff_table_val) << 8; // mode 3: .8, not .16 (ST-058 p.165)
           break;
         }
       }
 
       // x = RP.kx * ( xsp + dx * (hcnt << 16)) + xp;
       // y = RP.ky * ( ysp + dy * (hcnt << 16)) + yp;
-      xs = mul_fixed32(kx, xsp) + xp;
-      ys = mul_fixed32(ky, ysp) + yp;
+      xs = vdp2_wrap_sum(mul_fixed32(kx, xsp), xp);
+      ys = vdp2_wrap_sum(mul_fixed32(ky, ysp), yp);
       dxs = mul_fixed32(kx, mul_fixed32(dx, 1 << (16 - hcnt_shift)));
       dys = mul_fixed32(ky, mul_fixed32(dy, 1 << (16 - hcnt_shift)));
       // Partial updates retain the screen-left coordinate origin. Advance
@@ -9011,7 +9217,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       ys = uint32_t(ys) + uint32_t(int64_t(dys) * cliprect.left());
 
       for (hcnt = cliprect.left(); hcnt <= cliprect.right();
-           xs += dxs, ys += dys, hcnt++) {
+           xs = vdp2_wrap_sum(xs, dxs), ys = vdp2_wrap_sum(ys, dys), hcnt++) {
         x = xs >> 16;
         y = ys >> 16;
 
@@ -9035,7 +9241,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                   &pix, current_tilemap.fade_control & 2);
 
             line[hcnt] =
-                alpha_blend_r32(line[hcnt], pix, current_tilemap.alpha);
+                alpha_blend_r32(second_image(hcnt, vcnt), pix, blend_alpha);
           }
         } else if (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND) {
           if (pix.a()) {
@@ -9043,7 +9249,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
 
-            line[hcnt] = add_blend_r32(line[hcnt], pix);
+            line[hcnt] = add_blend_r32(second_image(hcnt, vcnt), pix);
           }
         } else {
           if (pix.a()) {
@@ -9065,8 +9271,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                      16) *
                         4;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
-          // coeff_line_color_screen_data = (coeff_table_val & 0x7f000000) >>
-          // 24;
+          coeff_line_color_screen_data = (uint32_t(coeff_table_val) >> 24) & 0x7f;
           coeff_msb = (coeff_table_val & 0x80000000) > 0;
           if (coeff_table_val & 0x00800000) {
             coeff_table_val |= 0xff000000;
@@ -9085,14 +9290,14 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             coeff_table_val >>= 16;
           }
           coeff_table_val &= 0xffff;
-          // coeff_line_color_screen_data = 0;
+          coeff_line_color_screen_data = 0;
           coeff_msb = (coeff_table_val & 0x8000) > 0;
           if (coeff_table_val & 0x4000) {
             coeff_table_val |= 0xffff8000;
           } else {
             coeff_table_val &= 0x3fff;
           }
-          coeff_table_val <<= 6; /* to form 16.16 fixed point val */
+          coeff_table_val = uint32_t(coeff_table_val) << 6; /* to form 16.16 fixed point val */
           break;
         default:
           coeff_msb = 1;
@@ -9111,16 +9316,16 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           ky = coeff_table_val;
           break;
         case 3:
-          xp = coeff_table_val;
+          xp = uint32_t(coeff_table_val) << 8; // mode 3: .8, not .16 (ST-058 p.165)
           break;
         }
 
         // x = RP.kx * ( xsp + dx * (hcnt << 16)) + xp;
         // y = RP.ky * ( ysp + dy * (hcnt << 16)) + yp;
-        x = mul_fixed32(kx, xsp + mul_fixed32(dx, (hcnt >> hcnt_shift) << 16)) +
-            xp;
-        y = mul_fixed32(ky, ysp + mul_fixed32(dy, (hcnt >> hcnt_shift) << 16)) +
-            yp;
+        x = vdp2_wrap_sum(mul_fixed32(kx, vdp2_wrap_sum(xsp,
+            mul_fixed32(dx, (hcnt >> hcnt_shift) << 16))), xp);
+        y = vdp2_wrap_sum(mul_fixed32(ky, vdp2_wrap_sum(ysp,
+            mul_fixed32(dy, (hcnt >> hcnt_shift) << 16))), yp);
 
         x >>= 16;
         y >>= 16;
@@ -9144,7 +9349,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                   &pix, current_tilemap.fade_control & 2);
 
             line[hcnt] =
-                alpha_blend_r32(line[hcnt], pix, current_tilemap.alpha);
+                alpha_blend_r32(second_image(hcnt, vcnt), pix, blend_alpha);
           }
         } else if (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND) {
           if (pix.a()) {
@@ -9152,7 +9357,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
               vdp2_compute_color_offset_UINT32(
                   &pix, current_tilemap.fade_control & 2);
 
-            line[hcnt] = add_blend_r32(line[hcnt], pix);
+            line[hcnt] = add_blend_r32(second_image(hcnt, vcnt), pix);
           }
         } else {
           if (pix.a()) {
@@ -9716,6 +9921,18 @@ uint32_t saturn_state::vdp2_read_rotation_coefficient(uint32_t address) {
   if (VDP2_CRKTE)
     return m_vdp2_cram[((address | 0x800) & 0xfff) >> 2];
 
+  unsigned const physical_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  address &= physical_mask;
+  if (vdp2_per_dot_coefficients(VDP2_RAMCTL)) {
+    unsigned bank = address >> (m_vdp2->get_vramsz() ? 18 : 17);
+    if (!(VDP2_RAMCTL & (bank < 2 ? 0x100 : 0x200)))
+      bank &= 2; // unpartitioned A/B use A0/B0's designation
+    if (((VDP2_RAMCTL >> (bank * 2)) & 3) != 1)
+      // Sega specifies a failed fetch, not its dot value. Use Ymir's
+      // transparent fallback for this invalid setup; no bus-latch claim.
+      return 0x80008000; // transparent in both short halves and long format
+  }
+
   /* the address is built from the rotation parameters, whose kast/dkast are
      signed, so it can come out negative and wrap to a huge unsigned index;
      wrap it inside VRAM the same way the CRAM branch above wraps inside CRAM */
@@ -9725,6 +9942,22 @@ uint32_t saturn_state::vdp2_read_rotation_coefficient(uint32_t address) {
 void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
                                              const rectangle &cliprect,
                                              int iRP) {
+  // A frame can contain different latched matrices/starts. Split only
+  // output work; the untransformed source cache is shared across these rows.
+  if (cliprect.top() < cliprect.bottom()) {
+    bool latched = false;
+    for (int y = std::max(0, cliprect.top()); y <= std::min(ROTATION_SCANLINES - 1, cliprect.bottom()); ++y)
+      latched |= m_rotation_line_valid[y];
+    if (latched) {
+      for (int y = cliprect.top(); y <= cliprect.bottom(); ++y) {
+        rectangle row = cliprect;
+        row.sety(y, y);
+        vdp2_draw_rotation_screen(bitmap, row, iRP);
+      }
+      return;
+    }
+  }
+
   if (iRP == 1) {
     current_tilemap.bitmap_map = VDP2_RAMP_;
     current_tilemap.map_offset[0] = VDP2_RAMPA | (VDP2_RAMP_ << 6);
@@ -9765,7 +9998,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     current_tilemap.map_count = 16;
   }
 
-  vdp2_fill_rotation_parameter_table(iRP);
+  vdp2_load_rotation_line(iRP, cliprect.top());
   current_tilemap.scrollx_fraction = current_tilemap.scrolly_fraction = 0;
 
   if (iRP == 1) {
@@ -10365,6 +10598,37 @@ int saturn_state::vdp2_start() {
   save_pointer(NAME(m_vdp2_regs), 0x000200 / 2);
   save_pointer(NAME(m_vdp2_vram), 0x100000 / 4);
   save_pointer(NAME(m_vdp2_cram), 0x001000 / 4);
+  save_item(STRUCT_MEMBER(m_rotation_lines, xst));
+  save_item(STRUCT_MEMBER(m_rotation_lines, yst));
+  save_item(STRUCT_MEMBER(m_rotation_lines, zst));
+  save_item(STRUCT_MEMBER(m_rotation_lines, dxst));
+  save_item(STRUCT_MEMBER(m_rotation_lines, dyst));
+  save_item(STRUCT_MEMBER(m_rotation_lines, dx));
+  save_item(STRUCT_MEMBER(m_rotation_lines, dy));
+  save_item(STRUCT_MEMBER(m_rotation_lines, A));
+  save_item(STRUCT_MEMBER(m_rotation_lines, B));
+  save_item(STRUCT_MEMBER(m_rotation_lines, C));
+  save_item(STRUCT_MEMBER(m_rotation_lines, D));
+  save_item(STRUCT_MEMBER(m_rotation_lines, E));
+  save_item(STRUCT_MEMBER(m_rotation_lines, F));
+  save_item(STRUCT_MEMBER(m_rotation_lines, px));
+  save_item(STRUCT_MEMBER(m_rotation_lines, py));
+  save_item(STRUCT_MEMBER(m_rotation_lines, pz));
+  save_item(STRUCT_MEMBER(m_rotation_lines, cx));
+  save_item(STRUCT_MEMBER(m_rotation_lines, cy));
+  save_item(STRUCT_MEMBER(m_rotation_lines, cz));
+  save_item(STRUCT_MEMBER(m_rotation_lines, mx));
+  save_item(STRUCT_MEMBER(m_rotation_lines, my));
+  save_item(STRUCT_MEMBER(m_rotation_lines, kx));
+  save_item(STRUCT_MEMBER(m_rotation_lines, ky));
+  save_item(STRUCT_MEMBER(m_rotation_lines, kast));
+  save_item(STRUCT_MEMBER(m_rotation_lines, dkast));
+  save_item(STRUCT_MEMBER(m_rotation_lines, dkax));
+  save_item(NAME(m_rotation_line_valid));
+  save_item(NAME(m_rotation_latch_valid));
+  save_item(NAME(m_rotation_x));
+  save_item(NAME(m_rotation_y));
+  save_item(NAME(m_rotation_k));
   machine().save().register_postload(save_prepost_delegate(
       FUNC(saturn_state::vdp2_state_save_postload), this));
 

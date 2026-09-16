@@ -37,13 +37,15 @@ code=r'''
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <vector>
 #include "palette.h"
-struct rectangle {int min_x=0,max_x=0,min_y=0,max_y=0;rectangle()=default;rectangle(int l,int r,int t,int b):min_x(l),max_x(r),min_y(t),max_y(b){}};
+struct rectangle {int min_x=0,max_x=0,min_y=0,max_y=0;int top()const{return min_y;}int bottom()const{return max_y;}void sety(int t,int b){min_y=t;max_y=b;}rectangle()=default;rectangle(int l,int r,int t,int b):min_x(l),max_x(r),min_y(t),max_y(b){}};
 struct bitmap_rgb32 {bool source=false;bool valid()const{return source;}void allocate(int x,int y){assert(x==4096&&y==4096);source=true;}void fill(uint32_t color,const rectangle&){assert(color==0);} };
 struct palette {uint32_t black_pen(){return rgb_t::black();}};
 struct device {int hreso=0,lsmd=0;int get_hreso(){return hreso;}int get_lsmd(){return lsmd;}};
 struct profiler {int start(int){return 0;}} g_profiler;
 struct saturn_state {
+ static constexpr int ROTATION_SCANLINES=1024;bool m_rotation_line_valid[ROTATION_SCANLINES]{};
  // DECLS
  // ROTATION
  struct { // REGS
@@ -57,9 +59,11 @@ struct saturn_state {
  struct cache {int is_cache_dirty=3,watch_vdp2_vram_writes=0;tilemap layer_data[2]{};int map_offset_min[2]{},map_offset_max[2]{},tile_offset_min[2]{},tile_offset_max[2]{};} RBG0_cache_data;
  struct {int map_offset_min=0,map_offset_max=0,tile_offset_min=0,tile_offset_max=0;} vdp2_layer_data;
  device dev;device *m_vdp2=&dev;palette pal;palette *m_palette=&pal;
+ std::vector<int> loaded_lines;
  int loaded=0,direct=0,copied=0,built=0,captured_flags=0;
  tilemap captured{};rectangle captured_clip{};
  void vdp2_fill_rotation_parameter_table(int parameter){loaded=parameter;}
+ void vdp2_load_rotation_line(int parameter,int line){loaded=parameter;loaded_lines.push_back(line);}
  bool vdp2_are_map_registers_equal(){return false;}
  void vdp2_check_tilemap(bitmap_rgb32 &b,const rectangle &clip){
   if(b.source){++built;assert(current_tilemap.colour_calculation_enabled==0);assert((current_tilemap.transparency&6)==0);}
@@ -120,6 +124,17 @@ int main(){
   ++cases;
  }
  std::cout<<cases<<" rotation dispatch/window/cache configuration cases passed\n";
+ s.current_tilemap={};s.current_tilemap.bitmap_enable=1;s.current_tilemap.transparency=1;
+ s.regs.VDP2_RPMD=s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=0;
+ s.dev.hreso=s.dev.lsmd=0;auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;r.xst=65536;
+ for(int y=1;y<=6;++y)s.m_rotation_line_valid[y]=true;
+ s.RBG0_cache_data={};s.direct=s.copied=s.built=0;s.loaded_lines.clear();
+ s.vdp2_draw_rotation_screen(output,{1,14,1,6},1);
+ assert(s.copied==6&&s.direct==0&&s.built==1);
+ assert((s.loaded_lines==std::vector<int>{1,2,3,4,5,6}));
+ s.built=s.copied=0;s.loaded_lines.clear();s.vdp2_draw_rotation_screen(output,{5,9,2,4},1);
+ assert(s.built==0&&s.copied==3);assert((s.loaded_lines==std::vector<int>{2,3,4}));
+ std::cout<<"Latched-row dispatch reuses the untransformed cache across clips\n";
 }
 '''
 code=code.replace('// DECLS','\n'.join(x[:x.index('{')].replace('saturn_state::','').strip()+';' for x in functions))
