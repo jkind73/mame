@@ -48,7 +48,7 @@ code=r'''
 #include <vector>
 struct input {bool code_pressed_once(int){return false;}};
 struct machine_stub {struct input &input(){static struct input i;return i;}};
-struct video {int step=1;int get_ystep_count(){return step;}int get_vblank_start_position(){return 16;}};
+struct video {bool get_vramsz(){return false;}int step=1;int get_ystep_count(){return step;}int get_vblank_start_position(){return 16;}};
 struct saturn_state {
  // TABLE
  // STATE
