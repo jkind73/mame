@@ -7708,6 +7708,8 @@ void saturn_state::vdp2_get_map_page(int x, int y, int *_map, int *_page) {
 
 void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
                                            const rectangle &cliprect) {
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+
   /* hopefully this is easier to follow than it is efficient .. */
 
   /* I call character patterns tiles .. even if they represent up to 4 tiles */
@@ -7915,9 +7917,7 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
                shifttable[current_tilemap.plane_size]) *
               plsize_bytes;
 
-    base[i] &=
-        0x7ffff; /* shienryu needs this for the text layer, is there a problem
-                    elsewhere or is it just right without the ram cart */
+    base[i] &= vram_mask;
 
     base[i] = base[i] / 4; // convert bytes to DWORDS
   }
@@ -7990,7 +7990,7 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
       /* GET THE TILE INFO ... */
       /* 1 word per tile mode with supplement bits */
       if (current_tilemap.pattern_data_size == 1) {
-        data = m_vdp2_vram[newbase + offs / 2];
+        data = m_vdp2_vram[(newbase + offs / 2) & (vram_mask >> 2)];
         data = (offs & 1) ? (data & 0x0000ffff) : ((data & 0xffff0000) >> 16);
 
         /* Supplement Mode 12 bits, no flip */
@@ -8028,7 +8028,7 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
       }
       /* 2 words per tile, no supplement bits */
       else {
-        data = m_vdp2_vram[newbase + offs];
+        data = m_vdp2_vram[(newbase + offs) & (vram_mask >> 2)];
         tilecode = (data & 0x00007fff);
         pal = (data & 0x007f0000) >> 16;
         //          specialc = (data & 0x10000000)>>28;
@@ -8322,13 +8322,6 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
     }
   }
   if (current_tilemap.layer_name & 0x80) {
-    static const int shifttable[4] = {0, 1, 2, 2};
-    int uppermask, uppermaskshift;
-    int mapsize;
-    uppermaskshift = (1 - current_tilemap.pattern_data_size) |
-                     ((1 - current_tilemap.tile_size) << 1);
-    uppermask = 0x1ff >> uppermaskshift;
-
     LOGMASKED(LOG_VDP2, "Layer RBG%d, size %d x %d\n",
               current_tilemap.layer_name & 0x7f, cliprect.right() + 1,
               cliprect.bottom() + 1);
@@ -8357,13 +8350,12 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
         vdp2_layer_data.map_offset_max = max_base;
     }
 
-    mapsize = ((1 & uppermask) >> shifttable[current_tilemap.plane_size]) *
-                  plsize_bytes -
-              ((0 & uppermask) >> shifttable[current_tilemap.plane_size]) *
-                  plsize_bytes;
-    mapsize /= 4;
-
-    vdp2_layer_data.map_offset_max += mapsize;
+    // Watch physical ranges, not an extra page beyond the source planes.
+    // If a range ever wraps, cover both pieces conservatively.
+    if (vdp2_layer_data.map_offset_max > (vram_mask >> 2) + 1) {
+      vdp2_layer_data.map_offset_min = 0;
+      vdp2_layer_data.map_offset_max = (vram_mask >> 2) + 1;
+    }
 
     // Character numbers are 32-byte units, not character lengths. Watch
     // every cell and every byte of the selected color format, including the
