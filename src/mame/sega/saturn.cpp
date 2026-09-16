@@ -6465,7 +6465,11 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
   rectangle myclip;
   uint8_t *gfxdata;
 
-  gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  unsigned const base_offset = (code * 0x20) & vram_mask;
+  gfxdata = m_vdp2_legacy.gfx_decode.get();
+  // Character rows are 16/32-byte aligned and cannot straddle physical
+  // memory. Wrap each row, including the tail of the last character.
 
   if (!scalex || !scaley)
     return;
@@ -6563,7 +6567,7 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
         if (transparency & STV_TRANSPARENCY_ALPHA) {
           // case : STV_TRANSPARENCY_ALPHA
           for (int y = sy; y < ey; y++) {
-            uint8_t const *const source = gfxdata + (y_index >> 16) * 16;
+            uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 16) & vram_mask);
             uint32_t *const dest = &dest_bmp.pix(y);
 
             int x_index = x_index_base;
@@ -6589,7 +6593,7 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
         } else if (transparency & STV_TRANSPARENCY_ADD_BLEND) {
           // case : STV_TRANSPARENCY_ADD_BLEND
           for (int y = sy; y < ey; y++) {
-            uint8_t const *const source = gfxdata + (y_index >> 16) * 16;
+            uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 16) & vram_mask);
             uint32_t *const dest = &dest_bmp.pix(y);
 
             int x_index = x_index_base;
@@ -6615,7 +6619,7 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
         } else {
           // case : STV_TRANSPARENCY_PEN
           for (int y = sy; y < ey; y++) {
-            uint8_t const *const source = gfxdata + (y_index >> 16) * 16;
+            uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 16) & vram_mask);
             uint32_t *const dest = &dest_bmp.pix(y);
 
             int x_index = x_index_base;
@@ -6652,7 +6656,11 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
   rectangle myclip;
   uint8_t *gfxdata;
 
-  gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  unsigned const base_offset = (code * 0x20) & vram_mask;
+  gfxdata = m_vdp2_legacy.gfx_decode.get();
+  // Character rows are 16/32-byte aligned and cannot straddle physical
+  // memory. Wrap each row, including the tail of the last character.
 
   if (!scalex || !scaley)
     return;
@@ -6750,7 +6758,7 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
         if (transparency & STV_TRANSPARENCY_ALPHA) {
           // case : STV_TRANSPARENCY_ALPHA
           for (int y = sy; y < ey; y++) {
-            uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+            uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 32) & vram_mask);
             uint32_t *const dest = &dest_bmp.pix(y);
 
             int x_index = x_index_base;
@@ -6779,7 +6787,7 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
         } else if (transparency & STV_TRANSPARENCY_ADD_BLEND) {
           // case : STV_TRANSPARENCY_ADD_BLEND
           for (int y = sy; y < ey; y++) {
-            uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+            uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 32) & vram_mask);
             uint32_t *const dest = &dest_bmp.pix(y);
 
             int x_index = x_index_base;
@@ -6808,7 +6816,7 @@ void saturn_state::vdp2_drawgfxzoom_rgb888(
         } else {
           // case : STV_TRANSPARENCY_PEN
           for (int y = sy; y < ey; y++) {
-            uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+            uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 32) & vram_mask);
             uint32_t *const dest = &dest_bmp.pix(y);
 
             int x_index = x_index_base;
@@ -6848,7 +6856,11 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
   uint8_t *gfxdata;
   int sprite_screen_width, sprite_screen_height;
 
-  gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  unsigned const base_offset = (code * 0x20) & vram_mask;
+  gfxdata = m_vdp2_legacy.gfx_decode.get();
+  // Character rows are 16/32-byte aligned and cannot straddle physical
+  // memory. Wrap each row, including the tail of the last character.
   sprite_screen_width = sprite_screen_height = 8;
 
   // force clip to bitmap boundary
@@ -6909,7 +6921,7 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
     // skip if inner loop doesn't draw anything
     if (ex > sx) {
       for (int y = sy; y < ey; y++) {
-        uint8_t const *const source = gfxdata + (y_index >> 16) * 16;
+        uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 16) & vram_mask);
         uint32_t *const dest = &dest_bmp.pix(y);
 
         int x_index = x_index_base;
@@ -6947,7 +6959,11 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
   uint8_t *gfxdata;
   int sprite_screen_width, sprite_screen_height;
 
-  gfxdata = m_vdp2_legacy.gfx_decode.get() + code * 0x20;
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
+  unsigned const base_offset = (code * 0x20) & vram_mask;
+  gfxdata = m_vdp2_legacy.gfx_decode.get();
+  // Character rows are 16/32-byte aligned and cannot straddle physical
+  // memory. Wrap each row, including the tail of the last character.
   sprite_screen_width = sprite_screen_height = 8;
 
   // force clip to bitmap boundary
@@ -7008,7 +7024,7 @@ void saturn_state::vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp,
     // skip if inner loop doesn't draw anything
     if (ex > sx) {
       for (int y = sy; y < ey; y++) {
-        uint8_t const *const source = gfxdata + (y_index >> 16) * 32;
+        uint8_t const *const source = gfxdata + ((base_offset + (y_index >> 16) * 32) & vram_mask);
         uint32_t *const dest = &dest_bmp.pix(y);
 
         int x_index = x_index_base;

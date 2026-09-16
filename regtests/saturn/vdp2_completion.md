@@ -1,5 +1,34 @@
 # VDP2 implementation report and progress tracker
 
+## V2-T03f: retained direct-color character row wrapping — 2026-09-16
+
+The four RGB555/RGB888 zoomed and unzoomed character render helpers now normalize
+the character base and each source-row address to configured physical VRAM size.
+Previously their raw base pointer plus row offsets could read inactive upper memory
+at 4 Mbit or run beyond the backing buffer at its end. Cells use 32-byte base units;
+16/32-byte rows are aligned and cannot themselves straddle physical memory, so a
+single mask per row covers each dot without per-byte masking or scratch copies.
+Pixel decoding, zoom coordinates, flip, transparency, windows and blending are
+unchanged. No palette-decoder or character-number workaround is changed here.
+
+Primary evidence: ST-058 section 4.1 character-pattern layout specifies 32-byte base
+alignment and 128/256-byte cells for 16/32 bits per dot; section 3.1 defines physical
+memory capacities. Pinned Ymir's shared ReadVRAM physical wrapping corroborates the
+512 KiB model only; larger-memory expectations use Sega's layout/capacity rules.
+
+**44 scripts and eleven production objects pass**, including `-Werror=narrowing`.
+New extracted production-helper fixture: **2,816** full/split images across both
+capacities, boundary/aliased bases, both direct formats, normal/zoom helpers,
+reduction/enlargement, flips, transparency and supported blend paths. It uses MAME
+color/blend primitives, independent byte-modulo pixel addressing, a controlled
+window and ASan/UBSan. Four wrong-capacity mutations plus a missing-row-wrap
+mutation compile and fail assertions. Color offset remains disabled in this fixture.
+
+T03 remains partial for palette/decoded-character tails and retained decoder
+workarounds. These are helper images, not full tilemap/cache/game or linked
+save-manager acceptance. Bus timing and measured performance remain unqualified.
+
+
 ## Build correction: priority initializer narrowing — 2026-09-16
 
 Explicitly convert all five masked priority-register expressions to unsigned in
@@ -1217,6 +1246,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [x] **V2-T03c** Wrap every rotation-parameter and retained line-color table fetch to physical size; decoding/latch/line indexing unchanged.
 - [x] **V2-T03d** CPU read/write physical aliases and decode/cache/preservation coherence; extracted handler tests, not bus timing.
 - [x] **V2-T03e** Legacy cell-map bases, final name-fetch masks and physical plane watch extents; extracted arithmetic tests.
+- [x] **V2-T03f** RGB555/RGB888 retained character base/row physical wrapping, zoomed/unzoomed production-helper images.
 - [ ] **V2-T03** Qualify VRAM size/address masking and cache invalidation for all consumers.
 
 ### P4 — Display timing and external interfaces
