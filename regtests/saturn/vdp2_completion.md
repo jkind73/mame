@@ -1,5 +1,31 @@
 # VDP2 implementation report and progress tracker
 
+## V2-T02a: active cycle slots and bank ownership — 2026-09-15
+
+The normal-screen cycle-command presence gate now ignores A1/B1 cycle registers
+when their VRAM halves are not partitioned, and ignores T4–T7 in high-resolution
+and exclusive modes. Banks assigned to an enabled RBG0 no longer supply normal
+fetch commands; RBG1 excludes both B banks. RBG0 assignments do not reserve banks
+when that rotation screen is disabled. Bitmap screens still need character/bitmap
+commands but do not require pattern-name commands.
+
+Primary evidence: ST-058 printed pp.29–32 and 149–150. Pinned MiSTer a95b0850,
+VDP2.sv lines 668–709, independently selects A0/B0 registers for unpartitioned
+memories and gates normal name/character accesses against enabled rotation owners.
+This changes the existing layer-enable check, not the order or number of passes.
+
+Validation: **38 scripts and eleven production object builds pass**. New
+`test_vdp2_cycle_patterns.py` extracts the production helper and checks **1,048,576**
+slot/partition/rotation-owner/bitmap configurations. Inactive-slot, partition and
+RBG1-owner mutations compile and fail assertions. Existing reduction/color-resource
+and RBG1 setup suites pass unchanged expectations.
+
+**T02 remains partial:** this is command presence across eligible banks, not matching
+each fetch address to a bank, required access counts, legal slot spacing, insufficient
+fetch behavior or CPU contention. No hardware, linked-game or frame-time acceptance
+is claimed. Those remaining items must not be inferred from the presence-gate tests.
+
+
 ## V2-T01a: preserve completed lines before state writes — 2026-09-15
 
 Changed render-affecting register, VRAM and physical CRAM writes now preserve the
@@ -979,6 +1005,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
   - [ ] Define latch granularity from primary documentation, not an unconditional flush on every write.
   - [ ] Verify memory changes, color offsets, windows, scroll and priority changes independently.
   - [ ] Ensure active VDP1 erase-triggered updates do not duplicate or lose rendering.
+- [x] **V2-T02a** Restrict cycle-command presence to active mode slots, partition-selected registers and non-rotation-owned banks.
 - [ ] **V2-T02** Implement bank/slot-aware cycle-pattern validation and fetch behavior.
   - [ ] Bank partitioning, access-command counts/order and screen-mode bandwidth.
   - [ ] RBG1 and coefficient/table fetch restrictions.
