@@ -1,5 +1,47 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## V2-C02b: linked normal/MSB shadows and color-operation order — 2026-09-16
+
+Added **160 shadow scenes per configuration** at both VRAM capacities. Normal
+shadow codes cover word-sized sprite types 0–7, underlying NBG0 eligibility and
+plain versus calculated/offset backgrounds. Types 2–7 additionally cover transparent
+MSB shadow with both TPSDSL and underlying eligibility gates, plus opaque sprite
+self-shadow with calculation/offset on/off and differing SDCTL selections. The
+wrong underlying-layer bit is deliberately set when NBG0 eligibility is disabled.
+
+The real CPU-mapped 16-bit VDP1 draw framebuffer receives shadow/transparent
+checker pixels, followed by manual display-bank change. Sprite priority 3 is above
+NBG0 priority 2 and NBG1 priority 1. Normal shadows halve the finished NBG0 result;
+self-shadow always halves its own finished sprite result. The offset scenes distinguish
+half-after-offset from offset-after-half: 8f7f00 becomes 473f00, and the calculated/
+offset blue sprite becomes 47003f. Captures 341 and 365 were inspected. Each scene
+checks 144 probes and real save/mutate/load/full-image replay. Mutation overwrites
+both physical framebuffer banks and clears sprite priorities and SDCTL.
+
+**3,456 synthetic cases pass freshly** (2,592 DRC / 864 interpreter): 818 composition
+plus 46 background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible
+BIOS replays, all 47 regression scripts and 44 protocol cases pass; `-validate` has
+no diagnostics. Five extracted mutants compile and fail assertions: normal-shadow
+precedence, transparent enable, self-shadow enable, underlying-layer selection and
+offset ordering. The extracted all-type scanout matrix still passes 32,256 shadow
+images; normal-shadow/MSB precedence is tested there, not newly in the linked matrix.
+Composition watchdog is 360 emulated seconds; runner wall timeout defaults to 600.
+Production and the previously rebuilt executable are unchanged.
+
+Primary ST-058 pp.256–260 were reread: shadow follows calculation and offset;
+normal code is all color bits set except LSB; MSB shadow is limited to types 2–7;
+TPSDSL and screen selection gate transparent shadow, while self-shadow is unconditional.
+Pinned Ymir lines 5393–5404 corroborate special-pattern decoding, but lines 4181–4195
+apply shadow **before** offset, disagreeing with Sega. It is not the ordering oracle.
+Pinned MiSTer VDP2 lines 3517–3532 implement calculation, offset, then shadow,
+consistent with the primary reference and this independent color oracle.
+
+This is bounded highest-priority, palette-only, normal 16-bit scanout over NBG0;
+other underlying layers, 8-bit/readout modes, mixed RGB/window combinations,
+priority crossings and raster/VDP1 command timing remain separate acceptance.
+CPU framebuffer injection does not establish the hardware access/latch window.
+Full VDP2 and parent C02 remain open; older totals below are historical checkpoints.
+
 ## V2-C06d: linked extended calculation and third-image format — 2026-09-16
 
 Added **192 extended-calculation scenes per configuration**: EXCCEN on/off, second

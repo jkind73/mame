@@ -19,6 +19,7 @@ p.add_argument('--old', action='store_true')
 p.add_argument('--ratio-baseline', action='store_true')
 p.add_argument('--sprite-window-mutation', action='store_true')
 p.add_argument('--sprite-bank-mutation', action='store_true')
+p.add_argument('--shadow-mutation', choices=('normal-precedence','transparent-enable','self-enable'))
 a = p.parse_args()
 source = (subprocess.check_output(['git','show',('baf9b069' if a.ratio_baseline else '9f6d2ccc')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
           if a.old or a.ratio_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
@@ -32,6 +33,14 @@ functions='\n'.join(extract(sig) for sig in ('void saturn_state::draw_sprites(',
  'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_read_pixel(',
  'int saturn_state::vdp1_rotation_coordinate('))
 functions=extract('static uint32_t vdp2_gradation_color(')+'\n'+extract('static uint32_t vdp2_extended_color(')+'\n'+extract('void saturn_state::vdp2_compose_pixel(')+'\n'+extract('void saturn_state::vdp2_shadow_pixel(')+'\n'+extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
+if a.shadow_mutation:
+    old,new={
+        'normal-precedence': ('if (dot == unsigned(sprite_colormask - 1))', 'if (!self_shadow && dot == unsigned(sprite_colormask - 1))'),
+        'transparent-enable': ('if (VDP2_SDCTL & 0x100)', 'if (!(VDP2_SDCTL & 0x100))'),
+        'self-enable': ('if (self_shadow)', 'if (self_shadow && (VDP2_SDCTL & 1))'),
+    }[a.shadow_mutation]
+    assert functions.count(old)==1
+    functions=functions.replace(old,new)
 if a.sprite_window_mutation:functions=functions.replace('& 0x8000) != 0;', '& 0x8000) == 0;')
 if a.sprite_bank_mutation:
     old='vdp1_display_pixel(sx, y, rotation)'
