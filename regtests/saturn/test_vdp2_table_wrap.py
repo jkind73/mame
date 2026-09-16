@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('w0','w1','back','line'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('w0','w1','back','line','w0-row','w1-row'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 def extract(sig):
  start=src.index(sig);end=src.index('{',start)+1;depth=1
@@ -23,6 +23,9 @@ def extract(sig):
 funcs=[extract(s) for s in ('void saturn_state::vdp2_get_window0_coordinates(', 'void saturn_state::vdp2_get_window1_coordinates(', 'rgb_t saturn_state::vdp2_back_screen_color(', 'void saturn_state::vdp2_draw_back(', 'void saturn_state::vdp2_draw_line(')]
 if a.mutation in ('w0','w1'):
  index=int(a.mutation[1]);funcs[index]=funcs[index].replace('& (base_mask >> 1)', '& 0x3ffff')
+if a.mutation in ('w0-row','w1-row'):
+ index=int(a.mutation[1]);assert '(y >> interlace)' in funcs[index]
+ funcs[index]=funcs[index].replace('(y >> interlace)', '((y + 1) >> interlace)')
 if a.mutation=='back':funcs[-2]=funcs[-2].replace('& ((base_mask << 1) | 1)', '& 0xfffff')
 if a.mutation=='line':funcs[-1]=funcs[-1].replace('&= (base_mask << 1) | 1', '&= 0xfffff')
 f=extract('static void fixup_window_x(')+'\n'+'\n'.join(funcs)

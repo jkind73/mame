@@ -1,5 +1,34 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C03b: linked line-window tables and physical wrapping — 2026-09-16
+
+Added **16 line-window scenes per configuration** to the composition fixture:
+W0 alone, W1 alone, intersection and union, each as coverage or calculation-only
+windows, at both physical VRAM capacities. Each table is independently exercised
+crossing the physical end of VRAM. Horizontal bounds alternate by scanline, selected
+rows have start greater than end, and vertical bounds remain register controlled.
+Analytic screen-coordinate expectations check 144 boundary probes per scene.
+Bitmap/back data are placed away from both tables, avoiding accidental scene aliases.
+Both tables and their enable/address registers are cleared during the save/load
+mutation, then restored data and full-image equality are verified.
+
+The **210-case composition and 46-case background suites pass** on JP/PAL/ST-V DRC
+and JP interpreter: **1,024 current synthetic cases (768 DRC / 256 interpreter)**.
+Four visible BIOS replays were rerun and pass; `-validate` again produces no
+diagnostics. All 47 regression scripts pass. The extracted table-address fixture
+passes 1,310,720 cases; W0/W1 capacity-mask and one-row-shift mutations compile and
+fail assertions. Those address tests preserve existing interlace indexing and are
+not independent hardware timing evidence. Line-window captures were inspected.
+
+Primary basis: ST-058 pp.184–187 (per-line X bounds, inclusive borders, inverted
+rows, table address/physical-size rules). Pinned Ymir and MiSTer corroborate paired
+start/end table entries and the separation of horizontal table data from vertical
+register bounds, not full 1 MiB or interlace certification. No production correction
+was needed for these new scenes. C03b is bounded normal-resolution qualification;
+sprite-window combinations, interlace/other display modes, exact latches/contention,
+external video, games/title and comparative performance remain open. Full VDP2 is
+not declared complete. Earlier case totals below are historical checkpoints.
+
 ## V2-C03a / C05b: linked windows and color offsets — 2026-09-16
 
 The pushed composition work was extended to **194 cases per configuration**. Added
@@ -167,7 +196,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 194-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 210-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -178,8 +207,13 @@ python regtests/saturn/run_vdp2_runtime.py \
 
 Within each capacity, composition cases 1–3 cover priorities, 4–35 top-selected
 ratios, 36–67 second-selected ratios, 68 additive saturation, 69 disabled top
-calculation, 70–73 offsets, 74–85 coverage windows and 86–97 calculation-only windows.
-Cases 98–194 repeat at the larger capacity. Sources are red over green;
+calculation, 70–73 offsets, 74–85 coverage windows, 86–97 calculation-only windows,
+98–101 coverage line windows and 102–105 calculation-only line windows. Cases
+106–210 repeat at the larger capacity. Line scenes use table bases at physical
+capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
+uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
+The composition watchdog is 120 emulated seconds; completion still requires all
+210 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Scene selection and expected colors are independent of production renderer routines. Output screenshots are not
 hardware-derived reference images.
@@ -240,3 +274,16 @@ discrepancy. No hardware certification or measured speedup is claimed.
   all-disabled branch returns zero for either LOG value; that helper alone is not
   a complete caller-level comparison. The fixture follows Sega's explicit p.194
   all-disabled rule rather than importing that helper's result as an oracle.
+
+## Line-window cross-check locations
+
+- Sega SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-058 PDF blob
+  `64ba1bac76427b122bf4c10a557d1a3cec29c3a1`, printed pp.184–187.
+- Ymir `6d779960127ced72087a418c1daefc637d0aaa80`, software renderer
+  lines 2372–2424: vertical bounds checked separately; per-row start/end fetched
+  at table base plus four bytes per row. Its out-of-range compatibility behavior
+  and other display-mode indexing are not imported as an oracle.
+- MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`, `VDP2.sv`
+  lines 1312–1314, 1462–1464 and 2144–2190: paired word addresses, fetched
+  horizontal bounds and separate vertical bounds. Field/address scheduling and
+  out-of-range conventions are outside this normal-resolution fixture's claims.
