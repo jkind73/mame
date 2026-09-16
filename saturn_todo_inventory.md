@@ -1,5 +1,32 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Fresh linked qualification — 2026-09-16
+
+The reconstructed executable now **links and passes `-validate` for 122 runnable
+systems with no validation diagnostics**. Current executed evidence is 47 regression
+scripts, eleven production-object compilations, **138 DRC synthetic cases** across
+Japanese Saturn/PAL Saturn/ST-V, plus **46 Japanese Saturn interpreter cases**.
+Every synthetic case verifies mapped registers, sixteen expected-color probes,
+real save notification, VRAM/CRAM/priority/CRAM-mode/VRSIZE mutation, load notification,
+restored data and full-image equality. Four distinct cell colors exercise H/V flips.
+
+**Four visible BIOS replays pass:** JP/PAL/ST-V DRC and JP interpreter. Each boots
+900 frames without injected register/memory changes, rejects uniform RGB output,
+saves, advances half a second and checks time, main SH-2 PC and full-image identity
+on replay. JP date/time, PAL language selection and synthetic 11-bit cell captures
+were inspected. ST-V is BIOS-only, not cartridge/game acceptance.
+
+Executable SHA-256: `85bef0b9d5d9c1f47847c571bcd1f70427e30f9e157541982a3774a93e04302e`.
+This independently rebuilt hash matches the historical lost build. New run/capture
+hashes are recorded in `regtests/saturn/linked_runtime_results.json` (paths relative
+to the repository root). Full logs, snapshots and states stay outside Git.
+
+**V2-Q02 is closed** for the focused build/configuration check. A04/Q01/Q03 receive
+bounded linked coverage, not complete parent acceptance. Exact contention/latching,
+mid-field reconstruction, external video, combined effects/hardware precision,
+games/title placement and comparative performance remain open. Older “pending”
+entries below describe the pre-execution recovery/authorship checkpoints.
+
 ## V2-A04c: expanded linked-background fixture — 2026-09-16
 
 The linked fixture now defines **46 cases per system**: NBG0 cells/bitmaps at five
