@@ -105,9 +105,34 @@ if composition then
                 c.line_color={per_line=per_line,kind=kind}
             end
         end
+        -- ST-058 pp.228–229,245–247: bitmap attributes, per-dot code
+        -- selection, effective priority zero and subordinate CC enable.
+        local function special(kind,mode,attribute,select,enabled,base,lower)
+            local c=add('special-'..kind..'-'..mode..'-'..tostring(attribute)..'-'..select..'-'..tostring(enabled),
+                (lower<<8)|base,enabled and 1 or 0,15,0xff0000)
+            c.special={kind=kind,mode=mode,attribute=attribute,select=select,
+                enabled=enabled,base=base,lower=lower}
+        end
+        for mode=0,2 do
+            for _,attribute in ipairs({false,true}) do
+                for select=0,1 do special('priority',mode,attribute,select,false,2,3) end
+            end
+        end
+        special('priority',1,true,0,false,0,0) -- promote base zero to one
+        special('priority',1,false,0,false,1,0) -- demote base one to zero
+        for mode=0,3 do
+            for _,attribute in ipairs({false,true}) do
+                for select=0,1 do
+                    for _,enabled in ipairs({false,true}) do
+                        special('calculation',mode,attribute,select,enabled,2,1)
+                    end
+                end
+            end
+        end
+        for select=0,1 do special('combined',2,true,select,true,2,3) end
     end
 end
-assert(#cases==(composition and 242 or 46))
+assert(#cases==(composition and 338 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -239,22 +264,60 @@ local function configure(c)
         reg(0xe8,c.line_color.kind=='lower' and 2 or 1)
         reg(0x10e,(31<<8)|7) -- distinct line, back and normal-layer ratios
     end
+    if c.special then
+        local top=0x80000%capacity
+        for y=0,255 do
+            for x=0,511,8 do
+                local data=0
+                for dotx=x,x+7 do data=(data<<4)|((dotx//4+y//3)%3) end
+                space:write_u32(vram+top+y*256+x//2,data)
+            end
+        end
+        for offset=0,0xfffc,4 do space:write_u32(vram+0x20000+offset,0x55555555) end
+        space:write_u16(cram+2,0x801f) -- red with color-data MSB set
+        space:write_u16(cram+4,0x03e0) -- green with color-data MSB clear
+        space:write_u16(cram+10,0x7c00) -- opaque blue lower screen
+        local t=c.special
+        reg(0x24,t.select);reg(0x26,0x0102) -- code 2 in A, code 1 in B
+        reg(0xea,t.kind=='calculation' and 0 or t.mode)
+        reg(0xee,t.kind=='priority' and 0 or t.kind=='combined' and 3 or t.mode)
+        reg(0x2c,t.attribute and (t.kind=='priority' and 0x20 or t.kind=='combined' and 0x30 or 0x10) or 0)
+    end
     if c.offset then
         for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
     end
     reg(0,0x8000)
-    c.dot=c.mosaic and 0x00011122 or dot;c.capacity=capacity
+    c.dot=c.special and 0x00001111 or c.mosaic and 0x00011122 or dot;c.capacity=capacity
     c.address=(c.table_bases or c.line_color) and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
 end
 local function pixels(expected)
     local c=cases[index]
-    local xs=(c.window or c.mosaic) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
-    local ys=(c.window or c.mosaic) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
+    local xs=(c.window or c.mosaic or c.special) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
+    local ys=(c.window or c.mosaic or c.special) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
     if c.line_color then ys={0,1,2,3,4,5,7,8,17,63,127,223} end
     for _,y in ipairs(ys) do
         for _,x in ipairs(xs) do
             local actual=screen:pixel(x,y)&0xffffff
             local want=expected
+            if c.special and expected~=0x0000ff then
+                local t=c.special
+                local code=(x//4+y//3)%3
+                local matches=code==(t.select==0 and 2 or 1)
+                local priority=t.base
+                if t.kind~='calculation' and t.mode~=0 then
+                    priority=(t.base//2)*2+((t.attribute and (t.mode==1 or matches)) and 1 or 0)
+                end
+                want=0x0000ff
+                if code~=0 and priority~=0 and priority>=t.lower then
+                    local calculate=t.enabled
+                    local mode=t.kind=='combined' and 3 or t.kind=='priority' and 0 or t.mode
+                    if mode==1 then calculate=calculate and t.attribute
+                    elseif mode==2 then calculate=calculate and t.attribute and matches
+                    elseif mode==3 then calculate=calculate and code==1 end
+                    if calculate then want=code==1 and 0x7f007f or 0x007f7f
+                    else want=code==1 and 0xff0000 or 0x00ff00 end
+                end
+            end
             if c.line_color and expected~=0x0000ff then
                 if c.line_color.kind=='disabled' then want=0xff0000
                 elseif c.line_color.kind=='lower' then want=0x7f7f00
@@ -336,6 +399,7 @@ local function step()
             end
             reg(0xa8,0);reg(0xaa,0);reg(0xe8,0);reg(0x10e,0)
         end
+        reg(0x24,0);reg(0x26,0);reg(0x2c,0);reg(0xea,0);reg(0xee,0)
         reg(0x22,0)
         for offset=0xc0,0xde,2 do reg(offset,0) end
         for offset=0x110,0x11e,2 do reg(offset,0) end

@@ -1,5 +1,32 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C04c: linked per-dot priority and special calculation — 2026-09-16
+
+Added **96 special-function scenes per configuration** using transparent/red/green
+NBG0 bitmap dots over an opaque blue NBG1. Priority modes 0–2 are crossed with bitmap
+attributes and both special-code selectors; separate scenes verify base-zero promotion
+and effective-zero suppression. All four special-calculation modes are crossed with
+attribute state, selector and top-screen CC enable. Red has its CRAM MSB set while
+green does not. Combined scenes exercise per-dot priority and MSB-selected calculation
+simultaneously. Each scene checks 144 independent coordinate/color probes plus real
+save/mutate/load/full-image replay. Special mode, code and attribute registers are
+explicitly cleared during mutation. Both combined-selector captures were inspected.
+
+**1,536 synthetic cases pass** (1,152 DRC / 384 interpreter): 338 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays pass, all 47 regression scripts pass, and `-validate` has no diagnostics.
+The unchanged production executable retains its full-link/eleven-object evidence.
+Priority-zero, priority-attribute, special-MSB and special-code mutations compile and
+fail extracted assertions. The 44 fake-executable runner-protocol cases pass.
+
+Primary basis: ST-058 pp.228–229 and 245–247, corroborated by pinned Ymir/MiSTer
+priority/eligibility logic. No prohibited priority mode 3 or RGB mode-2 combinations
+are treated as legal. No production correction was needed. C04c qualifies the bounded
+normal-resolution NBG0 four-bit bitmap matrix, not all cell formats, layers, rotation,
+CRAM/display modes or effects. Exact bus/latches, external video, games/title and
+comparative performance remain open. Full VDP2 is not declared complete. Older totals
+below describe earlier checkpoints.
+
 ## V2-C07a: linked line-color insertion, ratios and table wrapping — 2026-09-16
 
 Added **16 line-color scenes per configuration**: single/per-line tables, top-screen
@@ -252,7 +279,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 242-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 338-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -268,11 +295,14 @@ calculation, 70–73 offsets, 74–85 coverage windows, 86–97 calculation-only
 mosaic. The latter alternate plain/blended scenes at 1x1, 3x5, 16x16 and 7x2 sizes.
 Cases 114–117 exercise single-color LNCL and 118–121 per-line LNCL: top insertion,
 line-selected ratio, lower-history isolation and disabled top calculation.
-Cases 122–242 repeat at the larger capacity. Line scenes use table bases at physical
+Cases 122–133 cover special-priority modes/attributes/selectors; 134–135 cover
+priority promotion/demotion through zero; 136–167 cover special-calculation
+modes/attributes/selectors/CC enable; 168–169 combine special priority with MSB
+calculation. Cases 170–338 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-242 ordered case records and the exact final marker. Sources are red over green;
+338 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Mosaic scenes replace the solid source data with a transparent/red/green foreground
 and yellow/white lower screen. Their source sample is displaced by scroll (5,7);
@@ -285,6 +315,12 @@ so per-line entries cross the boundary between rows 3 and 4. The displayed bitma
 and back word move away from that table. Table pen codes 5 (blue) and 3 (yellow)
 include ignored upper bits, and line ratio 7 differs from top ratio 15 and lower/back
 ratio 31. Probe rows include 0, 1, 2, 3, 4, 5, 7, 8, 17, 63, 127 and 223.
+
+Special-function scenes use code 0 as transparent, code 1 as red (CRAM MSB set),
+code 2 as green (CRAM MSB clear), and an opaque blue lower screen. SFCODE selects
+code 2 through set A and code 1 through set B. Bitmap priority/CC attributes are
+independent of palette-number bits. Analytic expected effective priorities choose
+the winning dot before deciding whether ordinary 50:50 calculation is eligible.
 
 Scene selection and expected colors are independent of production renderer routines. Output screenshots are not
 hardware-derived reference images.
@@ -385,3 +421,16 @@ discrepancy. No hardware certification or measured speedup is claimed.
   lines 1328,1466,3291–3296 and 3478–3483: table stepping, per-layer enable
   and selected second-image ratio. Extended calculation disagreements recorded
   elsewhere are not resolved by these ordinary-calculation tests.
+
+## Special-function cross-check locations
+
+- Sega SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-058 PDF blob
+  `64ba1bac76427b122bf4c10a557d1a3cec29c3a1`, printed pp.228–229:
+  priority LSB replacement, bitmap attribute source and effective-zero suppression;
+  pp.245–247: four calculation modes subordinate to top-screen enable.
+- Ymir `6d779960127ced72087a418c1daefc637d0aaa80`, renderer
+  lines 5273–5285 and 5348–5364: attribute/code/MSB eligibility and priority LSB.
+- MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`, `VDP2_pkg.sv`
+  lines 2436–2451: code-set selection; `VDP2.sv` lines 3226–3248 and
+  3481–3483: special priority, calculation enable and top color-MSB gate.
+  These are cross-checks, not hardware oracles or complete format/mode coverage.
