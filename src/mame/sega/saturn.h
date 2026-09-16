@@ -161,6 +161,11 @@ protected:
   bitmap_rgb32 m_vdp2_gradation_source;
   void vdp2_capture_gradation(const rectangle &cliprect);
   bool vdp2_calculation_window(int x, int y);
+  // Derived for each partial render; not architectural or save-state data.
+  bool m_vdp2_fetch_access_active = false;
+  std::array<std::array<uint8_t, 16>, 4> m_vdp2_fetch_slots{};
+  void vdp2_prepare_vram_access();
+  bool vdp2_normal_vram_access(uint32_t address, unsigned command) const;
   bool m_vdp2_composition_active = false;
   void vdp2_begin_composition(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void vdp2_compose_pixel(bitmap_rgb32 &bitmap, int x, int y, rgb_t color,

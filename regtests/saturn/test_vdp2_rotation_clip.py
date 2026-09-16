@@ -79,6 +79,9 @@ struct palette {
  uint32_t pen(unsigned index){if(indexed)return 0xff000000|(index*7919&0xffffff);return index==2?rgb_t(255,0,0):rgb_t::black();}
 };
 struct saturn_state {
+ // Fetch scheduling is independently exercised by test_vdp2_cycle_patterns.py.
+ bool vdp2_normal_vram_access(uint32_t,unsigned)const{return true;}
+
  bool m_vdp2_composition_active=false;
  bitmap_rgb32 m_vdp2_raw_top{16,8},m_vdp2_raw_under{16,8};
  struct {uint8_t data[16*8]{};uint8_t &pix(int y,int x){assert(x>=0&&x<16&&y>=0&&y<8);return data[y*16+x];}} m_vdp2_raw_alpha,m_vdp2_raw_meta,m_vdp2_under_meta;
