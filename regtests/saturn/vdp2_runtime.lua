@@ -153,9 +153,21 @@ if composition then
                 end
             end
         end
+        -- ST-058 pp.238–240: opaque designated top/second screen,
+        -- horizontal 1:1:2 filtering, normal resolution and CRAM mode 0.
+        for source=0,1 do
+            for _,second in ipairs({false,true}) do
+                for _,enabled in ipairs({false,true}) do
+                    local control=1|(source==0 and 0x2000 or 0x4000)|(second and 0x200 or 0)|(enabled and 0x8000 or 0)
+                    local c=add('gradation-'..source..'-'..tostring(second)..'-'..tostring(enabled),
+                        0x0102,control,15|(7<<8),0xff0000)
+                    c.gradation={source=source,second=second,enabled=enabled}
+                end
+            end
+        end
     end
 end
-assert(#cases==(composition and 450 or 46))
+assert(#cases==(composition and 466 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -323,11 +335,22 @@ local function configure(c)
         if c.sprite_window.calculation then reg(0xd6,control<<8)
         else reg(0xd0,control) end
     end
+    if c.gradation then
+        reg(0x0e,0) -- Gradation requires CRAM mode 0, not the default mode 1.
+        local base=c.gradation.source==0 and (0x80000%capacity) or 0x20000
+        for y=0,255 do
+            for x=0,511,8 do
+                local value=0
+                for sx=x,x+7 do value=(value<<4)|((sx//3+y//5)%4+1) end
+                space:write_u32(vram+base+(y*512+x)//2,value)
+            end
+        end
+    end
     if c.offset then
         for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
     end
     reg(0,0x8000)
-    c.dot=c.special and 0x00001111 or c.mosaic and 0x00011122 or dot;c.capacity=capacity
+    c.dot=c.gradation and c.gradation.source==0 and 0x11122233 or c.special and 0x00001111 or c.mosaic and 0x00011122 or dot;c.capacity=capacity
     c.address=(c.table_bases or c.line_color) and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
 end
 local function paint_sprite_window(inverted)
@@ -350,6 +373,10 @@ local function pixels(expected)
     local c=cases[index]
     local xs=(c.window or c.mosaic or c.special or c.sprite_window) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
     local ys=(c.window or c.mosaic or c.special or c.sprite_window) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
+    if c.gradation then
+        -- Do not assign hardware expectations to unspecified left-edge history.
+        xs={2,3,4,5,6,7,8,11,12,31,127,255};ys={8,17,63,127}
+    end
     if c.line_color then ys={0,1,2,3,4,5,7,8,17,63,127,223} end
     for _,y in ipairs(ys) do
         for _,x in ipairs(xs) do
@@ -367,6 +394,27 @@ local function pixels(expected)
                 end
                 if c.sprite_window.calculation then want=keep and 0x7f7f00 or 0xff0000
                 else want=keep and 0xff0000 or 0x00ff00 end
+            end
+            if c.gradation and expected~=0x0000ff then
+                local g=c.gradation
+                local function color(sx) return ({0xff0000,0x00ff00,0xffff00,0xffffff})[(sx//3+y//5)%4+1] end
+                local top=g.source==0 and color(x) or 0xff0000
+                local lower=g.source==1 and color(x) or 0x00ff00
+                local ratio=g.second and 7 or 15
+                if g.enabled then
+                    lower=0
+                    for _,shift in ipairs({0,8,16}) do
+                        local a=(color(x)>>shift)&255
+                        local b=(color(x-1)>>shift)&255
+                        local d=(color(x-2)>>shift)&255
+                        lower=lower|((a//2+b//4+d//4)<<shift)
+                    end
+                    if g.source==0 then ratio=15 end
+                end
+                want=0
+                for _,shift in ipairs({0,8,16}) do
+                    want=want|(((((top>>shift)&255)*(31-ratio)+((lower>>shift)&255)*(ratio+1))//32)<<shift)
+                end
             end
             if c.special and expected~=0x0000ff then
                 local t=c.special
@@ -472,7 +520,7 @@ local function step()
             reg(0xa8,0);reg(0xaa,0);reg(0xe8,0);reg(0x10e,0)
         end
         reg(0x24,0);reg(0x26,0);reg(0x2c,0);reg(0xea,0);reg(0xee,0)
-        reg(0x22,0)
+        reg(0x22,0);reg(0xec,0)
         for offset=0xc0,0xde,2 do reg(offset,0) end
         for offset=0x110,0x11e,2 do reg(offset,0) end
         reg(0xf8,0);reg(0xfa,0);reg(0xfc,0);reg(0x0e,0);reg(6,cases[index].large and 0 or 0x8000)
