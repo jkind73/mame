@@ -6184,48 +6184,28 @@ void saturn_state::vdp2_check_fade_control_for_layer() {
 uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
     uint8_t access_command_pnmdr, uint8_t access_command_cpdr,
     uint8_t bitmap_enable) {
-  int i;
-  uint8_t access_command_ok = 0;
-  uint16_t cp_regs[8];
-  cp_regs[0] = VDP2_CYCA0L;
-  cp_regs[1] = VDP2_CYCA0U;
-  cp_regs[2] = VDP2_CYCA1L;
-  cp_regs[3] = VDP2_CYCA1U;
-  cp_regs[4] = VDP2_CYCA2L;
-  cp_regs[5] = VDP2_CYCA2U;
-  cp_regs[6] = VDP2_CYCA3L;
-  cp_regs[7] = VDP2_CYCA3U;
-
-  if (bitmap_enable)
-    access_command_ok = 1;
-
-  for (i = 0; i < 8; i++) {
-    if (((cp_regs[i] >> 12) & 0xf) == access_command_pnmdr) {
-      access_command_ok |= 1;
-    }
-    if (((cp_regs[i] >> 12) & 0xf) == access_command_cpdr) {
-      access_command_ok |= 2;
-    }
-    if (((cp_regs[i] >> 8) & 0xf) == access_command_pnmdr) {
-      access_command_ok |= 1;
-    }
-    if (((cp_regs[i] >> 8) & 0xf) == access_command_cpdr) {
-      access_command_ok |= 2;
-    }
-    if (((cp_regs[i] >> 4) & 0xf) == access_command_pnmdr) {
-      access_command_ok |= 1;
-    }
-    if (((cp_regs[i] >> 4) & 0xf) == access_command_cpdr) {
-      access_command_ok |= 2;
-    }
-    if (((cp_regs[i] >> 0) & 0xf) == access_command_pnmdr) {
-      access_command_ok |= 1;
-    }
-    if (((cp_regs[i] >> 0) & 0xf) == access_command_cpdr) {
-      access_command_ok |= 2;
+  // ST-058 pp.31-32,149: unpartitioned memories use only A0/B0;
+  // high-resolution/exclusive modes use T0-T3, not the upper registers.
+  // Rotation-owned banks do not execute normal-screen access commands.
+  uint16_t const cycles[] = {VDP2_CYCA0L, VDP2_CYCA0U, VDP2_CYCA1L, VDP2_CYCA1U,
+                            VDP2_CYCA2L, VDP2_CYCA2U, VDP2_CYCA3L, VDP2_CYCA3U};
+  unsigned const slots = (m_vdp2->get_hreso() & 6) ? 4 : 8;
+  unsigned found = bitmap_enable ? 1 : 0;
+  for (unsigned bank = 0; bank < 4; ++bank) {
+    if ((bank & 1) && !(VDP2_RAMCTL & (0x100U << (bank / 2))))
+      continue;
+    if ((bank >= 2 && VDP2_R1ON) || (VDP2_R0ON && ((VDP2_RAMCTL >> (bank * 2)) & 3)))
+      continue;
+    for (unsigned slot = 0; slot < slots; ++slot) {
+      unsigned const command = (cycles[bank * 2 + slot / 4] >> (12 - (slot % 4) * 4)) & 15;
+      if (command == access_command_pnmdr)
+        found |= 1;
+      if (command == access_command_cpdr)
+        found |= 2;
     }
   }
-  return access_command_ok == 3 ? 1 : 0;
+  // This is a presence gate, not fetch-address matching or a slot arbiter.
+  return found == 3;
 }
 
 /* The colour calculation ratio register (CCRSx/CCRNA/CCRNB/CCRR) holds a 5-bit

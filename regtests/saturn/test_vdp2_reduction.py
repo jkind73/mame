@@ -51,7 +51,7 @@ struct rectangle {};
 struct bitmap_rgb32 {bool drawn=false;};
 struct saturn_state {
  uint16_t m_vdp2_regs[256]{};
- struct device {int get_vramsz(){return 0;}int get_lsmd(){return 0;}} video;
+ struct device {int get_hreso(){return 0;}int get_vramsz(){return 0;}int get_lsmd(){return 0;}} video;
  device *m_vdp2=&video;
  struct { // FIELDS
   int map_offset[16]{};
