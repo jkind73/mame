@@ -1,5 +1,51 @@
 # Sega SDK hardware-document audit
 
+## P2 shared special color-calculation eligibility — 2026-09-15
+
+Implemented SFCCMD eligibility in the shared dot/pattern sampler: per-screen,
+per-character/bitmap attribute, per-dot SFSEL/SFCODE match and color-data MSB.
+One-word names use the PNC supplement; two-word names use bit 28; bitmap modes
+use BMPNA/B bit 4. NBG0/NBG1/NBG2's previously truncated PNC assignment is corrected
+to the actual SCC bit. RBG1 selects NBG0's controls; RBG0 selects its own controls.
+Palette mode 3 consults CRAM's MSB (including CRAO and CRAM-mode addressing), which
+is absent from the RGB palette cache. RGB mode 3 always permits calculation.
+RGB mode 2 remains prohibited; the code-7 fallback agrees with pinned Ymir but is
+not a hardware guarantee for that invalid setup.
+
+Eligibility is carried alongside coverage in private decoded-dot alpha metadata:
+zero is uncovered, FE/FF are covered with calculation disabled/enabled. Final
+composition restores opaque alpha, and normal color-offset processing preserves
+this metadata. Disabled calculation draws the covered source dot normally; it does
+not make it transparent or insert line color. General/extended composition is not
+replaced by this eligibility change.
+
+Normal special-calculation layers use the bounded fractional sampler, including
+otherwise-unit transforms. Rotation layers with special calculation bypass the
+RGB-only source cache and decode output source samples directly, memoizing repeated
+coordinates. Shared map lookup now handles all 16 rotation planes. OVPNRA/B uses
+the same one-word attribute and dot-code logic, independently of ordinary map name
+size. Ordinary non-special rotation cache paths are retained. No new persistent
+hardware state is added and no whole-map special-calculation cache is constructed.
+
+Primary evidence: ST-058 pattern-name layouts/attributes (chapter 4), bitmap SCC
+bits (printed p.345), special function codes (section 10.3), and SFCCMD rules
+(printed pp.245–247). Pinned Ymir 6d779960 `VDP2FetchPixel` independently checks
+attribute/code/MSB eligibility and treats RGB mode 3 as enabled.
+
+Validation: **110,592** normal tile/bitmap/combined-scroll images now cover legal
+special modes, name/bitmap attributes, both code banks, CRAM modes, line color,
+coverage, split clips and metadata retention through a controlled color-offset
+stand-in. **39,936** additional rotation tile/bitmap/all-map/screen-over images cover
+RBG0/RBG1 sharing, one/two-word names, 8/16-dot cells, coverage and ratio/additive
+output. An intentionally unusable 1×1 RGB cache verifies the direct source path.
+Attribute, code-bank, CRAM-MSB and lost-metadata mutations compile and assertion-fail.
+**34 scripts / eleven production objects pass**, with the external log at
+`/home/user/.cache/saturn/p2-special-color-validation.log`.
+
+**Still open:** per-dot special priority, priority-aware general/extended composition,
+raster/fetch arbitration and linked game/save/load/performance qualification. This
+implements special color-calculation eligibility, not all of C04 or all of P2.
+
 ## P2 rotation sprite-window selection and combined qualification — 2026-09-15
 
 RBG0/RBG1 output windows and RPMD 3 parameter selection now combine W0, W1 and

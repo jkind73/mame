@@ -8526,7 +8526,8 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
        current_tilemap.linescroll_enable || current_tilemap.vertical_linescroll_enable ||
        current_tilemap.linezoom_enable || current_tilemap.vertical_cell_scroll_enable ||
        current_tilemap.mosaic_screen_enabled ||
-       (current_tilemap.line_screen_enabled && current_tilemap.colour_calculation_enabled))) {
+       (current_tilemap.line_screen_enabled && current_tilemap.colour_calculation_enabled) ||
+       (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode()))) {
     vdp2_draw_scroll_screen(bitmap, cliprect);
     return;
   }
@@ -8752,6 +8753,38 @@ static inline uint32_t coef_delta(int32_t delta, int32_t count) {
   return uint32_t(s64(delta) * count);
 }
 
+unsigned saturn_state::vdp2_special_color_mode() const {
+  unsigned const layer = current_tilemap.layer_name == 0x81 ? 0 :
+      current_tilemap.layer_name == 0x80 ? 4 : current_tilemap.layer_name;
+  return layer < 5 ? (VDP2_SFCCMD >> (layer * 2)) & 3 : 0;
+}
+
+// Private decoded-dot metadata: zero alpha is uncovered; FE/FF are covered
+// with calculation disabled/enabled. Restore opaque alpha at final composition.
+// Do not store already-calculated colors in rotation caches (ST-058 p.245).
+rgb_t saturn_state::vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned pen) {
+  unsigned const mode = vdp2_special_color_mode();
+  bool calculate = true;
+  if (mode == 2) {
+    unsigned const layer = current_tilemap.layer_name == 0x81 ? 0 :
+        current_tilemap.layer_name == 0x80 ? 4 : current_tilemap.layer_name;
+    unsigned const codes = VDP2_SFCODE >> (((VDP2_SFSEL >> layer) & 1) * 8);
+    // RGB mode 2 is prohibited; preserve Ymir's code-7 fallback, not a
+    // hardware guarantee for an invalid register combination.
+    unsigned const code = current_tilemap.colour_depth < 3 ? (raw >> 1) & 7 : 7;
+    calculate = (codes >> code) & 1;
+  } else if (mode == 3 && current_tilemap.colour_depth < 3) {
+    // Read the physical CRAM MSB, which the RGB palette cache discards.
+    if (VDP2_CRMD < 2) {
+      pen &= VDP2_CRMD == 0 ? 0x3ff : 0x7ff;
+      calculate = (m_vdp2_cram[pen >> 1] >> ((pen & 1) ? 15 : 31)) & 1;
+    } else {
+      calculate = (vdp2_cram_r(pen & 0x3ff) >> 31) & 1;
+    }
+  }
+  return rgb_t((uint32_t(color) & 0xffffff) | (calculate ? 0xff000000 : 0xfe000000));
+}
+
 // ST-058 pp.115-116: OVPNR always uses the one-word pattern-name format,
 // regardless of the ordinary map's pattern_data_size. Decode an unblended dot;
 // the rotation compositor applies windows, color offset and calculation once.
@@ -8773,12 +8806,13 @@ rgb_t saturn_state::vdp2_dot_pixel(uint32_t address, int x, unsigned palette) {
   if (!covered && !(current_tilemap.transparency & STV_TRANSPARENCY_NONE))
     return rgb_t::transparent();
   if (depth == 3)
-    return rgb_t(pal5bit(raw), pal5bit(raw >> 5), pal5bit(raw >> 10));
+    return vdp2_special_color_pixel(rgb_t(pal5bit(raw), pal5bit(raw >> 5), pal5bit(raw >> 10)), raw, 0);
   if (depth == 4)
-    return rgb_t(raw & 255, (raw >> 8) & 255, (raw >> 16) & 255);
+    return vdp2_special_color_pixel(rgb_t(raw & 255, (raw >> 8) & 255, (raw >> 16) & 255), raw, 0);
   if (depth == 1) palette &= 0x700;
   if (depth == 2) palette = 0;
-  return m_palette->pen(((palette | raw) + (current_tilemap.colour_ram_address_offset << 8)) & 0x7ff);
+  unsigned const pen = ((palette | raw) + (current_tilemap.colour_ram_address_offset << 8)) & 0x7ff;
+  return vdp2_special_color_pixel(m_palette->pen(pen), raw, pen);
 }
 
 rgb_t saturn_state::vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int y) {
@@ -8810,7 +8844,12 @@ rgb_t saturn_state::vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int 
   unsigned const palette = !one_word ? ((data >> 16) & 0x7f) << 4 : depth == 0
       ? ((data >> 12) | (current_tilemap.supplementary_palette_bits << 4)) << 4
       : (data & 0x7000) >> 4;
-  return vdp2_dot_pixel(address, x, palette);
+  rgb_t pixel = vdp2_dot_pixel(address, x, palette);
+  unsigned const mode = vdp2_special_color_mode();
+  bool const attribute = one_word ? bool(current_tilemap.special_colour_control_register) : bool(data & 0x10000000);
+  if (pixel.a() && (mode == 1 || mode == 2) && !attribute)
+    pixel = rgb_t((uint32_t(pixel) & 0xffffff) | 0xfe000000);
+  return pixel;
 }
 
 rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) {
@@ -8846,7 +8885,13 @@ rgb_t saturn_state::vdp2_scroll_pixel(int32_t x, int32_t y) {
     unsigned const bytes = depth == 4 ? 4 : depth >= 2 ? 2 : 1;
     unsigned const address = current_tilemap.bitmap_map * 0x20000 +
         (depth == 0 ? dot / 2 : dot * bytes);
-    return vdp2_dot_pixel(address, x, current_tilemap.bitmap_palette_number << 8);
+    rgb_t pixel = vdp2_dot_pixel(address, x, current_tilemap.bitmap_palette_number << 8);
+    unsigned const mode = vdp2_special_color_mode();
+    unsigned const bitmap_flags = current_tilemap.layer_name == 0x80 ? VDP2_BMPNB :
+        VDP2_BMPNA >> (current_tilemap.layer_name == 1 ? 8 : 0);
+    if (pixel.a() && (mode == 1 || mode == 2) && !(bitmap_flags & 0x10))
+      pixel = rgb_t((uint32_t(pixel) & 0xffffff) | 0xfe000000);
+    return pixel;
   }
 
   unsigned const cell_size = current_tilemap.tile_size ? 16 : 8;
@@ -8856,9 +8901,10 @@ rgb_t saturn_state::vdp2_scroll_pixel(int32_t x, int32_t y) {
   unsigned const pages_x = (current_tilemap.plane_size & 1) ? 2 : 1;
   unsigned const pages_y = (current_tilemap.plane_size & 2) ? 2 : 1;
   unsigned const plane_x = pages_x * 512, plane_y = pages_y * 512;
-  unsigned const sx = unsigned(x) & (plane_x * 2 - 1);
-  unsigned const sy = unsigned(y) & (plane_y * 2 - 1);
-  unsigned const map = sx / plane_x + (sy / plane_y) * 2;
+  unsigned const map_columns = current_tilemap.map_count == 16 ? 4 : 2;
+  unsigned const sx = unsigned(x) & (plane_x * map_columns - 1);
+  unsigned const sy = unsigned(y) & (plane_y * map_columns - 1);
+  unsigned const map = sx / plane_x + (sy / plane_y) * map_columns;
   unsigned const page = ((sx & (plane_x - 1)) / 512) +
       ((sy & (plane_y - 1)) / 512) * pages_x;
   unsigned const upper_mask = 0x1ff >> ((1 - current_tilemap.pattern_data_size) |
@@ -8927,8 +8973,11 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
       int32_t const sy = int32_t((start_y + cell_y) >> 16);
       if (!have_pixel || sx != last_x || sy != last_y) {
         pixel = vdp2_scroll_pixel(sx, sy);
-        if (pixel.a() && (t.fade_control & 1))
+        if (pixel.a() && (t.fade_control & 1)) {
+          unsigned const metadata = uint32_t(pixel) & 0xff000000;
           vdp2_compute_color_offset_UINT32(&pixel, t.fade_control & 2);
+          pixel = rgb_t((uint32_t(pixel) & 0xffffff) | metadata);
+        }
         last_x = sx;
         last_y = sy;
         have_pixel = true;
@@ -8936,13 +8985,14 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
       if (!pixel.a())
         continue;
       uint32_t &dest = bitmap.pix(y, x);
-      if (!t.colour_calculation_enabled)
-        dest = pixel;
+      rgb_t const color = rgb_t(uint32_t(pixel) | 0xff000000);
+      if (!t.colour_calculation_enabled || !(pixel.a() & 1))
+        dest = color;
       else {
         rgb_t const second = t.line_screen_enabled ? vdp2_line_color(y, false, 0) : rgb_t(dest);
         unsigned const alpha = t.line_screen_enabled && (VDP2_CCCR & 0x200)
             ? vdp2_cc_blend_level(VDP2_CCRLB & 31) : t.alpha;
-        dest = VDP2_CCMD ? add_blend_r32(second, pixel) : alpha_blend_r32(second, pixel, alpha);
+        dest = VDP2_CCMD ? add_blend_r32(second, color) : alpha_blend_r32(second, color, alpha);
       }
     }
   }
@@ -9048,6 +9098,24 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       for (int px = 0; px <= over_mask; ++px)
         over_pattern[py * 16 + px] = vdp2_screen_over_pattern_pixel(name, px, py);
   }
+
+  bool const special_calculation = current_tilemap.colour_calculation_enabled && vdp2_special_color_mode();
+  bool have_source = false;
+  int last_source_x = 0, last_source_y = 0;
+  rgb_t source_pixel;
+  auto const source = [&](int sx, int sy) {
+    if (!special_calculation)
+      return rgb_t(roz_bitmap.pix(sy & planerenderedsizey, sx & planerenderedsizex));
+    sx &= planesizex;
+    sy &= planesizey;
+    if (!have_source || sx != last_source_x || sy != last_source_y) {
+      source_pixel = vdp2_scroll_pixel(sx, sy);
+      last_source_x = sx;
+      last_source_y = sy;
+      have_source = true;
+    }
+    return source_pixel;
+  };
 
   // RPMD 2 selects a parameter before transparency/color calculation. B is
   // not a second background beneath A (ST-058 Table 6.4). In particular an
@@ -9255,8 +9323,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         }
 
         pix = outside ? over_pattern[(y & over_mask) * 16 + (x & over_mask)]
-                      : rgb_t(roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex));
-        if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
+                      : source(x, y);
+        if (!pix.a())
+          continue;
+        bool const calculate = pix.a() & 1;
+        pix = rgb_t(uint32_t(pix) | 0xff000000);
+        if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA)) {
           if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
@@ -9265,7 +9337,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             line[hcnt] =
                 alpha_blend_r32(second_image(hcnt, vcnt), pix, blend_alpha);
           }
-        } else if (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND) {
+        } else if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND)) {
           if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
@@ -9364,8 +9436,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           continue;
 
         pix = outside ? over_pattern[(y & over_mask) * 16 + (x & over_mask)]
-                      : rgb_t(roz_bitmap.pix(y & planerenderedsizey, x & planerenderedsizex));
-        if (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA) {
+                      : source(x, y);
+        if (!pix.a())
+          continue;
+        bool const calculate = pix.a() & 1;
+        pix = rgb_t(uint32_t(pix) | 0xff000000);
+        if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA)) {
           if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
@@ -9374,7 +9450,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
             line[hcnt] =
                 alpha_blend_r32(second_image(hcnt, vcnt), pix, blend_alpha);
           }
-        } else if (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND) {
+        } else if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ADD_BLEND)) {
           if (pix.a()) {
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset_UINT32(
@@ -9579,7 +9655,7 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   current_tilemap.pattern_data_size = VDP2_N0PNB;
   current_tilemap.character_number_supplement = VDP2_N0CNSM;
   current_tilemap.special_priority_register = VDP2_N0SPR;
-  current_tilemap.special_colour_control_register = VDP2_PNCN0;
+  current_tilemap.special_colour_control_register = VDP2_N0SCC;
   current_tilemap.supplementary_palette_bits = VDP2_N0SPLT;
   current_tilemap.supplementary_character_bits = VDP2_N0SPCN;
 
@@ -9699,7 +9775,7 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   current_tilemap.pattern_data_size = VDP2_N1PNB;
   current_tilemap.character_number_supplement = VDP2_N1CNSM;
   current_tilemap.special_priority_register = VDP2_N1SPR;
-  current_tilemap.special_colour_control_register = VDP2_PNCN1;
+  current_tilemap.special_colour_control_register = VDP2_N1SCC;
   current_tilemap.supplementary_palette_bits = VDP2_N1SPLT;
   current_tilemap.supplementary_character_bits = VDP2_N1SPCN;
 
@@ -9811,7 +9887,7 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
   current_tilemap.pattern_data_size = VDP2_N2PNB;
   current_tilemap.character_number_supplement = VDP2_N2CNSM;
   current_tilemap.special_priority_register = VDP2_N2SPR;
-  current_tilemap.special_colour_control_register = VDP2_PNCN2;
+  current_tilemap.special_colour_control_register = VDP2_N2SCC;
   current_tilemap.supplementary_palette_bits = VDP2_N2SPLT;
   current_tilemap.supplementary_character_bits = VDP2_N2SPCN;
 
@@ -10095,6 +10171,15 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
       planesizex = planesizey = 4096;
       break;
     }
+  }
+
+  // Special calculation needs dot attributes that the RGB-only source cache
+  // cannot retain. Decode bounded output samples directly, including all 16
+  // rotation maps, rather than rebuilding a full multi-megapixel cache.
+  if (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode()) {
+    vdp2_copy_roz_bitmap(bitmap, m_vdp2_legacy.roz_bitmap[iRP - 1], cliprect,
+        iRP, planesizex, planesizey, planesizex, planesizey);
+    return;
   }
 
   if (vdp2_is_rotation_applied(iRP) == 0) {
