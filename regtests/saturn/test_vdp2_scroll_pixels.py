@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route','11bpp-stride','flip-axis'))
+p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route','11bpp-stride','flip-axis','mosaic-origin'))
 a=p.parse_args();src=(ROOT/'src/mame/sega/saturn.cpp').read_text();head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
  start=text.index(sig);end=text.index('{',start)+1;depth=1
@@ -33,6 +33,9 @@ if a.mutation=='flip-axis':
  f=f.replace('if (data & 0x0400) x = ~x;', 'if (data & 0x0400) y = ~y;').replace('if (data & 0x0800) y = ~y;', 'if (data & 0x0800) x = ~x;')
 if a.mutation=='phase':f=f.replace('+ t.scrollx_fraction','+ 0').replace('+ t.scrolly_fraction','+ 0')
 if a.mutation=='cell':f=f.replace('unsigned((source_x >> 19) - first_cell)','unsigned(sample_x / 8 + first_cell * 0)')
+if a.mutation=='mosaic-origin':
+ assert 'x - x % mosaic_x' in f
+ f=f.replace('x - x % mosaic_x', 'x - (x - cliprect.left()) % mosaic_x').replace('y - y % mosaic_y', 'y - (y - cliprect.top()) % mosaic_y')
 if a.mutation=='mosaic':f=f.replace('t.vertical_cell_scroll_enable && !mosaic','t.vertical_cell_scroll_enable')
 if a.mutation=='two-word':f=f.replace('code = data & 0x7fff;', 'code = data & 0x3fff;')
 if a.mutation=='special-color':f=f.replace('bool(current_tilemap.special_colour_control_register)', 'true').replace('!(bitmap_flags & 0x10)', 'false && !(bitmap_flags & 0x10)')

@@ -1,5 +1,33 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C08a: linked source mosaic, transparency and blending — 2026-09-16
+
+Added **16 mosaic scenes per configuration**: 1x1, 3x5, 16x16 and 7x2 blocks,
+with and without ordinary blending, at both physical VRAM capacities. NBG0 uses
+transparent/red/green source patterns and nonzero X/Y scroll; NBG1 uses an independent
+yellow/white pattern. The analytic oracle samples only NBG0 at each mosaic block's
+upper-left coordinate, then composites against the unchanged NBG1 dot. This detects
+post-composition mosaicking and accidental resampling of the lower screen. Every
+scene enables a nonzero nine-line vertical-cell-scroll table that mosaic must suppress,
+including when the mosaic dimensions are 1x1. Each scene checks 144 probes and real
+save/mutate/load/full-image replay; the mutation explicitly clears MZCTL. Captures
+with and without blending were inspected.
+
+**1,088 synthetic cases pass** (816 DRC / 272 interpreter): 226 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays pass, all 47 regression scripts pass, and `-validate` again has no diagnostics.
+The unchanged production executable retains the existing full-link/eleven-object
+qualification. Mosaic/VCSC-suppression and clip-relative-origin mutations compile
+and fail independent extracted image assertions. Unmutated point-sampler coverage
+passes 294,912 images and 98,304 metadata cases; the 44 runner-protocol cases pass.
+
+Primary basis: ST-058 pp.117–119. Pinned Ymir/MiSTer corroborate layer-local mosaic
+and VCSC priority, not hardware timing or every combination. No production correction
+was required by these scenes. C08a is bounded NBG0 normal-resolution qualification;
+other layers, rotation/interlace, all size/effect combinations, exact bus/latches,
+external video, games/title and comparative performance remain open. Full VDP2 is
+not declared complete. Earlier totals below describe earlier checkpoints.
+
 ## V2-C03b: linked line-window tables and physical wrapping — 2026-09-16
 
 Added **16 line-window scenes per configuration** to the composition fixture:
@@ -196,7 +224,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 210-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 226-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -208,13 +236,20 @@ python regtests/saturn/run_vdp2_runtime.py \
 Within each capacity, composition cases 1–3 cover priorities, 4–35 top-selected
 ratios, 36–67 second-selected ratios, 68 additive saturation, 69 disabled top
 calculation, 70–73 offsets, 74–85 coverage windows, 86–97 calculation-only windows,
-98–101 coverage line windows and 102–105 calculation-only line windows. Cases
-106–210 repeat at the larger capacity. Line scenes use table bases at physical
+98–101 coverage line windows, 102–105 calculation-only line windows, and 106–113
+mosaic. The latter alternate plain/blended scenes at 1x1, 3x5, 16x16 and 7x2 sizes.
+Cases 114–226 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-210 ordered case records and the exact final marker. Sources are red over green;
+226 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
+Mosaic scenes replace the solid source data with a transparent/red/green foreground
+and yellow/white lower screen. Their source sample is displaced by scroll (5,7);
+the lower screen is sampled at the destination dot. The nine-line VCSC poison table
+must be ignored even when enabled mosaic has unit size. These checks do not measure
+fetch timing or certify other mosaic/interlace modes.
+
 Scene selection and expected colors are independent of production renderer routines. Output screenshots are not
 hardware-derived reference images.
 
@@ -287,3 +322,16 @@ discrepancy. No hardware certification or measured speedup is claimed.
   lines 1312–1314, 1462–1464 and 2144–2190: paired word addresses, fetched
   horizontal bounds and separate vertical bounds. Field/address scheduling and
   out-of-range conventions are outside this normal-resolution fixture's claims.
+
+## Mosaic cross-check locations
+
+- Sega SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-058 PDF blob
+  `64ba1bac76427b122bf4c10a557d1a3cec29c3a1`, printed pp.117–119:
+  upper-left source, 1–16 dot sizes, per-layer enable and VCSC suppression.
+- Ymir `6d779960127ced72087a418c1daefc637d0aaa80`, renderer
+  lines 4544–4569: per-layer horizontal mosaic takes priority over vertical-cell
+  scroll. This is corroboration, not an independent linked/hardware oracle.
+- MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`, `VDP2.sv`
+  lines 1683–1694 and 3018–3022: VCSC contribution masked when MZE is set,
+  vertical/horizontal counters use the programmed size. Other pipeline timing
+  and interlace conventions are outside this fixture's acceptance.

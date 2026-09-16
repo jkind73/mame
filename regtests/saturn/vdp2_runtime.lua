@@ -86,9 +86,18 @@ if composition then
                     wrap=(which==7 or which==10) and 1 or 0}
             end
         end
+        -- ST-058 pp.117–119: upper-left source sample, independent H/V
+        -- sizes, and VCSC suppression. Lower-screen pixels must not mosaic.
+        for _,size in ipairs({{1,1},{3,5},{16,16},{7,2}}) do
+            for _,blend in ipairs({false,true}) do
+                local c=add('mosaic-'..size[1]..'x'..size[2]..(blend and '-blend' or ''),
+                    0x0102,blend and 1 or 0,15,0xff0000)
+                c.mosaic={width=size[1],height=size[2],blend=blend}
+            end
+        end
     end
 end
-assert(#cases==(composition and 210 or 46))
+assert(#cases==(composition and 226 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -182,21 +191,60 @@ local function configure(c)
             reg(0xd8+window*4,0x8000|(wordbase>>16));reg(0xda+window*4,wordbase&0xffff)
         end
     end
+    if c.mosaic then
+        -- Distinct top/bottom patterns expose accidental resampling of the
+        -- already-composited output. Top zero is transparent; bottom is opaque.
+        local top=0x80000%capacity
+        for y=0,255 do
+            for x=0,511,8 do
+                local foreground,background=0,0
+                for dotx=x,x+7 do
+                    foreground=(foreground<<4)|((dotx//3+y//5)%3)
+                    background=(background<<4)|(3+(dotx//7+y//11)%2)
+                end
+                space:write_u32(vram+top+y*256+x//2,foreground)
+                space:write_u32(vram+0x20000+y*256+x//2,background)
+            end
+        end
+        reg(0x22,((c.mosaic.height-1)<<12)|((c.mosaic.width-1)<<8)|1)
+        reg(0x70,5);reg(0x74,7)
+        -- A live, nonzero vertical-cell table must be ignored even for 1x1
+        -- mosaic. Its nine-line displacement would change the expected colors.
+        reg(0x9a,1);reg(0x9c,3);reg(0x9e,0)
+        for offset=0,252,4 do space:write_u32(vram+0x60000+offset,0x00090000) end
+    end
     if c.offset then
         for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
     end
     reg(0,0x8000)
-    c.dot=dot;c.capacity=capacity
+    c.dot=c.mosaic and 0x00011122 or dot;c.capacity=capacity
     c.address=c.table_bases and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
 end
 local function pixels(expected)
     local c=cases[index]
-    local xs=c.window and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
-    local ys=c.window and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
+    local xs=(c.window or c.mosaic) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
+    local ys=(c.window or c.mosaic) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
     for _,y in ipairs(ys) do
         for _,x in ipairs(xs) do
             local actual=screen:pixel(x,y)&0xffffff
             local want=expected
+            if c.mosaic and expected~=0x0000ff then
+                local sx=(x//c.mosaic.width)*c.mosaic.width+5
+                local sy=(y//c.mosaic.height)*c.mosaic.height+7
+                local code=(sx//3+sy//5)%3
+                local lower=(x//7+y//11)%2==0 and 0xffff00 or 0xffffff
+                if code==0 then want=lower
+                else
+                    local upper=code==1 and 0xff0000 or 0x00ff00
+                    want=upper
+                    if c.mosaic.blend then
+                        want=0
+                        for _,shift in ipairs({0,8,16}) do
+                            want=want|(((((upper>>shift)&255)+((lower>>shift)&255))//2)<<shift)
+                        end
+                    end
+                end
+            end
             if c.window and expected~=0x0000ff then
                 local w0=x>=31 and x<=127 and y>=17 and y<=63
                 local w1=x>=63 and x<=255 and y>=31 and y<=127
@@ -241,6 +289,7 @@ local function step()
                 for row=0,255 do space:write_u32(vram+((base+row*4)%cases[index].capacity),0) end
             end
         end
+        reg(0x22,0)
         for offset=0xc0,0xde,2 do reg(offset,0) end
         for offset=0x110,0x11e,2 do reg(offset,0) end
         reg(0xf8,0);reg(0xfa,0);reg(0xfc,0);reg(0x0e,0);reg(6,cases[index].large and 0 or 0x8000)
