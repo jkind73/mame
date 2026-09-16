@@ -99,6 +99,10 @@ void saturn_vdp2_device::device_reset() {
   m_exsyen = false;
   m_dasel = false;
   m_exbgen = false;
+  // Reset the event flags, not the saved counter samples. ST-058 section
+  // 2.5 defines their event/read-clear behavior; MiSTer resets TVSTAT too.
+  m_exltfg = false;
+  m_exsyfg = false;
   reconfigure_crtc();
 }
 

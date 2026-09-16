@@ -71,7 +71,7 @@ struct saturn_vdp2_device {
   u16 m_exten = 0;
   bool m_exlten = false, m_exsyen = false, m_dasel = false, m_exbgen = false;
   u16 m_hcounter_latch = 0, m_vcounter_latch = 0;
-  unsigned m_exltfg = 0;
+  unsigned m_exltfg = 0;bool m_exsyfg=false;
   int reconfigurations = 0;
   int get_hcounter() const { return 0x2ab; }
   int get_vcounter() const { return 0x355; }
@@ -117,7 +117,11 @@ int main() {
         assert(d.read_exten() == value);
         d.assert_latched(!BIT(value, 9));
         for (int reset = 0; reset < 2; ++reset) {
+          d.m_exltfg=1;d.m_exsyfg=true;
+          auto h=d.m_hcounter_latch,v=d.m_vcounter_latch;
           d.device_reset();
+          assert(!d.m_exltfg&&!d.m_exsyfg);
+          assert(d.m_hcounter_latch==h&&d.m_vcounter_latch==v);
           assert(d.m_exten == 0);
           d.assert_controls();
           assert(d.m_odd_bit && !d.m_vramsz && d.m_old_tvmd == 0xffff);
