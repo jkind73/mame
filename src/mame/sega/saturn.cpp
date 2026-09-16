@@ -10669,6 +10669,8 @@ void saturn_state::vdp2_vram_w(offs_t offset, uint32_t data,
                                uint32_t mem_mask) {
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
 
+  if ((m_vdp2_vram[offset] ^ data) & mem_mask)
+    m_vdp2->preserve_scanned_output();
   COMBINE_DATA(&m_vdp2_vram[offset]);
 
   data = m_vdp2_vram[offset];
@@ -10755,6 +10757,9 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
   cmode0 = (VDP2_CRMD & 3) == 0;
 
   offset &= (0xfff) >> (2);
+  if (((vdp2_cram_r(offset) ^ data) & mem_mask) ||
+      (cmode0 && ((vdp2_cram_r(offset ^ 0x200) ^ data) & mem_mask)))
+    m_vdp2->preserve_scanned_output();
   if (VDP2_CRMD & 2) {
     const unsigned shift = (offset & 1) ? 0 : 16;
     auto &bank0 = m_vdp2_cram[offset >> 1];
@@ -10873,6 +10878,10 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
   // as above, the 4MB window mirrors the 0x200 byte register file
   offset &= 0xff;
 
+  // RAMCTL through color-offset registers affect rendering. Device-owned
+  // TVMD/VRSIZE handlers preserve their old decoded state separately.
+  if (offset >= 0x00e / 2 && offset <= 0x11e / 2 && ((m_vdp2_regs[offset] ^ data) & mem_mask))
+    m_vdp2->preserve_scanned_output();
   COMBINE_DATA(&m_vdp2_regs[offset]);
 
   // window coordinates may have changed

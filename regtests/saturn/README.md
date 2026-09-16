@@ -1,5 +1,37 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## V2-T01a: preserve completed lines before state writes — 2026-09-15
+
+Changed render-affecting register, VRAM and physical CRAM writes now preserve the
+completed visible-line prefix **before** mutating storage or decoded state. The
+VDP2 device's TVMD and VRSIZE handlers use the same preservation entry point before
+updating display/geometry/address-size controls. CRAM change detection accounts for
+mode-0 broadcasts to a different opposite bank and mode-2 physical-bank mapping.
+Masked no-ops do not request a flush; reserved/read-only register storage is excluded.
+
+This is a scanline-renderer correctness step, **not a hardware register-latch model**.
+It preserves only lines before the current beam line, never guesses at current-dot
+fetch completion. It checks device startup, visible-line bounds and display/back
+output enable. MAME screen_device coalesces repeated prefix requests, including the
+existing VDP1 erase-triggered partial updates; no new save state or per-write image
+buffers are added. ST-058 chapter 2 supplies scan/display mode definitions; pinned
+Ymir's VDP2DrawLine output ordering corroborates keeping completed rows independent
+of subsequent memory/register writes, not exact latch/slot timing.
+
+Validation: **37 scripts and eleven production objects pass**. New production write
+handlers and preservation helper pass **2,592** beam/mask/display/back/startup/
+erase/coalescing scenarios with a recording screen. A mode-0 opposite-bank-only
+change also preserves the old prefix. Moving preservation after the write,
+preserving the current line, or removing preservation all fail assertions. The
+**3,072** TVMD cases additionally verify preservation sees old TVMD before a display
+change and ignores zero-mask writes. Palette and rotation-cache suites remain passing.
+
+T01 remains partial: current-line/dot preservation, exact per-register latches,
+fetch-slot arbitration, CPU contention and linked runtime/save-load qualification
+are not supplied by this change. Alternate Debian mirrors also fail TLS in this
+sandbox; no linked MAME executable or successful runtime acceptance is claimed.
+
+
 ## Full-VDP2 scope: compositor, shadows and windows — 2026-09-15
 
 Scope is now the entire VDP2 tracker, not just P2. This increment implements the

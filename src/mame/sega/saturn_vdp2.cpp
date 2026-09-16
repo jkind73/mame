@@ -28,6 +28,18 @@ saturn_vdp2_device::saturn_vdp2_device(const machine_config &mconfig,
       m_screen(*this, finder_base::DUMMY_TAG), m_vint_cb(*this),
       m_hint_cb(*this), m_is_pal(false) {}
 
+void saturn_vdp2_device::preserve_scanned_output() {
+  if (!m_screen->started() || (!m_disp && !m_bdclmd))
+    return;
+  int const line = m_screen->vpos();
+  auto const &visible = m_screen->visible_area();
+  if (line > visible.min_y && line <= visible.max_y + 1)
+    m_screen->update_partial(line - 1);
+  // This preserves only completed lines, not a guessed register/fetch latch.
+  // screen_device coalesces repeated writes and VDP1 erase updates to the
+  // same prefix. The current line still uses the scanline renderer's state.
+}
+
 void saturn_vdp2_device::device_start() {
   m_video_sync_timer =
       timer_alloc(FUNC(saturn_vdp2_device::sync_timer_cb), this);
@@ -133,6 +145,8 @@ void saturn_vdp2_device::regs_map(address_map &map) {
   map(0x0000, 0x0001)
       .lrw16(NAME([this]() { return m_tvmd; }),
              NAME([this](offs_t offset, u16 data, u16 mem_mask) {
+               if ((m_tvmd ^ data) & mem_mask)
+                 preserve_scanned_output();
                COMBINE_DATA(&m_tvmd);
                m_disp = BIT(m_tvmd, 15);
                m_bdclmd = BIT(m_tvmd, 8);
@@ -211,8 +225,11 @@ void saturn_vdp2_device::regs_map(address_map &map) {
              }),
              NAME([this](offs_t offset, u16 data, u16 mem_mask) {
                // TODO: probably akin to YM7101 equivalent on stock Saturn
-               if (ACCESSING_BITS_8_15)
+               if (ACCESSING_BITS_8_15) {
+                 if (m_vramsz != bool(BIT(data, 15)))
+                   preserve_scanned_output();
                  m_vramsz = BIT(data, 15);
+               }
              }));
 
   // $5f80008 HCNT (r/o)

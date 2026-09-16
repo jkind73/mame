@@ -26,6 +26,9 @@ public:
   // HV counter latch driven by an external signal (light gun), EXTEN bit 9
   void external_latch();
 
+  // Preserve completed display lines before a render-affecting state change.
+  void preserve_scanned_output();
+
   auto vint_cb() { return m_vint_cb.bind(); }
   auto hint_cb() { return m_hint_cb.bind(); }
 

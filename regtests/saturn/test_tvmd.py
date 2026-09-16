@@ -77,6 +77,8 @@ struct timer {
   void adjust(int delay, int param) { assert(delay == 17 && param == 0); ++arms; }
 };
 struct saturn_vdp2_device {
+ u16 preserved_tvmd=0xffff;
+ void preserve_scanned_output(){preserved_tvmd=m_tvmd;}
   screen scr;
   timer tim;
   screen *m_screen = &scr;
@@ -155,7 +157,11 @@ int main() {
               d.write_tvmd(0, 0x8100, 0xff00);
               assert(d.scr.updates == updates + 1);
               d.coherent();
-              assert(d.read_tvmd() == 0x8100);
+              assert(d.read_tvmd() == 0x8100 && d.preserved_tvmd == 0);
+              d.write_tvmd(0, 0, 0xff00);
+              assert(d.read_tvmd() == 0 && d.preserved_tvmd == 0x8100);
+              d.write_tvmd(0, 0xffff, 0);
+              assert(d.preserved_tvmd == 0x8100);
               ++cases;
             }
   std::cout << cases << " TVMD startup/write/reset scenarios passed\n";
