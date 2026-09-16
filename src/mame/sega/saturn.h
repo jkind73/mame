@@ -433,6 +433,8 @@ protected:
                                           const rectangle &cliprect);
   void vdp2_check_tilemap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   rgb_t vdp2_line_color(int y, bool use_coefficient, uint8_t coefficient_color);
+  unsigned vdp2_special_color_mode() const;
+  rgb_t vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned pen);
   rgb_t vdp2_dot_pixel(uint32_t address, int x, unsigned palette);
   rgb_t vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int y);
   rgb_t vdp2_scroll_pixel(int32_t x, int32_t y);
