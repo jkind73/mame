@@ -10671,11 +10671,15 @@ void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
 }
 
 uint32_t saturn_state::vdp2_vram_r(offs_t offset) {
+  offset &= m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
   return m_vdp2_vram[offset];
 }
 
 void saturn_state::vdp2_vram_w(offs_t offset, uint32_t data,
                                uint32_t mem_mask) {
+  // Normalize before comparing, preserving scanned output, decoding or
+  // testing source-cache watches: all of those refer to physical VRAM.
+  offset &= m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
 
   if ((m_vdp2_vram[offset] ^ data) & mem_mask)

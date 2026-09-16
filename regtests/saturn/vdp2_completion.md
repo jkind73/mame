@@ -1,5 +1,38 @@
 # VDP2 implementation report and progress tracker
 
+## V2-T03d: CPU VRAM physical aliases and write coherence — 2026-09-16
+
+CPU VRAM read/write handlers now normalize the longword offset to the configured
+512 KiB/1 MiB physical capacity. In 4-Mbit mode the upper half of the mapped aperture
+therefore aliases lower memory instead of acting as independent storage. Writes
+normalize before the changed-data comparison and completed-line preservation, and
+before updating the decoded byte buffer, decoder dirty indices and A/B map/character
+cache watch ranges. Partial-write merging and existing conservative cache dirtiness
+(including unchanged writes) are preserved. The unused upper backing allocation is
+not erased, and this does not redefine behavior of changing VRSIZE after loading RAM.
+
+Evidence: ST-058 section 3.1 pp.26–28 defines physical capacities/address maps and
+requires setting VRAMSZ before writing VRAM. Pinned Ymir 6d779960's shared
+MapVRAMAddress/ReadVRAM/WriteVRAM implementation corroborates modulo-512-KiB storage
+access; its 1-MiB support remains TODO. The 1-MiB case follows the Sega capacity map.
+These references do not qualify exact CPU bus turnaround, open-bus behavior or
+contention. This change makes CPU accesses coherent with the implemented physical
+wrapping model, not a new bus-timing claim.
+
+**42 scripts and eleven production object builds pass**. New production-handler
+fixture: **1,296** capacity/boundary/alias/mask/data/A-B/name-character-watch cases.
+It checks reads, merged longwords, big-endian decode bytes, unchanged opposite-half
+storage, decoder dirty indices, exact cache selection and old-state visibility at
+the preservation callback. Read-mask and write-mask removal mutations compile and
+fail assertions. Existing **2,592** raster-write and **20,320** character/bitmap
+cache-invalidation cases pass. Screen and graphics-decoder stages are recording
+stand-ins, not a linked CPU/game/save-manager replay.
+
+T03 remains partial: legacy cell-map/character fetches still need a complete
+physical-size audit. Linked runtime, display fetch arbitration and performance
+qualification remain open; no frame-time or game-compatibility acceptance claimed.
+
+
 ## V2-T03c: rotation and retained line-color table wrapping — 2026-09-16
 
 The raw rotation-parameter loader now masks every final longword index to the
@@ -1137,6 +1170,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [x] **V2-T03a** Wrap W0/W1 line-window and back-table row addresses at the configured physical VRAM size; production boundary fixtures.
 - [x] **V2-T03b** Configured bitmap and legacy scroll-table wrapping; format/size-aware bitmap watch ranges and VRAM-size cache keys.
 - [x] **V2-T03c** Wrap every rotation-parameter and retained line-color table fetch to physical size; decoding/latch/line indexing unchanged.
+- [x] **V2-T03d** CPU read/write physical aliases and decode/cache/preservation coherence; extracted handler tests, not bus timing.
 - [ ] **V2-T03** Qualify VRAM size/address masking and cache invalidation for all consumers.
 
 ### P4 — Display timing and external interfaces
