@@ -51,6 +51,7 @@ struct screen {
  void update_partial(int end){++calls;for(int y=last+1;y<=std::min(end,5);++y){rows[y]=sample();++draws;}last=std::max(last,end);}
 };
 struct saturn_vdp2_device {
+ bool get_vramsz(){return false;}
  screen monitor;screen *m_screen=&monitor;bool m_disp=true,m_bdclmd=false;
  void preserve_scanned_output();
 };
