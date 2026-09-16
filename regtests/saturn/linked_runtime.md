@@ -1,5 +1,42 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C02d: linked RBG0 shadow identity and color operations — 2026-09-16
+
+Added **64 RBG0 shadow scenes per configuration**: normal-MSB precedence and
+transparent shadow; sprite priorities zero/below/tied/above; R0SDEN versus the
+wrong NBG0 shadow bit; plain versus calculated/offset RBG0; both VRAM capacities.
+RBG0 is an opaque magenta 11-bit cell layer over the blue back screen, using
+identity parameter A. The cells use the previously qualified 128-byte stride.
+
+RBG0 priority is 2. Its calculated/offset result is 7f10ff; a qualifying shadow must
+produce 3f087f, while a sprite below RBG0 must not darken it. The independent oracle
+checks 144 probes and real save/mutate/load/full-image replay per scene. CPU writes
+overwrite both VDP1 framebuffer banks during mutation, and a rotation character
+word is explicitly changed and checked after restore. Captures 497 (below RBG0)
+and 505 (above RBG0) were inspected.
+
+**4,352 synthetic cases pass freshly** (3,264 DRC / 1,088 interpreter): 1,042 composition
+plus 46 background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible
+BIOS replays, all 47 regression scripts and 44 protocol cases pass; `-validate` has
+no diagnostics. Extracted underlying-layer and offset-order mutations were rerun:
+both compile and fail assertions. Production and the previously rebuilt executable
+are unchanged; full-link/eleven-object evidence is retained, not a new source build.
+
+Primary ST-058 pp.148–150 and 259 were reread alongside the previously audited
+priority/shadow rules. Pattern names and character data use separate rotation-owned
+banks: RAMCTL 110e at 4 Mbit selects A0 for names and A1 for characters; RAMCTL
+1023 at 8 Mbit selects B for names and A for characters. The normal backgrounds
+are disabled in these scenes. Pinned MiSTer VDP2 lines 3276–3282 corroborate R0SDEN
+and sprite/RBG0 priority gating; pinned Ymir lines 3986–4001 corroborate selection
+of the underlying background shadow bit. Sega/MiSTer, not Ymir's differing offset
+order, remain the color-operation ordering basis.
+
+This qualifies **identity-rotation RBG0 composition**, not general rotation
+coordinates: the opaque constant-color source cannot prove transformed sampling,
+coefficient permissions/precision, RBG1 sharing or parameter latch timing. Framebuffer
+injection also does not establish VDP1 command timing or hardware access windows.
+Those acceptance items and full VDP2 remain open. Older totals below are historical.
+
 ## V2-C02c: linked shadow layer identity, rank and precedence — 2026-09-16
 
 Added **160 shadow-ranking scenes per configuration**: underlying NBG0, NBG1,
@@ -542,7 +579,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 978-case composition matrix, add `--composition` (mutually exclusive
+For the 1,042-case composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -561,11 +598,11 @@ line-selected ratio, lower-history isolation and disabled top calculation.
 Cases 122–133 cover special-priority modes/attributes/selectors; 134–135 cover
 priority promotion/demotion through zero; 136–167 cover special-calculation
 modes/attributes/selectors/CC enable; 168–169 combine special priority with MSB
-calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–225 cross all three-window area polarities, logic settings and uses. Cases 226–233 cover gradation source, enable and ratio selection. Cases 234–281 cover extended calculation with RGB third; 282–329 use palette NBG2 third. Each group crosses CRAM0/1/2, extended enable, second enable, ratio source and top enable. Cases 330–361 cover normal shadows; 362–409 cover transparent/self MSB shadows for types 2–7. Cases 410–449 cover normal-MSB precedence and 450–489 transparent-shadow ranking over NBG0–3/back. Cases 490–978 repeat at the larger capacity. Line scenes use table bases at physical
+calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–225 cross all three-window area polarities, logic settings and uses. Cases 226–233 cover gradation source, enable and ratio selection. Cases 234–281 cover extended calculation with RGB third; 282–329 use palette NBG2 third. Each group crosses CRAM0/1/2, extended enable, second enable, ratio source and top enable. Cases 330–361 cover normal shadows; 362–409 cover transparent/self MSB shadows for types 2–7. Cases 410–449 cover normal-MSB precedence and 450–489 transparent-shadow ranking over NBG0–3/back. Cases 490–521 cover RBG0 shadow identity, rank and color-operation order. Cases 522–1042 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-978 ordered case records and the exact final marker. Sources are red over green;
+1,042 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Mosaic scenes replace the solid source data with a transparent/red/green foreground
 and yellow/white lower screen. Their source sample is displaced by scroll (5,7);
