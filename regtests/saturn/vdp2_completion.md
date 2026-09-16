@@ -1,5 +1,34 @@
 # VDP2 implementation report and progress tracker
 
+## V2-C03b: linked line-window tables and physical wrapping — 2026-09-16
+
+Added **16 line-window scenes per configuration** to the composition fixture:
+W0 alone, W1 alone, intersection and union, each as coverage or calculation-only
+windows, at both physical VRAM capacities. Each table is independently exercised
+crossing the physical end of VRAM. Horizontal bounds alternate by scanline, selected
+rows have start greater than end, and vertical bounds remain register controlled.
+Analytic screen-coordinate expectations check 144 boundary probes per scene.
+Bitmap/back data are placed away from both tables, avoiding accidental scene aliases.
+Both tables and their enable/address registers are cleared during the save/load
+mutation, then restored data and full-image equality are verified.
+
+The **210-case composition and 46-case background suites pass** on JP/PAL/ST-V DRC
+and JP interpreter: **1,024 current synthetic cases (768 DRC / 256 interpreter)**.
+Four visible BIOS replays were rerun and pass; `-validate` again produces no
+diagnostics. All 47 regression scripts pass. The extracted table-address fixture
+passes 1,310,720 cases; W0/W1 capacity-mask and one-row-shift mutations compile and
+fail assertions. Those address tests preserve existing interlace indexing and are
+not independent hardware timing evidence. Line-window captures were inspected.
+
+Primary basis: ST-058 pp.184–187 (per-line X bounds, inclusive borders, inverted
+rows, table address/physical-size rules). Pinned Ymir and MiSTer corroborate paired
+start/end table entries and the separation of horizontal table data from vertical
+register bounds, not full 1 MiB or interlace certification. No production correction
+was needed for these new scenes. C03b is bounded normal-resolution qualification;
+sprite-window combinations, interlace/other display modes, exact latches/contention,
+external video, games/title and comparative performance remain open. Full VDP2 is
+not declared complete. Earlier case totals below are historical checkpoints.
+
 ## V2-C03a / C05b: linked windows and color offsets — 2026-09-16
 
 The pushed composition work was extended to **194 cases per configuration**. Added
@@ -1279,7 +1308,7 @@ bounded extracted tests, not complete hardware or linked-game qualification.
 The current checkout passed **47 Saturn regression scripts and eleven production
 object compilations**, not 47 dedicated VDP2 scripts. All six map-mask truncations
 and three plain 11-bit routing mutations compiled and failed assertions. The
-external dependency bootstrap executed successfully. The fresh full link/validate passes. The linked matrix passes 960 synthetic
+external dependency bootstrap executed successfully. The fresh full link/validate passes. The linked matrix passes 1,024 synthetic
 cases and four visible BIOS replays, as recorded at the top of this report.
 
 | Fixture family | Evidence | Limit |
@@ -1336,6 +1365,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
 - [x] **V2-C03b** Preserve no-transform rotation windows and audit shortcut eligibility; test wrapper/cache configuration.
 - [x] **V2-C03c** Calculation-only W0/W1/SW windows and normal/sprite SW area/cache integration.
 - [ ] **V2-C03** Complete window behavior.
+  - [x] **V2-C03b** Linked W0/W1 line-table sampling, independent physical wrapping, inverted rows and coverage/calculation-only combinations pass in normal resolution. Not interlace, exact fetch timing or all sprite/rotation combinations.
   - [x] **V2-C03a** Linked W0/W1 coverage/calculation-only boundary, overlap and disabled-window matrix passes in normal resolution at both VRAM capacities. Not line/sprite/rotation/all-mode coverage.
   - [ ] Window 0/1 boundaries, line windows, AND/OR and disabled-window neutral values.
   - [ ] Sprite-derived mask as a real window input.
