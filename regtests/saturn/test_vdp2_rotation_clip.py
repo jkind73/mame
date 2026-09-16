@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -22,8 +22,9 @@ def extract(text,sig):
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
 bitmap_functions=[extract(src,'void saturn_state::draw_'+name+'_bitmap(') for name in ('4bpp','8bpp','11bpp','rgb15','rgb32')]
-over_function=extract(src,'rgb_t saturn_state::vdp2_screen_over_pattern_pixel(')
-f=over_function+'\n'+'\n'.join(bitmap_functions)+'\n'+extract(src,'static inline uint32_t coef_delta(')+'\n'+extract(src,'void saturn_state::vdp2_copy_roz_bitmap(')
+over_helpers=[extract(src,sig) for sig in ('rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(')]
+over_function='\n'.join(over_helpers)+'\n'+extract(src,'rgb_t saturn_state::vdp2_screen_over_pattern_pixel(')
+f=extract(src,'static constexpr bool vdp2_per_dot_coefficients(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sum(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sub(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+over_function+'\n'+'\n'.join(bitmap_functions)+'\n'+extract(src,'static inline uint32_t coef_delta(')+'\n'+extract(src,'void saturn_state::vdp2_copy_roz_bitmap(')
 if a.mutation=='origin':
  f=f.replace('xs = uint32_t(xs) + uint32_t(int64_t(dxs) * cliprect.left());','(void)0;').replace('ys = uint32_t(ys) + uint32_t(int64_t(dys) * cliprect.left());','(void)0;')
 if a.mutation=='window':
@@ -33,6 +34,10 @@ if a.mutation=='over':f=f.replace('(outside && !repeat_pattern)', 'outside')
 if a.mutation=='over-name':f=f.replace('iRP == 1 ? VDP2_OVPNRA : VDP2_OVPNRB','VDP2_OVPNRA')
 if a.mutation=='over-flip':f=f.replace('x = ~x','x = x').replace('y = ~y','y = y')
 if a.mutation=='selection':f=f.replace('!selected(hcnt, vcnt)', '(selected(hcnt, vcnt), false)')
+if a.mutation=='line-color':f=f.replace('color = (color & 0x780) | (coefficient_color & 0x7f);', 'color = (color & 0x780) | (coefficient_color & 0);')
+if a.mutation=='overflow':f=f.replace('return uint32_t(a) + uint32_t(b) + uint32_t(c) + uint32_t(d) + uint32_t(e);','return a + b + c + d + e;')
+if a.mutation=='viewpoint':f=f.replace('xp = uint32_t(coeff_table_val) << 8;', 'xp = coeff_table_val;')
+if a.mutation=='per-dot-bank':f=f.replace('bool const per_dot_coefficients = vdp2_per_dot_coefficients(VDP2_RAMCTL);', 'bool const per_dot_coefficients = (vdp2_per_dot_coefficients(VDP2_RAMCTL), true);')
 names=sorted(set(re.findall(r'VDP2_\w+',f))|{'VDP2_OVPNRB'})
 code=r'''
 #include <algorithm>
@@ -55,6 +60,9 @@ struct palette {
  uint32_t pen(unsigned index){if(indexed)return 0xff000000|(index*7919&0xffffff);return index==2?rgb_t(255,0,0):rgb_t::black();}
 };
 struct saturn_state {
+ rgb_t vdp2_line_color(int,bool,uint8_t);
+ rgb_t vdp2_dot_pixel(uint32_t,int,unsigned);
+ rgb_t vdp2_pattern_pixel(uint32_t,bool,int,int);
  rgb_t vdp2_screen_over_pattern_pixel(uint16_t,int,int);
  // BITMAP_DECLS
  palette pal;palette *m_palette=&pal;
@@ -65,18 +73,24 @@ struct saturn_state {
  struct { // REGS
  } regs;
  struct {int colour_calculation_enabled=0,transparency=1,fade_control=0,alpha=120;
+ int line_screen_enabled=0;
  int scrollx_fraction=0,scrolly_fraction=0;
  int pattern_data_size=0,bitmap_enable=0,tile_size=0,colour_depth=0,character_number_supplement=0,supplementary_character_bits=0,supplementary_palette_bits=0;
  int incx=65536,incy=65536,scrollx=0,scrolly=0,bitmap_map=0,bitmap_size=0;
  int linescroll_enable=0,vertical_linescroll_enable=0,bitmap_palette_number=0,colour_ram_address_offset=0;
  bool roz_mode3=false;} current_tilemap;
  rotation_table parameter_a;
- void vdp2_fill_rotation_parameter_table(uint8_t p){assert(p==1);current_rotation_table=parameter_a;}
+ void vdp2_load_rotation_line(uint8_t p,int){assert(p==1);current_rotation_table=parameter_a;}
  device dev;device *m_vdp2=&dev;
  bool window=false;unsigned coefficient=65536;bool blank_coefficient=false;
  std::vector<uint32_t> b_reads;
- bool selection_test=false,selection_short=false;
+ bool selection_test=false,selection_short=false,line_color_test=false,line_color_short=false,line_color_switch=false;
  uint32_t vdp2_read_rotation_coefficient(uint32_t address){
+  if(line_color_test){
+   if(line_color_short)return 0x04000400;
+   bool a=address<0x40000;unsigned index=(address-(a?0:0x40000))/4;
+   return 65536|(((a?0x10:0x40)+index)%128<<24)|((a&&line_color_switch&&index%3==1)?0x80000000:0);
+  }
   if(!selection_test)return coefficient|(blank_coefficient?0x80000000:0);
   if(address>=0x40000){b_reads.push_back(address);return 65536|(blank_coefficient?0x80000000:0);}
   auto value=[](unsigned i){return (i%3==1)?0x80000000u:0u;};
@@ -100,7 +114,7 @@ int main(){
  saturn_state s;auto &r=s.current_rotation_table;
  bitmap_rgb32 source(64,64);
  for(int y=0;y<64;++y)for(int x=0;x<64;++x)source.pix(y,x)=0xff800000|(y<<8)|x;
- unsigned cases=0;
+ unsigned cases=0;s.regs.VDP2_RAMCTL=0x355;
  for(int parameter:{1,2})for(int coeff_mode:{0,1,2,3})for(int path:{0,1,2})
  for(bool window:{false,true})for(bool selection:{false,true})for(bool blank:{false,true})
  for(int dx:{-65536,32768,65536,131072})for(int blend:{0,1,2})for(int display=0;display<4;++display){
@@ -112,7 +126,7 @@ int main(){
   s.current_tilemap.colour_calculation_enabled=blend!=0;s.current_tilemap.transparency=1;s.regs.VDP2_CCMD=blend==2;
   r={};r.A=r.E=r.kx=r.ky=65536;r.xst=20*65536;r.yst=8*65536;
   r.dx=dx;r.dy=32768;r.dyst=65536;r.dkax=path==2?65536:0;
-  s.coefficient=coeff_mode==3?2*65536:65536;
+  s.coefficient=coeff_mode==3?2*256:65536;
   bitmap_rgb32 full(16,8),parts(16,8),expected(16,8);
   s.vdp2_copy_roz_bitmap(full,source,{1,14,1,6},parameter,64,64,64,64);
   s.vdp2_copy_roz_bitmap(parts,source,{1,4,1,6},parameter,64,64,64,64);
@@ -309,6 +323,80 @@ int main(){
   assert(out.pixels==expected.pixels);assert(split.pixels==expected.pixels);++boundary_cases;
  }
  std::cout<<boundary_cases<<" short/long signed-coefficient and screen-over boundary images passed\n";
+
+
+ // Independent wide-integer oracle with explicit modulo-2^32 stages. Exercise
+ // legal signed field limits, not just the small transforms used above.
+ unsigned overflow_cases=0;s.selection_test=false;s.window=false;s.blank_coefficient=false;s.dev.hreso=s.dev.lsmd=0;
+ s.current_tilemap={};s.regs.VDP2_RPMD=0;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;
+ auto wrap=[](int64_t n)->int64_t{uint64_t u=uint64_t(n)&0xffffffff;return u>=0x80000000?int64_t(u)-0x100000000:int64_t(u);};
+ auto mul=[&](int64_t a,int64_t b){return wrap((a*b)>>16);};
+ uint32_t random=0x582931cd;
+ auto field=[&](unsigned bits,unsigned low)->int32_t{random=random*1664525+1013904223;uint32_t n=random&((1u<<bits)-1)&~((1u<<low)-1);return (n&(1u<<(bits-1)))?int64_t(n)-(int64_t(1)<<bits):n;};
+ for(int trial=0;trial<32;++trial)for(int parameter:{1,2})for(int path:{0,1,2})for(bool short_data:{false,true})for(int mode=0;mode<4;++mode){
+  s.regs.VDP2_RPMD=parameter-1;s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=path!=0;
+  s.regs.VDP2_RAKDBS=s.regs.VDP2_RBKDBS=short_data;s.regs.VDP2_RAKMD=s.regs.VDP2_RBKMD=mode;
+  s.coefficient=short_data?0x7fc07fc0:0x00fff000;
+  auto &r=s.current_rotation_table;r={};
+  r.xst=field(29,6);r.yst=field(29,6);r.zst=field(29,6);r.dxst=field(19,6);r.dyst=field(19,6);r.dx=field(19,6);r.dy=field(19,6);
+  r.A=field(20,6);r.B=field(20,6);r.C=field(20,6);r.D=field(20,6);r.E=field(20,6);r.F=field(20,6);
+  r.px=field(14,0)*65536;r.py=field(14,0)*65536;r.pz=field(14,0)*65536;
+  r.cx=field(14,0)*65536;r.cy=field(14,0)*65536;r.cz=field(14,0)*65536;
+  r.mx=field(30,6);r.my=field(30,6);r.kx=field(24,0);r.ky=field(24,0);r.dkax=path==2?65536:0;
+  bitmap_rgb32 source(64,64),out(16,8),expected(16,8);
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x)source.pix(y,x)=0xff800000|(y<<8)|x;
+  s.vdp2_copy_roz_bitmap(out,source,{1,14,1,6},parameter,64,64,64,64);
+  int64_t dx=wrap(mul(r.A,r.dx)+mul(r.B,r.dy)),dy=wrap(mul(r.D,r.dx)+mul(r.E,r.dy));
+  int64_t xp=wrap(mul(r.A,wrap(int64_t(r.px)-r.cx))+mul(r.B,wrap(int64_t(r.py)-r.cy))+mul(r.C,wrap(int64_t(r.pz)-r.cz))+r.cx+r.mx);
+  int64_t yp=wrap(mul(r.D,wrap(int64_t(r.px)-r.cx))+mul(r.E,wrap(int64_t(r.py)-r.cy))+mul(r.F,wrap(int64_t(r.pz)-r.cz))+r.cy+r.my);
+  int64_t kx=path&&(mode==0||mode==1)?-4096:r.kx,ky=path&&(mode==0||mode==2)?-4096:r.ky;
+  if(path&&mode==3)xp=-1048576;
+  for(int y=1;y<=6;++y){
+   int64_t sx=wrap(wrap(r.xst+mul(r.dxst,y*65536))-r.px),sy=wrap(wrap(r.yst+mul(r.dyst,y*65536))-r.py);
+   int64_t xsp=wrap(mul(r.A,sx)+mul(r.B,sy)+mul(r.C,wrap(int64_t(r.zst)-r.pz)));
+   int64_t ysp=wrap(mul(r.D,sx)+mul(r.E,sy)+mul(r.F,wrap(int64_t(r.zst)-r.pz)));
+   for(int x=1;x<=14;++x){
+    int64_t tx=path==2?wrap(mul(kx,wrap(xsp+mul(dx,x*65536)))+xp):wrap(wrap(mul(kx,xsp)+xp)+x*mul(kx,dx));
+    int64_t ty=path==2?wrap(mul(ky,wrap(ysp+mul(dy,x*65536)))+yp):wrap(wrap(mul(ky,ysp)+yp)+x*mul(ky,dy));
+    expected.pix(y,x)=source.pix((ty>>16)&63,(tx>>16)&63);
+   }
+  }
+  assert(out.pixels==expected.pixels);++overflow_cases;
+ }
+ std::cout<<overflow_cases<<" signed-limit wrapping-coordinate images passed\n";
+ unsigned line_color_cases=0;s.line_color_test=true;s.selection_test=false;s.window=false;s.blank_coefficient=false;s.dev.vramsz=0;
+ s.regs.VDP2_RAKMD=s.regs.VDP2_RBKMD=0;s.regs.VDP2_LCTA=0x3ffff;s.pal.indexed=true;
+ for(unsigned n=0;n<16;++n){unsigned address=(0x7fffe + n*2)&0x7ffff;uint16_t value=0x522+n*3;s.m_vdp2_legacy.gfx_decode[address]=value>>8;s.m_vdp2_legacy.gfx_decode[(address+1)&0x7ffff]=value;}
+ for(int mode=0;mode<4;++mode)for(bool rbg1:{false,true})for(int path:{0,1,2})for(bool short_data:{false,true})
+ for(int klce=0;klce<4;++klce)for(bool lncl:{false,true})for(bool per_line:{false,true})for(int lsmd:{0,2,3})for(bool add:{false,true})for(bool second_ratio:{false,true})for(bool banks:{false,true}){
+  if(rbg1&&mode!=0)continue; // RBG1 requires RPMD 0
+  s.regs.VDP2_RAMCTL=banks?0x355:0;s.dev.lsmd=lsmd;s.dev.hreso=0;s.line_color_short=short_data;s.line_color_switch=mode==2;
+  s.regs.VDP2_RPMD=mode;s.regs.VDP2_R1ON=rbg1;s.regs.VDP2_CCMD=add;s.regs.VDP2_CCCR=second_ratio?0x200:0;s.regs.VDP2_CCRLB=19;
+  s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=path!=0;s.regs.VDP2_RAKDBS=s.regs.VDP2_RBKDBS=short_data;
+  s.regs.VDP2_RAKLCE=klce&1;s.regs.VDP2_RBKLCE=(klce>>1)&1;s.regs.VDP2_LCCLMD=per_line;
+  s.regs.VDP2_RAKTAOS=0;s.regs.VDP2_RBKTAOS=1;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;
+  s.current_tilemap={};s.current_tilemap.line_screen_enabled=lncl;s.current_tilemap.colour_calculation_enabled=1;s.current_tilemap.alpha=120;s.current_tilemap.roz_mode3=mode==3;
+  auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;r.dkast=65536;r.dkax=path==2?65536:0;s.parameter_a=r;
+  bitmap_rgb32 ca(16,16),cb(16,16),out(16,8),expected(16,8);std::fill(ca.pixels.begin(),ca.pixels.end(),0xff800000);std::fill(cb.pixels.begin(),cb.pixels.end(),0xff008000);
+  if(rbg1||mode!=0)s.vdp2_copy_roz_bitmap(out,cb,{1,14,1,6},2,16,16,16,16);
+  if(!rbg1&&mode!=1){r=s.parameter_a;s.vdp2_copy_roz_bitmap(out,ca,{1,14,1,6},1,16,16,16,16);}
+  for(int y=1;y<=6;++y)for(int x=1;x<=14;++x){
+   unsigned a_index=(y>>(lsmd==3))+(path==2&&banks?x:0);
+   bool b=rbg1||mode==1||(mode==2&&path&&!short_data&&a_index%3==1)||(mode==3&&((x+y)&1));
+   bool coefficient_a=rbg1||mode==2||!b;
+   unsigned line_index=per_line?(lsmd==2?y/2:y):(lsmd==3?y%2:0);
+   unsigned pen=0x522+line_index*3;
+   if(path&&!short_data&&(klce&(coefficient_a?1:2))){
+    unsigned index=coefficient_a?a_index:(y>>(lsmd==3))+(path==2&&banks?x:0);
+    pen=(pen/128)*128+((coefficient_a?0x10:0x40)+index)%128;
+   }
+   uint32_t second=lncl?s.pal.pen(pen):0x123456,first=b?0xff008000:0xff800000;
+   unsigned alpha=lncl&&second_ratio?96:120;
+   expected.pix(y,x)=add?add_blend_r32(second,first):alpha_blend_r32(second,first,alpha);
+  }
+  assert(out.pixels==expected.pixels);++line_color_cases;
+ }
+ std::cout<<line_color_cases<<" coefficient line-color source/insertion/ratio images passed\n";
  std::cout<<coverage_cases<<" bitmap-to-rotation opaque-black/transparent coverage images passed\n";
  std::cout<<cases<<" rotation coefficient/window/split-clip images passed\n";
 }

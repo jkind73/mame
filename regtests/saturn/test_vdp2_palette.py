@@ -16,11 +16,12 @@ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',actio
 src=(subprocess.check_output(['git','show',('77d4b989' if a.layout_baseline else 'c43dded9')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
      if a.baseline or a.layout_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(sig):
-    start=src.index(sig);end=src.index('{',start)+1;depth=1
+    text=(ROOT/'src/mame/sega/saturn.cpp').read_text() if sig.startswith('static constexpr') else src
+    start=text.index(sig);end=text.index('{',start)+1;depth=1
     while depth:
-        depth+=(src[end]=='{')-(src[end]=='}');end+=1
-    return src[start:end]
-functions='\n'.join(extract(s) for s in ('uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_read_rotation_coefficient('))
+        depth+=(text[end]=='{')-(text[end]=='}');end+=1
+    return text[start:end]
+functions='\n'.join(extract(s) for s in ('static constexpr bool vdp2_per_dot_coefficients(', 'uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_read_rotation_coefficient('))
 code=r'''
 #include <array>
 #include <cassert>
@@ -35,12 +36,14 @@ struct palette {std::array<uint32_t,2048> pens{};
 };
 struct saturn_state {
  unsigned mode=0;bool dirty=false;bool coefficient_cram=true;std::array<uint32_t,0x40000> m_vdp2_vram{};std::array<uint32_t,1024> m_vdp2_cram{};
+ unsigned ramctl=0;struct video{bool large=false;bool get_vramsz(){return large;}} dev;video *m_vdp2=&dev;
  palette pal;palette *m_palette=&pal;
  void mark_fade_effects_dirty(){dirty=true;}
  uint32_t vdp2_read_rotation_coefficient(uint32_t);uint32_t vdp2_cram_r(offs_t);void vdp2_cram_w(offs_t,uint32_t,uint32_t);void refresh_palette_data();
 };
 #define VDP2_CRMD mode
 #define VDP2_CRKTE coefficient_cram
+#define VDP2_RAMCTL ramctl
 #define COMBINE_DATA(p) (*(p)=(*(p)&~mem_mask)|(data&mem_mask))
 // FUNCTIONS
 uint32_t color555(unsigned v){return rgb_t(pal5bit(v&31),pal5bit((v>>5)&31),pal5bit((v>>10)&31));}
@@ -98,6 +101,21 @@ int main(){
  // CRKTE is legal with mode 1: coefficient reads use the physical upper bank.
  s.mode=1;
  for(unsigned a=0;a<8192;a+=4)assert(s.vdp2_read_rotation_coefficient(a)==physical[((a|0x800)&0xfff)/4]);
+
+ unsigned bank_cases=0;
+ for(unsigned i=0;i<s.m_vdp2_vram.size();++i)s.m_vdp2_vram[i]=i*37+0x14283561;
+ for(bool cram:{false,true})for(bool large:{false,true})for(unsigned ctl=0;ctl<1024;++ctl){
+  s.coefficient_cram=cram;s.ramctl=ctl|(cram?0x8000:0);s.dev.large=large;
+  bool per_dot=cram;unsigned permissions[4];
+  for(unsigned bank=0;bank<4;++bank){unsigned used=(ctl&(bank<2?256:512))?bank:(bank/2)*2;permissions[bank]=(ctl>>(used*2))&3;per_dot|=permissions[bank]==1;}
+  assert(vdp2_per_dot_coefficients(s.ramctl)==per_dot);
+  for(unsigned a:{0u,0x1fffeu,0x20000u,0x3fffeu,0x40000u,0x60000u,0x7fffeu,0x80000u,0xffffeu,0xfffffffeu}){
+   unsigned physical=a%(large?0x100000:0x80000),bank=physical/(large?0x40000:0x20000);
+   uint32_t expected=cram?s.m_vdp2_cram[((a|0x800)&4095)/4]:(per_dot&&permissions[bank]!=1?0x80008000:s.m_vdp2_vram[physical/4]);
+   assert(s.vdp2_read_rotation_coefficient(a)==expected);++bank_cases;
+  }
+ }
+ std::cout<<bank_cases<<" partitioned coefficient-bank/CRAM fetch cases passed\n";
  auto memory=s.m_vdp2_cram;auto pens=s.pal.pens;s.dirty=false;
  s.vdp2_cram_w(0,0,0);assert(!s.dirty&&s.m_vdp2_cram==memory&&s.pal.pens==pens);
  std::cout<<cases<<" CRAM lane/address/palette cases and mode-transition checks passed\n";

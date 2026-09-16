@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:MAMEdev Team
-"""Compile the production vertical cell-scroll branch with recording stand-ins.
+"""Compile the retained legacy cell-scroll fallback with recording stand-ins.
 
+Normal complex-scroll dispatch now uses test_vdp2_scroll_pixels.py.
 Tests clip containment, scroll-table addressing and column-call counts, not the
 nested line-scroll renderer or hardware column width. --baseline must fail.
 """
@@ -22,7 +23,7 @@ path = "src/mame/sega/saturn.cpp"
 source = (subprocess.check_output(["git", "show", BASE + ":" + path], cwd=ROOT, text=True)
           if args.baseline else (ROOT / path).read_text())
 start = source.index("void saturn_state::vdp2_check_tilemap(")
-start = source.index("  if (current_tilemap.", start)
+start = source.index("  if (current_tilemap.vertical_cell_scroll_enable &&", start) if not args.baseline else source.index("  if (current_tilemap.", start)
 end = source.index("  } else if", start)
 branch = source[start:end] + "  }\n"
 if args.mutation == "gate":
