@@ -13,17 +13,18 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('w0','w1','back'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('w0','w1','back','line'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 def extract(sig):
  start=src.index(sig);end=src.index('{',start)+1;depth=1
  while depth:
   depth+=(src[end]=='{')-(src[end]=='}');end+=1
  return src[start:end]
-funcs=[extract(s) for s in ('void saturn_state::vdp2_get_window0_coordinates(', 'void saturn_state::vdp2_get_window1_coordinates(', 'rgb_t saturn_state::vdp2_back_screen_color(', 'void saturn_state::vdp2_draw_back(')]
+funcs=[extract(s) for s in ('void saturn_state::vdp2_get_window0_coordinates(', 'void saturn_state::vdp2_get_window1_coordinates(', 'rgb_t saturn_state::vdp2_back_screen_color(', 'void saturn_state::vdp2_draw_back(', 'void saturn_state::vdp2_draw_line(')]
 if a.mutation in ('w0','w1'):
  index=int(a.mutation[1]);funcs[index]=funcs[index].replace('& (base_mask >> 1)', '& 0x3ffff')
-if a.mutation=='back':funcs[-1]=funcs[-1].replace('& ((base_mask << 1) | 1)', '& 0xfffff')
+if a.mutation=='back':funcs[-2]=funcs[-2].replace('& ((base_mask << 1) | 1)', '& 0xfffff')
+if a.mutation=='line':funcs[-1]=funcs[-1].replace('&= (base_mask << 1) | 1', '&= 0xfffff')
 f=extract('static void fixup_window_x(')+'\n'+'\n'.join(funcs)
 names=sorted(set(re.findall(r'VDP2_\w+',f)))
 code=r'''
@@ -34,6 +35,9 @@ code=r'''
 #include <memory>
 #include <vector>
 #include "palette.h"
+// Controlled color stage: XOR exposes the selected palette index without
+// testing additive color arithmetic (covered by the production bitmap suite).
+uint32_t add_blend_r32(uint32_t a,uint32_t b){return a^b;}
 struct rectangle {int l,r,t,b;int left()const{return l;}int right()const{return r;}int top()const{return t;}int bottom()const{return b;}};
 struct bitmap_rgb32 {
  std::vector<uint32_t> data=std::vector<uint32_t>(8*640,0xdeadbeef);
@@ -45,7 +49,7 @@ struct saturn_state {
  video dev;video *m_vdp2=&dev;
  std::vector<uint32_t> m_vdp2_vram=std::vector<uint32_t>(0x40000);
  struct {std::unique_ptr<uint8_t[]> gfx_decode=std::make_unique<uint8_t[]>(0x100000);} m_vdp2_legacy;
- struct palette {uint32_t black_pen(){return 0;}} pal;palette *m_palette=&pal;
+ struct palette {uint32_t black_pen(){return 0;}uint32_t pen(unsigned n){return 0x12340000|n;}} pal;palette *m_palette=&pal;
  struct {// REGS
  } regs;
  void vdp2_compute_color_offset(int*,int*,int*,int){assert(false);}
@@ -69,6 +73,7 @@ int main(){saturn_state s;unsigned cases=0;
   s.dev.large=large;s.dev.hreso=hreso;s.dev.lsmd=interlace;
   unsigned bytes=large?1048576:524288,words=bytes/2;
   unsigned base=(tail<4?tail:words-8+tail)^(alias?0x40000:0);
+  s.regs.VDP2_LCTA=base;s.regs.VDP2_LCCLMD=per_line;
   s.regs.VDP2_BKTA=base;s.regs.VDP2_BKCLMD=per_line;
   s.regs.VDP2_W0LWTA=s.regs.VDP2_W1LWTA=base&~1u;
   bitmap_rgb32 out;
@@ -88,10 +93,12 @@ int main(){saturn_state s;unsigned cases=0;
    auto expand=[](unsigned n){n&=31;return (n<<3)|(n>>2);};
    uint32_t expected=0xff000000|(expand(pixel)<<16)|(expand(pixel>>5)<<8)|expand(pixel>>10);
    for(int x=1;x<=6;++x)assert(out.pix(y,x)==expected);
+   s.vdp2_draw_line(out,{1,6,y,y});
+   for(int x=1;x<=6;++x)assert(out.pix(y,x)==(expected^(0x12340000|(pixel&2047))));
    assert(out.pix(y,0)==0xdeadbeef&&out.pix(y,7)==0xdeadbeef);++cases;
   }
  }
- std::cout<<cases<<" W0/W1/back size/alias/boundary/interlace/partial-row cases passed\n";
+ std::cout<<cases<<" W0/W1/back/legacy-line size/alias/boundary/interlace/partial-row cases passed\n";
 }
 '''
 code=code.replace('// REGS','\n'.join('unsigned '+n+'=0;' for n in names)).replace('// DECLS','\n'.join(f[:f.index('{')].replace('saturn_state::','')+';' for f in funcs)).replace('// MACROS','\n'.join('#define '+n+' regs.'+n for n in names)).replace('// FUNCTIONS',f).replace('// UNDEFS','\n'.join('#undef '+n for n in names))

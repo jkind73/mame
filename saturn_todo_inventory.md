@@ -1,5 +1,32 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## V2-T03c: rotation and retained line-color table wrapping — 2026-09-16
+
+The raw rotation-parameter loader now masks every final longword index to the
+configured 512 KiB/1 MiB capacity. Previously it always used the full 1 MiB backing
+allocation, including when reading a table through a 4-Mbit high-address alias or
+across the physical end. A/B selection, field widths/sign extension, ignored bits
+and RPRCTL/latch behavior are unchanged. The retained additive line-color renderer
+now applies its configured physical byte mask after adding the row offset, rather
+than wrapping at the full backing-buffer length. Its color operation and current
+interlace indexing are unchanged.
+
+Primary evidence: ST-058 pp.26–28 memory capacity/map; p.159 explicitly ignores the
+rotation-table address MSB at 4 Mbit and defines A/B address selection; p.174 gives
+the same capacity rule for LCTA. Pinned Ymir 6d779960's shared ReadVRAM path is a
+512 KiB final-address cross-check only; larger-memory support is not its oracle.
+
+**41 scripts and eleven production objects pass**. The rotation unpacking fixture
+now checks **1,920** both-capacity/address/A/B/field-pattern configurations against
+its independent field schema. The existing **1,310,720** table-boundary scenarios
+now additionally execute the production retained line-color renderer, using a
+controlled palette/color stage to expose the selected index (not to qualify color
+math). **512** latch/reload replay sequences still pass. Both fixed-1-MiB-mask
+mutations compile and fail assertions. This is extracted-code/address qualification,
+not linked save-manager, raster timing or game acceptance. T03 remains open for
+CPU aliases and the remaining legacy cell-map/character fetch audit.
+
+
 ## V2-T03b/R04d: bitmap/scroll size masks and source-cache validity — 2026-09-16
 
 All five retained bitmap renderers now use the configured 512 KiB/1 MiB physical
