@@ -1,5 +1,7 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+- [Platform completion checklist: Saturn and ST-V, by component and dependency](../../saturn_stv_completion.md). This is the current platform-level index; dated sections below retain historical evidence.
+
 ## V2-C02d: linked RBG0 shadow identity and color operations — 2026-09-16
 
 Added **64 RBG0 shadow scenes per configuration**: normal-MSB precedence and
