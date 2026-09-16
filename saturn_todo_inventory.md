@@ -1,5 +1,37 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## V2-Q01a: deterministic startup and postload state separation — 2026-09-16
+
+VDP2 startup now initializes external controls/status, counter samples, display
+extents, VRAM size and DOTSEL state explicitly. Reset clears EXLTFG/EXSYFG while
+retaining the counter samples until another latch. ST-058 section 2.5 defines
+flag and latch behavior; pinned MiSTer a95b0850 resets TVSTAT in both reset paths
+(VDP2.sv lines 3646/3795). Initial zero counter samples are a deterministic emulator
+fallback, not a claim about unspecified physical power-on counter contents.
+
+Driver postload now clears all transient composition/extended/gradation/capture
+flags, the gradation selector and priority pass. This matters because capture
+bypasses composition even when the ordinary active flag is false. Saved rotation
+line-valid state and accumulators remain intact. Existing reconstruction rebuilds
+all decoded VRAM bytes, invalidates character/rotation/window caches and refreshes
+the palette. No new persistent state or timer rescheduling is introduced; MAME's
+screen device already saves its geometry and partial-update timing state.
+
+Validation: **39 regression scripts and eleven production object builds pass**.
+The new fixture uses production field initializers against four poisoned storage
+patterns and executes **64** full-VRAM postload passes. It checks byte order, dirty
+notifications, palette refresh, idempotence, window cache invalidation, render-flag
+reset and preservation of saved rotation history. Capture, priority, byte-order and
+window-invalidation mutations compile and fail assertions. Existing 64 EXTEN cases
+now verify both flags clear on repeated reset without changing latched samples.
+
+**Q01 remains partial:** recording graphics/palette devices are not actual MAME
+save-manager, screen-buffer or timer replay. Linked mid-field save/load, performance
+and hardware qualification remain open. The restored workspace was reconciled with
+the pushed e12e2cf7 checkpoint before this work; user logs and ROM archives were
+retained, not added to this commit.
+
+
 ## V2-T02a: active cycle slots and bank ownership — 2026-09-15
 
 The normal-screen cycle-command presence gate now ignores A1/B1 cycle registers

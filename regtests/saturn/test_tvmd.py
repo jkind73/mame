@@ -24,7 +24,7 @@ old = (subprocess.check_output(["git", "show", BASE + ":" + path], cwd=ROOT, tex
        if args.baseline else source)
 header = (ROOT / "src/mame/sega/saturn_vdp2.h").read_text()
 start = header.index("  u16 m_tvmd")
-initializers = header[start:header.index("  bool m_odd_bit;", start)]
+initializers = header[start:header.index("  bool m_odd_bit", start)]
 
 
 def body(text, marker):
@@ -77,6 +77,7 @@ struct timer {
   void adjust(int delay, int param) { assert(delay == 17 && param == 0); ++arms; }
 };
 struct saturn_vdp2_device {
+ bool m_exltfg=false,m_exsyfg=false;
  u16 preserved_tvmd=0xffff;
  void preserve_scanned_output(){preserved_tvmd=m_tvmd;}
   screen scr;

@@ -10878,7 +10878,15 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
 }
 
 void saturn_state::vdp2_state_save_postload() {
+  // These flags select in-progress rendering, not emulated hardware state.
+  // In particular, capture bypasses the ordinary compositor even when the
+  // composition-active flag is false. Never retain it across a state load.
   m_vdp2_composition_active = false;
+  m_vdp2_extended_active = false;
+  m_vdp2_gradation_active = false;
+  m_vdp2_gradation_capture = false;
+  m_vdp2_gradation_layer = 7;
+  m_vdp2_priority_pass = -1;
   vdp2_window_cache_invalidate();
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
   int offset;
