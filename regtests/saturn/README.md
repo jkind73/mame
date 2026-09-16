@@ -1,5 +1,34 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## V2-Q02c: fresh full rebuild and linked requalification — 2026-09-16
+
+Restored the missing external SDL/pkg-config dependency cache and rebuilt the
+focused Saturn/ST-V executable from the recovered source. All **47 regression
+scripts and eleven production object compilations pass freshly**. The initial
+two-job full build lost `cc1plus` while compiling `luaengine.cpp`; resuming with
+one job completed successfully without source changes. GCC garbage-collection
+limits remain enabled as documented in the reproduction command.
+
+The rebuilt executable SHA-256 is **identical** to the previous qualified binary:
+`85bef0b9d5d9c1f47847c571bcd1f70427e30f9e157541982a3774a93e04302e`.
+MAME `-validate` produces no diagnostics; `-listxml` confirms 122 runnable systems.
+All twelve linked runs were refreshed: **2,048 synthetic cases** (1,536 DRC /
+512 interpreter), comprising 466 composition and 46 background cases on JP/PAL/
+ST-V DRC and JP interpreter, plus **four visible BIOS save/load replays**. The
+strict runner also passed its 44 protocol cases within the regression suite.
+
+`linked_runtime_results.json` now contains fresh log/capture hashes and full-build
+provenance. This supersedes A05c's missing-executable limitation, not its separate
+CRAM callback-test limits. Build/cache/log/state artifacts remain outside Git or
+in ignored build paths; unrelated user logs are preserved. PR and the official-doc
+mirror track this checkpoint. No production correction was needed, no new rendering
+cases are added, and no performance improvement is inferred from matching hashes.
+
+Q02c restores current executable evidence; it does not close all-layer/effect,
+physical latch/arbitration, hardware rounding, external video, game/title or
+comparative-performance acceptance. Full VDP2 remains incomplete. Earlier
+checkpoint results and restoration limitations below are historical.
+
 ## V2-A05c: stateful CRAM writes and preservation ordering — 2026-09-16
 
 Recovered this session's pushed `03a20495` branch after the workspace returned to
