@@ -22,7 +22,7 @@ def extract(text,sig):
  while depth:
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
-functions=[extract(src,'uint8_t saturn_state::vdp2_is_rotation_applied('),extract(src,'void saturn_state::vdp2_draw_rotation_screen(')]
+functions=[extract((ROOT/'src/mame/sega/saturn.cpp').read_text(),'unsigned saturn_state::vdp2_special_color_mode('),extract(src,'uint8_t saturn_state::vdp2_is_rotation_applied('),extract(src,'void saturn_state::vdp2_draw_rotation_screen(')]
 f='\n'.join(functions)
 if a.mutation=='screen-over':f=f.replace('!(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR)', '(rot_parameter != 0)')
 if a.mutation=='clear':f=f.replace('fill(rgb_t::transparent(),','fill(rgb_t::black(),')
@@ -139,6 +139,9 @@ int main(){
  assert((s.loaded_lines==std::vector<int>{1,2,3,4,5,6}));
  s.built=s.copied=0;s.loaded_lines.clear();s.vdp2_draw_rotation_screen(output,{5,9,2,4},1);
  assert(s.built==0&&s.copied==3);assert((s.loaded_lines==std::vector<int>{2,3,4}));
+ s.regs.VDP2_SFCCMD=1;s.current_tilemap.colour_calculation_enabled=1;s.current_tilemap.layer_name=0;
+ s.built=s.copied=s.direct=0;s.vdp2_draw_rotation_screen(output,{1,14,2,2},1);
+ assert(s.built==0&&s.direct==0&&s.copied==1);
  std::cout<<"Latched-row dispatch reuses the untransformed cache across clips\n";
 }
 '''
