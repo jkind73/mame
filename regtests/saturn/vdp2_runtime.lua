@@ -27,6 +27,7 @@ if composition then
         local function add(name,priority,control,ratios,expected)
             cases[#cases+1]={large=large,depth=0,layer=0,composition=true,
                 name=name,priority=priority,control=control,ratios=ratios,expected=expected}
+            return cases[#cases]
         end
         -- ST-058 priority order and pp.241–244: top-screen CC enable,
         -- top/second ratio selection and all 32 (31-n):(n+1) weights.
@@ -43,9 +44,39 @@ if composition then
         end
         add('additive-clamp',0x0102,0x0101,0x1f1f,0xffff00)
         add('lower-only-CC',0x0102,2,15,0xff0000)
+        -- ST-058 pp.250–252: offset only the final top-screen result.
+        -- Raw 50:50 red/green is 127,127,0. Offset-before-blend or an
+        -- already-offset second image gives different independent colors.
+        add('offset-after-blend',0x0102,1,15,0x8f7f00).offset={1,0,16,0,0,0,0,0}
+        add('lower-offset-isolation',0x0102,1,15,0x7f7f00).offset={2,0,16,32,64,0,0,0}
+        add('offset-signed-clamp',0x0102,1,15,0xff0000).offset={1,0,255,0x180,0,0,0,0}
+        add('offset-bank-B',0x0102,1,15,0x7f7f1f).offset={1,1,0x100,0,0,0,0,31}
+        -- ST-058 pp.189–195. Predicates describe retained pixels, not
+        -- the active (suppressed) area: LOG=0 ORs active areas, LOG=1 ANDs.
+        local windows={
+            {0x00,'disabled-LOG0',function(a,b) return true end},
+            {0x80,'disabled-LOG1',function(a,b) return false end},
+            {0x03,'W0-inside',function(a,b) return a end},
+            {0x83,'W0-inside-LOG1',function(a,b) return a end},
+            {0x02,'W0-outside',function(a,b) return not a end},
+            {0x82,'W0-outside-LOG1',function(a,b) return not a end},
+            {0x0c,'W1-inside',function(a,b) return b end},
+            {0x8c,'W1-inside-LOG1',function(a,b) return b end},
+            {0x0f,'intersection',function(a,b) return a and b end},
+            {0x8f,'union',function(a,b) return a or b end},
+            {0x0b,'difference',function(a,b) return a and not b end},
+            {0x8b,'mixed-union',function(a,b) return a or not b end},
+        }
+        for _,calculation in ipairs({false,true}) do
+            for _,window in ipairs(windows) do
+                local c=add((calculation and 'calculation-' or 'coverage-')..window[2],
+                    0x0102,calculation and 1 or 0,15,0xff0000)
+                c.window={control=window[1],keep=window[3],calculation=calculation}
+            end
+        end
     end
 end
-assert(#cases==(composition and 138 or 46))
+assert(#cases==(composition and 194 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -113,15 +144,33 @@ local function configure(c)
         reg(0xf8,c.priority);reg(0xec,c.control);reg(0x108,c.ratios)
         if c.name=='additive-clamp' then space:write_u16(cram+4,0x03ff) end
     end
+    if c.window then
+        reg(0xc0,31*2);reg(0xc2,17);reg(0xc4,127*2);reg(0xc6,63)
+        reg(0xc8,63*2);reg(0xca,31);reg(0xcc,255*2);reg(0xce,127)
+        if c.window.calculation then reg(0xd6,c.window.control<<8)
+        else reg(0xd0,c.window.control) end
+    end
+    if c.offset then
+        for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
+    end
     reg(0,0x8000)
     c.dot=dot;c.capacity=capacity;c.address=c.cell and 0x20000 or (0x80000%capacity)
 end
 local function pixels(expected)
-    for _,y in ipairs({8,17,63,127}) do
-        for _,x in ipairs({8,31,127,255}) do
+    local c=cases[index]
+    local xs=c.window and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
+    local ys=c.window and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
+    for _,y in ipairs(ys) do
+        for _,x in ipairs(xs) do
             local actual=screen:pixel(x,y)&0xffffff
             local want=expected
-            local c=cases[index]
+            if c.window and expected~=0x0000ff then
+                local w0=x>=31 and x<=127 and y>=17 and y<=63
+                local w1=x>=63 and x<=255 and y>=31 and y<=127
+                local keep=c.window.keep(w0,w1)
+                if c.window.calculation then want=keep and 0x7f7f00 or 0xff0000
+                else want=keep and 0xff0000 or 0x00ff00 end
+            end
             if expected==0xff0000 and c.cell and not c.rotation then
                 -- Four distinct 8x8 colors distinguish H from V flips, unlike
                 -- a symmetric two-color checker. Oracle uses screen coords.
@@ -147,6 +196,8 @@ local function step()
         assert(saved,'save notification missing')
         local f=assert(io.open(output..'/runtime.sta','rb'));assert(f:seek('end')>1000);f:close()
         space:write_u32(vram+cases[index].address,0);space:write_u16(cram+2,0x03e0)
+        for offset=0xc0,0xd6,2 do reg(offset,0) end
+        for offset=0x110,0x11e,2 do reg(offset,0) end
         reg(0xf8,0);reg(0xfa,0);reg(0xfc,0);reg(0x0e,0);reg(6,cases[index].large and 0 or 0x8000)
         phase='mutated';wait=3
     elseif phase=='mutated' then
