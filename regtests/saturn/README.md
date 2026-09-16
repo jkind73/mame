@@ -1,5 +1,30 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## V2-C03e: linked three-window logic matrix — 2026-09-16
+
+Continued from C03d with **64 combined W0/W1/sprite-window scenes per
+configuration**: all eight retained-area polarities, both LOG settings and both
+coverage/calculation-only uses, at both VRAM capacities. The independent oracle
+complements the documented active-area logic (ST-058 pp.189–195): LOG=0 retains
+the intersection; LOG=1 retains the union. Asymmetric overlapping rectangles and
+the displayed-framebuffer checker exercise all three inputs with 144 probes per
+scene. Both physical framebuffer banks are overwritten before full-image save
+replay. Captures 194 and 225 were inspected. Pinned Ymir lines 2450–2463 and
+MiSTer lines 3161–3168 provide cross-checks, not the expected-image oracle.
+
+All four **450-case composition runs pass**. With the unchanged 46-case background
+path and four BIOS replays from C03d, the recorded total is **1,984 synthetic cases**
+(1,488 DRC / 496 interpreter). JSON records distinguish the retained background/BIOS
+fixture hashes from the expanded composition fixture. All 47 regression scripts
+pass again, as do 44 protocol cases and `-validate`. A new extracted mutation
+reversing only the SW combination operator compiles and fails the bitmap-image
+assertion; the unmodified bitmap suite passes 184,320 images.
+
+No production change was required. C03e qualifies this normal-resolution NBG0
+three-window matrix, not all layers, rotation/line-window mixtures, latch timing,
+physical arbitration, games or comparative performance. Full VDP2 remains open;
+totals in older sections are historical checkpoints.
+
 ## V2-C03d: linked displayed-framebuffer sprite windows — 2026-09-16
 
 Added **48 sprite-window scenes per configuration**: legal palette-only sprite types
