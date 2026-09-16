@@ -1,5 +1,42 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## P2 rotation sprite-window selection and combined qualification — 2026-09-15
+
+RBG0/RBG1 output windows and RPMD 3 parameter selection now combine W0, W1 and
+the sprite window, including independent area bits and OR/AND control. Previously,
+SWE without W0/W1 was treated as a constant rather than a framebuffer mask.
+Unit-transform RBG0 draws with sprite windows no longer take the normal-renderer
+shortcut, which would bypass the rotation window implementation.
+
+The sprite mask comes from the displayed VDP1 framebuffer MSB through the existing
+scanout helper: display-bank selection, packed formats, rotation and field addressing
+are retained. ST-058 pp.187–188 restrict this to SPWINEN, palette-only SPCLMD=0 and
+types 2–7. Nonzero color data with MSB set also belongs to the mask, not just 8000H.
+A bounded derived row cache avoids repeating scanout/rotation setup for every window
+query. It is invalidated for partial renders/register writes and explicitly on
+postload; no new persistent hardware state is asserted. Ordinary NBG/sprite-layer
+window integration and color-calculation windows remain separate C03/C05 work.
+
+Validation:
+- **1,376,256** sprite-window pixels through production framebuffer scanout, covering
+  display banks, modes, high resolution, interlace, field buffers, type/enable/color
+  gating and bounds. Existing **3,036** sprite images and **38,400** ratio images pass.
+- **4,194,304** RBG0/RBG1 output-window pixels and **16,384** complementary A/B
+  parameter-window pairs, including all W0/W1/SW enable/area/logic combinations.
+- **33,024** images run production rotation and production window decisions together,
+  with and without transforms, coverage, ratio/additive blending, mosaic, RBG1
+  sharing and split clips. Rectangle inputs and the mask are controlled stand-ins;
+  actual mask scanout is tested separately above.
+- Inverted framebuffer-MSB and ignored sprite-window mutations compile and
+  assertion-fail. **34 scripts / eleven production objects pass** via
+  `validate_build.py`; external log `p2-sprite-window-validation.log` in the cache.
+
+R02's repeat/transparent/fixed-512 leaf is reconciled with existing signed-boundary
+image coverage; R03's transformed/untransformed window leaf now has combined image
+coverage. Parent completion is **not** claimed: R01 shared special-function metadata,
+general/extended composition, raster/fetch arbitration and linked game/save/load/
+performance qualification remain open. These tests are not silicon certification.
+
 ## P2 rotation mosaic integration — 2026-09-15
 
 Implemented horizontal-only RBG0/RBG1 mosaic in the rotation source sampler,
