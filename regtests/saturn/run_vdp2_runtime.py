@@ -8,6 +8,7 @@ Synthetic tests hold both SH-2s in RAM loops. Neither mode certifies hardware or
 """
 import argparse
 import os
+import re
 from pathlib import Path
 import subprocess
 HERE=Path(__file__).resolve().parent
@@ -28,7 +29,13 @@ with log.open('w') as f:
  result=subprocess.run(command,cwd=a.output,env=env,stdout=f,stderr=subprocess.STDOUT,timeout=a.timeout)
 text=log.read_text(errors='replace');print(text)
 marker='BIOS_RUNTIME' if a.bios else 'VDP2_RUNTIME'
-expected=marker+' PASS' if a.bios else 'VDP2_RUNTIME PASS cases=14'
-if result.returncode or marker+' FAIL' in text or expected not in text:
- raise SystemExit(f'Linked fixture failed (exit {result.returncode}); see {log}')
+if a.bios:
+    expected=rf'^BIOS_RUNTIME PASS system={re.escape(a.system)} time=[0-9]+\.[0-9]+ pc=[0-9a-f]{{8}} full-image replay identical$'
+    complete=re.search(expected,text,re.M) is not None
+else:
+    records=[int(m[1]) for m in re.finditer(r'^VDP2_RUNTIME case=(\d+) .* pixels/save/load PASS$',text,re.M)]
+    complete=(records==list(range(1,47)) and
+              re.search(r'^VDP2_RUNTIME PASS cases=46$',text,re.M) is not None)
+if result.returncode or marker+' FAIL' in text or not complete:
+    raise SystemExit(f'Linked fixture failed (exit {result.returncode}); see {log}')
 print(f'Linked {marker} fixture passed; results: {a.output}')
