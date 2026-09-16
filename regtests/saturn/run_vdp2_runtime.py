@@ -25,7 +25,7 @@ p.add_argument('--boot-frames',type=int,default=900)
 p.add_argument('--timeout',type=int,default=600)
 a=p.parse_args();a.output=a.output.resolve();a.output.mkdir(parents=True,exist_ok=True)
 env=os.environ.copy();env.update(SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',SATURN_RUNTIME_OUTPUT=str(a.output),SATURN_BIOS_FRAMES=str(a.boot_frames),SATURN_RUNTIME_COMPOSITION='1' if a.composition else '0')
-command=[str(a.executable.resolve()),a.system,'-rompath',str(a.rompath.resolve()),'-noreadconfig','-skip_gameinfo','-drc' if a.drc else '-nodrc','-video','none','-sound','none','-nothrottle','-autoboot_delay','0','-autoboot_script',str(HERE/('bios_runtime.lua' if a.bios else 'vdp2_runtime.lua')),'-seconds_to_run','360' if a.composition else '30','-nvram_directory',str(a.output/'nvram'),'-cfg_directory',str(a.output/'cfg'),'-state_directory',str(a.output),'-snapshot_directory',str(a.output)]
+command=[str(a.executable.resolve()),a.system,'-rompath',str(a.rompath.resolve()),'-noreadconfig','-skip_gameinfo','-drc' if a.drc else '-nodrc','-video','none','-sound','none','-nothrottle','-autoboot_delay','0','-autoboot_script',str(HERE/('bios_runtime.lua' if a.bios else 'vdp2_runtime.lua')),'-seconds_to_run','360' if a.composition else '30' if a.bios else '60','-nvram_directory',str(a.output/'nvram'),'-cfg_directory',str(a.output/'cfg'),'-state_directory',str(a.output),'-snapshot_directory',str(a.output)]
 log=a.output/'runtime.log'
 with log.open('w') as f:
  result=subprocess.run(command,cwd=a.output,env=env,stdout=f,stderr=subprocess.STDOUT,timeout=a.timeout)

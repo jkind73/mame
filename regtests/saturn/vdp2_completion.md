@@ -832,10 +832,32 @@ slot/partition/rotation-owner/bitmap configurations. Inactive-slot, partition an
 RBG1-owner mutations compile and fail assertions. Existing reduction/color-resource
 and RBG1 setup suites pass unchanged expectations.
 
-**T02 remains partial:** this is command presence across eligible banks, not matching
-each fetch address to a bank, required access counts, legal slot spacing, insufficient
-fetch behavior or CPU contention. No hardware, linked-game or frame-time acceptance
-is claimed. Those remaining items must not be inferred from the presence-gate tests.
+**T02 implementation update, 2026-09-16 (parent remains open):** normal
+PN/CP consumers now require their command in the addressed physical bank, with
+4/8-Mbit wrapping, partition aliases, active slots and rotation ownership resolved
+once per partial render. VCSC consumers require the documented early slots and
+NBG0-before-NBG1 ordering in the addressed bank (ST-058 p.35; pinned MiSTer
+VDP2.sv 725–732 and 1145–1208 cross-check). Normal rendering cannot bypass these
+checks through the retained fast paths. Derived slot masks are rebuilt, not saved.
+Denied PN/CP uses transparency; denied VCSC uses zero offset. These are conservative
+no-fetch policies, **not hardware-certified stale-latch output**.
+
+All 47 existing regression scripts pass together. The existing cycle fixture now
+also exercises addressed-bank/capacity aliases and 16,384 VCSC decisions; the scroll
+fixture exercises 192 real PN/CP consumer/route images and 12 VCSC images. Eight
+cycle/fetch mutations compiled and were assertion-rejected. The linked background
+fixture now removes each addressed group's CP, then PN for cells, while retaining
+the command in the other group; it restores access before save/load replay. That
+Lua fixture passes syntax checking, but its new linked runs are **pending**, as are
+the full build/validate result and performance acceptance. Earlier linked results
+above belong to earlier source, not this update.
+
+Still missing within this same parent: PN/CP counts and dependency/slot ordering,
+screen-mode/reduction bandwidth, actual fetch/latch timing, complete RBG1 and
+coefficient/table restrictions, and CPU/SCU-DMA grants/waits. The SH2 execution
+paths currently lack memory-access replay support; a renderer permission check
+must not be described as bus contention. No whole-T02 or whole-VDP2 completion,
+hardware, linked-game or frame-time acceptance is claimed.
 
 
 ## V2-T01a: preserve completed lines before state writes — 2026-09-15
@@ -1832,7 +1854,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
   - [ ] Ensure active VDP1 erase-triggered updates do not duplicate or lose rendering.
 - [x] **V2-T02a** Restrict cycle-command presence to active mode slots, partition-selected registers and non-rotation-owned banks.
 - [ ] **V2-T02** Implement bank/slot-aware cycle-pattern validation and fetch behavior.
-  - [ ] Bank partitioning, access-command counts/order and screen-mode bandwidth.
+  - [ ] Bank partitioning, access-command counts/order and screen-mode bandwidth. Addressed-bank PN/CP permission and early-slot/order VCSC consumers implemented; counts, PN→CP scheduling and bandwidth remain missing.
   - [ ] RBG1 and coefficient/table fetch restrictions.
   - [ ] CPU availability/contention and insufficient-fetch consequences, supported by hardware evidence.
 - [x] **V2-T03a** Wrap W0/W1 line-window and back-table row addresses at the configured physical VRAM size; production boundary fixtures.
