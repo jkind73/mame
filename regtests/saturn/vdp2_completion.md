@@ -1,5 +1,57 @@
 # VDP2 implementation report and progress tracker
 
+## P2 shared special priority and frame-pass scheduling — 2026-09-15
+
+This supersedes the earlier missing-special-priority statements. SFPRMD modes 1/2
+now replace only the low priority bit using the character/bitmap attribute and,
+for mode 2, the raw dot's selected SFSEL/SFCODE match. Effective priority zero is
+transparent, including cases where a register value of zero can produce priority
+one. One-word names use PNC SPR, two-word names use bit 29, and bitmaps use BMPNA/B
+bit 5. RBG1 shares NBG0's priority and special-function controls.
+
+The shared decoder carries coverage, color-calculation eligibility, code match and
+priority independently in private metadata. Normal and rotation samplers filter
+against the current frame priority pass before composition; priority-zero dots are
+suppressed at decoding. This also applies to OVPNRA/B patterns and preserves color
+offset/calculation eligibility. Rotation layers needing priority attributes use the
+bounded direct source path even when color calculation is disabled.
+
+Frame dispatch visits each special-priority layer in at most its two possible
+nonzero priority passes, not all seven. Ordinary layers retain their single-pass
+routing. Existing equal-priority order (NBG3, NBG2, NBG1, NBG0/RBG1, RBG0, sprites)
+is unchanged. The pass number is ephemeral render state, reset after screen update;
+no new persistent hardware state or save-manager registration is introduced.
+
+Primary evidence: ST-058 printed pp.228–230 and pattern/bitmap attribute layouts
+(chapter 4; bitmap priority bits also listed on p.344). Pinned Ymir 6d779960
+`VDP2FetchPixel` corroborates replacement of the LSB and attribute-plus-code gating.
+RGB per-dot priority and SFPRMD mode 3 are prohibited: the former has a zero-LSB
+fallback, and the latter retains ordinary priority. Reserved-mode fixture cases
+check that software fallback, not undocumented silicon behavior.
+
+Validation:
+- **294,912** normal tile/bitmap/combined-scroll images with mixed special priority
+  and color modes, priority-zero/pass filtering, metadata preservation, windows,
+  split clips and a priority-only unit-transform dispatch assertion.
+- **107,520** special-function rotation images across all maps, bitmaps, OVPNRA/B,
+  RBG0/RBG1 controls, name/character sizes, coverage and ratio/additive output.
+- **98,304** all-layer metadata cases cover NBG0–3/RBG0/RBG1 register-bank selection,
+  all priority bases, both code banks and all 256 palette dot codes.
+- New `test_vdp2_priority_dispatch.py`: **131,072** actual frame-dispatch scheduling
+  and opaque-composition images, using controlled source dots and an independent
+  highest-(priority,tie-order) oracle. It also checks bounded pass counts, blank
+  display and pass-state cleanup. Real decoding/filtering is exercised separately
+  by the normal/rotation suites, not substituted into this scheduling fixture.
+- Missing attribute/code gates, missing priority-zero suppression, wrong LSB
+  scheduling and changed layer order all compile and assertion-fail.
+- **35 regression scripts / eleven production objects pass**; external log:
+  `/home/user/.cache/saturn/p2-special-priority-validation.log`.
+
+**Still open:** priority-aware general/extended color composition, raster/fetch
+arbitration and linked game/save/load/performance qualification. Special-priority
+implementation is no longer missing, but these tests are not hardware or linked
+runtime acceptance and do not close all P2 parent tasks.
+
 ## P2 shared special color-calculation eligibility — 2026-09-15
 
 Implemented SFCCMD eligibility in the shared dot/pattern sampler: per-screen,
@@ -739,8 +791,8 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
   - [ ] Partial clips, interlace and high/exclusive resolution coordinates.
 - [ ] **V2-C04** Complete special priority and special color calculation.
   - [x] **V2-C04a** SFCCMD eligibility from pattern/bitmap attributes, SFSEL/SFCODE and CRAM MSB, integrated with normal and rotation samplers.
-  - [ ] SFPRMD, SFCCMD, SFSEL/SFCODE and pattern-name/dot attributes.
-  - [ ] Eligibility before blending, rather than a late RGB-only approximation.
+  - [x] **V2-C04b** SFPRMD, SFCCMD, SFSEL/SFCODE and pattern/bitmap/dot attributes, including bounded frame-pass scheduling.
+  - [x] Eligibility and priority filtering before blending; general/extended underlying-image composition remains C01/C05 work.
 - [x] **V2-C05a** Separate sprite calculation eligibility from zero ratio; test all ratios/selectors and additive mode.
 - [ ] **V2-C05** Qualify ordinary ratio/additive calculation and color-offset ordering.
   - [ ] Ratio extremes, integer rounding and overflow/clamping.
@@ -767,9 +819,10 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
   - [x] **V2-S02a** Correct packed interval addressing, partial-clip containment, unsigned line zoom and descriptor restoration; retain equivalent-entry batching.
   - [x] **V2-S02c** Combined point sampling, table stride/interval, NBG0/NBG1 interleaving, source-cell screen-left anchoring and wrapping (stand-in images).
   - [x] Bounded point/column lookups without nested redraw; real frame-time qualification remains open.
-- [ ] **V2-R01** Implement and qualify screen-over-pattern mode using OVPNRA/OVPNRB. Base pixels and special color eligibility implemented; special priority and runtime qualification remain open.
+- [ ] **V2-R01** Implement and qualify screen-over-pattern mode using OVPNRA/OVPNRB. Base pixels and shared special-function metadata implemented; compositor/runtime qualification remains open.
   - [x] **V2-R01a** Decode and composite repeated OVPNRA/OVPNRB character pixels, with bounded per-pass decoding and clip/dispatch regression coverage.
-  - [x] **V2-R01b** Shared special color-calculation attributes/code/MSB through ordinary and screen-over sampling; special priority remains open.
+  - [x] **V2-R01b** Shared special color-calculation attributes/code/MSB through ordinary and screen-over sampling.
+  - [x] **V2-R01c** Shared character/dot special priority, effective-zero suppression and priority-pass filtering, including OVPNRA/B.
 - [ ] **V2-R02** Qualify rotation A/B parameters, fixed-point precision and coefficient tables.
   - [x] **V2-R02a** Validate packed parameter fields and correct Px sign extension; exercise signed short/long coefficient screen-over boundaries.
   - [x] **V2-R02b** Wrapping coordinate arithmetic and short/long viewpoint formats; signed-limit image oracle.

@@ -8527,7 +8527,8 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
        current_tilemap.linezoom_enable || current_tilemap.vertical_cell_scroll_enable ||
        current_tilemap.mosaic_screen_enabled ||
        (current_tilemap.line_screen_enabled && current_tilemap.colour_calculation_enabled) ||
-       (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode()))) {
+       (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode()) ||
+       vdp2_special_priority_mode())) {
     vdp2_draw_scroll_screen(bitmap, cliprect);
     return;
   }
@@ -8759,8 +8760,40 @@ unsigned saturn_state::vdp2_special_color_mode() const {
   return layer < 5 ? (VDP2_SFCCMD >> (layer * 2)) & 3 : 0;
 }
 
+unsigned saturn_state::vdp2_special_priority_mode() const {
+  unsigned const layer = current_tilemap.layer_name == 0x81 ? 0 :
+      current_tilemap.layer_name == 0x80 ? 4 : current_tilemap.layer_name;
+  unsigned const mode = layer < 5 ? (VDP2_SFPRMD >> (layer * 2)) & 3 : 0;
+  return mode == 1 || mode == 2 ? mode : 0; // mode 3 is prohibited
+}
+
+// ST-058 pp.228-229: replace only the priority LSB, then suppress priority 0.
+// The raw-dot code match is carried from the color decoder in metadata bit 1.
+rgb_t saturn_state::vdp2_special_priority_pixel(rgb_t pixel, bool attribute) {
+  unsigned const mode = vdp2_special_priority_mode();
+  if (!mode || !pixel.a())
+    return pixel;
+  unsigned const layer = current_tilemap.layer_name == 0x81 ? 0 :
+      current_tilemap.layer_name == 0x80 ? 4 : current_tilemap.layer_name;
+  unsigned const priorities[] = {VDP2_N0PRIN, VDP2_N1PRIN, VDP2_N2PRIN, VDP2_N3PRIN, VDP2_R0PRIN};
+  bool const low = attribute && (mode == 1 ||
+      (current_tilemap.colour_depth < 3 && (pixel.a() & 2)));
+  unsigned const priority = (priorities[layer] & 6) | unsigned(low);
+  if (!priority)
+    return rgb_t::transparent();
+  return rgb_t((uint32_t(pixel) & ~0x1c000000U) | (priority << 26));
+}
+
+static constexpr bool vdp2_priority_pass_matches(unsigned base, unsigned mode, unsigned pass) {
+  // At most two passes per special-priority layer; retain the ordinary fast
+  // path and established same-priority layer/sprite order for all other layers.
+  return mode == 1 || mode == 2 ? (base & 6) == (pass & 6) : base == pass;
+}
+
 // Private decoded-dot metadata: zero alpha is uncovered; FE/FF are covered
-// with calculation disabled/enabled. Restore opaque alpha at final composition.
+// with calculation disabled/enabled when priority is ordinary. Special-priority
+// dots use bit 7 for coverage, bit 0 for calculation, bit 1 for code match and
+// bits 2-4 for priority. Restore opaque alpha at final composition.
 // Do not store already-calculated colors in rotation caches (ST-058 p.245).
 rgb_t saturn_state::vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned pen) {
   unsigned const mode = vdp2_special_color_mode();
@@ -8782,7 +8815,15 @@ rgb_t saturn_state::vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned
       calculate = (vdp2_cram_r(pen & 0x3ff) >> 31) & 1;
     }
   }
-  return rgb_t((uint32_t(color) & 0xffffff) | (calculate ? 0xff000000 : 0xfe000000));
+  unsigned metadata = calculate ? 0xff : 0xfe;
+  if (vdp2_special_priority_mode()) {
+    unsigned const layer = current_tilemap.layer_name == 0x81 ? 0 :
+        current_tilemap.layer_name == 0x80 ? 4 : current_tilemap.layer_name;
+    unsigned const codes = VDP2_SFCODE >> (((VDP2_SFSEL >> layer) & 1) * 8);
+    bool const match = current_tilemap.colour_depth < 3 && ((codes >> ((raw >> 1) & 7)) & 1);
+    metadata = 0x80 | unsigned(calculate) | (unsigned(match) << 1);
+  }
+  return rgb_t((uint32_t(color) & 0xffffff) | (metadata << 24));
 }
 
 // ST-058 pp.115-116: OVPNR always uses the one-word pattern-name format,
@@ -8848,8 +8889,9 @@ rgb_t saturn_state::vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int 
   unsigned const mode = vdp2_special_color_mode();
   bool const attribute = one_word ? bool(current_tilemap.special_colour_control_register) : bool(data & 0x10000000);
   if (pixel.a() && (mode == 1 || mode == 2) && !attribute)
-    pixel = rgb_t((uint32_t(pixel) & 0xffffff) | 0xfe000000);
-  return pixel;
+    pixel = rgb_t(uint32_t(pixel) & ~0x01000000U);
+  bool const priority_attribute = one_word ? bool(current_tilemap.special_priority_register) : bool(data & 0x20000000);
+  return vdp2_special_priority_pixel(pixel, priority_attribute);
 }
 
 rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) {
@@ -8890,8 +8932,8 @@ rgb_t saturn_state::vdp2_scroll_pixel(int32_t x, int32_t y) {
     unsigned const bitmap_flags = current_tilemap.layer_name == 0x80 ? VDP2_BMPNB :
         VDP2_BMPNA >> (current_tilemap.layer_name == 1 ? 8 : 0);
     if (pixel.a() && (mode == 1 || mode == 2) && !(bitmap_flags & 0x10))
-      pixel = rgb_t((uint32_t(pixel) & 0xffffff) | 0xfe000000);
-    return pixel;
+      pixel = rgb_t(uint32_t(pixel) & ~0x01000000U);
+    return vdp2_special_priority_pixel(pixel, bool(bitmap_flags & 0x20));
   }
 
   unsigned const cell_size = current_tilemap.tile_size ? 16 : 8;
@@ -8923,6 +8965,7 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
   if (!current_tilemap.enabled || cliprect.empty())
     return;
   auto const &t = current_tilemap;
+  bool const special_priority = vdp2_special_priority_mode() != 0;
   unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
   int const interval = std::max<int>(1, t.linescroll_interval);
   unsigned const stride = bool(t.linescroll_enable) + bool(t.vertical_linescroll_enable) + bool(t.linezoom_enable);
@@ -8983,6 +9026,9 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
         have_pixel = true;
       }
       if (!pixel.a())
+        continue;
+      if (special_priority && m_vdp2_priority_pass >= 0 &&
+          ((pixel.a() >> 2) & 7) != unsigned(m_vdp2_priority_pass))
         continue;
       uint32_t &dest = bitmap.pix(y, x);
       rgb_t const color = rgb_t(uint32_t(pixel) | 0xff000000);
@@ -9099,12 +9145,13 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         over_pattern[py * 16 + px] = vdp2_screen_over_pattern_pixel(name, px, py);
   }
 
-  bool const special_calculation = current_tilemap.colour_calculation_enabled && vdp2_special_color_mode();
+  bool const special_priority = vdp2_special_priority_mode() != 0;
+  bool const sample_attributes = special_priority || (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode());
   bool have_source = false;
   int last_source_x = 0, last_source_y = 0;
   rgb_t source_pixel;
   auto const source = [&](int sx, int sy) {
-    if (!special_calculation)
+    if (!sample_attributes)
       return rgb_t(roz_bitmap.pix(sy & planerenderedsizey, sx & planerenderedsizex));
     sx &= planesizex;
     sy &= planesizey;
@@ -9326,6 +9373,9 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
                       : source(x, y);
         if (!pix.a())
           continue;
+        if (special_priority && m_vdp2_priority_pass >= 0 &&
+            ((pix.a() >> 2) & 7) != unsigned(m_vdp2_priority_pass))
+          continue;
         bool const calculate = pix.a() & 1;
         pix = rgb_t(uint32_t(pix) | 0xff000000);
         if (calculate && (current_tilemap.transparency & STV_TRANSPARENCY_ALPHA)) {
@@ -9438,6 +9488,9 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         pix = outside ? over_pattern[(y & over_mask) * 16 + (x & over_mask)]
                       : source(x, y);
         if (!pix.a())
+          continue;
+        if (special_priority && m_vdp2_priority_pass >= 0 &&
+            ((pix.a() >> 2) & 7) != unsigned(m_vdp2_priority_pass))
           continue;
         bool const calculate = pix.a() & 1;
         pix = rgb_t(uint32_t(pix) | 0xff000000);
@@ -10173,10 +10226,11 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
     }
   }
 
-  // Special calculation needs dot attributes that the RGB-only source cache
+  // Special functions need dot attributes that the RGB-only source cache
   // cannot retain. Decode bounded output samples directly, including all 16
   // rotation maps, rather than rebuilding a full multi-megapixel cache.
-  if (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode()) {
+  if (vdp2_special_priority_mode() ||
+      (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode())) {
     vdp2_copy_roz_bitmap(bitmap, m_vdp2_legacy.roz_bitmap[iRP - 1], cliprect,
         iRP, planesizex, planesizey, planesizex, planesizey);
     return;
@@ -11462,21 +11516,23 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
     memset(vdp1_sprite_priorities_in_fb_line, 0,
            sizeof(vdp1_sprite_priorities_in_fb_line));
 
-    /*If a plane has a priority value of zero it isn't shown at all.*/
+    // Special priority can produce priority 1 even when the register is 0.
+    // The sampler suppresses effective-priority-zero dots.
     for (pri = 1; pri < 8; pri++) {
-      if (pri == VDP2_N3PRIN) {
+      m_vdp2_priority_pass = pri;
+      if (vdp2_priority_pass_matches(VDP2_N3PRIN, (VDP2_SFPRMD >> 6) & 3, pri)) {
         vdp2_draw_NBG3(m_tmpbitmap, cliprect);
       }
-      if (pri == VDP2_N2PRIN) {
+      if (vdp2_priority_pass_matches(VDP2_N2PRIN, (VDP2_SFPRMD >> 4) & 3, pri)) {
         vdp2_draw_NBG2(m_tmpbitmap, cliprect);
       }
-      if (pri == VDP2_N1PRIN) {
+      if (vdp2_priority_pass_matches(VDP2_N1PRIN, (VDP2_SFPRMD >> 2) & 3, pri)) {
         vdp2_draw_NBG1(m_tmpbitmap, cliprect);
       }
-      if (pri == VDP2_N0PRIN) {
+      if (vdp2_priority_pass_matches(VDP2_N0PRIN, (VDP2_SFPRMD >> 0) & 3, pri)) {
         vdp2_draw_NBG0(m_tmpbitmap, cliprect);
       }
-      if (pri == VDP2_R0PRIN) {
+      if (vdp2_priority_pass_matches(VDP2_R0PRIN, (VDP2_SFPRMD >> 8) & 3, pri)) {
         vdp2_draw_RBG0(m_tmpbitmap, cliprect);
       }
       {
@@ -11485,6 +11541,7 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen,
     }
   }
 
+  m_vdp2_priority_pass = -1;
   copybitmap(bitmap, m_tmpbitmap, 0, 0, 0, 0, cliprect);
 
 #if 0
