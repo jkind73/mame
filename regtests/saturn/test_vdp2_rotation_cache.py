@@ -31,7 +31,7 @@ code=r'''
 using offs_t=uint32_t;
 struct gfx {void mark_dirty(unsigned){}};
 struct decoder {struct gfx *gfx(int){static struct gfx g;return &g;}};
-struct video {bool size=false;bool get_vramsz(){return size;}};
+struct video {void preserve_scanned_output(){}bool size=false;bool get_vramsz(){return size;}};
 struct saturn_state {
  struct {unsigned colour_depth=0,tile_size=0;} current_tilemap;
  struct {unsigned tile_offset_min=0,tile_offset_max=0;} vdp2_layer_data;
