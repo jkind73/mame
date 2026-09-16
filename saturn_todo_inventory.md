@@ -1,5 +1,29 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## V2-T03a: line-window and back-table physical wrapping — 2026-09-16
+
+W0/W1 line-table reads and per-line back-screen reads now apply the configured
+VRAM-size mask after adding the row offset. Previously only the table base used
+the 512 KiB mask; a table near its end could read from the unused upper half of
+the 1 MiB backing allocation rather than wrap to the start. The 1 MiB mode retains
+its larger address range. Existing interlace/row selection is unchanged.
+
+Primary evidence: ST-058 pp.176–177 and 186–187 describe table-address formation
+and ignoring the high address bit in 4-Mbit mode. Pinned Ymir 6d779960 reads each
+window/back entry through VDP2ReadRendererVRAM and VDP2Memory::MapVRAMAddress,
+which masks the final address to 512 KiB. Its 1 MiB mode is explicitly TODO, so
+it is not used as corroboration for the larger mode.
+
+Validation: **40 regression scripts and eleven production object builds pass**.
+New `test_vdp2_table_wrap.py` executes the production coordinate/back renderers in
+**1,310,720** size/alias/end-of-memory/interlace/partial-row cases with an independent
+modulo-address oracle. Memory includes high address bits in its pattern to expose
+incorrect aliases. All three old-mask mutations (W0, W1, back) fail assertions.
+This qualifies these consumers' wrapping, not all VDP2 fetches, hardware interlace
+timing, or linked-game behavior. **T03 remains partial** pending the remaining
+legacy consumers, CPU-visible aliases and runtime/cache qualification.
+
+
 ## V2-Q01a: deterministic startup and postload state separation — 2026-09-16
 
 VDP2 startup now initializes external controls/status, counter samples, display

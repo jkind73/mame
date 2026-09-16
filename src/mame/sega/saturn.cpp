@@ -10629,10 +10629,10 @@ void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
       bitmap.fill(vdp2_back_screen_color(gfxdata, base_offs), cliprect);
     } else {
       for (int y = cliprect.top(); y <= cliprect.bottom(); y++) {
-        /* as in vdp2_draw_line(): BKTA doubled can already reach the last
-           byte of the decode buffer, so wrap the per-line offset inside it */
+        // ST-058 p.177: the high address bit is ignored in 4-Mbit mode.
+        // Wrap the complete row address, not just the initial BKTA value.
         rgb_t const color = vdp2_back_screen_color(
-            gfxdata, (base_offs + ((y / interlace) << 1)) & 0xfffff);
+            gfxdata, (base_offs + ((y / interlace) << 1)) & ((base_mask << 1) | 1));
 
         for (int x = cliprect.left(); x <= cliprect.right(); x++)
           bitmap.pix(y, x) = color;
@@ -11128,11 +11128,11 @@ void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
     uint32_t address = (VDP2_W0LWTA & base_mask) * 2;
     // double density makes the line window to fetch data every two lines
     uint8_t interlace = (m_vdp2->get_lsmd() == 3);
-    /* the table address is masked to 19 bits, so address >> 2 can already be
-       the last word of VRAM and the per-line index runs past it; wrap inside
-       VRAM rather than reading beyond the allocation */
+    // Apply the physical-size mask after adding the row offset. Masking
+    // only LWTA lets a 512 KiB table spill into the unused upper half.
+    // ST-058 pp.186-187: the high address bit is ignored in 4-Mbit mode.
     uint32_t vram_data =
-        m_vdp2_vram[((address >> 2) + (y >> interlace)) & 0x3ffff];
+        m_vdp2_vram[((address >> 2) + (y >> interlace)) & (base_mask >> 1)];
 
     raw_s_x = (int16_t)(vram_data >> 16);
     raw_e_x = (int16_t)(vram_data & 0xffff);
@@ -11196,11 +11196,11 @@ void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
     uint32_t address = (VDP2_W1LWTA & base_mask) * 2;
     // double density makes the line window to fetch data every two lines
     uint8_t interlace = (m_vdp2->get_lsmd() == 3);
-    /* the table address is masked to 19 bits, so address >> 2 can already be
-       the last word of VRAM and the per-line index runs past it; wrap inside
-       VRAM rather than reading beyond the allocation */
+    // Apply the physical-size mask after adding the row offset. Masking
+    // only LWTA lets a 512 KiB table spill into the unused upper half.
+    // ST-058 pp.186-187: the high address bit is ignored in 4-Mbit mode.
     uint32_t vram_data =
-        m_vdp2_vram[((address >> 2) + (y >> interlace)) & 0x3ffff];
+        m_vdp2_vram[((address >> 2) + (y >> interlace)) & (base_mask >> 1)];
 
     raw_s_x = (int16_t)(vram_data >> 16);
     raw_e_x = (int16_t)(vram_data & 0xffff);
