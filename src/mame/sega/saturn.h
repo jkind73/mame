@@ -376,6 +376,7 @@ protected:
   void vdp2_window_cache_line(int y);
   void vdp2_window_cache_invalidate() {
     m_window_cache_y = -1;
+    m_sprite_window_y = -1;
     m_roz_window_cache_y = -1;
   }
   void vdp2_roz_window_prepare(int y);
@@ -541,6 +542,9 @@ protected:
   // evaluation is done once per line and window configuration instead of
   // once per pixel, per layer and per priority pass.
   static constexpr int WINDOW_CACHE_WIDTH = 1024;
+  int m_sprite_window_y = -1;
+  uint8_t m_sprite_window_line[WINDOW_CACHE_WIDTH]{};
+  bool vdp2_sprite_window(int x, int y);
   int m_window_cache_y = -1;
   int m_roz_window_cache_y = -1;
   int m_roz_win_s_x[2]{};

@@ -17,18 +17,23 @@ ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--old', action='store_true')
 p.add_argument('--ratio-baseline', action='store_true')
+p.add_argument('--sprite-window-mutation', action='store_true')
 a = p.parse_args()
 source = (subprocess.check_output(['git','show',('baf9b069' if a.ratio_baseline else '9f6d2ccc')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
           if a.old or a.ratio_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(signature):
-    start=source.index(signature);end=source.index('{',start)+1;depth=1
+    text=(ROOT/'src/mame/sega/saturn.cpp').read_text() if signature.startswith('bool saturn_state::vdp2_sprite_window') else source
+    start=text.index(signature);end=text.index('{',start)+1;depth=1
     while depth:
-        depth+=(source[end]=='{')-(source[end]=='}');end+=1
-    return source[start:end]
+        depth+=(text[end]=='{')-(text[end]=='}');end+=1
+    return text[start:end]
 functions='\n'.join(extract(sig) for sig in ('void saturn_state::draw_sprites(',
  'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_read_pixel(',
  'int saturn_state::vdp1_rotation_coordinate('))
+functions=extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
+if a.sprite_window_mutation:functions=functions.replace('& 0x8000) != 0;', '& 0x8000) == 0;')
 functions=extract('static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+functions
+assert 'vdp2_window_cache_invalidate();' in (ROOT/'src/mame/sega/saturn.cpp').read_text().split('void saturn_state::vdp2_state_save_postload() {',1)[1].split('void saturn_state::vdp2_exit()',1)[0]
 names=sorted(set(re.findall(r'VDP2_(\w+)',functions)))
 macros='\n'.join('#define VDP2_'+n+' settings.'+n for n in names)
 fields='\n'.join('int '+n+'=0;' for n in names)
@@ -61,6 +66,9 @@ struct buffer {std::array<uint16_t,0x20000> data{};const uint16_t* get()const{re
 struct vdp2 {int hreso=0,lsmd=0;int get_hreso()const{return hreso;}int get_lsmd()const{return lsmd;}};
 struct palette {uint32_t pen(int n){return (n&255)*0x010101;}};
 struct saturn_state {
+ static constexpr int WINDOW_CACHE_WIDTH=1024;
+ int m_sprite_window_y=-1;uint8_t m_sprite_window_line[WINDOW_CACHE_WIDTH]{};
+ bool vdp2_sprite_window(int,int);
  int tvm=0;bool window=false;
  vdp2 device;vdp2 *m_vdp2=&device;palette pal;palette *m_palette=&pal;
  struct { // FIELDS
@@ -151,6 +159,34 @@ int main(){
   assert(result.p==expected.p);++images;
  }
 
+
+ unsigned sw_cases=0;
+ for(int mode:{0,1,2,3,4})for(int hreso:{0,1,2,3,4,5})for(int interlace:{0,3})for(bool fields:{false,true})for(int display:{0,1}){
+  if(fields&&mode>=2)continue;
+  s.tvm=mode;s.device.hreso=hreso;s.device.lsmd=interlace;v.framebuffer_double_interlace=fields;v.framebuffer_current_display=display;
+  auto value=[](unsigned i,unsigned bank)->uint16_t{return ((i*37+(i>>9)+bank)%3?0x8000:0)|(i%4?0x123:0);};
+  for(int bank=0;bank<2;++bank)for(unsigned i=0;i<0x20000;++i)v.framebuffer[bank].data[i]=v.field_framebuffer[bank].data[i]=value(i,bank);
+  for(int y=0;y<512;++y)v.framebuffer_display_lines[y]=v.framebuffer[display].get()+((y*(mode==3?256:512))&0x1ffff);
+  for(int type=0;type<16;++type)for(bool enable:{false,true})for(bool mixed:{false,true}){
+   s.settings.SPTYPE=type;s.settings.SPWINEN=enable;s.settings.SPCLMD=mixed;s.m_sprite_window_y=-1;
+   for(int y=0;y<8;++y)for(int x=0;x<16;++x){
+    constexpr int numerator[5][6]={{2,2,1,1,1,1},{4,4,2,2,1,1},{2,2,2,2,1,1},{2,2,2,2,1,1},{1,1,1,1,1,1}};
+    int sx=x*numerator[mode][hreso]/2,sy=(mode==4||(interlace==3&&!fields))?y/2:y,bank=display;
+    if(mode==2||mode==3)++sx;else if(fields){if(interlace==3){bank=sy%2;sy/=2;}else sy&=255;}
+    unsigned index=sy*(mode==3?256:512)+(mode&1?sx/2:sx);
+    bool expected=enable&&!mixed&&type>=2&&type<=7&&!(mode&1)&&(value(index,bank)&0x8000);
+    assert(s.vdp2_sprite_window(x,y)==expected);++sw_cases;
+   }
+   assert(!s.vdp2_sprite_window(-1,0)&&!s.vdp2_sprite_window(1024,0)&&!s.vdp2_sprite_window(0,-1)&&!s.vdp2_sprite_window(0,512));
+  }
+ }
+ // Re-render invalidation must discard the derived row after a bank/write change.
+ s.tvm=0;s.device.hreso=s.device.lsmd=0;v.framebuffer_double_interlace=0;
+ s.settings.SPTYPE=2;s.settings.SPWINEN=1;s.settings.SPCLMD=0;s.m_sprite_window_y=-1;
+ v.framebuffer_display_lines[0]=v.framebuffer[0].get();v.framebuffer[0].data[0]=0x8123;
+ assert(s.vdp2_sprite_window(0,0));v.framebuffer[0].data[0]=0;s.m_sprite_window_y=-1;assert(!s.vdp2_sprite_window(0,0));
+ s.settings.SPWINEN=0;
+ std::cout<<sw_cases<<" sprite-window displayed-framebuffer pixels passed\n";
  unsigned ratio_cases=0;
  s.tvm=0;s.device.hreso=0;s.device.lsmd=0;s.window=false;
  v.framebuffer_double_interlace=0;v.framebuffer_current_display=1;
