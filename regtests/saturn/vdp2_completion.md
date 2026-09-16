@@ -1123,67 +1123,63 @@ Every future implementation entry should record: primary-document section, indep
 
 Function names are the durable anchors; line numbers move as implementation progresses. A later device extraction may be useful, but it is not a prerequisite for correcting behavior and must not be counted as a hardware feature.
 
-## 4. Feature-by-feature assessment
+## 4. Current feature-by-feature assessment
 
-| Feature group | Already present | Missing, partial, or not qualified |
+Updated after integration recovery. “Implemented” describes production code and
+bounded extracted tests, not complete hardware or linked-game qualification.
+
+| Feature group | Implemented / exercised | Still open |
 |---|---|---|
-| Normal backgrounds | NBG0, NBG1, NBG2 and NBG3 enable/configuration and drawing paths | Exhaustive layer/color-depth/resource-conflict matrix; special-function behavior |
-| Character backgrounds | Tilemap/page/plane addressing, pattern-name handling, character-size and flip paths | Per-layer format restrictions, supplementary fields, boundaries and address wrapping need dedicated image oracles |
-| Bitmap backgrounds | Bitmap-size/map/palette selection; palette and direct-color drawing paths | Complete legal per-layer combinations and wrap/clip/zoom/window qualification |
-| Color formats | Palette-based paths and RGB555/RGB888 helpers | This is not proof all 16/256/2048-color and direct-color combinations work on every eligible layer; a non-bitmap 2048-color diagnostic remains |
-| Ordinary scroll/zoom | Scroll registers, coordinate increments and zoom drawing helpers | Fractional precision, wrapping and zoom limits need systematic verification |
-| Line scroll/line zoom | Horizontal/vertical line-scroll and line-zoom table processing | All interval/combination/format interactions and raster writes are not covered |
-| Vertical cell scroll | An implemented combined branch with table addressing and partial-clip fixes | Branch requires horizontal line scroll and excludes vertical line scroll and line zoom; unsupported combinations remain |
-| Reduction enable | ZMCTL reduction bits are defined | Complete enforcement of reduction limits is not present |
-| RBG0 | Rotation A/B parameter loading, transformed sampling and coefficient processing | Rounding, coefficient transitions, read-control latches and all parameter-mode combinations need qualification |
-| RBG1 | Routed through the NBG0 configuration/rotation path | Resource conflicts, priority/window integration and cycle-pattern checks are incomplete; not equivalent to a separately qualified full RBG1 implementation |
-| Rotation coefficients | VRAM and CRAM coefficient-source paths; coefficient-size/mode handling | Addressing, signed stepping, coefficient flags, line-color use and all modes need independent image tests |
-| Rotation parameter switching | Multiple parameter paths and rotation-window preparation exist | Mode-3/no-transform path has a documented limitation; parameter switching/read-control edge cases remain |
-| Screen-over processing | Repeat, transparent-outside, 512×512 restriction and OVPNRA/OVPNRB character pixels | Screen-over fixture coverage added; special-function metadata and linked/runtime qualification remain open |
-| Back screen | Single-color and per-line color, DISP/BDCLMD handling and color offsets | Dedicated partial-update/table-wrap tests and the historical Biohazard symptom need verification |
-| Line-color screen | `vdp2_draw_line`, table access and configuration fields exist | Ordinary postprocessing invocation is gated off; correct insertion into the color-calculation pipeline is incomplete |
-| Mosaic | Bounds-aware helper and focused clipping tests exist | Production invocation is gated off; per-layer source sampling/composition and rotation behavior are not complete |
-| Ordinary priorities | Layer priorities and eight sprite priority selectors feed ordered composition | Tie rules and all sprite types need exhaustive tests; final RGB output does not retain sufficient layer identity for all effects |
-| Special priority | Register definitions and layer configuration fields exist | A complete SFPRMD/SFSEL/SFCODE-driven per-dot priority implementation was not found |
-| Ordinary color calculation | Ratio and additive helpers, per-layer enables, sprite conditions and color offsets | Exact selection of eligible second image, rounding and interaction with windows/shadows are not fully qualified |
-| Special color calculation | Register definitions and some related pattern configuration | Complete SFCCMD/per-dot special-function eligibility is missing/incomplete |
-| Extended calculation / gradation | Control bits are described in the register comments | Complete EXCCEN, CCRTMD and BOKEN-related operation paths were not found; require explicit implementation audit and tests |
-| Color offset A/B | Signed RGB offsets, clamps, enable/select handling and cached faded palettes | Mid-display changes and ordering relative to calculation and special effects need verification |
-| Window 0/1 | Coordinate/table reads, inside/outside evaluation, AND/OR combination and per-line caching | Boundary/resolution combinations and differences between basic and rotation paths need dedicated tests |
-| Sprite window | Control fields and limited sprite pixel rejection exist | Generic window evaluation uses window 0/1 but does not combine a complete sprite-derived mask; end-to-end support is incomplete |
-| Color-calculation window | Some shared window infrastructure exists | A complete independently qualified calculation-only window/eligibility path was not established |
-| Shadows | Normal-shadow and opaque-path MSB-shadow behavior exists | Alpha-path MSB shadows and underlying-layer eligibility are incomplete; code comments acknowledge this |
-| VDP1 scanout integration | Normal/packed output, interlace caches, rotation input and HDTV replication; output-coordinate compositor | Full sprite-type/window/shadow matrix and hardware readout phases remain open |
-| Raster effects | Clip-aware rendering; recent VDP1 active-erase callbacks force partial presentation | VDP2 register, VRAM and CRAM changes are not generally sequenced against already-presented output |
-| VRAM | Allocated storage, CPU handlers, decode updates and cache invalidation | All VRSIZE/bank/partition/address-mask interactions need audit; physical access-slot effects and contention are incomplete |
-| Cycle patterns | Presence checks for character/pattern-name access commands | Slot counts/order, bank ownership, bandwidth, fetch denial/corruption and CPU waits are not modeled comprehensively |
-| CRAM | 4 KiB storage; 15-bit/24-bit palette paths; palette rebuilds and mode-0 palette mirroring | Mode-0 backing/read alias behavior is a TODO; byte-write behavior is unresolved. Mode 3 falls through to the 24-bit path and must not be certified as a legal mode |
-| Registers | Backing register file mirrors, masked writes, decoded device status/control paths | Per-register masks, access widths, read-only/write-only behavior, reset values and latch times require a complete inventory |
-| TV modes | Display enable, horizontal/vertical resolution and CRTC reconfiguration | Interlace half-lines, PAL, DOTSEL coordination and exclusive-mode timing retain explicit uncertainty |
-| Counters/status | H/V latches, ODD state, V-counter table, TVSTAT behavior and external latch callback | Physical beam accuracy, wrap edges, exclusive modes and external sync qualification |
-| External inputs | EXTEN fields, latch control and flags | External background/MPEG/genlock rendering is missing; actual external synchronization is not established as complete |
-| Reset/save | Device fields and backing memories registered; decoded graphics/palette/rotation caches rebuilt after load | Full reset coverage, every derived cache and real MAME round trips mid-raster remain unqualified |
-| Performance | Cached rotation maps, windows, palettes and decode invalidation | No current linked benchmark; large rotation maps and combined scroll/partial-update workloads remain risks |
+| Normal backgrounds | NBG0–3 configuration, resource exclusions and drawing | Exhaustive legal format/resource/image matrix |
+| Character backgrounds | One/two-word names, supplement, flips, cell/page addressing and capacity wrapping; explicit 11-bit cell routes | Linked boundaries, all formats/layers and simultaneous effects |
+| Bitmap backgrounds | Five NBG0 formats, capacity-aware source addressing and sampling | All legal layer/size/window combinations |
+| Map offsets / CPU aperture | All six three-bit MPOF fields; size-aware full 1 MiB console/ST-V mapping | Fresh linked high-bank replay pending |
+| Fractional scroll / reduction | Fractional sampling and reduction-enable limits | Independent precision and combined image references |
+| Line / vertical cell scroll | Combined line-X/Y/zoom and VCSC point sampling, interval/interleaving handling | Hardware precision and exhaustive simultaneous combinations |
+| RBG0 / RBG1 | A/B transforms, parameter selection, NBG0 sharing and resource rules | Complete cycle contention and combined linked images |
+| Rotation coefficients / latches | VRAM/CRAM access, permission rules, flags, line color, accumulation/read controls | Independent fixed-point oracle; exact latch timing |
+| Screen-over patterns | OVPNRA/B pixels and special-function metadata | Linked composition and hardware qualification |
+| Back / line-color screens | Table wrapping; line-color insertion into compositor | All coefficient/ratio/window/raster combinations |
+| Mosaic | Per-source sampling including rotation restrictions; production enabled | Complete combinations and hardware images |
+| Pixel identity / priority | Ordered per-dot source metadata, effective priorities and special priority modes | Exhaustive sprite types/ties and combined scenes |
+| Ordinary / special calculation | Ratio/additive, ratio-source selection, special eligibility, calculation window and offsets | Complete rounding/selection/hardware image matrix |
+| Extended / gradation | Production second/third/fourth combination and designated-source gradation | ST-058 CRMD0 line row prints 2:1:0; cross-emulators use 2:1:1; discrepancy unresolved |
+| Windows | Rectangle/line windows, sprite mask, calculation-only and rotation selection | All resolution/interlace/clip combinations with actual layers |
+| Shadows | Normal, transparent and self-shading MSB paths with source eligibility | Exhaustive priority/window/alpha matrix and hardware images |
+| VDP1 scanout | Packed/normal, rotation, interlace and output-coordinate composition | Full sprite/window/shadow matrix and readout phases |
+| Raster writes | Prior-line partial presentation for render-affecting writes | Exact dot/line latch boundaries and mid-line state |
+| VRAM / caches | Capacity masks, wrapped tables/cells/bitmaps, dirty invalidation and rotation cache keys | All consumers, debugger decode boundaries and integrated cache replay |
+| Cycle patterns | Bank/command/reduction/resource-aware eligibility | Slot/address/count fetch scheduling, corruption and CPU contention |
+| CRAM | Mode-0 broadcast/read handling and mode-dependent palette paths | Full register/access-width ledger, prohibited mode behavior and linked alias matrix |
+| Registers | Decoded controls, status, masks and render-write handling | Complete legality/reset/access/latch ledger |
+| TV modes / counters | CRTC modes, counter tables/latches, ODD and external callback | Physical beam, half-lines, DOTSEL and exclusive/interlace transitions |
+| External inputs | Latch/sync flags and callbacks | Actual MPEG/external-background/genlock provisioning and rendering |
+| Reset / save | Registered backing state; postload palette/decode/rotation invalidation | Fresh linked replay and complete mid-field picture reconstruction |
+| Performance | Existing palette/window/rotation/decode caches retained | Linked comparative profile and equivalent-image optimization evidence |
 
 ## 5. What has actually been tested
 
-The latest implementation baseline passed **23 Saturn regression scripts and eleven production object compilations**. That is the whole Saturn suite, **not 23 dedicated VDP2 tests**. This documentation audit does not claim a new linked build or hardware run.
+The recovered checkout passed **46 Saturn regression scripts and eleven production
+object compilations**, not 46 dedicated VDP2 scripts. All six map-mask truncations
+and three plain 11-bit routing mutations compiled and failed assertions. The
+external dependency bootstrap executed successfully. The fresh full link/validate
+is running; runtime acceptance remains pending until explicitly recorded.
 
-| Test | Evidence provided | Important limit |
+| Fixture family | Evidence | Limit |
 |---|---|---|
-| `test_tvmd.py` | Actual reset/register/CRTC helper behavior using recording devices | Not physical timing or every TV-mode transition |
-| `test_exten.py` | Actual reset/read/write and external latch callback | Not genlock, external video or physical beam verification |
-| `test_vcounter.py` | Table equivalence, field-line indexing and counter encoding | Historical lookup equivalence is not silicon proof |
-| `test_sync.py` | Production sync callback control flow and scheduling | Not real timer/CPU interrupt delivery or exact clocks |
-| `test_cell_scroll.py` | Clip containment, table addressing and column-call counts | Nested renderer, hardware column width and unsupported combinations are not certified |
-| `test_mosaic.py` | Production helper clipping/bounds | Helper is not enabled in the normal pipeline; alignment and multi-layer composition are not certified |
-| `test_sprite_scanout.py` | 3,036 compositor/readout image cases across modes, clips and selected effects | Palette/window evaluation and devices are stand-ins; full shadow/window/color hardware behavior is not certified |
-| `test_vdp1.py` | Additional rotation/field integration and erase-driven presentation sequencing | Primarily VDP1; the recording screen is not a complete VDP2 render/save round trip |
-| SCU timer/IRQ tests | Related timing-consumer integration | Not a substitute for VDP2 raster accuracy |
+| Map-offset / VRAM-access | Actual macros/handlers; real machine-map guards | Arithmetic and mapping guards are not a linked renderer |
+| Bitmap, cell-map, direct/palette-cell, table-wrap | Source addressing, physical masks, wrapping and retained-decoder selection | Controlled decoder/storage inputs; not every integrated consumer |
+| Scroll, line-scroll, reduction | Production sampling/dispatch and clipped image comparisons | Independent silicon precision oracle absent |
+| Rotation parameters, latches, windows, clip, dispatch, cache | Production helpers and negative mutations | Stand-in devices/selected sources; not hardware timing |
+| Composition, palette, priority dispatch, sprite scanout | Production metadata/effect/eligibility and selected image cases | Does not exhaust combined linked scenes |
+| Raster writes, cycle patterns, postload | Ordering, access eligibility, cache invalidation | Not exact bus scheduling or real mid-field save reconstruction |
+| TVMD, EXTEN, V-counter, sync | Production control flow and tables | Recording devices, not physical beam timing |
+| Related VDP1 / SCU / SH-2 / sound tests | Preserve prior component regressions | Not a substitute for whole-VDP2 acceptance |
 
-Not currently established by dedicated end-to-end image suites: all NBG formats, all RBG modes, actual window logic combined with layer rendering, special priorities/calculation, line-color insertion, sprite-window masks, underlying-layer shadows, VRAM scheduling and mid-display CRAM changes.
-
-Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 boot/explosions, Power Drift cars and OutRun flashing observations. These are **not VDP2-wide acceptance**. The separately reported title/logo placement issue remains open and is not assigned to VDP2 without evidence.
+See [linked runtime instructions and recovery provenance](linked_runtime.md).
+Historical lost-checkout results are explicitly separate from current execution.
+User-accepted AB2 boot/explosions, Power Drift cars and OutRun flashing remain
+narrow acceptance. The separate title/logo issue remains unresolved.
 
 ## 6. Prioritized multi-level implementation checklist
 
@@ -1243,12 +1239,12 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [x] **V2-C07b** Sprite line-color insertion and line-ratio provenance in the shared compositor.
 - [ ] **V2-C07** Integrate line-color screen as a proper calculation input.
   - [ ] Single/per-line tables, enables, coefficients and ratio behavior.
-  - [ ] Remove the production gate only after image tests prove placement.
+  - [x] Production line-color gate removed with extracted compositor image coverage; linked combinations remain open.
 - [ ] **V2-C08** Integrate mosaic per eligible layer.
   - [ ] Source-sample origin, horizontal/vertical sizes and partial clips.
   - [ ] Prevent mosaic from modifying already-composited unrelated layers.
   - [ ] Rotation constraints and scroll/window/calculation combinations.
-  - [ ] Remove the production gate only after qualification.
+  - [x] Production mosaic source sampling enabled with extracted coverage; full parent qualification remains open.
 
 ### P2 — Scroll and rotation completeness
 
@@ -1319,7 +1315,8 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
   - [ ] Window/fade/rotation caches and any new per-pixel/raster state.
   - [ ] Mid-line and mid-field save/load with no stale picture or duplicate event.
 - [ ] **V2-Q02** Link the focused Saturn/ST-V executable and run `-validate`.
-  - [ ] Resolve the SDL/pkg-config dependency blocker; prior Debian fetch attempts failed.
+  - [x] **V2-Q02a** Resolve SDL/pkg-config dependencies: external bootstrap executed successfully after recovery.
+  - [ ] **V2-Q02b** Re-execute link and `-validate` on recovered source; currently running.
 - [ ] **V2-Q03** Run real MAME save/load and BIOS/Saturn/ST-V visual smoke tests.
   - [ ] Preserve user-accepted prior fixes; record the exact build and scene.
   - [ ] Obtain independent expected images or traces for the new VDP2 features.
