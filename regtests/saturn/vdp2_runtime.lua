@@ -74,9 +74,21 @@ if composition then
                 c.window={control=window[1],keep=window[3],calculation=calculation}
             end
         end
+        -- ST-058 pp.184–187: per-line X bounds retain the register Y bounds.
+        -- Each window is tested crossing the physical end of VRAM; the other
+        -- table has a disjoint ordinary base. Also include empty/inverted rows.
+        for _,calculation in ipairs({false,true}) do
+            for _,which in ipairs({3,7,9,10}) do
+                local window=windows[which]
+                local c=add((calculation and 'line-calculation-' or 'line-coverage-')..window[2],
+                    0x0102,calculation and 1 or 0,15,0xff0000)
+                c.window={control=window[1],keep=window[3],calculation=calculation,line=true,
+                    wrap=(which==7 or which==10) and 1 or 0}
+            end
+        end
     end
 end
-assert(#cases==(composition and 194 or 46))
+assert(#cases==(composition and 210 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -150,11 +162,32 @@ local function configure(c)
         if c.window.calculation then reg(0xd6,c.window.control<<8)
         else reg(0xd0,c.window.control) end
     end
+    if c.window and c.window.line then
+        -- Keep bitmap and back data disjoint from the wrapping table. Map 2
+        -- starts at 0x40000; the original map-4 fill is no longer displayed.
+        reg(0x3c,0x0012)
+        for offset=0,0xfffc,4 do space:write_u32(vram+0x40000+offset,dot) end
+        space:write_u16(vram+0x5fffe,0x7c00);reg(0xac,2)
+        c.table_bases={}
+        for window=0,1 do
+            local base=window==c.window.wrap and capacity-16 or 0x60000
+            c.table_bases[window+1]=base
+            for row=0,255 do
+                local narrow=(row+window)%2==0
+                local left,right=narrow and 31 or 63,narrow and 127 or 255
+                if row%(window==0 and 7 or 8)==0 then left,right=200,100 end
+                space:write_u32(vram+((base+row*4)%capacity),(left*2<<16)|(right*2))
+            end
+            local wordbase=base//2
+            reg(0xd8+window*4,0x8000|(wordbase>>16));reg(0xda+window*4,wordbase&0xffff)
+        end
+    end
     if c.offset then
         for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
     end
     reg(0,0x8000)
-    c.dot=dot;c.capacity=capacity;c.address=c.cell and 0x20000 or (0x80000%capacity)
+    c.dot=dot;c.capacity=capacity
+    c.address=c.table_bases and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
 end
 local function pixels(expected)
     local c=cases[index]
@@ -167,6 +200,13 @@ local function pixels(expected)
             if c.window and expected~=0x0000ff then
                 local w0=x>=31 and x<=127 and y>=17 and y<=63
                 local w1=x>=63 and x<=255 and y>=31 and y<=127
+                if c.window.line then
+                    -- Analytic screen-coordinate oracle; no table readback.
+                    local narrow=x>=31 and x<=127
+                    local wide=x>=63 and x<=255
+                    w0=(y%2==0 and narrow or y%2==1 and wide) and y>=17 and y<=63 and y%7~=0
+                    w1=(y%2==0 and wide or y%2==1 and narrow) and y>=31 and y<=127 and y%8~=0
+                end
                 local keep=c.window.keep(w0,w1)
                 if c.window.calculation then want=keep and 0x7f7f00 or 0xff0000
                 else want=keep and 0xff0000 or 0x00ff00 end
@@ -196,7 +236,12 @@ local function step()
         assert(saved,'save notification missing')
         local f=assert(io.open(output..'/runtime.sta','rb'));assert(f:seek('end')>1000);f:close()
         space:write_u32(vram+cases[index].address,0);space:write_u16(cram+2,0x03e0)
-        for offset=0xc0,0xd6,2 do reg(offset,0) end
+        if cases[index].table_bases then
+            for _,base in ipairs(cases[index].table_bases) do
+                for row=0,255 do space:write_u32(vram+((base+row*4)%cases[index].capacity),0) end
+            end
+        end
+        for offset=0xc0,0xde,2 do reg(offset,0) end
         for offset=0x110,0x11e,2 do reg(offset,0) end
         reg(0xf8,0);reg(0xfa,0);reg(0xfc,0);reg(0x0e,0);reg(6,cases[index].large and 0 or 0x8000)
         phase='mutated';wait=3

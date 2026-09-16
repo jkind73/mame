@@ -1,5 +1,34 @@
 # Sega SDK hardware-document audit
 
+## V2-C03b: linked line-window tables and physical wrapping — 2026-09-16
+
+Added **16 line-window scenes per configuration** to the composition fixture:
+W0 alone, W1 alone, intersection and union, each as coverage or calculation-only
+windows, at both physical VRAM capacities. Each table is independently exercised
+crossing the physical end of VRAM. Horizontal bounds alternate by scanline, selected
+rows have start greater than end, and vertical bounds remain register controlled.
+Analytic screen-coordinate expectations check 144 boundary probes per scene.
+Bitmap/back data are placed away from both tables, avoiding accidental scene aliases.
+Both tables and their enable/address registers are cleared during the save/load
+mutation, then restored data and full-image equality are verified.
+
+The **210-case composition and 46-case background suites pass** on JP/PAL/ST-V DRC
+and JP interpreter: **1,024 current synthetic cases (768 DRC / 256 interpreter)**.
+Four visible BIOS replays were rerun and pass; `-validate` again produces no
+diagnostics. All 47 regression scripts pass. The extracted table-address fixture
+passes 1,310,720 cases; W0/W1 capacity-mask and one-row-shift mutations compile and
+fail assertions. Those address tests preserve existing interlace indexing and are
+not independent hardware timing evidence. Line-window captures were inspected.
+
+Primary basis: ST-058 pp.184–187 (per-line X bounds, inclusive borders, inverted
+rows, table address/physical-size rules). Pinned Ymir and MiSTer corroborate paired
+start/end table entries and the separation of horizontal table data from vertical
+register bounds, not full 1 MiB or interlace certification. No production correction
+was needed for these new scenes. C03b is bounded normal-resolution qualification;
+sprite-window combinations, interlace/other display modes, exact latches/contention,
+external video, games/title and comparative performance remain open. Full VDP2 is
+not declared complete. Earlier case totals below are historical checkpoints.
+
 ## V2-C03a / C05b: linked windows and color offsets — 2026-09-16
 
 The pushed composition work was extended to **194 cases per configuration**. Added
