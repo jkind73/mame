@@ -21,7 +21,7 @@ assert '-noreadconfig' in sys.argv
 if mode=='none':sys.exit(0)
 marker='BIOS_RUNTIME' if bios else 'VDP2_RUNTIME'
 if not bios:
-    count=450 if os.environ['SATURN_RUNTIME_COMPOSITION']=='1' else 46
+    count=466 if os.environ['SATURN_RUNTIME_COMPOSITION']=='1' else 46
     ids=list(range(1,count+1))
     if mode=='missing':ids.pop(20)
     if mode=='duplicate':ids[20]=20

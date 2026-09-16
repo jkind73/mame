@@ -1,5 +1,34 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C06c: linked gradation source, filter and ratios — 2026-09-16
+
+Added **16 gradation scenes per configuration**: patterned opaque NBG0 (top) or
+NBG1 (second), BOKEN on/off, both ratio-source settings and both VRAM capacities.
+The fixture explicitly selects CRAM mode 0 and normal resolution. Three-pixel color
+runs vary by row; 48 independent probes cover both preceding source dots and filter
+transitions. Top and lower ratios differ (15/7), revealing replacement of the second
+image and its ratio when the designated screen is top. Real save/mutate/load replay
+checks the entire image; mutation clears CCCTL. Captures 227 and 233 were inspected.
+
+**2,048 synthetic cases pass** (1,536 DRC / 512 interpreter): 466 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. All four background runs and
+four visible BIOS save/load replays were refreshed. All 47 regression scripts and
+44 runner-protocol tests pass; `-validate` reports no diagnostics. Extracted
+filter-weight and missing-left-history mutants compile and fail assertions.
+Production code and the previously linked executable are unchanged.
+
+Primary basis: ST-058 pp.238–241 (opaque source, normal/CRMD0 legality, 1:1:2
+horizontal filter, designated top/second replacement and ratio controls). Pinned
+MiSTer VDP2 lines 3393–3401 and 3476–3489, package lines 2401–2421 corroborate
+source selection and separate half/quarter-term truncation. Pinned Ymir renderer
+lines 4076–4100 corroborate source rank but its Color888GradationMasked implementation
+uses nested averages: **low-bit rounding differs**, so it is not an arithmetic oracle.
+The linked oracle follows the pre-scaled-term interpretation and MiSTer, not a
+hardware capture. Probe expectations deliberately exclude x=0/1; full-image replay
+there tests save determinism only. Transparent boundaries, other layers/formats,
+partial-render scheduling, hardware rounding and the parent C06 remain unqualified.
+Full VDP2 is not declared complete; earlier totals below are historical.
+
 ## V2-C03e: linked three-window logic matrix — 2026-09-16
 
 Continued from C03d with **64 combined W0/W1/sprite-window scenes per
@@ -332,7 +361,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 450-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 466-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -351,11 +380,11 @@ line-selected ratio, lower-history isolation and disabled top calculation.
 Cases 122–133 cover special-priority modes/attributes/selectors; 134–135 cover
 priority promotion/demotion through zero; 136–167 cover special-calculation
 modes/attributes/selectors/CC enable; 168–169 combine special priority with MSB
-calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–225 cross all three-window area polarities, logic settings and uses. Cases 226–450 repeat at the larger capacity. Line scenes use table bases at physical
+calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–225 cross all three-window area polarities, logic settings and uses. Cases 226–233 cover gradation source, enable and ratio selection. Cases 234–466 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-450 ordered case records and the exact final marker. Sources are red over green;
+466 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Mosaic scenes replace the solid source data with a transparent/red/green foreground
 and yellow/white lower screen. Their source sample is displaced by scroll (5,7);
