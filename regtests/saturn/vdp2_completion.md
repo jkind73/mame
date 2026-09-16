@@ -1,5 +1,42 @@
 # VDP2 implementation report and progress tracker
 
+## P2 rotation mosaic integration — 2026-09-15
+
+Implemented horizontal-only RBG0/RBG1 mosaic in the rotation source sampler,
+including unit transforms (the ordinary shortcut is disabled for mosaic).
+Blocks are anchored at screen X=0, including partial clips. High-resolution
+rotation dots use doubled physical width; vertical size does not quantize rotation
+rows. Parameter-window/coefficient selection and coefficient line-color data use
+the block anchor. Output clipping/windows and destination blending remain per
+output dot: this does not copy a previously blended framebuffer pixel. Coefficient
+reads are memoized per pass, bounded by source blocks rather than repeated output
+dots, with no persistent stale-cache state.
+
+Primary: ST-058 printed pp.117–119, especially horizontal-only RBG0/RBG1 processing
+and N0MZE sharing. Pinned Ymir 6d779960 rotation sampling corroborates source-layer
+replication and high-resolution doubling. Ymir also copies the anchor's window
+result; this renderer retains per-output window evaluation. That ordering difference
+and physical interlace behavior require hardware qualification, not a claim that
+the two renderers are identical.
+
+Validation: **5,760** dedicated mosaic images (all 16 widths, RBG0/RBG1, parameter
+modes, coefficient paths, opaque/ratio/additive, coverage, high resolution,
+interlace, windows, split clips and read bounds). The coefficient line-color suite
+now runs **34,560** images including mosaic. Removing mosaic sampling compiles and
+assertion-fails. **34 scripts / eleven production objects pass** using
+`validate_build.py`; log `/home/user/.cache/saturn/p2-mosaic-validation.log`.
+No linked-game, actual save-manager or hardware timing acceptance is inferred.
+
+The restored checkout was reconciled with pushed `8b070d34` after verifying its
+local source/test versions against Git history. Earlier source/text copies are
+preserved in `/home/user/mame-recovery-20260915`; user captures/logs were retained.
+
+**P2 still has implementation gaps:** shared special-function metadata and general/
+extended composition, raster preservation and pattern/character bus arbitration.
+Linked game/save/load/performance qualification also remains open. Rotation mosaic
+is no longer a missing implementation, but the ordering/timing qualifications above
+remain explicit.
+
 ## P2 integrated sampling, rotation latches and coefficient handling — 2026-09-15
 
 This supersedes the earlier combined-batch status at `5089d2e4`. **P2 remains
@@ -86,7 +123,7 @@ reload scheduling is not treated as independent confirmation of all RPRCTL rules
 | R01 | Shared SFPRMD/SFCCMD/SFSEL/SFCODE metadata/composition (C01/C04), including screen-over patterns; linked qualification. |
 | R02 | Hardware intermediate-precision comparison and bus/fetch-history behavior beyond explicit arithmetic and bank-permission tests. |
 | R03 | Priority-aware general/extended line-color composition (C01/C05), memory-write raster preservation (T01), actual save-manager and interlace qualification. |
-| R04 | Pattern/character bank scheduling and arbitration, rotation mosaic/shared special effects, linked cache/save/load/performance qualification. |
+| R04 | Pattern/character bank scheduling and arbitration, shared special effects, mosaic ordering/timing qualification, linked cache/save/load/performance qualification. |
 
 
 ## S02: standalone vertical cell-scroll dispatch — 2026-09-15
@@ -661,6 +698,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 - [ ] **V2-R04** Qualify RBG1/NBG0 sharing, resource restrictions and rotation caches.
   - [x] **V2-R04a** Separate inherited normal-scroll state, select RBG1 output-window controls and enforce dual-rotation screen exclusions.
   - [x] **V2-R04b** Watch full format/size-dependent character extents and wrapping accesses for rotation-cache invalidation.
+  - [x] **V2-R04c** Integrate horizontal rotation mosaic, source selection, split-clip anchoring and bounded coefficient reads; hardware ordering/interlace qualification remains open.
 
 ### P3 — Raster state and VRAM bus behavior
 

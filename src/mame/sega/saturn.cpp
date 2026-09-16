@@ -6136,6 +6136,7 @@ uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
       m_vdp2->get_lsmd() != 3 && !(m_vdp2->get_hreso() & 2) &&
       !(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR) &&
       current_tilemap.layer_name != 0x81 && !current_tilemap.line_screen_enabled &&
+      !current_tilemap.mosaic_screen_enabled &&
       VDP2_RPMD < 2) // only a unit-step, coefficient-free translation
   {
     return 0;
@@ -8973,6 +8974,12 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
 
   vcnt_shift = m_vdp2->get_lsmd() == 3;
   hcnt_shift = BIT(m_vdp2->get_hreso(), 1);
+  // ST-058 pp.117-119: RBG0/RBG1 mosaic is horizontal only. Sample the
+  // layer before blending, never copy an already-composited destination dot.
+  // Rotation dots are doubled in high-resolution output (Ymir rotation path).
+  int const mosaic_width = current_tilemap.mosaic_screen_enabled
+      ? (VDP2_MZSZH + 1) << hcnt_shift : 1;
+  auto const mosaic_x = [mosaic_width](int x) { return x - x % mosaic_width; };
 
   planesizex--;
   planesizey--;
@@ -9065,7 +9072,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       return false;
     uint32_t const index = (parameter_a.kast +
         coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
-        coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, hx)) >> 16;
+        coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, mosaic_x(hx))) >> 16;
     uint32_t const a_address = VDP2_RAKDBS
         ? (VDP2_RAKTAOS & 7) * 0x20000 + index * 2
         : (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
@@ -9089,7 +9096,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     uint8_t color = coeff_line_color_screen_data;
     if (enabled && from_a && iRP == 2) {
       uint32_t const index = (parameter_a.kast + coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
-          coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, hx)) >> 16;
+          coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, mosaic_x(hx))) >> 16;
       uint32_t const a_address = (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
       if (!have_a_entry || last_a_address != a_address) {
         last_a_entry = vdp2_read_rotation_coefficient(a_address);
@@ -9135,6 +9142,20 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       mul_fixed32(RP.E, vdp2_wrap_sub(RP.py, RP.cy)),
       mul_fixed32(RP.F, vdp2_wrap_sub(RP.pz, RP.cz)), RP.cy, RP.my);
 
+  // Mosaic repeats a source coefficient, not a VRAM read for each output
+  // dot. This pass-local memo also covers equal per-line addresses; no state
+  // survives an intervening register/VRAM write or a partial render pass.
+  bool have_coefficient = false;
+  uint32_t last_coefficient_address = 0, last_coefficient = 0;
+  auto const read_coefficient = [&](uint32_t addr) {
+    if (!have_coefficient || addr != last_coefficient_address) {
+      last_coefficient = vdp2_read_rotation_coefficient(addr);
+      last_coefficient_address = addr;
+      have_coefficient = true;
+    }
+    return last_coefficient;
+  };
+
   for (vcnt = cliprect.top(); vcnt <= cliprect.bottom(); vcnt++) {
     int32_t const start_x = vdp2_wrap_sub(vdp2_wrap_sum(RP.xst,
         mul_fixed32(RP.dxst, vcnt << (16 - vcnt_shift))), RP.px);
@@ -9155,7 +9176,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           address =
               coeff_table_offset +
               ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift)) >> 16) * 4;
-          coeff_table_val = vdp2_read_rotation_coefficient(address);
+          coeff_table_val = read_coefficient(address);
           coeff_line_color_screen_data = (uint32_t(coeff_table_val) >> 24) & 0x7f;
           coeff_msb = (coeff_table_val & 0x80000000) > 0;
           if (coeff_table_val & 0x00800000) {
@@ -9168,7 +9189,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
           address =
               coeff_table_offset +
               ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift)) >> 16) * 2;
-          coeff_table_val = vdp2_read_rotation_coefficient(address);
+          coeff_table_val = read_coefficient(address);
           if ((address & 2) == 0) {
             coeff_table_val >>= 16;
           }
@@ -9218,17 +9239,18 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
 
       for (hcnt = cliprect.left(); hcnt <= cliprect.right();
            xs = vdp2_wrap_sum(xs, dxs), ys = vdp2_wrap_sum(ys, dys), hcnt++) {
-        x = xs >> 16;
-        y = ys >> 16;
+        int const sample_h = mosaic_x(hcnt);
+        x = int32_t(uint32_t(xs) + uint32_t(int64_t(dxs) * (sample_h - hcnt))) >> 16;
+        y = int32_t(uint32_t(ys) + uint32_t(int64_t(dys) * (sample_h - hcnt))) >> 16;
 
         bool const outside = (x & clipxmask) || (y & clipymask);
-        if ((outside && !repeat_pattern) || !selected(hcnt, vcnt))
+        if ((outside && !repeat_pattern) || !selected(sample_h, vcnt))
           continue;
         if (vdp2_roz_window(hcnt, vcnt) == false)
           continue;
 
         if (current_tilemap.roz_mode3 == true) {
-          if (vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1) == false)
+          if (vdp2_roz_mode3_window(sample_h, vcnt, iRP - 1) == false)
             continue;
         }
 
@@ -9263,14 +9285,15 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       }
     } else {
       for (hcnt = cliprect.left(); hcnt <= cliprect.right(); hcnt++) {
+        int const sample_h = mosaic_x(hcnt);
         switch (coeff_table_size) {
         case 0:
           address = coeff_table_offset +
                     ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
-                      coef_delta(coefficient_dx, hcnt)) >>
+                      coef_delta(coefficient_dx, sample_h)) >>
                      16) *
                         4;
-          coeff_table_val = vdp2_read_rotation_coefficient(address);
+          coeff_table_val = read_coefficient(address);
           coeff_line_color_screen_data = (uint32_t(coeff_table_val) >> 24) & 0x7f;
           coeff_msb = (coeff_table_val & 0x80000000) > 0;
           if (coeff_table_val & 0x00800000) {
@@ -9282,10 +9305,10 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 1:
           address = coeff_table_offset +
                     ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
-                      coef_delta(coefficient_dx, hcnt)) >>
+                      coef_delta(coefficient_dx, sample_h)) >>
                      16) *
                         2;
-          coeff_table_val = vdp2_read_rotation_coefficient(address);
+          coeff_table_val = read_coefficient(address);
           if ((address & 2) == 0) {
             coeff_table_val >>= 16;
           }
@@ -9323,21 +9346,21 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         // x = RP.kx * ( xsp + dx * (hcnt << 16)) + xp;
         // y = RP.ky * ( ysp + dy * (hcnt << 16)) + yp;
         x = vdp2_wrap_sum(mul_fixed32(kx, vdp2_wrap_sum(xsp,
-            mul_fixed32(dx, (hcnt >> hcnt_shift) << 16))), xp);
+            mul_fixed32(dx, (sample_h >> hcnt_shift) << 16))), xp);
         y = vdp2_wrap_sum(mul_fixed32(ky, vdp2_wrap_sum(ysp,
-            mul_fixed32(dy, (hcnt >> hcnt_shift) << 16))), yp);
+            mul_fixed32(dy, (sample_h >> hcnt_shift) << 16))), yp);
 
         x >>= 16;
         y >>= 16;
 
         bool const outside = (x & clipxmask) || (y & clipymask);
-        if ((outside && !repeat_pattern) || !selected(hcnt, vcnt))
+        if ((outside && !repeat_pattern) || !selected(sample_h, vcnt))
           continue;
         // Coefficient lookup granularity does not bypass either window.
         if (!vdp2_roz_window(hcnt, vcnt))
           continue;
         if (current_tilemap.roz_mode3 &&
-            !vdp2_roz_mode3_window(hcnt, vcnt, iRP - 1))
+            !vdp2_roz_mode3_window(sample_h, vcnt, iRP - 1))
           continue;
 
         pix = outside ? over_pattern[(y & over_mask) * 16 + (x & over_mask)]
