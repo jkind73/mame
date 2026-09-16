@@ -124,6 +124,11 @@ int main(){
   ++cases;
  }
  std::cout<<cases<<" rotation dispatch/window/cache configuration cases passed\n";
+ s.current_tilemap.mosaic_screen_enabled=1;
+ auto saved_rotation=s.current_rotation_table;s.current_rotation_table={};
+ s.current_rotation_table.A=s.current_rotation_table.E=s.current_rotation_table.dx=s.current_rotation_table.dyst=s.current_rotation_table.kx=s.current_rotation_table.ky=65536;
+ s.dev.hreso=s.dev.lsmd=0;s.regs.VDP2_RPMD=s.regs.VDP2_RAKTE=s.regs.VDP2_RAOVR=0;
+ assert(s.vdp2_is_rotation_applied(1));s.current_rotation_table=saved_rotation;
  s.current_tilemap={};s.current_tilemap.bitmap_enable=1;s.current_tilemap.transparency=1;
  s.regs.VDP2_RPMD=s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=0;
  s.dev.hreso=s.dev.lsmd=0;auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;r.xst=65536;
