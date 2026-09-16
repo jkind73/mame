@@ -5888,6 +5888,7 @@ N2CHCN   | N2CHSZ   |
 
 void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
   uint32_t address;
+  unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
 
   address = (((VDP2_RPTAU << 16) | VDP2_RPTAL) << 1);
   if (rot_parameter == 1) {
@@ -5902,106 +5903,106 @@ void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
      own; wrap each access inside VRAM, as the other table reads do and as the
      address lines do on the hardware. */
   current_rotation_table.xst =
-      (m_vdp2_vram[(address / 4) & 0x3ffff] & 0x1fffffc0) |
-      ((m_vdp2_vram[(address / 4) & 0x3ffff] & 0x10000000) ? 0xe0000000
+      (m_vdp2_vram[(address / 4) & word_mask] & 0x1fffffc0) |
+      ((m_vdp2_vram[(address / 4) & word_mask] & 0x10000000) ? 0xe0000000
                                                            : 0x00000000);
   current_rotation_table.yst =
-      (m_vdp2_vram[(address / 4 + 1) & 0x3ffff] & 0x1fffffc0) |
-      ((m_vdp2_vram[(address / 4 + 1) & 0x3ffff] & 0x10000000) ? 0xe0000000
+      (m_vdp2_vram[(address / 4 + 1) & word_mask] & 0x1fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 1) & word_mask] & 0x10000000) ? 0xe0000000
                                                                : 0x00000000);
   current_rotation_table.zst =
-      (m_vdp2_vram[(address / 4 + 2) & 0x3ffff] & 0x1fffffc0) |
-      ((m_vdp2_vram[(address / 4 + 2) & 0x3ffff] & 0x10000000) ? 0xe0000000
+      (m_vdp2_vram[(address / 4 + 2) & word_mask] & 0x1fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 2) & word_mask] & 0x10000000) ? 0xe0000000
                                                                : 0x00000000);
   current_rotation_table.dxst =
-      (m_vdp2_vram[(address / 4 + 3) & 0x3ffff] & 0x0007ffc0) |
-      ((m_vdp2_vram[(address / 4 + 3) & 0x3ffff] & 0x00040000) ? 0xfff80000
+      (m_vdp2_vram[(address / 4 + 3) & word_mask] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 3) & word_mask] & 0x00040000) ? 0xfff80000
                                                                : 0x00000000);
   current_rotation_table.dyst =
-      (m_vdp2_vram[(address / 4 + 4) & 0x3ffff] & 0x0007ffc0) |
-      ((m_vdp2_vram[(address / 4 + 4) & 0x3ffff] & 0x00040000) ? 0xfff80000
+      (m_vdp2_vram[(address / 4 + 4) & word_mask] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 4) & word_mask] & 0x00040000) ? 0xfff80000
                                                                : 0x00000000);
   current_rotation_table.dx =
-      (m_vdp2_vram[(address / 4 + 5) & 0x3ffff] & 0x0007ffc0) |
-      ((m_vdp2_vram[(address / 4 + 5) & 0x3ffff] & 0x00040000) ? 0xfff80000
+      (m_vdp2_vram[(address / 4 + 5) & word_mask] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 5) & word_mask] & 0x00040000) ? 0xfff80000
                                                                : 0x00000000);
   current_rotation_table.dy =
-      (m_vdp2_vram[(address / 4 + 6) & 0x3ffff] & 0x0007ffc0) |
-      ((m_vdp2_vram[(address / 4 + 6) & 0x3ffff] & 0x00040000) ? 0xfff80000
+      (m_vdp2_vram[(address / 4 + 6) & word_mask] & 0x0007ffc0) |
+      ((m_vdp2_vram[(address / 4 + 6) & word_mask] & 0x00040000) ? 0xfff80000
                                                                : 0x00000000);
   current_rotation_table.A =
-      (m_vdp2_vram[(address / 4 + 7) & 0x3ffff] & 0x000fffc0) |
-      ((m_vdp2_vram[(address / 4 + 7) & 0x3ffff] & 0x00080000) ? 0xfff00000
+      (m_vdp2_vram[(address / 4 + 7) & word_mask] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 7) & word_mask] & 0x00080000) ? 0xfff00000
                                                                : 0x00000000);
   current_rotation_table.B =
-      (m_vdp2_vram[(address / 4 + 8) & 0x3ffff] & 0x000fffc0) |
-      ((m_vdp2_vram[(address / 4 + 8) & 0x3ffff] & 0x00080000) ? 0xfff00000
+      (m_vdp2_vram[(address / 4 + 8) & word_mask] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 8) & word_mask] & 0x00080000) ? 0xfff00000
                                                                : 0x00000000);
   current_rotation_table.C =
-      (m_vdp2_vram[(address / 4 + 9) & 0x3ffff] & 0x000fffc0) |
-      ((m_vdp2_vram[(address / 4 + 9) & 0x3ffff] & 0x00080000) ? 0xfff00000
+      (m_vdp2_vram[(address / 4 + 9) & word_mask] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 9) & word_mask] & 0x00080000) ? 0xfff00000
                                                                : 0x00000000);
   current_rotation_table.D =
-      (m_vdp2_vram[(address / 4 + 10) & 0x3ffff] & 0x000fffc0) |
-      ((m_vdp2_vram[(address / 4 + 10) & 0x3ffff] & 0x00080000) ? 0xfff00000
+      (m_vdp2_vram[(address / 4 + 10) & word_mask] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 10) & word_mask] & 0x00080000) ? 0xfff00000
                                                                 : 0x00000000);
   current_rotation_table.E =
-      (m_vdp2_vram[(address / 4 + 11) & 0x3ffff] & 0x000fffc0) |
-      ((m_vdp2_vram[(address / 4 + 11) & 0x3ffff] & 0x00080000) ? 0xfff00000
+      (m_vdp2_vram[(address / 4 + 11) & word_mask] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 11) & word_mask] & 0x00080000) ? 0xfff00000
                                                                 : 0x00000000);
   current_rotation_table.F =
-      (m_vdp2_vram[(address / 4 + 12) & 0x3ffff] & 0x000fffc0) |
-      ((m_vdp2_vram[(address / 4 + 12) & 0x3ffff] & 0x00080000) ? 0xfff00000
+      (m_vdp2_vram[(address / 4 + 12) & word_mask] & 0x000fffc0) |
+      ((m_vdp2_vram[(address / 4 + 12) & word_mask] & 0x00080000) ? 0xfff00000
                                                                 : 0x00000000);
   current_rotation_table.px =
-      (m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x3fff0000) |
-      ((m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x20000000) ? 0xc0000000
+      (m_vdp2_vram[(address / 4 + 13) & word_mask] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 13) & word_mask] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.py =
-      (m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x00003fff) << 16;
+      (m_vdp2_vram[(address / 4 + 13) & word_mask] & 0x00003fff) << 16;
   if (current_rotation_table.py & 0x20000000)
     current_rotation_table.py |= 0xc0000000;
   current_rotation_table.pz =
-      (m_vdp2_vram[(address / 4 + 14) & 0x3ffff] & 0x3fff0000) |
-      ((m_vdp2_vram[(address / 4 + 14) & 0x3ffff] & 0x20000000) ? 0xc0000000
+      (m_vdp2_vram[(address / 4 + 14) & word_mask] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 14) & word_mask] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.cx =
-      (m_vdp2_vram[(address / 4 + 15) & 0x3ffff] & 0x3fff0000) |
-      ((m_vdp2_vram[(address / 4 + 15) & 0x3ffff] & 0x20000000) ? 0xc0000000
+      (m_vdp2_vram[(address / 4 + 15) & word_mask] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 15) & word_mask] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.cy =
-      (m_vdp2_vram[(address / 4 + 15) & 0x3ffff] & 0x00003fff) << 16;
+      (m_vdp2_vram[(address / 4 + 15) & word_mask] & 0x00003fff) << 16;
   if (current_rotation_table.cy & 0x20000000)
     current_rotation_table.cy |= 0xc0000000;
   current_rotation_table.cz =
-      (m_vdp2_vram[(address / 4 + 16) & 0x3ffff] & 0x3fff0000) |
-      ((m_vdp2_vram[(address / 4 + 16) & 0x3ffff] & 0x20000000) ? 0xc0000000
+      (m_vdp2_vram[(address / 4 + 16) & word_mask] & 0x3fff0000) |
+      ((m_vdp2_vram[(address / 4 + 16) & word_mask] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.mx =
-      (m_vdp2_vram[(address / 4 + 17) & 0x3ffff] & 0x3fffffc0) |
-      ((m_vdp2_vram[(address / 4 + 17) & 0x3ffff] & 0x20000000) ? 0xc0000000
+      (m_vdp2_vram[(address / 4 + 17) & word_mask] & 0x3fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 17) & word_mask] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.my =
-      (m_vdp2_vram[(address / 4 + 18) & 0x3ffff] & 0x3fffffc0) |
-      ((m_vdp2_vram[(address / 4 + 18) & 0x3ffff] & 0x20000000) ? 0xc0000000
+      (m_vdp2_vram[(address / 4 + 18) & word_mask] & 0x3fffffc0) |
+      ((m_vdp2_vram[(address / 4 + 18) & word_mask] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.kx =
-      (m_vdp2_vram[(address / 4 + 19) & 0x3ffff] & 0x00ffffff) |
-      ((m_vdp2_vram[(address / 4 + 19) & 0x3ffff] & 0x00800000) ? 0xff000000
+      (m_vdp2_vram[(address / 4 + 19) & word_mask] & 0x00ffffff) |
+      ((m_vdp2_vram[(address / 4 + 19) & word_mask] & 0x00800000) ? 0xff000000
                                                                 : 0x00000000);
   current_rotation_table.ky =
-      (m_vdp2_vram[(address / 4 + 20) & 0x3ffff] & 0x00ffffff) |
-      ((m_vdp2_vram[(address / 4 + 20) & 0x3ffff] & 0x00800000) ? 0xff000000
+      (m_vdp2_vram[(address / 4 + 20) & word_mask] & 0x00ffffff) |
+      ((m_vdp2_vram[(address / 4 + 20) & word_mask] & 0x00800000) ? 0xff000000
                                                                 : 0x00000000);
   current_rotation_table.kast =
-      (m_vdp2_vram[(address / 4 + 21) & 0x3ffff] & 0xffffffc0);
+      (m_vdp2_vram[(address / 4 + 21) & word_mask] & 0xffffffc0);
   current_rotation_table.dkast =
-      (m_vdp2_vram[(address / 4 + 22) & 0x3ffff] & 0x03ffffc0) |
-      ((m_vdp2_vram[(address / 4 + 22) & 0x3ffff] & 0x02000000) ? 0xfc000000
+      (m_vdp2_vram[(address / 4 + 22) & word_mask] & 0x03ffffc0) |
+      ((m_vdp2_vram[(address / 4 + 22) & word_mask] & 0x02000000) ? 0xfc000000
                                                                 : 0x00000000);
   current_rotation_table.dkax =
-      (m_vdp2_vram[(address / 4 + 23) & 0x3ffff] & 0x03ffffc0) |
-      ((m_vdp2_vram[(address / 4 + 23) & 0x3ffff] & 0x02000000) ? 0xfc000000
+      (m_vdp2_vram[(address / 4 + 23) & word_mask] & 0x03ffffc0) |
+      ((m_vdp2_vram[(address / 4 + 23) & word_mask] & 0x02000000) ? 0xfc000000
                                                                 : 0x00000000);
 
   // Xst/Yst/KAst are raw table values here. RPRCTL is consumed by the
@@ -8471,11 +8472,8 @@ void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
       if (VDP2_LCCLMD)
         base_offs += (y / interlace) << 1;
 
-      /* LCTA is masked to 19 bits and doubled, which already lets the base
-         reach the last byte of the decode buffer, so the per-line offset can
-         run off the end of it; wrap inside the buffer, which is what the
-         address lines do on the hardware */
-      base_offs &= 0xfffff;
+      // Apply the physical-size mask after adding the line-table offset.
+      base_offs &= (base_mask << 1) | 1;
 
       for (x = cliprect.left(); x <= cliprect.right(); x++) {
         uint16_t pen;
