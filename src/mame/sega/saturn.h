@@ -149,6 +149,13 @@ protected:
   required_device<palette_device> m_palette;
 
   bitmap_rgb32 m_tmpbitmap;
+  bitmap_rgb32 m_vdp2_raw_top;
+  bitmap_ind8 m_vdp2_raw_alpha;
+  bool m_vdp2_composition_active = false;
+  void vdp2_begin_composition(bitmap_rgb32 &bitmap, const rectangle &cliprect);
+  void vdp2_compose_pixel(bitmap_rgb32 &bitmap, int x, int y, rgb_t color,
+                          bool calculate, unsigned alpha, bool insert_line, rgb_t line_color);
+  void vdp2_shadow_pixel(bitmap_rgb32 &bitmap, int x, int y);
 
   int m_scsp_last_line = 0;
 

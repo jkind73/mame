@@ -22,7 +22,7 @@ a = p.parse_args()
 source = (subprocess.check_output(['git','show',('baf9b069' if a.ratio_baseline else '9f6d2ccc')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
           if a.old or a.ratio_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
 def extract(signature):
-    text=(ROOT/'src/mame/sega/saturn.cpp').read_text() if signature.startswith('bool saturn_state::vdp2_sprite_window') else source
+    text=(ROOT/'src/mame/sega/saturn.cpp').read_text() if signature.startswith(('bool saturn_state::vdp2_sprite_window','void saturn_state::vdp2_compose_pixel','void saturn_state::vdp2_shadow_pixel')) else source
     start=text.index(signature);end=text.index('{',start)+1;depth=1
     while depth:
         depth+=(text[end]=='{')-(text[end]=='}');end+=1
@@ -30,7 +30,7 @@ def extract(signature):
 functions='\n'.join(extract(sig) for sig in ('void saturn_state::draw_sprites(',
  'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_read_pixel(',
  'int saturn_state::vdp1_rotation_coordinate('))
-functions=extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
+functions=extract('void saturn_state::vdp2_compose_pixel(')+'\n'+extract('void saturn_state::vdp2_shadow_pixel(')+'\n'+extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
 if a.sprite_window_mutation:functions=functions.replace('& 0x8000) != 0;', '& 0x8000) == 0;')
 functions=extract('static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+functions
 assert 'vdp2_window_cache_invalidate();' in (ROOT/'src/mame/sega/saturn.cpp').read_text().split('void saturn_state::vdp2_state_save_postload() {',1)[1].split('void saturn_state::vdp2_exit()',1)[0]
@@ -66,6 +66,11 @@ struct buffer {std::array<uint16_t,0x20000> data{};const uint16_t* get()const{re
 struct vdp2 {int hreso=0,lsmd=0;int get_hreso()const{return hreso;}int get_lsmd()const{return lsmd;}};
 struct palette {uint32_t pen(int n){return (n&255)*0x010101;}};
 struct saturn_state {
+ bool m_vdp2_composition_active=false;
+ bitmap_rgb32 m_vdp2_raw_top;
+ struct {std::array<uint8_t,48> data{};uint8_t &pix(int y,int x){assert(x>=0&&x<8&&y>=0&&y<6);return data[y*8+x];}} m_vdp2_raw_alpha;
+ void vdp2_compose_pixel(bitmap_rgb32&,int,int,rgb_t,bool,unsigned,bool,rgb_t);
+ void vdp2_shadow_pixel(bitmap_rgb32&,int,int);
  static constexpr int WINDOW_CACHE_WIDTH=1024;
  int m_sprite_window_y=-1;uint8_t m_sprite_window_line[WINDOW_CACHE_WIDTH]{};
  bool vdp2_sprite_window(int,int);
@@ -193,9 +198,11 @@ int main(){
  s.settings.SDCTL=0;s.settings.SPTYPE=0;s.settings.SPCCN=2;
  for(unsigned ratio=0;ratio<32;++ratio)for(unsigned selector=0;selector<8;++selector)
  for(int condition=0;condition<4;++condition)for(int priority : {1,2,3})
- for(bool msb : {false,true})for(bool mixed : {false,true})for(bool enabled : {false,true})for(bool add : {false,true}){
+ for(bool msb : {false,true})for(bool mixed : {false,true})for(bool enabled : {false,true})for(bool add : {false,true})for(bool history:{false,true})for(bool second:{false,true}){
   bool rgb=msb&&mixed;
   if(rgb&&selector)continue; // RGB dots select CCRT0, not palette selector bits.
+  s.m_vdp2_composition_active=history;s.settings.CCCR=second?0x200:0;
+  s.m_vdp2_raw_top.p.fill(0x714923);s.m_vdp2_raw_alpha.data.fill((31-((ratio+11)%32))*8);
   s.settings.SPCCCS=condition;s.settings.SPCLMD=mixed;s.settings.SPCCEN=enabled;s.settings.CCMD=add;
   // RATIO_PRI
   // RATIO_CCR
@@ -208,13 +215,15 @@ int main(){
   s.draw_sprites(image,{1,6,1,4},priority);
   bool calculate=enabled&&(condition==0?priority<=2:condition==1?priority==2:condition==2?priority>=2:msb);
   uint32_t color=rgb?uint32_t(rgb_t(pal5bit(7),0,0)):s.pal.pen(7);
-  unsigned selected_ratio=(ratio+(rgb?0:selector))&31;
+  unsigned own_ratio=(ratio+(rgb?0:selector))&31;
+  unsigned selected_ratio=history&&second?(ratio+11)%32:own_ratio;
+  uint32_t background=history?0x714923:0x234567;
   uint32_t out=color;
   if(calculate){
-   if(add)out=rgb_t(std::min(255u,35+((color>>16)&255)),std::min(255u,69+((color>>8)&255)),std::min(255u,103+(color&255)));
-   else {out=0;for(unsigned shift : {0,8,16})out|=(( ((color>>shift)&255)*(31-selected_ratio)+((0x234567u>>shift)&255)*(selected_ratio+1) )/32)<<shift;}
+   if(add)out=rgb_t(std::min(255u,((background>>16)&255)+((color>>16)&255)),std::min(255u,((background>>8)&255)+((color>>8)&255)),std::min(255u,(background&255)+(color&255)));
+   else {out=0;for(unsigned shift : {0,8,16})out|=(( ((color>>shift)&255)*(31-selected_ratio)+((background>>shift)&255)*(selected_ratio+1) )/32)<<shift;}
   }
-  for(int y=1;y<=4;++y)for(int x=1;x<=6;++x)expected.pix(y,x)=out;
+  for(int y=1;y<=4;++y)for(int x=1;x<=6;++x){expected.pix(y,x)=out;if(history){assert(s.m_vdp2_raw_top.pix(y,x)==color);assert(s.m_vdp2_raw_alpha.pix(y,x)==(31-own_ratio)*8);}}
   assert(image.p==expected.p);++ratio_cases;
  }
  std::cout<<ratio_cases<<" sprite ratio/selector/eligibility images passed\n";

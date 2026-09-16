@@ -57,6 +57,8 @@ void copybitmap(bitmap_rgb32 &d,bitmap_rgb32 &s,int,int,int,int,const rectangle 
  for(int y=c.t;y<=c.b;++y)for(int x=c.l;x<=c.r;++x)d.pix(y,x)=s.pix(y,x);
 }
 struct saturn_state {
+ bool m_vdp2_composition_active=false;
+ void vdp2_begin_composition(bitmap_rgb32&,const rectangle&){m_vdp2_composition_active=true;}
  unsigned modes=0,base[5]{},sprite_priority=0,seed=0;
  struct video {bool enabled=true;bool get_disp(){return enabled;}} device;
  video *m_vdp2=&device;
@@ -106,7 +108,7 @@ int main(){saturn_state s;screen_device screen;unsigned cases=0;
   s.events.clear();s.invalidations=s.fades=0;s.m_vdp2_priority_pass=99;
   bitmap_rgb32 out,expected;
   s.screen_update_vdp2(screen,out,{1,6,1,2});
-  assert(s.invalidations==1&&s.fades==1&&s.m_vdp2_priority_pass==-1);
+  assert(s.invalidations==1&&s.fades==1&&s.m_vdp2_priority_pass==-1&&!s.m_vdp2_composition_active);
   std::vector<unsigned> events;
   unsigned order[]={3,2,1,0,4,5};
   for(unsigned pri=1;pri<8;++pri)for(unsigned id:order){
