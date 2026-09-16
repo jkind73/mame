@@ -15,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation', choices=('lsb', 'order'))
+p.add_argument('--mutation', choices=('lsb', 'order', 'zero-pass', 'sprite-order'))
 a = p.parse_args()
 src = (ROOT / 'src/mame/sega/saturn.cpp').read_text()
 
@@ -37,6 +37,16 @@ if a.mutation == 'lsb':
     functions = functions.replace('(base & 6) == (pass & 6)', 'base == pass')
 if a.mutation == 'order':
     functions = functions.replace('vdp2_draw_NBG3(m_tmpbitmap, cliprect);', 'vdp2_draw_NBG0(m_tmpbitmap, cliprect);')
+
+if a.mutation == 'zero-pass':
+    old='for (pri = 1; pri < 8; pri++)'
+    assert functions.count(old)==1
+    functions=functions.replace(old,'for (pri = 0; pri < 8; pri++)')
+if a.mutation == 'sprite-order':
+    old='draw_sprites(m_tmpbitmap, cliprect, pri);'
+    anchor='m_vdp2_priority_pass = pri;'
+    assert functions.count(old)==1 and functions.count(anchor)==1
+    functions=functions.replace(old,'').replace(anchor,anchor+'\n      '+old)
 
 code = r'''
 #include <algorithm>
