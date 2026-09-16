@@ -35,7 +35,8 @@ if args.full:
     run(["pkg-config", "--exists", "sdl2", "SDL2_ttf", "fontconfig"])
 
 run([sys.executable, str(ROOT / "regtests/saturn/run_all.py")])
-flags = ["-std=c++20", "-O1", "-c", "-fno-strict-aliasing", "-DMAME_NOASM",
+# Match the production build's rejection of narrowing list initialization.
+flags = ["-std=c++20", "-Werror=narrowing", "-O1", "-c", "-fno-strict-aliasing", "-DMAME_NOASM",
          "-D__STDC_CONSTANT_MACROS", "-D__STDC_FORMAT_MACROS", "-D__STDC_LIMIT_MACROS"]
 for directory in ("src", "src/emu", "src/lib", "src/lib/util", "src/devices",
                   "src/mame", "src/mame/shared", "src/osd", "src/osd/modules"):
