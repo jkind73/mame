@@ -5952,7 +5952,7 @@ void saturn_state::vdp2_fill_rotation_parameter_table(uint8_t rot_parameter) {
                                                                 : 0x00000000);
   current_rotation_table.px =
       (m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x3fff0000) |
-      ((m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x30000000) ? 0xc0000000
+      ((m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x20000000) ? 0xc0000000
                                                                 : 0x00000000);
   current_rotation_table.py =
       (m_vdp2_vram[(address / 4 + 13) & 0x3ffff] & 0x00003fff) << 16;
@@ -6111,6 +6111,7 @@ uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
       !(rot_parameter == 1 ? VDP2_RAKTE : VDP2_RBKTE) &&
       m_vdp2->get_lsmd() != 3 && !(m_vdp2->get_hreso() & 2) &&
       !(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR) &&
+      current_tilemap.layer_name != 0x81 &&
       VDP2_RPMD < 2) // only a unit-step, coefficient-free translation
   {
     return 0;
@@ -7200,9 +7201,9 @@ void saturn_state::draw_4bpp_bitmap(bitmap_rgb32 &bitmap,
       if (!vdp2_window_process(xdst, ydst))
         continue;
 
-      xf = current_tilemap.incx * xdst;
+      xf = uint32_t(uint64_t(current_tilemap.incx) * xdst + current_tilemap.scrollx_fraction);
       xf >>= 16;
-      yf = current_tilemap.incy * ydst;
+      yf = uint32_t(uint64_t(current_tilemap.incy) * ydst + current_tilemap.scrolly_fraction);
       yf >>= 16;
 
       xsrc = (xf + scrollx) & (xsize_mask - 1);
@@ -7263,9 +7264,9 @@ void saturn_state::draw_8bpp_bitmap(bitmap_rgb32 &bitmap,
       if (!vdp2_window_process(xdst, ydst))
         continue;
 
-      xf = current_tilemap.incx * xdst;
+      xf = uint32_t(uint64_t(current_tilemap.incx) * xdst + current_tilemap.scrollx_fraction);
       xf >>= 16;
-      yf = current_tilemap.incy * ydst;
+      yf = uint32_t(uint64_t(current_tilemap.incy) * ydst + current_tilemap.scrolly_fraction);
       yf >>= 16;
 
       xsrc = (xf + scrollx) & (xsize_mask - 1);
@@ -7321,9 +7322,9 @@ void saturn_state::draw_11bpp_bitmap(bitmap_rgb32 &bitmap,
       if (!vdp2_window_process(xdst, ydst))
         continue;
 
-      xf = current_tilemap.incx * xdst;
+      xf = uint32_t(uint64_t(current_tilemap.incx) * xdst + current_tilemap.scrollx_fraction);
       xf >>= 16;
-      yf = current_tilemap.incy * ydst;
+      yf = uint32_t(uint64_t(current_tilemap.incy) * ydst + current_tilemap.scrolly_fraction);
       yf >>= 16;
 
       xsrc = (xf + scrollx) & (xsize_mask - 1);
@@ -7376,9 +7377,9 @@ void saturn_state::draw_rgb15_bitmap(bitmap_rgb32 &bitmap,
       if (!vdp2_window_process(xdst, ydst))
         continue;
 
-      xf = current_tilemap.incx * xdst;
+      xf = uint32_t(uint64_t(current_tilemap.incx) * xdst + current_tilemap.scrollx_fraction);
       xf >>= 16;
-      yf = current_tilemap.incy * ydst;
+      yf = uint32_t(uint64_t(current_tilemap.incy) * ydst + current_tilemap.scrolly_fraction);
       yf >>= 16;
 
       xsrc = (xf + scrollx) & (xsize_mask - 1);
@@ -7436,9 +7437,9 @@ void saturn_state::draw_rgb32_bitmap(bitmap_rgb32 &bitmap,
       if (!vdp2_window_process(xdst, ydst))
         continue;
 
-      xf = current_tilemap.incx * xdst;
+      xf = uint32_t(uint64_t(current_tilemap.incx) * xdst + current_tilemap.scrollx_fraction);
       xf >>= 16;
-      yf = current_tilemap.incy * ydst;
+      yf = uint32_t(uint64_t(current_tilemap.incy) * ydst + current_tilemap.scrolly_fraction);
       yf >>= 16;
 
       xsrc = (xf + scrollx) & (xsize_mask - 1);
@@ -8001,10 +8002,6 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
       }
       /* WE'VE GOT THE TILE INFO ... */
 
-      if (tilecode < tilecodemin)
-        tilecodemin = tilecode;
-      if (tilecode > tilecodemax)
-        tilecodemax = tilecode;
 
       /* DECODE ANY TILES WE NEED TO DECODE */
 
@@ -8042,6 +8039,11 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
 
       if (!m_vdp2->get_vramsz())
         tilecode &= 0x3fff;
+
+      if (tilecode < tilecodemin)
+        tilecodemin = tilecode;
+      if (tilecode > tilecodemax)
+        tilecodemax = tilecode;
 
       /* DRAW! */
       if (current_tilemap.incx != 0x10000 || current_tilemap.incy != 0x10000 ||
@@ -8329,8 +8331,22 @@ void saturn_state::vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap,
 
     vdp2_layer_data.map_offset_max += mapsize;
 
+    // Character numbers are 32-byte units, not character lengths. Watch
+    // every cell and every byte of the selected color format, including the
+    // tail of the highest-numbered character (ST-058 character pattern data).
+    unsigned const cell_bytes = 32U << (current_tilemap.colour_depth == 4 ? 3 :
+        current_tilemap.colour_depth >= 2 ? 2 : current_tilemap.colour_depth);
+    unsigned const character_bytes = cell_bytes * (current_tilemap.tile_size ? 4 : 1);
+    unsigned const vram_words = m_vdp2->get_vramsz() ? 0x40000 : 0x20000;
     vdp2_layer_data.tile_offset_min = tilecodemin * 0x20 / 4;
-    vdp2_layer_data.tile_offset_max = (tilecodemax + 1) * 0x20 / 4;
+    vdp2_layer_data.tile_offset_max = (tilecodemax * 0x20 + character_bytes) / 4;
+    if (vdp2_layer_data.tile_offset_max > vram_words) {
+      // A wrapping character has two disjoint ranges. Conservatively watch
+      // the whole decode allocation rather than miss its wrapped head or
+      // an access through the upper VRAM aperture in the existing renderer.
+      vdp2_layer_data.tile_offset_min = 0;
+      vdp2_layer_data.tile_offset_max = 0x40000;
+    }
   }
 }
 
@@ -8342,6 +8358,8 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
   int const interval = std::max<int>(1, current_tilemap.linescroll_interval);
   int const main_scrollx = current_tilemap.scrollx;
   int const main_scrolly = current_tilemap.scrolly;
+  uint16_t const fraction_x = current_tilemap.scrollx_fraction;
+  uint16_t const fraction_y = current_tilemap.scrolly_fraction;
   int32_t const main_incx = current_tilemap.incx;
   unsigned const stride = bool(current_tilemap.linescroll_enable) +
       bool(current_tilemap.vertical_linescroll_enable) + bool(current_tilemap.linezoom_enable);
@@ -8349,15 +8367,21 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
     unsigned address = current_tilemap.linescroll_table_address / 4 +
         (first_line / interval) * stride;
     auto const read = [&]() { return m_vdp2_vram[address++ & 0x3ffff]; };
-    std::array<int32_t, 3> values{main_scrollx, main_scrolly, main_incx};
-    if (current_tilemap.linescroll_enable)
-      values[0] += util::sext(read() & 0x07ffff00, 27) >> 16;
+    std::array<int32_t, 5> values{main_scrollx, main_scrolly, main_incx, fraction_x, fraction_y};
+    if (current_tilemap.linescroll_enable) {
+      uint32_t const horizontal = uint32_t(main_scrollx) * 65536 + fraction_x +
+          uint32_t(util::sext(read() & 0x07ffff00, 27));
+      values[0] = int32_t(horizontal) >> 16;
+      values[3] = horizontal & 0xff00;
+    }
     if (current_tilemap.vertical_linescroll_enable) {
       int32_t const vertical = util::sext(read() & 0x07ffff00, 27);
       // Basic renderers add screen Y * incy. Cancel it at the entry's
       // first line, not at the beginning of this rendering pass.
-      int32_t const origin = uint32_t(vertical) - uint32_t(int64_t(first_line) * current_tilemap.incy);
-      values[1] += origin >> 16;
+      uint32_t const origin = uint32_t(main_scrolly) * 65536 + fraction_y +
+          uint32_t(vertical) - uint32_t(int64_t(first_line) * current_tilemap.incy);
+      values[1] = int32_t(origin) >> 16;
+      values[4] = origin & 0xff00;
     }
     if (current_tilemap.linezoom_enable)
       values[2] = read() & 0x0007ff00; // unsigned 3.8 increment, not signed
@@ -8377,6 +8401,8 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
     current_tilemap.scrollx = values[0];
     current_tilemap.scrolly = values[1];
     current_tilemap.incx = values[2];
+    current_tilemap.scrollx_fraction = values[3];
+    current_tilemap.scrolly_fraction = values[4];
     if (current_tilemap.bitmap_enable)
       vdp2_draw_basic_bitmap(bitmap, clip);
     else
@@ -8388,6 +8414,8 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
   current_tilemap.scrollx = main_scrollx;
   current_tilemap.scrolly = main_scrolly;
   current_tilemap.incx = main_incx;
+  current_tilemap.scrollx_fraction = fraction_x;
+  current_tilemap.scrolly_fraction = fraction_y;
 }
 
 void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
@@ -8811,6 +8839,43 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         over_pattern[py * 16 + px] = vdp2_screen_over_pattern_pixel(name, px, py);
   }
 
+  // RPMD 2 selects a parameter before transparency/color calculation. B is
+  // not a second background beneath A (ST-058 Table 6.4). In particular an
+  // absent A dot must expose the previous screen, not a pre-rendered B dot.
+  rotation_table parameter_a = current_rotation_table;
+  if (VDP2_RPMD == 2 && iRP == 2) {
+    rotation_table const parameter_b = current_rotation_table;
+    vdp2_fill_rotation_parameter_table(1);
+    parameter_a = current_rotation_table;
+    current_rotation_table = parameter_b;
+  }
+  // When A reads coefficients per dot in mode 2, B may only read per line.
+  int32_t const coefficient_dx = VDP2_RPMD == 2 && iRP == 2 &&
+      VDP2_RAKTE && parameter_a.dkax != 0 ? 0 : RP.dkax;
+  uint32_t last_a_address = 0, last_a_entry = 0;
+  bool have_a_entry = false;
+  auto const selected = [&](int hx, int vy) {
+    if (VDP2_RPMD != 2 || iRP == 1)
+      return true;
+    if (!VDP2_RAKTE)
+      return false;
+    uint32_t const index = (parameter_a.kast +
+        coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
+        coef_delta(parameter_a.dkax, hx)) >> 16;
+    uint32_t const a_address = VDP2_RAKDBS
+        ? (VDP2_RAKTAOS & 7) * 0x20000 + index * 2
+        : (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
+    // A line coefficient is shared by all its output dots. Cache only for
+    // this pass; register/VRAM writes cannot leave a persistent stale entry.
+    if (!have_a_entry || last_a_address != a_address) {
+      last_a_entry = vdp2_read_rotation_coefficient(a_address);
+      last_a_address = a_address;
+      have_a_entry = true;
+    }
+    return VDP2_RAKDBS ? bool(last_a_entry & ((a_address & 2) ? 0x8000 : 0x80000000))
+                      : bool(last_a_entry & 0x80000000);
+  };
+
   /* clipping */
   switch (screen_over_process) {
   case 0:
@@ -8876,7 +8941,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     line = &bitmap.pix(vcnt);
 
     // TODO: nuke this spaghetti code
-    if (!use_coeff_table || RP.dkax == 0) {
+    if (!use_coeff_table || coefficient_dx == 0) {
       if (use_coeff_table) {
         switch (coeff_table_size) {
         case 0:
@@ -8951,7 +9016,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         y = ys >> 16;
 
         bool const outside = (x & clipxmask) || (y & clipymask);
-        if (outside && !repeat_pattern)
+        if ((outside && !repeat_pattern) || !selected(hcnt, vcnt))
           continue;
         if (vdp2_roz_window(hcnt, vcnt) == false)
           continue;
@@ -8996,7 +9061,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 0:
           address = coeff_table_offset +
                     ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
-                      coef_delta(RP.dkax, hcnt)) >>
+                      coef_delta(coefficient_dx, hcnt)) >>
                      16) *
                         4;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
@@ -9012,7 +9077,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 1:
           address = coeff_table_offset +
                     ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
-                      coef_delta(RP.dkax, hcnt)) >>
+                      coef_delta(coefficient_dx, hcnt)) >>
                      16) *
                         2;
           coeff_table_val = vdp2_read_rotation_coefficient(address);
@@ -9061,7 +9126,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         y >>= 16;
 
         bool const outside = (x & clipxmask) || (y & clipymask);
-        if (outside && !repeat_pattern)
+        if ((outside && !repeat_pattern) || !selected(hcnt, vcnt))
           continue;
         // Coefficient lookup granularity does not bypass either window.
         if (!vdp2_roz_window(hcnt, vcnt))
@@ -9121,14 +9186,15 @@ void saturn_state::vdp2_roz_window_prepare(int y) {
 
 inline bool saturn_state::vdp2_roz_window(int x, int y) {
   int res;
-  uint8_t logic = VDP2_R0LOG;
-  uint8_t w0_enable = VDP2_R0W0E;
-  uint8_t w1_enable = VDP2_R0W1E;
-  uint8_t w0_area = VDP2_R0W0A;
-  uint8_t w1_area = VDP2_R0W1A;
+  bool const rbg1 = current_tilemap.layer_name == 0x81;
+  uint8_t logic = rbg1 ? VDP2_N0LOG : VDP2_R0LOG;
+  uint8_t w0_enable = rbg1 ? VDP2_N0W0E : VDP2_R0W0E;
+  uint8_t w1_enable = rbg1 ? VDP2_N0W1E : VDP2_R0W1E;
+  uint8_t w0_area = rbg1 ? VDP2_N0W0A : VDP2_R0W0A;
+  uint8_t w1_area = rbg1 ? VDP2_N0W1A : VDP2_R0W1A;
 
   if (w0_enable == 0 && w1_enable == 0)
-    return VDP2_R0SWE ? true : !(logic & 1);
+    return (rbg1 ? VDP2_N0SWE : VDP2_R0SWE) ? true : !(logic & 1);
 
   vdp2_roz_window_prepare(y);
 
@@ -9263,6 +9329,8 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
 
   current_tilemap.scrollx = VDP2_SCXIN0;
   current_tilemap.scrolly = VDP2_SCYIN0;
+  current_tilemap.scrollx_fraction = VDP2_SCXDN0 & 0xff00;
+  current_tilemap.scrolly_fraction = VDP2_SCYDN0 & 0xff00;
   current_tilemap.incx = VDP2_ZMXN0;
   current_tilemap.incy = VDP2_ZMYN0;
 
@@ -9299,9 +9367,19 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
         VDP2_CP_NBG0_PNMDR, VDP2_CP_NBG0_CPDR, current_tilemap.bitmap_enable);
   }
 
-  if (VDP2_R1ON)
+  current_tilemap.roz_mode3 = false;
+  if (VDP2_R1ON) {
+    // RBG1 shares format/color controls with NBG0, not its normal-scroll
+    // coordinate or line/cell-scroll controls (ST-058 sections 5 and 6).
+    current_tilemap.scrollx = current_tilemap.scrolly = 0;
+    current_tilemap.incx = current_tilemap.incy = 0x10000;
+    current_tilemap.linescroll_enable = 0;
+    current_tilemap.vertical_linescroll_enable = 0;
+    current_tilemap.vertical_cell_scroll_enable = 0;
+    current_tilemap.linezoom_enable = 0;
+    current_tilemap.window_control = {}; // evaluated on the rotated output
     vdp2_draw_rotation_screen(bitmap, cliprect, 2);
-  else
+  } else
     vdp2_check_tilemap(bitmap, cliprect);
 }
 
@@ -9326,6 +9404,10 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
      Mosaic            : Yes
   */
   current_tilemap.enabled = VDP2_N1ON;
+
+  // ST-058 p.148: two rotation screens exclude the normal screens.
+  if (VDP2_R0ON && VDP2_R1ON)
+    current_tilemap.enabled = 0;
 
   // ST-058 p.61: RGB888 NBG0 excludes all other normal screens.
   if (VDP2_N0CHCN == 0x04)
@@ -9367,6 +9449,8 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
 
   current_tilemap.scrollx = VDP2_SCXIN1;
   current_tilemap.scrolly = VDP2_SCYIN1;
+  current_tilemap.scrollx_fraction = VDP2_SCXDN1 & 0xff00;
+  current_tilemap.scrolly_fraction = VDP2_SCYDN1 & 0xff00;
   current_tilemap.incx = VDP2_ZMXN1;
   current_tilemap.incy = VDP2_ZMYN1;
 
@@ -9426,6 +9510,10 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
 
   current_tilemap.enabled = VDP2_N2ON;
 
+  // ST-058 p.148: two rotation screens exclude the normal screens.
+  if (VDP2_R0ON && VDP2_R1ON)
+    current_tilemap.enabled = 0;
+
   // ST-058 Table 5.2: quarter reduction on NBG0, or half reduction
   // with 256 colors, consumes the resources otherwise used by NBG2.
   // This follows the configured reduction range, not the current increment.
@@ -9473,6 +9561,7 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
 
   current_tilemap.scrollx = VDP2_SCXN2;
   current_tilemap.scrolly = VDP2_SCYN2;
+  current_tilemap.scrollx_fraction = current_tilemap.scrolly_fraction = 0;
   /*This layer can't be scaled*/
   current_tilemap.incx = 0x10000;
   current_tilemap.incy = 0x10000;
@@ -9532,6 +9621,10 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
 
   current_tilemap.enabled = VDP2_N3ON;
 
+  // ST-058 p.148: two rotation screens exclude the normal screens.
+  if (VDP2_R0ON && VDP2_R1ON)
+    current_tilemap.enabled = 0;
+
   // The corresponding NBG1 reduction settings disable NBG3 (Table 5.2).
   if (VDP2_N1ZMQT || (VDP2_N1ZMHF && VDP2_N1CHCN == 1))
     current_tilemap.enabled = 0;
@@ -9577,6 +9670,7 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
 
   current_tilemap.scrollx = VDP2_SCXN3;
   current_tilemap.scrolly = VDP2_SCYN3;
+  current_tilemap.scrollx_fraction = current_tilemap.scrolly_fraction = 0;
   /*This layer can't be scaled*/
   current_tilemap.incx = 0x10000;
   current_tilemap.incy = 0x10000;
@@ -9672,6 +9766,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
   }
 
   vdp2_fill_rotation_parameter_table(iRP);
+  current_tilemap.scrollx_fraction = current_tilemap.scrolly_fraction = 0;
 
   if (iRP == 1) {
     current_tilemap.plane_size = VDP2_RAPLSZ;
