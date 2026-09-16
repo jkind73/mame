@@ -22,7 +22,7 @@ def extract(text,sig):
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
 funcs=[extract(src,sig) for sig in ('void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
-f=extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
+f=extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
 if a.mutation=='phase':f=f.replace('+ t.scrollx_fraction','+ 0').replace('+ t.scrolly_fraction','+ 0')
 if a.mutation=='cell':f=f.replace('unsigned((source_x >> 19) - first_cell)','unsigned(sample_x / 8 + first_cell * 0)')
 if a.mutation=='mosaic':f=f.replace('t.vertical_cell_scroll_enable && !mosaic','t.vertical_cell_scroll_enable')
@@ -44,7 +44,7 @@ code=r'''
 namespace util {int32_t sext(uint32_t x,int n){return int32_t(x<<(32-n))>>(32-n);}}
 struct rectangle {int l,r,t,b;int left()const{return l;}int right()const{return r;}int top()const{return t;}int bottom()const{return b;}bool empty()const{return l>r||t>b;}};
 struct bitmap_rgb32 {std::array<uint32_t,24*16> data;bitmap_rgb32(){data.fill(0xff102030);}uint32_t &pix(int y,int x){assert(x>=0&&x<24&&y>=0&&y<16);return data[y*24+x];}};
-struct video {int lsmd=0;bool size=false;int get_lsmd(){return lsmd;}bool get_vramsz(){return size;}};
+struct video {int get_hreso(){return 0;}int lsmd=0;bool size=false;int get_lsmd(){return lsmd;}bool get_vramsz(){return size;}};
 struct memory {std::vector<uint32_t> words=std::vector<uint32_t>(0x40000);unsigned reads=0;uint32_t operator[](unsigned i){assert(i<words.size());++reads;return words[i];}};
 struct palette {uint32_t pen(unsigned i){assert(i<2048);return 0xff000000|((i*7919)&0xffffff);}};
 uint32_t blend(uint32_t d,uint32_t s,unsigned a,bool add){uint32_t r=0xff000000;for(int shift:{0,8,16}){unsigned D=(d>>shift)&255,S=(s>>shift)&255;r|=(add?std::min(255u,D+S):(D*(256-a)+S*a)/256)<<shift;}return r;}
@@ -52,8 +52,10 @@ uint32_t alpha_blend_r32(uint32_t d,uint32_t s,unsigned a){return blend(d,s,a,fa
 uint32_t add_blend_r32(uint32_t d,uint32_t s){return blend(d,s,0,true);}
 struct saturn_state {
  bool m_vdp2_composition_active=false;
- bitmap_rgb32 m_vdp2_raw_top;
- struct {uint8_t data[24*16]{};uint8_t &pix(int y,int x){assert(x>=0&&x<24&&y>=0&&y<16);return data[y*24+x];}} m_vdp2_raw_alpha;
+ bitmap_rgb32 m_vdp2_raw_top,m_vdp2_raw_under;
+ struct {uint8_t data[24*16]{};uint8_t &pix(int y,int x){assert(x>=0&&x<24&&y>=0&&y<16);return data[y*24+x];}} m_vdp2_raw_alpha,m_vdp2_raw_meta,m_vdp2_under_meta;
+ bool vdp2_calculation_window(int,int){return true;}
+ bool m_vdp2_extended_active=false;bool m_vdp2_gradation_active=false,m_vdp2_gradation_capture=false;unsigned m_vdp2_gradation_layer=7;bitmap_rgb32 m_vdp2_gradation_source;
 
  int m_vdp2_priority_pass=-1;
  uint32_t m_vdp2_cram[1024]{};

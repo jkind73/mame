@@ -1,5 +1,55 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## Full-VDP2 scope: compositor, shadows and windows — 2026-09-15
+
+Scope is now the entire VDP2 tracker, not just P2. This increment implements the
+remaining major calculation operations rather than stopping at ordinary blending:
+
+- **V2-C06a/C06b:** extended second/third/fourth-input calculation, source format
+  and CCEN metadata, CRAM-mode restrictions, BOKEN exclusion, and gradation's
+  designated-screen 2:1:1 horizontal input. A single raw-screen capture with a
+  two-dot left halo preserves split clips without rendering every layer twice.
+- **V2-C02a:** underlying NBG/RBG/back SDCTL selection; normal-shadow precedence,
+  transparent-shadow TPSDSL, type-2–7 MSB self-shadow and sprite-window exclusion.
+  Both opaque/calculated sprites share the same output path. Shadows occur after
+  calculation/offset and no longer alter a raw input seen by a later higher layer.
+  This explicitly corrects the earlier raw-history shadow-half implementation.
+- **V2-C05c:** apply only the top screen's signed A/B color offset after calculation;
+  keep raw background, back and sprite inputs unoffset. Table 12.1 high/exclusive
+  restrictions reject palette second inputs in CRAM modes 1/2.
+- **V2-C07b:** sprite line-color insertion, including CCRLB second-ratio selection.
+- **V2-C03c:** calculation-only W0/W1/SW windows suppress calculation, not coverage;
+  normal/sprite output windows now retain SW area polarity and include it in cached
+  row evaluation and cache keys. Existing rotation/parameter windows are retained.
+
+Primary evidence: ST-058 pp.190, 231, 236–242, 250–252, 256–260. Pinned MiSTer
+(a95b0850) `ExtColorCalc`, `ColorCalcExtRatio`, output offset/shadow stages, and
+pinned Ymir (6d779960) ordered composition/gradation provide independent checks.
+**Document conflict:** table 12.2's mode-0 2:1:0 entry conflicts with figure 12.3's
+fourth input. Implementation follows the figure's 2:1:1 and both references.
+CRAM-1/2 fourth-palette restrictions follow the table; the references simplify this.
+Gradation pixels 0/1 use Ymir's edge policy; outside-display inputs and prohibited
+transparent gradation boundaries are not claimed hardware-qualified.
+
+Validation: **36 regression scripts and eleven production object builds pass**.
+Production helpers plus actual MAME blend/offset arithmetic pass 786,432 extended
+format/enable/mode/ratio cases, 28,672 signed post-offset cases, 896 SDCTL identity
+cases, 6,144 gradation capture/halo/rank/ratio/split-clip scenes and the existing
+524,288 ordinary scenes. Eleven mutations fail assertions (including format,
+extended enable, gradation weights/halo, offset ordering and SDCTL selection).
+Sprite scanout adds 32,256 all-type shadow/CC/window images and 307,200 ratio/line
+images. Actual palette/bitmap/window/cache fixtures pass 184,320 images; 16,384
+W0/W1/SW control cases now also exercise calculation windows. Capture dispatch uses
+controlled source screens in its oracle; it is not a linked-game acceptance test.
+
+All new buffers/flags are derived render state, gated by the frame-active flag;
+unchanged dimensions reuse allocations. The extra underlying RGB/metadata buffers
+are allocated only for extended mode; the raw designated-screen buffer only for
+legal gradation. No-effect frames preserve the legacy fast paths. Runtime frame
+time, actual save-manager replay, timing/arbitration, external interfaces and the
+remaining tracker qualifications are still open. **The whole VDP2 is not complete.**
+
+
 ## P2 dependency: ordinary raw-second-image composition — 2026-09-15
 
 Normal, rotation and sprite output now share a bounded raw-source/ratio history.
