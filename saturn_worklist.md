@@ -1,5 +1,36 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## V2-T03g: retained palette-cell boundary source selection — 2026-09-16
+
+Zoom, alpha and transparent-pen palette helpers now normalize character numbers
+before use and share `vdp2_get_palette_cell`. Ordinary cells retain generic decoded
+cache access. The final 8-bit cell starts 32 bytes before physical memory ends but
+contains 64 bytes; it is read into a local 64-byte wrapped buffer instead of asking
+the contiguous generic decoder to read beyond physical memory. This also observes
+changes to its low-memory half without relying on a decoder dirty predecessor
+across the wrap. Four-bit cells fit within their 32-byte unit. The old last-8-bit-
+character decrement workaround is removed, so the requested character is retained.
+Zoom pen-usage lookup receives the normalized code too.
+
+Primary evidence: ST-058 p.53, table 4.2, specifies 32-byte base alignment for both
+32-byte four-bit and 64-byte eight-bit cells; section 3.1 supplies physical capacity.
+The pinned Ymir shared storage wrapping corroborates the 512 KiB address model,
+not 1 MiB support. The retained MAME 8x8x8 layout uses a 32-byte character increment,
+which explains the final-cell contiguous-decoder overrun.
+
+**45 scripts and eleven production object builds pass**, with narrowing errors
+enforced. New production-source-selector fixture checks **262,144** capacity/depth/
+code-alias configurations, all 64 dots, ordinary decoder routing and wrapped low-
+memory updates. Size, missing-tail and wrong-tail mutations compile and fail
+assertions. Decoder and memory updates are controlled stand-ins; renderer routing
+and workaround removal are source assertions. This is not a linked generic-decoder
+or full palette-renderer image/cache/save-manager replay. No measured speedup claimed.
+
+T03 remains partial pending integrated consumer/decoder qualification. The generic
+decoder itself and non-renderer users such as graphics inspection are not changed.
+Full VDP2, fetch timing, linked game/save-load and performance acceptance remain open.
+
+
 ## V2-T03f: retained direct-color character row wrapping — 2026-09-16
 
 The four RGB555/RGB888 zoomed and unzoomed character render helpers now normalize

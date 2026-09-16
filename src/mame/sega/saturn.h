@@ -413,6 +413,7 @@ protected:
   void draw_rgb15_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void draw_rgb32_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
 
+  const uint8_t *vdp2_get_palette_cell(gfx_element *gfx, uint32_t code, uint8_t (&wrapped)[64]);
   void vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp, const rectangle &clip,
                         gfx_element *gfx, uint32_t code, uint32_t color,
                         int flipx, int flipy, int sx, int sy, int transparency,
