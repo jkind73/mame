@@ -1,5 +1,46 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## V2-C02c: linked shadow layer identity, rank and precedence — 2026-09-16
+
+Added **160 shadow-ranking scenes per configuration**: underlying NBG0, NBG1,
+NBG2, NBG3 or back screen; sprite priorities 0/1/2/3; correct versus wrong SDCTL
+layer selection; normal-MSB precedence versus transparent shadow; and both VRAM
+capacities. Background priority is 2, so zero, below, tied and above are distinct.
+For the back screen, nonzero sprite priority wins. Normal tests use type-2 pixel
+87fe: its MSB is set but the normal-shadow color code must take precedence over
+self-shadow. Transparent tests use 8000 with TPSDSL enabled.
+
+NBG0/1 use red/green bitmaps; NBG2/3 use yellow/white cells with independent plane
+and character storage and real PN/CP commands. The back screen is blue. The oracle
+selects the expected underlying color, applies documented rank/eligibility rules,
+then halves channels only at framebuffer checker pixels. Each scene checks 144
+probes plus real save/mutate/load/full-image replay with both framebuffer banks
+overwritten. Captures 431 (normal-code/MSB tie over NBG2) and 489 (transparent
+shadow over back) were inspected.
+
+**4,096 synthetic cases pass freshly** (3,072 DRC / 1,024 interpreter): 978 composition
+plus 46 background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible
+BIOS replays, all 47 regression scripts and 44 protocol cases pass; `-validate` has
+no diagnostics. New extracted priority-zero-pass and sprite-before-background
+mutants compile and fail dispatch assertions; the unmodified dispatch suite passes
+131,072 images. Normal/MSB precedence and underlying-layer mutants were rerun and
+also assertion-rejected. Dispatch callbacks are stand-ins in that extracted suite;
+these linked scenes separately exercise the real framebuffer/compositor path.
+Production and the previously rebuilt executable are unchanged.
+
+Primary ST-058 pp.224–225/Table 11.1 and pp.256,258–260 were reread: priority zero
+is transparent, sprites win equal priorities, normal-shadow codes take precedence,
+and SDCTL selects each underlying screen independently. Pinned Ymir renderer lines
+3986–4001 corroborate the rank and underlying-layer gates; MiSTer VDP2 lines
+3276–3282 and 3298–3315 corroborate shadow rank comparisons and sprite tie order.
+The earlier Ymir offset-order disagreement remains documented and is not used as
+an ordering oracle here.
+
+This closes the bounded NBG0–3/back shadow-ranking submatrix, not RBG0/RBG1,
+8-bit framebuffer modes, mixed RGB/window effects, per-dot background priority
+crossings or raster/VDP1 command timing. Full VDP2 and parent C02 remain open;
+older totals below are historical checkpoints.
+
 ## V2-C02b: linked normal/MSB shadows and color-operation order — 2026-09-16
 
 Added **160 shadow scenes per configuration** at both VRAM capacities. Normal
