@@ -1,5 +1,33 @@
 # Sega SDK hardware-document audit
 
+## V2-C08a: linked source mosaic, transparency and blending — 2026-09-16
+
+Added **16 mosaic scenes per configuration**: 1x1, 3x5, 16x16 and 7x2 blocks,
+with and without ordinary blending, at both physical VRAM capacities. NBG0 uses
+transparent/red/green source patterns and nonzero X/Y scroll; NBG1 uses an independent
+yellow/white pattern. The analytic oracle samples only NBG0 at each mosaic block's
+upper-left coordinate, then composites against the unchanged NBG1 dot. This detects
+post-composition mosaicking and accidental resampling of the lower screen. Every
+scene enables a nonzero nine-line vertical-cell-scroll table that mosaic must suppress,
+including when the mosaic dimensions are 1x1. Each scene checks 144 probes and real
+save/mutate/load/full-image replay; the mutation explicitly clears MZCTL. Captures
+with and without blending were inspected.
+
+**1,088 synthetic cases pass** (816 DRC / 272 interpreter): 226 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays pass, all 47 regression scripts pass, and `-validate` again has no diagnostics.
+The unchanged production executable retains the existing full-link/eleven-object
+qualification. Mosaic/VCSC-suppression and clip-relative-origin mutations compile
+and fail independent extracted image assertions. Unmutated point-sampler coverage
+passes 294,912 images and 98,304 metadata cases; the 44 runner-protocol cases pass.
+
+Primary basis: ST-058 pp.117–119. Pinned Ymir/MiSTer corroborate layer-local mosaic
+and VCSC priority, not hardware timing or every combination. No production correction
+was required by these scenes. C08a is bounded NBG0 normal-resolution qualification;
+other layers, rotation/interlace, all size/effect combinations, exact bus/latches,
+external video, games/title and comparative performance remain open. Full VDP2 is
+not declared complete. Earlier totals below describe earlier checkpoints.
+
 ## V2-C03b: linked line-window tables and physical wrapping — 2026-09-16
 
 Added **16 line-window scenes per configuration** to the composition fixture:
