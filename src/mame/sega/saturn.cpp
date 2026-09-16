@@ -7182,6 +7182,8 @@ void saturn_state::draw_4bpp_bitmap(bitmap_rgb32 &bitmap,
   int src_offs;
   uint8_t *vram = m_vdp2_legacy.gfx_decode.get();
   uint32_t map_offset = current_tilemap.bitmap_map * 0x20000;
+  // Match the point sampler: wrap in configured VRAM, not always 4 Mbits.
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   int scrollx = current_tilemap.scrollx;
   int scrolly = current_tilemap.scrolly;
   uint16_t dot_data;
@@ -7216,7 +7218,7 @@ void saturn_state::draw_4bpp_bitmap(bitmap_rgb32 &bitmap,
       src_offs = (xsrc + (ysrc * xsize));
       src_offs /= 2;
       src_offs += map_offset;
-      src_offs &= 0x7ffff;
+      src_offs &= vram_mask;
 
       dot_data = vram[src_offs] >> ((xsrc & 1) ? 0 : 4);
       dot_data &= 0xf;
@@ -7245,6 +7247,8 @@ void saturn_state::draw_8bpp_bitmap(bitmap_rgb32 &bitmap,
   int src_offs;
   uint8_t *vram = m_vdp2_legacy.gfx_decode.get();
   uint32_t map_offset = current_tilemap.bitmap_map * 0x20000;
+  // Match the point sampler: wrap in configured VRAM, not always 4 Mbits.
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   int scrollx = current_tilemap.scrollx;
   int scrolly = current_tilemap.scrolly;
   uint16_t dot_data;
@@ -7278,7 +7282,7 @@ void saturn_state::draw_8bpp_bitmap(bitmap_rgb32 &bitmap,
       ysrc = (yf + scrolly) & (ysize_mask - 1);
       src_offs = (xsrc + (ysrc * xsize));
       src_offs += map_offset;
-      src_offs &= 0x7ffff;
+      src_offs &= vram_mask;
 
       dot_data = vram[src_offs];
 
@@ -7306,6 +7310,8 @@ void saturn_state::draw_11bpp_bitmap(bitmap_rgb32 &bitmap,
   int src_offs;
   uint8_t *vram = m_vdp2_legacy.gfx_decode.get();
   uint32_t map_offset = current_tilemap.bitmap_map * 0x20000;
+  // Match the point sampler: wrap in configured VRAM, not always 4 Mbits.
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   int scrollx = current_tilemap.scrollx;
   int scrolly = current_tilemap.scrolly;
   uint16_t dot_data;
@@ -7337,7 +7343,7 @@ void saturn_state::draw_11bpp_bitmap(bitmap_rgb32 &bitmap,
       src_offs = (xsrc + (ysrc * xsize));
       src_offs *= 2;
       src_offs += map_offset;
-      src_offs &= 0x7ffff;
+      src_offs &= vram_mask;
 
       dot_data = ((vram[src_offs] << 8) | (vram[src_offs + 1] << 0)) & 0x7ff;
 
@@ -7365,6 +7371,8 @@ void saturn_state::draw_rgb15_bitmap(bitmap_rgb32 &bitmap,
   int src_offs;
   uint8_t *vram = m_vdp2_legacy.gfx_decode.get();
   uint32_t map_offset = current_tilemap.bitmap_map * 0x20000;
+  // Match the point sampler: wrap in configured VRAM, not always 4 Mbits.
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   int scrollx = current_tilemap.scrollx;
   int scrolly = current_tilemap.scrolly;
   int r, g, b;
@@ -7392,7 +7400,7 @@ void saturn_state::draw_rgb15_bitmap(bitmap_rgb32 &bitmap,
       src_offs = (xsrc + (ysrc * xsize));
       src_offs *= 2;
       src_offs += map_offset;
-      src_offs &= 0x7ffff;
+      src_offs &= vram_mask;
 
       dot_data = (vram[src_offs] << 8) | (vram[src_offs + 1] << 0);
 
@@ -7425,6 +7433,8 @@ void saturn_state::draw_rgb32_bitmap(bitmap_rgb32 &bitmap,
   int src_offs;
   uint8_t *vram = m_vdp2_legacy.gfx_decode.get();
   uint32_t map_offset = current_tilemap.bitmap_map * 0x20000;
+  // Match the point sampler: wrap in configured VRAM, not always 4 Mbits.
+  unsigned const vram_mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   int scrollx = current_tilemap.scrollx;
   int scrolly = current_tilemap.scrolly;
   int r, g, b;
@@ -7452,7 +7462,7 @@ void saturn_state::draw_rgb32_bitmap(bitmap_rgb32 &bitmap,
       src_offs = (xsrc + (ysrc * xsize));
       src_offs *= 4;
       src_offs += map_offset;
-      src_offs &= 0x7ffff;
+      src_offs &= vram_mask;
 
       dot_data = (vram[src_offs + 0] << 24) | (vram[src_offs + 1] << 16) |
                  (vram[src_offs + 2] << 8) | (vram[src_offs + 3] << 0);
@@ -7483,6 +7493,24 @@ void saturn_state::vdp2_draw_basic_bitmap(bitmap_rgb32 &bitmap,
                                           const rectangle &cliprect) {
   if (!current_tilemap.enabled)
     return;
+
+  if (current_tilemap.layer_name & 0x80) {
+    // A cached bitmap has no pattern-name table. Cover its complete source
+    // surface, not stale watch ranges from a previously rendered tilemap.
+    // ST-058 table 4.11: 4/8/16/16/32 bits per dot, 20000H base alignment.
+    unsigned const width = (current_tilemap.bitmap_size & 2) ? 1024 : 512;
+    unsigned const height = (current_tilemap.bitmap_size & 1) ? 512 : 256;
+    unsigned const shift = current_tilemap.colour_depth < 3 ? current_tilemap.colour_depth : current_tilemap.colour_depth - 1;
+    unsigned const bytes = (width * height / 2) << shift;
+    unsigned const memory = m_vdp2->get_vramsz() ? 0x100000 : 0x80000;
+    unsigned const start = (current_tilemap.bitmap_map * 0x20000) & (memory - 1);
+    bool const wraps = bytes >= memory || start + bytes > memory;
+    vdp2_layer_data.map_offset_min = vdp2_layer_data.map_offset_max = 0;
+    // A wrapped range has two pieces. Conservatively watch the physical
+    // allocation, as for wrapping character data; never miss its low part.
+    vdp2_layer_data.tile_offset_min = wraps ? 0 : start / 4;
+    vdp2_layer_data.tile_offset_max = wraps ? memory / 4 : (start + bytes) / 4;
+  }
 
   /* new bitmap code, supposed to rewrite the old one. Not supposed to be clean,
    * but EFFICIENT! */
@@ -8368,10 +8396,11 @@ void saturn_state::vdp2_check_tilemap_with_linescroll(
   int32_t const main_incx = current_tilemap.incx;
   unsigned const stride = bool(current_tilemap.linescroll_enable) +
       bool(current_tilemap.vertical_linescroll_enable) + bool(current_tilemap.linezoom_enable);
+  unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
   auto const values_at = [&](int first_line) {
     unsigned address = current_tilemap.linescroll_table_address / 4 +
         (first_line / interval) * stride;
-    auto const read = [&]() { return m_vdp2_vram[address++ & 0x3ffff]; };
+    auto const read = [&]() { return m_vdp2_vram[address++ & word_mask]; };
     std::array<int32_t, 5> values{main_scrollx, main_scrolly, main_incx, fraction_x, fraction_y};
     if (current_tilemap.linescroll_enable) {
       uint32_t const horizontal = uint32_t(main_scrollx) * 65536 + fraction_x +
@@ -8575,7 +8604,7 @@ void saturn_state::vdp2_check_tilemap(bitmap_rgb32 &bitmap,
       /* vcsc_address is (VCSTA & base_mask) * 2 >> 2, so it can already be
          the last word of VRAM before the per-character offset is added;
          wrap inside VRAM as the other table reads do */
-      char_scroll = m_vdp2_vram[cur_address & 0x3ffff] >> 16;
+      char_scroll = m_vdp2_vram[cur_address & (base_mask >> 1)] >> 16;
       char_scroll &= 0x07ff;
       if (char_scroll & 0x0400)
         char_scroll |= 0xf800;
@@ -10437,6 +10466,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
           memcmp(&RBG0_cache_data.layer_data[iRP - 1], &current_tilemap,
                  sizeof(current_tilemap)));
       if ((RBG0_cache_data.is_cache_dirty & iRP) ||
+          RBG0_cache_data.vram_size[iRP - 1] != m_vdp2->get_vramsz() ||
           memcmp(&RBG0_cache_data.layer_data[iRP - 1], &current_tilemap,
                  sizeof(current_tilemap)) != 0) {
         m_vdp2_legacy.roz_bitmap[iRP - 1].fill(rgb_t::transparent(),
@@ -10445,6 +10475,7 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
         // prepare cache data
         RBG0_cache_data.watch_vdp2_vram_writes |= iRP;
         RBG0_cache_data.is_cache_dirty &= ~iRP;
+        RBG0_cache_data.vram_size[iRP - 1] = m_vdp2->get_vramsz();
         memcpy(&RBG0_cache_data.layer_data[iRP - 1], &current_tilemap,
                sizeof(current_tilemap));
         RBG0_cache_data.map_offset_min[iRP - 1] =

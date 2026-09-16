@@ -623,6 +623,7 @@ protected:
   struct _RBG0_cache_data {
     uint8_t watch_vdp2_vram_writes = 0;
     uint8_t is_cache_dirty = 0;
+    bool vram_size[2]{false, false}; // physical wrap is part of the source-cache key
 
     uint32_t map_offset_min[2]{0, 0};
     uint32_t map_offset_max[2]{0, 0};
