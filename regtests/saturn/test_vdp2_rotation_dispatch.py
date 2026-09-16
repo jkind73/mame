@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear','screen-over','size'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--baseline',action='store_true');p.add_argument('--mutation',choices=('coefficient','blend','clear','screen-over','size','11bpp'));a=p.parse_args()
 src=subprocess.check_output(['git','show','69995fab:src/mame/sega/saturn.cpp'],cwd=ROOT,text=True) if a.baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text()
 header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -24,6 +24,7 @@ def extract(text,sig):
  return text[start:end]
 functions=[extract((ROOT/'src/mame/sega/saturn.cpp').read_text(),'unsigned saturn_state::vdp2_special_priority_mode('),extract((ROOT/'src/mame/sega/saturn.cpp').read_text(),'unsigned saturn_state::vdp2_special_color_mode('),extract(src,'uint8_t saturn_state::vdp2_is_rotation_applied('),extract(src,'void saturn_state::vdp2_draw_rotation_screen(')]
 f='\n'.join(functions)
+if a.mutation=='11bpp':f=f.replace('(current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||', '')
 if a.mutation=='size':f=f.replace('RBG0_cache_data.vram_size[iRP - 1] != m_vdp2->get_vramsz() ||', '')
 if a.mutation=='screen-over':f=f.replace('!(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR)', '(rot_parameter != 0)')
 if a.mutation=='clear':f=f.replace('fill(rgb_t::transparent(),','fill(rgb_t::black(),')
@@ -32,7 +33,7 @@ if a.mutation=='coefficient':
 if a.mutation=='blend':
  f=f.replace('current_tilemap.colour_calculation_enabled = colour_calculation_enabled;', 'current_tilemap.colour_calculation_enabled = colour_calculation_enabled; if (colour_calculation_enabled) current_tilemap.transparency |= STV_TRANSPARENCY_ALPHA;')
 names=sorted(set(re.findall(r'VDP2_\w+',f))|{'VDP2_RAKTE','VDP2_RBKTE','VDP2_CCMD'})
-fields=sorted((set(re.findall(r'current_tilemap\.(\w+)',f))|{'roz_mode3'})-{'window_control','map_offset'})
+fields=sorted((set(re.findall(r'current_tilemap\.(\w+)',f))|{'roz_mode3','colour_depth'})-{'window_control','map_offset'})
 code=r'''
 #include <cassert>
 #include <cstdint>
@@ -162,6 +163,12 @@ int main(){
    valid[parameter-1]=true;cached_size[parameter-1]=large;
    s.built=0;s.vdp2_draw_rotation_screen(output,{5,9,2,2},parameter);assert(!s.built);++size_cases;
   }
+ }
+ s.current_tilemap={};s.current_tilemap.colour_depth=2;
+ s.m_vdp2_composition_active=false;s.regs.VDP2_SFPRMD=s.regs.VDP2_SFCCMD=0;
+ for(int parameter:{1,2}){
+  s.built=s.copied=s.direct=0;s.vdp2_draw_rotation_screen(output,{1,14,2,2},parameter);
+  assert(s.built==0&&s.direct==0&&s.copied==1);
  }
  std::cout<<size_cases<<" cell/bitmap A/B cache size-transition and reuse cases passed\n";
  std::cout<<"Latched-row dispatch reuses the untransformed cache across clips\n";
