@@ -1,5 +1,33 @@
 # Sega SDK hardware-document audit
 
+## V2-C07a: linked line-color insertion, ratios and table wrapping — 2026-09-16
+
+Added **16 line-color scenes per configuration**: single/per-line tables, top-screen
+insertion, second-screen ratio selection from CCRLB, lower-layer line-color history
+isolation, and disabled top calculation, at both VRAM capacities. Blue/yellow table
+colors differ from the red/green background inputs. Top, lower-background, line and
+back ratio values deliberately differ. Tables cross the physical VRAM boundary and
+set ignored upper bits; bitmap and back data remain disjoint. Forty-eight probes
+include rows on both sides of the wrapping point and the first/last visible rows.
+The table and its address/enable/ratio controls are cleared during mutation before
+real load and full-image replay. Per-line and lower-history captures were inspected.
+
+**1,152 synthetic cases pass** (864 DRC / 288 interpreter): 242 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays pass, all 47 regression scripts pass, and `-validate` again has no diagnostics.
+The unchanged production executable retains its full-link/eleven-object evidence.
+Production line-color wrapping, single/per-line mode, line-ratio selection and
+raw-lower-history mutations compile and fail extracted image/state assertions.
+The 44 fake-executable runner-protocol cases pass; they are not renderer evidence.
+
+Primary basis: ST-058 pp.172–174,231,241–244. Pinned Ymir/MiSTer corroborate selected
+second-image insertion and ratio routing, not hardware timing or all combinations.
+No production correction was required by these scenes. C07a is bounded ordinary
+NBG0/NBG1 normal-resolution qualification: coefficient-selected/rotation line colors,
+interlace, extended/gradation interactions, exact bus/latches, external video,
+games/title and comparative performance remain open. Full VDP2 is not declared
+complete. Earlier totals below describe earlier checkpoints.
+
 ## V2-C08a: linked source mosaic, transparency and blending — 2026-09-16
 
 Added **16 mosaic scenes per configuration**: 1x1, 3x5, 16x16 and 7x2 blocks,

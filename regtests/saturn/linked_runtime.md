@@ -1,5 +1,33 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C07a: linked line-color insertion, ratios and table wrapping — 2026-09-16
+
+Added **16 line-color scenes per configuration**: single/per-line tables, top-screen
+insertion, second-screen ratio selection from CCRLB, lower-layer line-color history
+isolation, and disabled top calculation, at both VRAM capacities. Blue/yellow table
+colors differ from the red/green background inputs. Top, lower-background, line and
+back ratio values deliberately differ. Tables cross the physical VRAM boundary and
+set ignored upper bits; bitmap and back data remain disjoint. Forty-eight probes
+include rows on both sides of the wrapping point and the first/last visible rows.
+The table and its address/enable/ratio controls are cleared during mutation before
+real load and full-image replay. Per-line and lower-history captures were inspected.
+
+**1,152 synthetic cases pass** (864 DRC / 288 interpreter): 242 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays pass, all 47 regression scripts pass, and `-validate` again has no diagnostics.
+The unchanged production executable retains its full-link/eleven-object evidence.
+Production line-color wrapping, single/per-line mode, line-ratio selection and
+raw-lower-history mutations compile and fail extracted image/state assertions.
+The 44 fake-executable runner-protocol cases pass; they are not renderer evidence.
+
+Primary basis: ST-058 pp.172–174,231,241–244. Pinned Ymir/MiSTer corroborate selected
+second-image insertion and ratio routing, not hardware timing or all combinations.
+No production correction was required by these scenes. C07a is bounded ordinary
+NBG0/NBG1 normal-resolution qualification: coefficient-selected/rotation line colors,
+interlace, extended/gradation interactions, exact bus/latches, external video,
+games/title and comparative performance remain open. Full VDP2 is not declared
+complete. Earlier totals below describe earlier checkpoints.
+
 ## V2-C08a: linked source mosaic, transparency and blending — 2026-09-16
 
 Added **16 mosaic scenes per configuration**: 1x1, 3x5, 16x16 and 7x2 blocks,
@@ -224,7 +252,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 226-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 242-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -238,17 +266,25 @@ ratios, 36–67 second-selected ratios, 68 additive saturation, 69 disabled top
 calculation, 70–73 offsets, 74–85 coverage windows, 86–97 calculation-only windows,
 98–101 coverage line windows, 102–105 calculation-only line windows, and 106–113
 mosaic. The latter alternate plain/blended scenes at 1x1, 3x5, 16x16 and 7x2 sizes.
-Cases 114–226 repeat at the larger capacity. Line scenes use table bases at physical
+Cases 114–117 exercise single-color LNCL and 118–121 per-line LNCL: top insertion,
+line-selected ratio, lower-history isolation and disabled top calculation.
+Cases 122–242 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-226 ordered case records and the exact final marker. Sources are red over green;
+242 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Mosaic scenes replace the solid source data with a transparent/red/green foreground
 and yellow/white lower screen. Their source sample is displaced by scroll (5,7);
 the lower screen is sampled at the destination dot. The nine-line VCSC poison table
 must be ignored even when enabled mosaic has unit size. These checks do not measure
 fetch timing or certify other mosaic/interlace modes.
+
+Line-color scenes use the last eight bytes of physical VRAM as the table base,
+so per-line entries cross the boundary between rows 3 and 4. The displayed bitmap
+and back word move away from that table. Table pen codes 5 (blue) and 3 (yellow)
+include ignored upper bits, and line ratio 7 differs from top ratio 15 and lower/back
+ratio 31. Probe rows include 0, 1, 2, 3, 4, 5, 7, 8, 17, 63, 127 and 223.
 
 Scene selection and expected colors are independent of production renderer routines. Output screenshots are not
 hardware-derived reference images.
@@ -335,3 +371,17 @@ discrepancy. No hardware certification or measured speedup is claimed.
   lines 1683–1694 and 3018–3022: VCSC contribution masked when MZE is set,
   vertical/horizontal counters use the programmed size. Other pipeline timing
   and interlace conventions are outside this fixture's acceptance.
+
+## Line-color cross-check locations
+
+- Sega SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-058 PDF blob
+  `64ba1bac76427b122bf4c10a557d1a3cec29c3a1`, printed pp.172–174:
+  table format/address and single/per-line selection; p.231 top-screen LNCL
+  insertion; pp.241–244 calculation enable and ratio selection.
+- Ymir `6d779960127ced72087a418c1daefc637d0aaa80`, renderer
+  lines 2596–2601, 4049–4066 and 4128–4140: table color, top-layer LNCL
+  selection and replacement of the second image in ordinary calculation.
+- MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`, `VDP2.sv`
+  lines 1328,1466,3291–3296 and 3478–3483: table stepping, per-layer enable
+  and selected second-image ratio. Extended calculation disagreements recorded
+  elsewhere are not resolved by these ordinary-calculation tests.
