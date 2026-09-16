@@ -1,5 +1,30 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C03e: linked three-window logic matrix — 2026-09-16
+
+Continued from C03d with **64 combined W0/W1/sprite-window scenes per
+configuration**: all eight retained-area polarities, both LOG settings and both
+coverage/calculation-only uses, at both VRAM capacities. The independent oracle
+complements the documented active-area logic (ST-058 pp.189–195): LOG=0 retains
+the intersection; LOG=1 retains the union. Asymmetric overlapping rectangles and
+the displayed-framebuffer checker exercise all three inputs with 144 probes per
+scene. Both physical framebuffer banks are overwritten before full-image save
+replay. Captures 194 and 225 were inspected. Pinned Ymir lines 2450–2463 and
+MiSTer lines 3161–3168 provide cross-checks, not the expected-image oracle.
+
+All four **450-case composition runs pass**. With the unchanged 46-case background
+path and four BIOS replays from C03d, the recorded total is **1,984 synthetic cases**
+(1,488 DRC / 496 interpreter). JSON records distinguish the retained background/BIOS
+fixture hashes from the expanded composition fixture. All 47 regression scripts
+pass again, as do 44 protocol cases and `-validate`. A new extracted mutation
+reversing only the SW combination operator compiles and fails the bitmap-image
+assertion; the unmodified bitmap suite passes 184,320 images.
+
+No production change was required. C03e qualifies this normal-resolution NBG0
+three-window matrix, not all layers, rotation/line-window mixtures, latch timing,
+physical arbitration, games or comparative performance. Full VDP2 remains open;
+totals in older sections are historical checkpoints.
+
 ## V2-C03d: linked displayed-framebuffer sprite windows — 2026-09-16
 
 Added **48 sprite-window scenes per configuration**: legal palette-only sprite types
@@ -307,7 +332,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 386-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 450-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -326,11 +351,11 @@ line-selected ratio, lower-history isolation and disabled top calculation.
 Cases 122–133 cover special-priority modes/attributes/selectors; 134–135 cover
 priority promotion/demotion through zero; 136–167 cover special-calculation
 modes/attributes/selectors/CC enable; 168–169 combine special priority with MSB
-calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–386 repeat at the larger capacity. Line scenes use table bases at physical
+calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–225 cross all three-window area polarities, logic settings and uses. Cases 226–450 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-386 ordered case records and the exact final marker. Sources are red over green;
+450 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Mosaic scenes replace the solid source data with a transparent/red/green foreground
 and yellow/white lower screen. Their source sample is displaced by scroll (5,7);

@@ -1,5 +1,30 @@
 # VDP2 implementation report and progress tracker
 
+## V2-C03e: linked three-window logic matrix — 2026-09-16
+
+Continued from C03d with **64 combined W0/W1/sprite-window scenes per
+configuration**: all eight retained-area polarities, both LOG settings and both
+coverage/calculation-only uses, at both VRAM capacities. The independent oracle
+complements the documented active-area logic (ST-058 pp.189–195): LOG=0 retains
+the intersection; LOG=1 retains the union. Asymmetric overlapping rectangles and
+the displayed-framebuffer checker exercise all three inputs with 144 probes per
+scene. Both physical framebuffer banks are overwritten before full-image save
+replay. Captures 194 and 225 were inspected. Pinned Ymir lines 2450–2463 and
+MiSTer lines 3161–3168 provide cross-checks, not the expected-image oracle.
+
+All four **450-case composition runs pass**. With the unchanged 46-case background
+path and four BIOS replays from C03d, the recorded total is **1,984 synthetic cases**
+(1,488 DRC / 496 interpreter). JSON records distinguish the retained background/BIOS
+fixture hashes from the expanded composition fixture. All 47 regression scripts
+pass again, as do 44 protocol cases and `-validate`. A new extracted mutation
+reversing only the SW combination operator compiles and fails the bitmap-image
+assertion; the unmodified bitmap suite passes 184,320 images.
+
+No production change was required. C03e qualifies this normal-resolution NBG0
+three-window matrix, not all layers, rotation/line-window mixtures, latch timing,
+physical arbitration, games or comparative performance. Full VDP2 remains open;
+totals in older sections are historical checkpoints.
+
 ## V2-C03d: linked displayed-framebuffer sprite windows — 2026-09-16
 
 Added **48 sprite-window scenes per configuration**: legal palette-only sprite types
@@ -1476,6 +1501,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
 - [x] **V2-C03b** Preserve no-transform rotation windows and audit shortcut eligibility; test wrapper/cache configuration.
 - [x] **V2-C03c** Calculation-only W0/W1/SW windows and normal/sprite SW area/cache integration.
 - [ ] **V2-C03** Complete window behavior.
+  - [x] **V2-C03e** Linked three-window W0/W1/SW matrix: all retained-area polarities, both logic settings, coverage/calculation, normal-resolution NBG0 and both capacities. Other layers, line/rotation mixtures and timing remain open.
   - [x] **V2-C03d** Linked displayed-framebuffer MSB windows: types 2–7, both retained areas, coverage/calculation and both-bank save replay. Normal 16-bit scanout only; timing/all-mode acceptance remains open.
   - [x] **V2-C03b** Linked W0/W1 line-table sampling, independent physical wrapping, inverted rows and coverage/calculation-only combinations pass in normal resolution. Not interlace, exact fetch timing or all sprite/rotation combinations.
   - [x] **V2-C03a** Linked W0/W1 coverage/calculation-only boundary, overlap and disabled-window matrix passes in normal resolution at both VRAM capacities. Not line/sprite/rotation/all-mode coverage.
