@@ -24,6 +24,26 @@ The full build was reduced to one job to avoid concurrent high-memory GCC units;
 link/validate and current-checkout BIOS/synthetic replay remain pending. Parent A04
 and full VDP2 acceptance remain open.
 
+### Cell-stride/flip cross-check
+
+ST-058 table 4.2 (p.53) specifies 128-byte cells for 2048-color palette data.
+The pinned MiSTer `NxCHAddr` agrees. The pinned Ymir normal-character caller
+passes cell index 0–3, but its `VDP2FetchCharacterPixel` scales Palette2048 by two
+32-byte units rather than four; its dot fetch still reads 16 bits. This is a
+source discrepancy, not an independent hardware oracle. MAME retains the primary-
+documented 128-byte stride. New 64-byte-stride and swapped-H/V mutations both
+compile and fail the independent point-sampler image assertions. Unmutated sampler:
+294,912 image cases and 98,304 priority/code metadata cases pass.
+
+Pinned sources:
+- Sega SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-058 PDF blob
+  `64ba1bac76427b122bf4c10a557d1a3cec29c3a1`, printed pp.53, 60–61, 69–75.
+- [Ymir cell index and fetch](https://github.com/StrikerX3/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp#L5073-L5108),
+  and [cell stride](https://github.com/StrikerX3/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp#L5197-L5225).
+- [MiSTer pattern/character addressing](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP2/VDP2_pkg.sv#L1731-L1878),
+  `PNData` H/V fields and `NxCHAddr` cell ordering / 16-bit stride.
+
+
 ## Recovery status — 2026-09-16
 
 The sandbox restoration lost unpushed commit `ade338f9` and its linked executable,

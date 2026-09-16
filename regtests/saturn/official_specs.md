@@ -22,6 +22,18 @@ The full build was reduced to one job to avoid concurrent high-memory GCC units;
 link/validate and current-checkout BIOS/synthetic replay remain pending. Parent A04
 and full VDP2 acceptance remain open.
 
+### Cell-stride/flip cross-check
+
+ST-058 table 4.2 (p.53) specifies 128-byte cells for 2048-color palette data.
+The pinned MiSTer `NxCHAddr` agrees. The pinned Ymir normal-character caller
+passes cell index 0–3, but its `VDP2FetchCharacterPixel` scales Palette2048 by two
+32-byte units rather than four; its dot fetch still reads 16 bits. This is a
+source discrepancy, not an independent hardware oracle. MAME retains the primary-
+documented 128-byte stride. New 64-byte-stride and swapped-H/V mutations both
+compile and fail the independent point-sampler image assertions. Unmutated sampler:
+294,912 image cases and 98,304 priority/code metadata cases pass.
+
+
 ## Integrated recovery — 2026-09-16
 
 Reconstructed the unpushed integration lost during sandbox restoration: all six
