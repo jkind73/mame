@@ -6136,7 +6136,7 @@ uint8_t saturn_state::vdp2_is_rotation_applied(uint8_t rot_parameter) {
       m_vdp2->get_lsmd() != 3 && !(m_vdp2->get_hreso() & 2) &&
       !(rot_parameter == 1 ? VDP2_RAOVR : VDP2_RBOVR) &&
       current_tilemap.layer_name != 0x81 && !current_tilemap.line_screen_enabled &&
-      !current_tilemap.mosaic_screen_enabled &&
+      !current_tilemap.mosaic_screen_enabled && !VDP2_R0SWE &&
       VDP2_RPMD < 2) // only a unit-step, coefficient-free translation
   {
     return 0;
@@ -9412,6 +9412,23 @@ void saturn_state::vdp2_roz_window_prepare(int y) {
                                &m_roz_win_s_y[1], &m_roz_win_e_y[1], y);
 }
 
+// ST-058 pp.187-188: the sprite window is the displayed framebuffer MSB,
+// for palette-only sprite types 2-7. Reuse the real VDP1 scanout addressing
+// (bank, interlace, resolution and rotation), not command RAM or RGB output.
+// This derived row is invalidated at every partial render and register write.
+bool saturn_state::vdp2_sprite_window(int x, int y) {
+  if (!VDP2_SPWINEN || VDP2_SPCLMD || VDP2_SPTYPE < 2 || VDP2_SPTYPE > 7 ||
+      unsigned(x) >= WINDOW_CACHE_WIDTH || unsigned(y) >= 512)
+    return false;
+  if (m_sprite_window_y != y) {
+    auto const rotation = vdp1_rotation_parameters();
+    for (int sx = 0; sx < WINDOW_CACHE_WIDTH; ++sx)
+      m_sprite_window_line[sx] = (vdp1_display_pixel(sx, y, rotation) & 0x8000) != 0;
+    m_sprite_window_y = y;
+  }
+  return m_sprite_window_line[x];
+}
+
 inline bool saturn_state::vdp2_roz_window(int x, int y) {
   int res;
   bool const rbg1 = current_tilemap.layer_name == 0x81;
@@ -9421,10 +9438,13 @@ inline bool saturn_state::vdp2_roz_window(int x, int y) {
   uint8_t w0_area = rbg1 ? VDP2_N0W0A : VDP2_R0W0A;
   uint8_t w1_area = rbg1 ? VDP2_N0W1A : VDP2_R0W1A;
 
-  if (w0_enable == 0 && w1_enable == 0)
-    return (rbg1 ? VDP2_N0SWE : VDP2_R0SWE) ? true : !(logic & 1);
+  uint8_t const sw_enable = rbg1 ? VDP2_N0SWE : VDP2_R0SWE;
+  uint8_t const sw_area = rbg1 ? VDP2_N0SWA : VDP2_R0SWA;
+  if (w0_enable == 0 && w1_enable == 0 && !sw_enable)
+    return !(logic & 1);
 
-  vdp2_roz_window_prepare(y);
+  if (w0_enable || w1_enable)
+    vdp2_roz_window_prepare(y);
 
   const int logic_or = logic & 1;
   res = logic_or ? 0 : 1;
@@ -9443,6 +9463,10 @@ inline bool saturn_state::vdp2_roz_window(int x, int y) {
     res = logic_or ? (res | w1_pix) : (res & w1_pix);
   }
 
+  if (sw_enable) {
+    bool const keep = vdp2_sprite_window(x, y) == bool(sw_area);
+    res = logic_or ? (res | keep) : (res & keep);
+  }
   return res;
 }
 
@@ -9455,11 +9479,11 @@ inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
   uint8_t w0_area = VDP2_RPW0A;
   uint8_t w1_area = VDP2_RPW1A;
 
-  if (w0_enable == 0 && w1_enable == 0)
-    return VDP2_RPSWE ? (rot_parameter ^ 1)
-                      : ((logic & 1) ? rot_parameter : (rot_parameter ^ 1));
+  if (w0_enable == 0 && w1_enable == 0 && !VDP2_RPSWE)
+    return (logic & 1) ? rot_parameter : (rot_parameter ^ 1);
 
-  vdp2_roz_window_prepare(y);
+  if (w0_enable || w1_enable)
+    vdp2_roz_window_prepare(y);
 
   const int logic_or = logic & 1;
   res = logic_or ? 0 : 1;
@@ -9478,6 +9502,10 @@ inline bool saturn_state::vdp2_roz_mode3_window(int x, int y,
     res = logic_or ? (res | w1_pix) : (res & w1_pix);
   }
 
+  if (VDP2_RPSWE) {
+    bool const keep = vdp2_sprite_window(x, y) == bool(VDP2_RPSWA);
+    res = logic_or ? (res | keep) : (res & keep);
+  }
   return res ^ rot_parameter;
 }
 
@@ -10557,6 +10585,7 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
 }
 
 void saturn_state::vdp2_state_save_postload() {
+  vdp2_window_cache_invalidate();
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
   int offset;
   uint32_t data;

@@ -62,7 +62,7 @@ struct saturn_state {
  struct {std::unique_ptr<uint8_t[]> gfx_decode=std::make_unique<uint8_t[]>(0x100000);} m_vdp2_legacy;
  void mark_fade_effects_dirty(){}
  static constexpr int WINDOW_CACHE_WIDTH=1024;
- int m_window_cache_y=-1,m_roz_window_cache_y=-1;uint32_t m_window_cache_cfg=0;
+ int m_window_cache_y=-1,m_roz_window_cache_y=-1,m_sprite_window_y=-1;uint32_t m_window_cache_cfg=0;
  uint8_t m_window_cache_line[1024]{};
  // INLINE
 };
@@ -92,7 +92,7 @@ int main(){
   c.bitmap_palette_number=1;c.colour_ram_address_offset=2;c.transparency=config&1;c.alpha=128;c.colour_calculation_enabled=(config>>1)&1;
   bitmap_rgb32 image,expected;
   image.pixels.fill(0x204060);expected=image;
-  s.vdp2_window_cache_invalidate();
+  s.m_sprite_window_y=77;s.vdp2_window_cache_invalidate();assert(s.m_sprite_window_y==-1);
   const draw render=drawers[format];
   // Two odd partial rectangles must produce the same image as one full clip.
   (s.*render)(image,{1,5,1,6});(s.*render)(image,{6,10,1,6});

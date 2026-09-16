@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank','rotation-mosaic'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection','line-color','overflow','viewpoint','per-dot-bank','rotation-mosaic','sprite-window'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -25,6 +25,9 @@ bitmap_functions=[extract(src,'void saturn_state::draw_'+name+'_bitmap(') for na
 over_helpers=[extract(src,sig) for sig in ('rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(')]
 over_function='\n'.join(over_helpers)+'\n'+extract(src,'rgb_t saturn_state::vdp2_screen_over_pattern_pixel(')
 f=extract(src,'static constexpr bool vdp2_per_dot_coefficients(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sum(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sub(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+over_function+'\n'+'\n'.join(bitmap_functions)+'\n'+extract(src,'static inline uint32_t coef_delta(')+'\n'+extract(src,'void saturn_state::vdp2_copy_roz_bitmap(')
+real_windows=[extract(src,sig) for sig in ('inline bool saturn_state::vdp2_roz_window(', 'inline bool saturn_state::vdp2_roz_mode3_window(', 'inline int saturn_state::get_roz_window_pixel(')]
+real_windows=[fn.replace('saturn_state::vdp2_roz_window(', 'saturn_state::real_roz_window(').replace('saturn_state::vdp2_roz_mode3_window(', 'saturn_state::real_mode3_window(') for fn in real_windows]
+f+='\n'+'\n'.join(real_windows)
 if a.mutation=='origin':
  f=f.replace('xs = uint32_t(xs) + uint32_t(int64_t(dxs) * cliprect.left());','(void)0;').replace('ys = uint32_t(ys) + uint32_t(int64_t(dys) * cliprect.left());','(void)0;')
 if a.mutation=='window':
@@ -39,6 +42,7 @@ if a.mutation=='overflow':f=f.replace('return uint32_t(a) + uint32_t(b) + uint32
 if a.mutation=='viewpoint':f=f.replace('xp = uint32_t(coeff_table_val) << 8;', 'xp = coeff_table_val;')
 if a.mutation=='per-dot-bank':f=f.replace('bool const per_dot_coefficients = vdp2_per_dot_coefficients(VDP2_RAMCTL);', 'bool const per_dot_coefficients = (vdp2_per_dot_coefficients(VDP2_RAMCTL), true);')
 if a.mutation=='rotation-mosaic':f=f.replace('return x - x % mosaic_width;', 'return x - (x % mosaic_width) * 0;')
+if a.mutation=='sprite-window':f=f.replace('vdp2_sprite_window(x, y)', 'false')
 names=sorted(set(re.findall(r'VDP2_\w+',f))|{'VDP2_OVPNRB'})
 code=r'''
 #include <algorithm>
@@ -74,7 +78,7 @@ struct saturn_state {
  struct { // REGS
  } regs;
  struct {int colour_calculation_enabled=0,transparency=1,fade_control=0,alpha=120;
- int line_screen_enabled=0,mosaic_screen_enabled=0;
+ int layer_name=0,line_screen_enabled=0,mosaic_screen_enabled=0;
  int scrollx_fraction=0,scrolly_fraction=0;
  int pattern_data_size=0,bitmap_enable=0,tile_size=0,colour_depth=0,character_number_supplement=0,supplementary_character_bits=0,supplementary_palette_bits=0;
  int incx=65536,incy=65536,scrollx=0,scrolly=0,bitmap_map=0,bitmap_size=0;
@@ -83,6 +87,11 @@ struct saturn_state {
  rotation_table parameter_a;
  void vdp2_load_rotation_line(uint8_t p,int){assert(p==1);current_rotation_table=parameter_a;}
  device dev;device *m_vdp2=&dev;
+ bool real_windows=false;
+ int m_roz_win_s_x[2]{3,7},m_roz_win_e_x[2]{11,14},m_roz_win_s_y[2]{2,1},m_roz_win_e_y[2]{5,4};
+ void vdp2_roz_window_prepare(int){}
+ bool vdp2_sprite_window(int x,int y){return (x+2*y)%3==0;}
+ // REAL_WINDOWS
  bool window=false;unsigned coefficient=65536;bool blank_coefficient=false;
  std::vector<uint32_t> b_reads;
  unsigned coefficient_reads=0;
@@ -100,8 +109,8 @@ struct saturn_state {
   if(selection_short){unsigned i=(address&~3u)/2;return ((1024|(value(i)>>16))<<16)|(1024|(value(i+1)>>16));}
   return 65536|value(address/4);
  }
- bool vdp2_roz_window(int x,int y){return !window||(x>=3&&x<=11&&y>=2&&y<=5);}
- bool vdp2_roz_mode3_window(int x,int y,int parameter){return ((x+y)&1)==parameter;}
+ bool vdp2_roz_window(int x,int y){if(real_windows)return real_roz_window(x,y);return !window||(x>=3&&x<=11&&y>=2&&y<=5);}
+ bool vdp2_roz_mode3_window(int x,int y,int parameter){if(real_windows)return real_mode3_window(x,y,parameter);return ((x+y)&1)==parameter;}
  void vdp2_compute_color_offset_UINT32(rgb_t*,int){assert(false);}
  void vdp2_copy_roz_bitmap(bitmap_rgb32&,bitmap_rgb32&,const rectangle&,int,int,int,int,int);
 };
@@ -434,10 +443,42 @@ int main(){
   assert(out.pixels==expected.pixels);++line_color_cases;
  }
  std::cout<<line_color_cases<<" coefficient line-color source/insertion/ratio images passed\n";
+
+ unsigned real_window_cases=0;s.real_windows=true;s.line_color_test=s.selection_test=s.blank_coefficient=false;
+ s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=0;s.dev.hreso=s.dev.lsmd=0;
+ auto keep=[](unsigned cfg,int x,int y){
+  bool inside[]={x>=3&&x<=11&&y>=2&&y<=5,x>=7&&x<=14&&y>=1&&y<=4,(x+2*y)%3==0};
+  bool value=!(cfg&16);for(int w=0;w<3;++w){unsigned en=w==2?32:1u<<w,area=w==2?64:4u<<w;if(cfg&en){bool k=bool(cfg&area)==inside[w];value=(cfg&16)?value||k:value&&k;}}return value;
+ };
+ for(unsigned cfg=0;cfg<128;++cfg)for(unsigned select=0;select<128;++select)for(bool transform:{false,true})for(bool rbg1:{false,true}){
+  // RBG1 has no parameter window: sample that case once per output configuration.
+  if(rbg1&&select)continue;
+  s.regs.VDP2_RPMD=rbg1?0:3;s.regs.VDP2_R1ON=rbg1;
+  s.regs.VDP2_RPW0E=select&1;s.regs.VDP2_RPW1E=(select>>1)&1;s.regs.VDP2_RPW0A=(select>>2)&1;s.regs.VDP2_RPW1A=(select>>3)&1;s.regs.VDP2_RPLOG=(select>>4)&1;s.regs.VDP2_RPSWE=(select>>5)&1;s.regs.VDP2_RPSWA=(select>>6)&1;
+  s.regs.VDP2_R0W0E=s.regs.VDP2_N0W0E=cfg&1;s.regs.VDP2_R0W1E=s.regs.VDP2_N0W1E=(cfg>>1)&1;
+  s.regs.VDP2_R0W0A=s.regs.VDP2_N0W0A=(cfg>>2)&1;s.regs.VDP2_R0W1A=s.regs.VDP2_N0W1A=(cfg>>3)&1;
+  s.regs.VDP2_R0LOG=s.regs.VDP2_N0LOG=(cfg>>4)&1;s.regs.VDP2_R0SWE=s.regs.VDP2_N0SWE=(cfg>>5)&1;s.regs.VDP2_R0SWA=s.regs.VDP2_N0SWA=(cfg>>6)&1;
+  int blend=(cfg+select)%3,mosaic=select%3==0?3:1;s.regs.VDP2_CCMD=blend==2;s.regs.VDP2_MZSZH=mosaic-1;
+  s.current_tilemap={};s.current_tilemap.layer_name=rbg1?0x81:0x80;s.current_tilemap.roz_mode3=!rbg1;s.current_tilemap.mosaic_screen_enabled=mosaic>1;s.current_tilemap.colour_calculation_enabled=blend!=0;s.current_tilemap.alpha=120;
+  auto &r=s.current_rotation_table;r={};r.A=r.E=r.dyst=r.kx=r.ky=65536;r.dx=transform?131072:65536;r.xst=transform?3*65536:0;r.yst=transform?2*65536:0;s.parameter_a=r;
+  bitmap_rgb32 ca(64,64),cb(64,64),out(16,8),split(16,8),expected(16,8);
+  for(int y=0;y<64;++y)for(int x=0;x<64;++x){ca.pix(y,x)=(x+y)%5?0xff400000|(y<<8)|x:0;cb.pix(y,x)=(x+y)%5?0xff004000|(y<<8)|x:0;}
+  auto render=[&](bitmap_rgb32 &dest,rectangle clip){r=s.parameter_a;s.vdp2_copy_roz_bitmap(dest,cb,clip,2,64,64,64,64);if(!rbg1){r=s.parameter_a;s.vdp2_copy_roz_bitmap(dest,ca,clip,1,64,64,64,64);}};
+  render(out,{1,14,1,6});render(split,{1,6,1,6});render(split,{7,14,1,6});
+  for(int y=1;y<=6;++y)for(int x=1;x<=14;++x){
+   if(!keep(cfg,x,y))continue;
+   int anchor=x/mosaic*mosaic,sx=(transform?3+anchor*2:anchor),sy=(transform?2:0)+y;
+   bool b=rbg1||!keep(select,anchor,y);uint32_t color=b?cb.pix(sy,sx):ca.pix(sy,sx);if(!color)continue;
+   expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(0x123456,color,120):add_blend_r32(0x123456,color);
+  }
+  assert(out.pixels==expected.pixels);assert(split.pixels==expected.pixels);++real_window_cases;
+ }
+ std::cout<<real_window_cases<<" production rotation/window composition images passed\n";
  std::cout<<coverage_cases<<" bitmap-to-rotation opaque-black/transparent coverage images passed\n";
  std::cout<<cases<<" rotation coefficient/window/split-clip images passed\n";
 }
 '''
+code=code.replace('// REAL_WINDOWS','\n'.join(fn[:fn.index('{')].replace('saturn_state::','')+';' for fn in real_windows))
 code=code.replace('// BITMAP_DECLS','\n'.join(x[:x.index('{')].replace('saturn_state::','').strip()+';' for x in bitmap_functions))
 code=code.replace('// ROTATION',extract(head,'struct rotation_table {')+' current_rotation_table;')
 code=code.replace('// REGS','\n'.join('unsigned '+n+'=0;' for n in names))
