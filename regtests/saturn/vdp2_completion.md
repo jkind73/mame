@@ -1,5 +1,32 @@
 # VDP2 implementation report and progress tracker
 
+## Fresh linked qualification — 2026-09-16
+
+The reconstructed executable now **links and passes `-validate` for 122 runnable
+systems with no validation diagnostics**. Current executed evidence is 47 regression
+scripts, eleven production-object compilations, **138 DRC synthetic cases** across
+Japanese Saturn/PAL Saturn/ST-V, plus **46 Japanese Saturn interpreter cases**.
+Every synthetic case verifies mapped registers, sixteen expected-color probes,
+real save notification, VRAM/CRAM/priority/CRAM-mode/VRSIZE mutation, load notification,
+restored data and full-image equality. Four distinct cell colors exercise H/V flips.
+
+**Four visible BIOS replays pass:** JP/PAL/ST-V DRC and JP interpreter. Each boots
+900 frames without injected register/memory changes, rejects uniform RGB output,
+saves, advances half a second and checks time, main SH-2 PC and full-image identity
+on replay. JP date/time, PAL language selection and synthetic 11-bit cell captures
+were inspected. ST-V is BIOS-only, not cartridge/game acceptance.
+
+Executable SHA-256: `85bef0b9d5d9c1f47847c571bcd1f70427e30f9e157541982a3774a93e04302e`.
+This independently rebuilt hash matches the historical lost build. New run/capture
+hashes are recorded in `regtests/saturn/linked_runtime_results.json` (paths relative
+to the repository root). Full logs, snapshots and states stay outside Git.
+
+**V2-Q02 is closed** for the focused build/configuration check. A04/Q01/Q03 receive
+bounded linked coverage, not complete parent acceptance. Exact contention/latching,
+mid-field reconstruction, external video, combined effects/hardware precision,
+games/title placement and comparative performance remain open. Older “pending”
+entries below describe the pre-execution recovery/authorship checkpoints.
+
 ## V2-A04c: expanded linked-background fixture — 2026-09-16
 
 The linked fixture now defines **46 cases per system**: NBG0 cells/bitmaps at five
@@ -1167,7 +1194,7 @@ bounded extracted tests, not complete hardware or linked-game qualification.
 | Normal backgrounds | NBG0–3 configuration, resource exclusions and drawing | Exhaustive legal format/resource/image matrix |
 | Character backgrounds | One/two-word names, supplement, flips, cell/page addressing and capacity wrapping; explicit 11-bit cell routes | Linked boundaries, all formats/layers and simultaneous effects |
 | Bitmap backgrounds | Five NBG0 formats, capacity-aware source addressing and sampling | All legal layer/size/window combinations |
-| Map offsets / CPU aperture | All six three-bit MPOF fields; size-aware full 1 MiB console/ST-V mapping | Fresh linked high-bank replay pending |
+| Map offsets / CPU aperture | All six three-bit MPOF fields; size-aware full 1 MiB console/ST-V mapping | Linked normal-screen/RBG0 high-bank replay passes; remaining consumers open |
 | Fractional scroll / reduction | Fractional sampling and reduction-enable limits | Independent precision and combined image references |
 | Line / vertical cell scroll | Combined line-X/Y/zoom and VCSC point sampling, interval/interleaving handling | Hardware precision and exhaustive simultaneous combinations |
 | RBG0 / RBG1 | A/B transforms, parameter selection, NBG0 sharing and resource rules | Complete cycle contention and combined linked images |
@@ -1188,7 +1215,7 @@ bounded extracted tests, not complete hardware or linked-game qualification.
 | Registers | Decoded controls, status, masks and render-write handling | Complete legality/reset/access/latch ledger |
 | TV modes / counters | CRTC modes, counter tables/latches, ODD and external callback | Physical beam, half-lines, DOTSEL and exclusive/interlace transitions |
 | External inputs | Latch/sync flags and callbacks | Actual MPEG/external-background/genlock provisioning and rendering |
-| Reset / save | Registered backing state; postload palette/decode/rotation invalidation | Fresh linked replay and complete mid-field picture reconstruction |
+| Reset / save | Registered backing state; postload palette/decode/rotation invalidation | Bounded linked replay passes; complete mid-field picture reconstruction open |
 | Performance | Existing palette/window/rotation/decode caches retained | Linked comparative profile and equivalent-image optimization evidence |
 
 ## 5. What has actually been tested
@@ -1196,8 +1223,8 @@ bounded extracted tests, not complete hardware or linked-game qualification.
 The recovered checkout passed **46 Saturn regression scripts and eleven production
 object compilations**, not 46 dedicated VDP2 scripts. All six map-mask truncations
 and three plain 11-bit routing mutations compiled and failed assertions. The
-external dependency bootstrap executed successfully. The fresh full link/validate
-is running; runtime acceptance remains pending until explicitly recorded.
+external dependency bootstrap executed successfully. The fresh full link/validate passes. The linked matrix passes 184 synthetic
+cases and four visible BIOS replays, as recorded at the top of this report.
 
 | Fixture family | Evidence | Limit |
 |---|---|---|
@@ -1227,6 +1254,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
   - [ ] Reconcile RAMCTL, VRSIZE, TVMD/EXTEN and CRAM-mode behavior.
 - [x] **V2-A04a** Add production bitmap/palette/window pixel fixtures: 7,680 images, two negative mutations.
 - [ ] **V2-A04** Add extracted full-background/compositor image fixtures, with real production palette and window evaluation where practical.
+  - [x] **V2-A04c** Linked isolated NBG0–3 legal cell/bitmap depth, 16x16 flip and high-bank matrix passes at both capacities; RBG0 11-bit cell retained. Not all sizes/boundaries/combinations.
   - [ ] NBG0–3, bitmap/cell, legal color formats, page/plane boundaries, flips and transparency.
   - [ ] Clipped updates versus an equivalent full-frame reference.
   - [ ] Layer-over-layer scenes preserving which source should win and which should blend.
@@ -1348,10 +1376,11 @@ narrow acceptance. The separate title/logo issue remains unresolved.
 - [ ] **V2-Q01** Audit register, memory, decoded state and all derived caches across reset/postload.
   - [ ] Window/fade/rotation caches and any new per-pixel/raster state.
   - [ ] Mid-line and mid-field save/load with no stale picture or duplicate event.
-- [ ] **V2-Q02** Link the focused Saturn/ST-V executable and run `-validate`.
+- [x] **V2-Q02** Focused executable linked; `-validate` passes for 122 runnable systems with no diagnostics.
   - [x] **V2-Q02a** Resolve SDL/pkg-config dependencies: external bootstrap executed successfully after recovery.
-  - [ ] **V2-Q02b** Re-execute link and `-validate` on recovered source; currently running.
+  - [x] **V2-Q02b** Link and `-validate` re-executed on recovered source.
 - [ ] **V2-Q03** Run real MAME save/load and BIOS/Saturn/ST-V visual smoke tests.
+  - [x] **V2-Q03a** JP/PAL/ST-V DRC and JP interpreter visible BIOS save/advance/load/replay pass; not games.
   - [ ] Preserve user-accepted prior fixes; record the exact build and scene.
   - [ ] Obtain independent expected images or traces for the new VDP2 features.
 - [ ] **V2-Q04** Profile before optimizing.
