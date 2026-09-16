@@ -21,7 +21,7 @@ def extract(text,sig):
  while depth:
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
-funcs=[extract(src,sig) for sig in ('unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
+funcs=[extract(src,sig) for sig in ('void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
 f=extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
 if a.mutation=='phase':f=f.replace('+ t.scrollx_fraction','+ 0').replace('+ t.scrolly_fraction','+ 0')
 if a.mutation=='cell':f=f.replace('unsigned((source_x >> 19) - first_cell)','unsigned(sample_x / 8 + first_cell * 0)')
@@ -51,6 +51,10 @@ uint32_t blend(uint32_t d,uint32_t s,unsigned a,bool add){uint32_t r=0xff000000;
 uint32_t alpha_blend_r32(uint32_t d,uint32_t s,unsigned a){return blend(d,s,a,false);}
 uint32_t add_blend_r32(uint32_t d,uint32_t s){return blend(d,s,0,true);}
 struct saturn_state {
+ bool m_vdp2_composition_active=false;
+ bitmap_rgb32 m_vdp2_raw_top;
+ struct {uint8_t data[24*16]{};uint8_t &pix(int y,int x){assert(x>=0&&x<24&&y>=0&&y<16);return data[y*24+x];}} m_vdp2_raw_alpha;
+
  int m_vdp2_priority_pass=-1;
  uint32_t m_vdp2_cram[1024]{};
  uint32_t vdp2_cram_r(unsigned i){return m_vdp2_cram[i];}
@@ -181,6 +185,11 @@ int main(){saturn_state s;auto &t=s.current_tilemap;unsigned cases=0;
  s.regs.VDP2_SFPRMD=1;s.regs.VDP2_N0PRIN=1;s.m_vdp2_priority_pass=1;s.window=false;
  bitmap_rgb32 unit;s.route(unit,{0,1,0,1});assert(unit.pix(0,0)!=0xff102030);
 
+ // An ordinary opaque unit-step layer must still record its raw source/ratio
+ // when another layer in the frame can calculate with it.
+ s.m_vdp2_composition_active=true;s.regs.VDP2_SFPRMD=s.regs.VDP2_SFCCMD=0;t.alpha=88;
+ s.route(unit,{0,1,0,1});assert(s.m_vdp2_raw_top.pix(0,0)==unit.pix(0,0)&&s.m_vdp2_raw_alpha.pix(0,0)==88);
+ s.m_vdp2_composition_active=false;
  unsigned metadata_cases=0;
  unsigned *priorities[]={&s.regs.VDP2_N0PRIN,&s.regs.VDP2_N1PRIN,&s.regs.VDP2_N2PRIN,&s.regs.VDP2_N3PRIN,&s.regs.VDP2_R0PRIN};
  for(int name:{0,1,2,3,0x80,0x81})for(unsigned base=0;base<8;++base)for(unsigned mode:{1u,2u})for(bool attribute:{false,true})for(unsigned bank:{0u,1u})for(unsigned raw=0;raw<256;++raw){

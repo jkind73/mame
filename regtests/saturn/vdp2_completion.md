@@ -1,5 +1,48 @@
 # VDP2 implementation report and progress tracker
 
+## P2 dependency: ordinary raw-second-image composition — 2026-09-15
+
+Normal, rotation and sprite output now share a bounded raw-source/ratio history.
+The current calculated top uses the nearest covered raw second image, not the
+already-calculated RGB displayed by that lower layer. CCRTMD selects the top or
+second source's own CCR; disabled calculation does not discard that source's ratio.
+Line-color insertion substitutes the designated line color and low CCRLB ratio
+only for that top; it does not contaminate the candidate seen by a later layer.
+The back screen initializes the candidate with high CCRLB. Ratio/additive arithmetic
+uses the existing MAME primitives and the documented (31-r):(r+1) weights.
+
+History is derived per clip, reused without reallocating unchanged dimensions,
+and deactivated after the frame and on postload. No-CCEN frames retain the legacy
+fast/cache routes; active composition forces normal point submission and bypasses
+the rotation unity shortcut without recording source-cache construction as output.
+Existing shadow gates now update displayed and raw RGB consistently, but actual
+underlying-layer SDCTL eligibility remains unfinished. There is no new saved state.
+
+Primary evidence: ST-058 printed pp.231, 235, 241–244 (top/second selection,
+line insertion, ratio direction and CCRLB). Pinned Ymir 6d779960's layer-color
+lookup and ordered composition independently corroborate raw-source selection;
+no reference implementation was imported.
+
+Validation: **36 scripts and eleven production object compilations pass**.
+`test_vdp2_composition.py` checks **524,288** ordered-source scenes using the actual
+production history helpers and MAME blend primitives against independent /32 RGB
+math, all ratios, eligibility, line insertion, coverage omissions, shadows and split
+clips; it also checks allocation reuse, resize and no-CC activation. All five
+cumulative-result, wrong-ratio, line-history, disabled-ratio and shadow-history
+mutations fail assertions. Active integration includes **153,600** sprite
+ratio/selector/condition images (active/inactive and both ratio directions), normal
+unit-step routing/raw-ratio recording, **16** rotation history images, and rotation
+shortcut rejection. Existing sampling/priority/window suites remain passing.
+
+**Tracker:** V2-C01c/V2-C05b ordinary raw-second selection and ratio provenance are
+implemented/tested. This advances the R03 line-color dependency, not completion of
+P2 or the parent C01/C05/C06 tasks. Extended three/four-image calculation, gradation,
+layer-selective shadows, color-offset ordering, raster/fetch arbitration and linked
+game/save-manager/performance qualification remain open. The history stores one
+candidate, not enough for extended calculation. These fixtures are not linked-game
+or hardware acceptance; active-path performance has not been benchmarked.
+
+
 ## P2 shared special priority and frame-pass scheduling — 2026-09-15
 
 This supersedes the earlier missing-special-priority statements. SFPRMD modes 1/2
@@ -775,8 +818,9 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
 
 - [x] **V2-C01b** Enforce normal-screen color-depth resource exclusions from ST-058 p.61.
 - [x] **V2-C01a** Preserve decoded pixel coverage separately from RGB in rotation caches; verify opaque-black and transparent source dots.
+- [x] **V2-C01c** Ordinary raw-second source selection after coverage/window/priority filtering; extended and layer-identity effects remain open.
 - [ ] **V2-C01** Establish per-pixel source identity/priority/eligibility sufficient for correct effect selection.
-  - [ ] Top image and eligible second image selection.
+  - [x] Ordinary top/raw-second selection (C01c); extended selection remains open.
   - [ ] Same-priority tie order and priority-zero suppression.
   - [ ] All sprite types and palette/direct-RGB encodings.
 - [ ] **V2-C02** Implement/qualify normal and MSB shadows across opaque and calculation paths.
@@ -794,6 +838,7 @@ Runtime acceptance from earlier work remains narrowly scoped to the user's AB2 b
   - [x] **V2-C04b** SFPRMD, SFCCMD, SFSEL/SFCODE and pattern/bitmap/dot attributes, including bounded frame-pass scheduling.
   - [x] Eligibility and priority filtering before blending; general/extended underlying-image composition remains C01/C05 work.
 - [x] **V2-C05a** Separate sprite calculation eligibility from zero ratio; test all ratios/selectors and additive mode.
+- [x] **V2-C05b** Ordinary raw-second ratio provenance, CCRTMD including sprite selectors and disabled lower-layer calculation, and line/back CCRLB.
 - [ ] **V2-C05** Qualify ordinary ratio/additive calculation and color-offset ordering.
   - [ ] Ratio extremes, integer rounding and overflow/clamping.
   - [ ] Correct second-image eligibility and sprite condition modes.
