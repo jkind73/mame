@@ -1,5 +1,39 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## V2-A05c: stateful CRAM writes and preservation ordering — 2026-09-16
+
+Recovered this session's pushed `03a20495` branch after the workspace returned to
+an older base. The pre-recovery tracked patch and Saturn files are backed up outside
+the repository and in a Git stash; unrelated console/error logs were restored.
+No older production changes were blindly reapplied over the recovered branch.
+
+Extended `test_vdp2_palette.py` with a deterministic **4,096-write sequence** and
+an independent physical byte-array oracle. The modeled CPU operations remain legal
+word/longword writes, not byte writes. CRAM modes 0/1/2 change throughout; every
+step checks physical storage, all CPU-readable words, all decoded palette entries,
+and immediate versus rebuilt palette agreement. The sequence includes **234 writes
+that change only the mirrored bank** and **790 redundant writes**. Recording callbacks
+must see the complete pre-write memory, occur for actual changes (including mirror-only
+changes), and be absent for unchanged writes. Mode changes rebuild pens explicitly;
+this does not execute the RAMCTL register handler or the real raster scheduler.
+
+All **47 regression scripts pass freshly** under the restored checkout. Three
+mutants compile and fail C++ assertions: omitted mirror-only preservation,
+redundant preservation and preservation after memory mutation. The existing 9,216
+CRAM lane/address/palette cases and 40,960 coefficient-bank cases also pass.
+Evidence is recorded in `cram_stateful_results.json`. No production fix was needed.
+
+Basis remains ST-058 section 3.4 pp.43–46 and the pinned Ymir/MiSTer physical-bank
+cross-checks recorded below. Upper-half broadcast/read independence remains
+cross-implementation evidence, not new hardware evidence. Callback ordering tests
+protect the current preserve-before-write contract; they do not establish latch
+granularity, contention, DAC output, bus timing or actual save-manager behavior.
+
+The restored workspace lacks the prior linked executable and dependency cache.
+The **2,048 linked synthetic cases and four BIOS replays remain historical evidence
+from 03a20495**, not freshly rerun results. `linked_runtime_results.json` is left
+unchanged. Full VDP2 and the parent A05/T01 acceptance items remain open.
+
 ## V2-C06c: linked gradation source, filter and ratios — 2026-09-16
 
 Added **16 gradation scenes per configuration**: patterned opaque NBG0 (top) or
