@@ -197,6 +197,7 @@ if composition then
                 0x0102,effect and (kind=='self' and 0x40 or 1) or 0,15,0xff0000)
             c.shadow={kind=kind,sprite_type=sprite_type,eligible=eligible,effect=effect,tps=tps,
                 dot=kind=='normal' and masks[sprite_type+1]-1 or kind=='transparent' and 0x8000 or 0x8005}
+            return c
         end
         for sprite_type=0,7 do
             for _,eligible in ipairs({false,true}) do
@@ -209,9 +210,23 @@ if composition then
                 for _,effect in ipairs({false,true}) do shadow('self',sprite_type,eligible,effect,false) end
             end
         end
+        -- Underlying identity and rank: disabled, below, tied and above.
+        -- MSB+normal-code dots must remain normal shadows, not self shadows.
+        for _,kind in ipairs({'normal','transparent'}) do
+            for _,target in ipairs({0,1,2,3,5}) do
+                for _,priority in ipairs({0,1,2,3}) do
+                    for _,eligible in ipairs({false,true}) do
+                        local c=shadow(kind,2,eligible,false,kind=='transparent')
+                        c.name=c.name..'-target-'..target..'-priority-'..priority
+                        c.shadow.target=target;c.shadow.priority=priority
+                        if kind=='normal' then c.shadow.dot=0x87fe end
+                    end
+                end
+            end
+        end
     end
 end
-assert(#cases==(composition and 818 or 46))
+assert(#cases==(composition and 978 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -388,6 +403,25 @@ local function configure(c)
         for offset=0xf0,0xf6,2 do reg(offset,0x0303) end
         for offset=0x100,0x106,2 do reg(offset,0x0f0f) end
         space:write_u16(cram+10,0x7c00) -- blue sprite color, distinct from red NBG0
+        if t.target~=nil then
+            local target=t.target
+            reg(0xe2,(t.eligible and (1<<target) or (target==0 and 2 or 1))|(t.tps and 0x100 or 0))
+            for offset=0xf0,0xf6,2 do reg(offset,t.priority*0x0101) end
+            if target==1 then reg(0xf8,0x0201)
+            elseif target==5 then reg(0x20,0)
+            elseif target==2 or target==3 then
+                -- Distinct yellow/white NBG2/3 cells over the blue back.
+                -- PN plane 60000, character data 40000; no bitmap overlap.
+                for offset=0,2046,2 do space:write_u16(vram+0x60000+offset,0) end
+                local data=target==2 and 0x33333333 or 0x44444444
+                for offset=0,124,4 do space:write_u32(vram+0x40000+offset,data) end
+                reg(0x30+target*2,0x8008);reg(0x2a,1<<((target-2)*4))
+                reg(0x3c,3<<(target*4));reg(0x20,1<<target)
+                reg(0xf8,0);reg(0xfa,2<<((target-2)*8))
+                local cp=target+4
+                for offset=0x10,0x1e,2 do reg(offset,(target<<12)|(cp<<8)|(target<<4)|cp) end
+            end
+        end
         if t.effect then
             reg(0x110,t.kind=='self' and 0x40 or 1)
             reg(0x114,16) -- top-owned red offset after 50:50 calculation
@@ -465,7 +499,13 @@ local function pixels(expected)
             if c.shadow and expected~=0x0000ff then
                 local t=c.shadow
                 local inside=(x//13+y//9)%2==0
-                if t.kind=='self' then
+                if t.target~=nil then
+                    want=({[0]=0xff0000,[1]=0x00ff00,[2]=0xffff00,[3]=0xffffff,[5]=0x0000ff})[t.target]
+                    local top_priority=t.target==5 and 0 or 2
+                    if inside and t.eligible and t.priority~=0 and t.priority>=top_priority then
+                        want=(want&0xfefefe)>>1
+                    end
+                elseif t.kind=='self' then
                     want=inside and (t.effect and 0x47003f or 0x00007f) or 0xff0000
                 else
                     want=t.effect and 0x8f7f00 or 0xff0000
