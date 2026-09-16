@@ -9,6 +9,7 @@ local regbase,vram,cram=0x05f80000,0x05e00000,0x05f00000
 local function reg(offset,value) space:write_u16(regbase+offset,value) end
 -- ST-058 pp.59–61: normal-screen color capabilities; pp.69–75:
 -- one-word names, 16x16 characters and H/V flip encoding.
+local composition=os.getenv('SATURN_RUNTIME_COMPOSITION')=='1'
 local cases={}
 for _,large in ipairs({false,true}) do
     for layer=0,3 do
@@ -20,7 +21,31 @@ for _,large in ipairs({false,true}) do
     end
     cases[#cases+1]={large=large,depth=2,layer=0,cell=true,rotation=true}
 end
-assert(#cases==46)
+if composition then
+    cases={}
+    for _,large in ipairs({false,true}) do
+        local function add(name,priority,control,ratios,expected)
+            cases[#cases+1]={large=large,depth=0,layer=0,composition=true,
+                name=name,priority=priority,control=control,ratios=ratios,expected=expected}
+        end
+        -- ST-058 priority order and pp.241–244: top-screen CC enable,
+        -- top/second ratio selection and all 32 (31-n):(n+1) weights.
+        add('tie-NBG0',0x0101,0,0,0xff0000)
+        add('NBG1-higher',0x0201,0,0,0x00ff00)
+        add('NBG0-priority-zero',0x0100,0,0,0x00ff00)
+        for _,second in ipairs({false,true}) do
+            for ratio=0,31 do
+                local selected=second and 31-ratio or ratio
+                local expected=((255*(31-selected)//32)<<16)|((255*(selected+1)//32)<<8)
+                add((second and 'second-ratio-' or 'top-ratio-')..ratio,
+                    0x0102,second and 0x0201 or 1,ratio|((31-ratio)<<8),expected)
+            end
+        end
+        add('additive-clamp',0x0102,0x0101,0x1f1f,0xffff00)
+        add('lower-only-CC',0x0102,2,15,0xff0000)
+    end
+end
+assert(#cases==(composition and 138 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -80,6 +105,14 @@ local function configure(c)
         for _,word in ipairs({0,4,5,7,11,19,20}) do space:write_u32(vram+0x60000+word*4,65536) end
         reg(0xbc,3);reg(0xbe,0);reg(0xb2,7)
     end
+    if c.composition then
+        -- Red NBG0 at map 4, green NBG1 at map 1; blue back screen.
+        -- Configure real character-fetch slots for both bitmap consumers.
+        for offset=0x10,0x1e,2 do reg(offset,0x4455) end
+        reg(0x28,0x0202);reg(0x3c,0x0014);reg(0x20,3)
+        reg(0xf8,c.priority);reg(0xec,c.control);reg(0x108,c.ratios)
+        if c.name=='additive-clamp' then space:write_u16(cram+4,0x03ff) end
+    end
     reg(0,0x8000)
     c.dot=dot;c.capacity=capacity;c.address=c.cell and 0x20000 or (0x80000%capacity)
 end
@@ -108,7 +141,7 @@ local function step()
     if phase=='configure' then configure(cases[index]);phase='render';wait=3
     elseif wait>0 then wait=wait-1
     elseif phase=='render' then
-        pixels(0xff0000);reference=screen:pixels();assert(#reference>0)
+        pixels(cases[index].expected or 0xff0000);reference=screen:pixels();assert(#reference>0)
         saved=false;os.remove(output..'/runtime.sta');machine:save(output..'/runtime.sta');phase='save';wait=3
     elseif phase=='save' then
         assert(saved,'save notification missing')
@@ -119,7 +152,7 @@ local function step()
     elseif phase=='mutated' then
         pixels(0x0000ff);loaded=false;machine:load(output..'/runtime.sta');phase='load';wait=3
     elseif phase=='load' then
-        assert(loaded,'postload notification missing');pixels(0xff0000)
+        assert(loaded,'postload notification missing');pixels(cases[index].expected or 0xff0000)
         assert(space:read_u32(vram+cases[index].address)==cases[index].dot,'VRAM not restored')
         assert((space:read_u16(regbase+6)&0x8000)==(cases[index].large and 0x8000 or 0),'VRSIZE not restored')
         local replay=screen:pixels();assert(replay==reference,'postload full image differs')
