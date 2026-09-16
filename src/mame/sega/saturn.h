@@ -495,6 +495,7 @@ protected:
 
     int16_t scrollx = 0;
     int16_t scrolly = 0;
+    uint16_t scrollx_fraction = 0, scrolly_fraction = 0;
     uint32_t incx = 0, incy = 0;
 
     uint8_t linescroll_enable = 0;

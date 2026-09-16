@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('origin','window','coverage','over','over-name','over-flip','selection'));a=p.parse_args()
 src=(ROOT/'src/mame/sega/saturn.cpp').read_text()
 head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
@@ -29,9 +29,10 @@ if a.mutation=='origin':
 if a.mutation=='window':
  f=f.replace('if (!vdp2_roz_window(hcnt, vcnt))','if (false)').replace('if (current_tilemap.roz_mode3 &&','if (false && current_tilemap.roz_mode3 &&')
 if a.mutation=='coverage':f=f.replace('if (pix.a())','if (pix & 0xffffff)')
-if a.mutation=='over':f=f.replace('if (outside && !repeat_pattern)','if (outside)')
+if a.mutation=='over':f=f.replace('(outside && !repeat_pattern)', 'outside')
 if a.mutation=='over-name':f=f.replace('iRP == 1 ? VDP2_OVPNRA : VDP2_OVPNRB','VDP2_OVPNRA')
 if a.mutation=='over-flip':f=f.replace('x = ~x','x = x').replace('y = ~y','y = y')
+if a.mutation=='selection':f=f.replace('!selected(hcnt, vcnt)', '(selected(hcnt, vcnt), false)')
 names=sorted(set(re.findall(r'VDP2_\w+',f))|{'VDP2_OVPNRB'})
 code=r'''
 #include <algorithm>
@@ -64,13 +65,24 @@ struct saturn_state {
  struct { // REGS
  } regs;
  struct {int colour_calculation_enabled=0,transparency=1,fade_control=0,alpha=120;
+ int scrollx_fraction=0,scrolly_fraction=0;
  int pattern_data_size=0,bitmap_enable=0,tile_size=0,colour_depth=0,character_number_supplement=0,supplementary_character_bits=0,supplementary_palette_bits=0;
  int incx=65536,incy=65536,scrollx=0,scrolly=0,bitmap_map=0,bitmap_size=0;
  int linescroll_enable=0,vertical_linescroll_enable=0,bitmap_palette_number=0,colour_ram_address_offset=0;
  bool roz_mode3=false;} current_tilemap;
+ rotation_table parameter_a;
+ void vdp2_fill_rotation_parameter_table(uint8_t p){assert(p==1);current_rotation_table=parameter_a;}
  device dev;device *m_vdp2=&dev;
  bool window=false;unsigned coefficient=65536;bool blank_coefficient=false;
- uint32_t vdp2_read_rotation_coefficient(uint32_t){return coefficient|(blank_coefficient?0x80000000:0);}
+ std::vector<uint32_t> b_reads;
+ bool selection_test=false,selection_short=false;
+ uint32_t vdp2_read_rotation_coefficient(uint32_t address){
+  if(!selection_test)return coefficient|(blank_coefficient?0x80000000:0);
+  if(address>=0x40000){b_reads.push_back(address);return 65536|(blank_coefficient?0x80000000:0);}
+  auto value=[](unsigned i){return (i%3==1)?0x80000000u:0u;};
+  if(selection_short){unsigned i=(address&~3u)/2;return ((1024|(value(i)>>16))<<16)|(1024|(value(i+1)>>16));}
+  return 65536|value(address/4);
+ }
  bool vdp2_roz_window(int x,int y){return !window||(x>=3&&x<=11&&y>=2&&y<=5);}
  bool vdp2_roz_mode3_window(int x,int y,int parameter){return ((x+y)&1)==parameter;}
  void vdp2_compute_color_offset_UINT32(rgb_t*,int){assert(false);}
@@ -238,6 +250,65 @@ int main(){
  }
  std::cout<<decode_cases<<" screen-over character decoding configurations and "<<over_cases<<" screen-over rotation images passed\n";
 
+
+ unsigned selection_cases=0;s.selection_test=true;s.window=false;s.dev.lsmd=s.dev.hreso=0;
+ for(bool short_a:{false,true})for(int path:{0,1,2})for(int blend:{0,1,2})
+ for(bool absent_a:{false,true})for(bool absent_b:{false,true})for(bool b_transparent:{false,true}){
+  s.selection_short=short_a;s.blank_coefficient=b_transparent;s.regs.VDP2_RPMD=2;
+  s.regs.VDP2_RAKTE=path!=0;s.regs.VDP2_RBKTE=1;
+  s.regs.VDP2_RAKDBS=short_a;s.regs.VDP2_RBKDBS=0;
+  s.regs.VDP2_RAKTAOS=0;s.regs.VDP2_RBKTAOS=1;
+  s.regs.VDP2_RAKMD=s.regs.VDP2_RBKMD=0;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=0;
+  s.regs.VDP2_CCMD=blend==2;
+  s.current_tilemap={};s.current_tilemap.transparency=0;s.current_tilemap.alpha=120;
+  s.current_tilemap.colour_calculation_enabled=blend!=0;
+  auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;
+  r.dkast=65536;r.dkax=path==2?65536:0;s.parameter_a=r;
+  bitmap_rgb32 cache_a(16,16),cache_b(16,16),out(16,8),expected(16,8);
+  std::fill(cache_a.pixels.begin(),cache_a.pixels.end(),absent_a?0:0xff800000);
+  std::fill(cache_b.pixels.begin(),cache_b.pixels.end(),absent_b?0:0xff008000);
+  s.b_reads.clear();
+  s.vdp2_copy_roz_bitmap(out,cache_b,{1,14,1,6},2,16,16,16,16);
+  assert(s.b_reads.size()==6);
+  for(unsigned i=0;i<6;++i)assert(s.b_reads[i]==0x40000+(i+1)*4);
+  r=s.parameter_a;s.vdp2_copy_roz_bitmap(out,cache_a,{1,14,1,6},1,16,16,16,16);
+  for(int y=1;y<=6;++y)for(int x=1;x<=14;++x){
+   bool b=path!=0&&((y+(path==2?x:0))%3==1);
+   if(b?(absent_b||b_transparent):absent_a)continue;
+   uint32_t color=b?0xff008000:0xff800000;
+   expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(0x123456,color,120):add_blend_r32(0x123456,color);
+  }
+  assert(out.pixels==expected.pixels);++selection_cases;
+ }
+ std::cout<<selection_cases<<" A/B selection-before-composition images passed\n";
+
+ unsigned boundary_cases=0;s.selection_test=false;s.window=false;s.blank_coefficient=false;
+ s.regs.VDP2_RAKTAOS=s.regs.VDP2_RBKTAOS=0;s.dev.lsmd=s.dev.hreso=0;
+ for(int mode:{0,2,3})for(int origin:{-2,510,1022})for(int parameter:{1,2})
+ for(int path:{0,1,2})for(bool short_data:{false,true})for(int sign:{-1,1})for(int blend:{0,1,2}){
+  s.regs.VDP2_RPMD=parameter-1;s.regs.VDP2_RAOVR=s.regs.VDP2_RBOVR=mode;
+  s.regs.VDP2_RAKTE=s.regs.VDP2_RBKTE=path!=0;
+  s.regs.VDP2_RAKDBS=s.regs.VDP2_RBKDBS=short_data;
+  s.regs.VDP2_RAKMD=s.regs.VDP2_RBKMD=0;s.regs.VDP2_CCMD=blend==2;
+  s.coefficient=short_data?(sign<0?0x7c007c00:0x04000400):(sign<0?0x00ff0000:0x00010000);
+  s.current_tilemap={};s.current_tilemap.colour_calculation_enabled=blend!=0;s.current_tilemap.alpha=120;
+  auto &r=s.current_rotation_table;r={};r.A=r.E=r.dx=r.dyst=r.kx=r.ky=65536;
+  r.mx=r.my=origin*65536;r.dkax=path==2?65536:0;
+  bitmap_rgb32 cache(64,64),out(16,8),expected(16,8),split(16,8);
+  std::fill(cache.pixels.begin(),cache.pixels.end(),0xffabcdef);
+  s.vdp2_copy_roz_bitmap(out,cache,{1,14,1,6},parameter,1024,512,64,64);
+  s.vdp2_copy_roz_bitmap(split,cache,{1,6,1,6},parameter,1024,512,64,64);
+  s.vdp2_copy_roz_bitmap(split,cache,{7,14,1,6},parameter,1024,512,64,64);
+  for(int y=1;y<=6;++y)for(int x=1;x<=14;++x){
+   int sx=origin+x*(path?sign:1),sy=origin+y*(path?sign:1);
+   bool visible=mode==0||(sx>=0&&sy>=0&&sx<(mode==3?512:1024)&&sy<512);
+   if(!visible)continue;
+   uint32_t color=0xffabcdef;
+   expected.pix(y,x)=blend==0?color:blend==1?alpha_blend_r32(0x123456,color,120):add_blend_r32(0x123456,color);
+  }
+  assert(out.pixels==expected.pixels);assert(split.pixels==expected.pixels);++boundary_cases;
+ }
+ std::cout<<boundary_cases<<" short/long signed-coefficient and screen-over boundary images passed\n";
  std::cout<<coverage_cases<<" bitmap-to-rotation opaque-black/transparent coverage images passed\n";
  std::cout<<cases<<" rotation coefficient/window/split-clip images passed\n";
 }

@@ -1,5 +1,84 @@
 # Saturn / ST-V reference audit — 2026-09-14
 
+## P2 combined scroll/rotation batch — 2026-09-15
+
+**P2 is not fully complete.** This batch implements and tests several remaining
+S01/S02/R02/R03/R04 defects together; the parent checkboxes below deliberately remain
+open where implementation or qualification is still missing.
+
+### Delivered changes
+
+- **S01/S02:** retain 8-bit fractional X/Y scroll phases in NBG0/NBG1 descriptors and
+  all five bitmap writers. Line-scroll table offsets now retain fractional carry,
+  including vertical interpolation when an entry begins at a fractional phase.
+  Derived descriptor phases are restored between partial passes and cleared for
+  unscrolled rotation-cache construction. Tilemap sampling does not yet consume
+  those phases: this is not completion of ordinary fractional tile rendering.
+- **R02:** correct Px sign extension (only the 14-bit coordinate's sign bit, not
+  the next lower positive-coordinate bit). Added actual parameter-table unpacking
+  checks across A/B addresses and all parameter field widths, with RPRCTL reload
+  bits enabled. Added signed short/long coefficient and screen-over boundary images.
+- **R03:** RPMD 2 now selects B using A's coefficient MSB *before* transparency and
+  color calculation. B is no longer a second background drawn beneath A: an absent
+  A dot exposes the previously composed screen, and ratio/additive calculation does
+  not combine both parameters. When A reads per-dot coefficients, B reads per-line
+  coefficients as required. A coefficient selection reads are cached only within
+  the current compositor pass.
+- **R04:** RBG1 already reached rotation B; it now discards inherited normal-scroll
+  X/Y increments, line/cell-scroll enables and stale mode-3 state. Its output windows
+  use NBG0-shared controls, not RBG0's. The ordinary shortcut is excluded for RBG1;
+  source-cache windows remain disabled and output windows remain active. Two enabled
+  rotation screens suppress the normal screens.
+- **R04 cache:** track effective character numbers after masking/format adjustment.
+  Watch the full character extent for each format/size, not just the first 32 bytes
+  of the last character. A wrapping character conservatively watches the entire
+  decode allocation, including the existing upper-aperture access behavior.
+
+### Evidence and validation
+
+Primary ST-058: pp.124–128/131–138 fractional coordinate and line-scroll formats;
+pp.153–156 parameter layouts; pp.161/166 mode-2 parameter selection, B coefficient
+fetch restriction and transparency; p.148 dual-rotation resource restrictions;
+chapter 4 character sizes/data and shared screen controls. Pinned Ymir 6d779960
+`VDP2SelectRotationParameter` selects before pixel composition; its scroll state
+retains fractional coordinates. Pinned MiSTer a95b0850 `PNData`/`RxCHAddr` corroborate
+format-dependent character extent and shared rotation addressing. These comparisons
+are not a silicon timing oracle.
+
+- **46,080** production bitmap/palette/window images, now including fractional phase.
+- **16,800** production line-scroll scheduling cases, now including fractional table
+  offsets, fractional vertical increments and whole-versus-split equivalence.
+- **960** production A/B parameter unpacking configurations against a separate
+  field-width/bit-position oracle; the prior Px decoder compiles and assertion-fails.
+- **144** selection-before-composition images with short/long A entries, no/line/dot
+  coefficients, absent A/B pixels, B transparency and opaque/ratio/additive output.
+- **648** additional signed short/long coefficient images covering repeat,
+  transparent-outside and fixed-512 boundaries and split clips. Earlier 2,880
+  screen-over-pattern, 9,216 rotation and 360 coverage images still pass.
+- **262,144** RBG0/RBG1 window-control pixels; **256** RBG1 shared-register setup cases.
+- **13,824 + 18,432** reduction/color-depth dispatch cases, including dual-rotation gates.
+- **15,200** actual VRAM-write invalidation checks across character tails/wrapping.
+- Independent dropped-fraction, selection-bypass, wrong-window-bank and truncated
+  cache-range mutations compile and assertion-fail. **32 scripts / eleven production
+  object builds pass**; log: `/home/user/.cache/saturn/p2-batch-validation.log`.
+
+### What still prevents P2 completion
+
+| Parent | Remaining implementation/qualification |
+|---|---|
+| S01 | Fractional character-tile sampling and complete zoom-coordinate equivalence; bitmap tests do not establish it. |
+| S02 | Source-coordinate cell boundaries, cell-scroll with vertical line scroll/line zoom, mosaic priority, actual interlace fetches, and combined pixel fixtures without nested-render growth. Existing combination exclusions remain in production. |
+| R01 | Shared special-priority/calculation metadata and linked qualification; base repeated-pattern pixels are implemented. |
+| R02 | Full fixed-point precision/overflow and physical coefficient-fetch behavior beyond the new field/image fixtures. |
+| R03 | **RPRCTL one-shot scanline reloads remain missing.** ST-058 pp.152/158 describes reloading and clearing bits at the next parameter read. Existing frame-snapshot overrides are not that model. Coefficient line-color interaction remains missing. |
+| R04 | Physical VRAM resource/arbitration qualification and linked cache/save/load/performance checks beyond descriptor/window/invalidation fixtures. |
+
+RPRCTL requires a scanline latch/partial-presentation model coordinated with T01/H01;
+this batch does not silently substitute a guessed frame-level reload rule. No new
+persistent hardware latch state was added; fractional fields and coefficient memoization
+are derived render state. Save-manager and game acceptance are still not established.
+
+
 ## S02: standalone vertical cell-scroll dispatch — 2026-09-15
 
 Removed the accidental horizontal-line-scroll prerequisite from the existing

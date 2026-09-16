@@ -13,7 +13,7 @@ import re
 import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('window','nibble','additive'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mutation',choices=('window','nibble','additive','fraction'));a=p.parse_args()
 source=(ROOT/'src/mame/sega/saturn.cpp').read_text();header=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(src,sig):
     start=src.index(sig);end=src.index('{',start)+1;depth=1
@@ -28,8 +28,9 @@ functions=extract(source,'static void fixup_window_x(')+'\n'+'\n'.join(funcs)
 if a.mutation=='additive':functions=functions.replace('else if (VDP2_CCMD)', 'else if (false && VDP2_CCMD)')
 if a.mutation=='window':functions=functions.replace('if (!vdp2_window_process(xdst, ydst))','if (false)')
 if a.mutation=='nibble':functions=functions.replace('((xsrc & 1) ? 0 : 4)','((xsrc & 1) ? 4 : 0)')
+if a.mutation=='fraction':functions=functions.replace('+ current_tilemap.scrollx_fraction', '+ 0').replace('+ current_tilemap.scrolly_fraction', '+ 0')
 macros=sorted(set(re.findall(r'VDP2_\w+',functions)))
-fields=sorted(set(re.findall(r'current_tilemap\.(\w+)',functions))-{'window_control'})
+fields=sorted((set(re.findall(r'current_tilemap\.(\w+)',functions))|{'scrollx_fraction','scrolly_fraction'})-{'window_control'})
 code=r'''
 #include <algorithm>
 #include <array>
@@ -78,7 +79,7 @@ int main(){
  draw drawers[]={&saturn_state::draw_4bpp_bitmap,&saturn_state::draw_8bpp_bitmap,&saturn_state::draw_11bpp_bitmap,&saturn_state::draw_rgb15_bitmap,&saturn_state::draw_rgb32_bitmap};
  unsigned cases=0;
  for(unsigned format=0;format<5;++format)for(int hreso:{0,2,4,6})for(int interlace:{0,3})
- for(int line:{0,1})for(int config=0;config<32;++config)for(int scale:{32768,65536,98304})for(int additive:{0,1}){
+ for(int line:{0,1})for(int config=0;config<32;++config)for(int scale:{32768,65536,98304})for(int additive:{0,1})for(int phase:{0,0x4000,0xff00}){
   s.regs.VDP2_CCMD=additive;
   s.device.hreso=hreso;s.device.lsmd=interlace;
   auto &w=c.window_control;w.enabled[0]=config&1;w.enabled[1]=(config>>1)&1;w.area[0]=(config>>2)&1;w.area[1]=(config>>3)&1;w.logic=config>>4;
@@ -86,6 +87,7 @@ int main(){
   s.regs.VDP2_WPSX0=4;s.regs.VDP2_WPEX0=10;s.regs.VDP2_WPSX1=8;s.regs.VDP2_WPEX1=16;
   s.regs.VDP2_W0LWE=line;s.regs.VDP2_W1LWE=0;s.regs.VDP2_W0LWTA=0;
   for(unsigned y=0;y<8;++y)s.m_vdp2_vram[y]=((4+y%3)<<16)|(10+y%3);
+  c.scrollx_fraction=phase;c.scrolly_fraction=phase;
   c.incx=scale;c.incy=scale;c.scrollx=509;c.scrolly=254;c.bitmap_size=0;c.bitmap_map=3;
   c.bitmap_palette_number=1;c.colour_ram_address_offset=2;c.transparency=config&1;c.alpha=128;c.colour_calculation_enabled=(config>>1)&1;
   bitmap_rgb32 image,expected;
@@ -104,7 +106,7 @@ int main(){
    if(w.enabled[0]){bool value=w.area[0]?in0:!in0;allowed=w.logic?(allowed||value):(allowed&&value);}
    if(w.enabled[1]){bool value=w.area[1]?in1:!in1;allowed=w.logic?(allowed||value):(allowed&&value);}
    if(!allowed)continue;
-   unsigned sx=(x*scale/65536+509)%512,sy=(y*scale/65536+254)%256;
+   unsigned sx=((x*scale+phase)/65536+509)%512,sy=((y*scale+phase)/65536+254)%256;
    unsigned dot=sx+sy*512,bytes=format==0?dot/2:format==1?dot:format==4?dot*4:dot*2;
    unsigned address=(bytes+3*0x20000)%0x80000,raw=mem[address];
    if(format==0)raw=(raw>>(sx%2?0:4))&15;
