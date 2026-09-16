@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route'))
+p.add_argument('--mutation',choices=('phase','cell','mosaic','two-word','special-color','metadata','priority','11bpp-route','11bpp-stride','flip-axis'))
 a=p.parse_args();src=(ROOT/'src/mame/sega/saturn.cpp').read_text();head=(ROOT/'src/mame/sega/saturn.h').read_text()
 def extract(text,sig):
  start=text.index(sig);end=text.index('{',start)+1;depth=1
@@ -23,6 +23,14 @@ def extract(text,sig):
  return text[start:end]
 funcs=[extract(src,sig) for sig in ('void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
 f=extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
+# ST-058 table 4.2: 2048-color cells occupy 128 bytes, not 64.
+# The pinned Ymir character-cell index uses the latter stride; keep that
+# discrepancy visible rather than adopting the emulator as an oracle.
+if a.mutation=='11bpp-stride':
+ assert f.count('cell * bytes_per_cell')==1
+ f=f.replace('cell * bytes_per_cell','cell * (depth == 2 ? 64U : bytes_per_cell)')
+if a.mutation=='flip-axis':
+ f=f.replace('if (data & 0x0400) x = ~x;', 'if (data & 0x0400) y = ~y;').replace('if (data & 0x0800) y = ~y;', 'if (data & 0x0800) x = ~x;')
 if a.mutation=='phase':f=f.replace('+ t.scrollx_fraction','+ 0').replace('+ t.scrolly_fraction','+ 0')
 if a.mutation=='cell':f=f.replace('unsigned((source_x >> 19) - first_cell)','unsigned(sample_x / 8 + first_cell * 0)')
 if a.mutation=='mosaic':f=f.replace('t.vertical_cell_scroll_enable && !mosaic','t.vertical_cell_scroll_enable')
