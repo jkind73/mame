@@ -1,5 +1,33 @@
 # VDP2 implementation report and progress tracker
 
+## V2-C03d: linked displayed-framebuffer sprite windows — 2026-09-16
+
+Added **48 sprite-window scenes per configuration**: legal palette-only sprite types
+2–7, coverage/calculation-only windows and both retained areas, at both VRAM
+capacities. CPU-mapped VDP1 drawing-bank writes provide a 13-by-9 MSB checker;
+manual framebuffer change exposes it to VDP2. Sprite priorities are zero, leaving
+red/green backgrounds to reveal coverage and calculation independently. Each scene
+checks 144 coordinate/color probes and real save/mutate/load/full-image replay.
+Mutation overwrites **both physical framebuffer banks**, preventing a bank-selector
+restore alone from recovering the saved image. Captures 170 and 193 were inspected.
+
+**1,728 synthetic cases pass** (1,296 DRC / 432 interpreter): 386 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays, all 47 regression scripts and 44 runner-protocol tests pass; `-validate`
+reports no diagnostics. Extracted MSB-inversion and wrong-bank mutants compile and
+fail sprite-window assertions; the unmodified extracted suite passes 1,376,256
+sprite-window probes. Production code and the previously linked executable are unchanged.
+
+Primary basis: ST-058 pp.187–190 and ST-013-R3 p.38 (CPU drawing-bank access and
+manual next-field change), pinned SDK revision documented below. Cross-checks:
+pinned Ymir renderer lines 2450–2463 and MiSTer VDP2 lines 3161–3168. The fixture
+waits across fields; injected register writes do **not** certify the documented
+interrupt/access window, latch timing, bus arbitration or VDP1 command execution.
+C03d is bounded to normal 16-bit framebuffer scanout and these NBG0 windows; mixed
+windows, other scanout modes, all layers/rotation, games and comparative performance
+remain separate acceptance work. Full VDP2 is not declared complete. Older totals
+below are historical checkpoints.
+
 ## V2-C04c: linked per-dot priority and special calculation — 2026-09-16
 
 Added **96 special-function scenes per configuration** using transparent/red/green
@@ -1448,6 +1476,7 @@ narrow acceptance. The separate title/logo issue remains unresolved.
 - [x] **V2-C03b** Preserve no-transform rotation windows and audit shortcut eligibility; test wrapper/cache configuration.
 - [x] **V2-C03c** Calculation-only W0/W1/SW windows and normal/sprite SW area/cache integration.
 - [ ] **V2-C03** Complete window behavior.
+  - [x] **V2-C03d** Linked displayed-framebuffer MSB windows: types 2–7, both retained areas, coverage/calculation and both-bank save replay. Normal 16-bit scanout only; timing/all-mode acceptance remains open.
   - [x] **V2-C03b** Linked W0/W1 line-table sampling, independent physical wrapping, inverted rows and coverage/calculation-only combinations pass in normal resolution. Not interlace, exact fetch timing or all sprite/rotation combinations.
   - [x] **V2-C03a** Linked W0/W1 coverage/calculation-only boundary, overlap and disabled-window matrix passes in normal resolution at both VRAM capacities. Not line/sprite/rotation/all-mode coverage.
   - [ ] Window 0/1 boundaries, line windows, AND/OR and disabled-window neutral values.

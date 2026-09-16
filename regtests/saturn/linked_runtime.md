@@ -1,5 +1,33 @@
 # Linked Saturn / ST-V qualification
 
+## V2-C03d: linked displayed-framebuffer sprite windows — 2026-09-16
+
+Added **48 sprite-window scenes per configuration**: legal palette-only sprite types
+2–7, coverage/calculation-only windows and both retained areas, at both VRAM
+capacities. CPU-mapped VDP1 drawing-bank writes provide a 13-by-9 MSB checker;
+manual framebuffer change exposes it to VDP2. Sprite priorities are zero, leaving
+red/green backgrounds to reveal coverage and calculation independently. Each scene
+checks 144 coordinate/color probes and real save/mutate/load/full-image replay.
+Mutation overwrites **both physical framebuffer banks**, preventing a bank-selector
+restore alone from recovering the saved image. Captures 170 and 193 were inspected.
+
+**1,728 synthetic cases pass** (1,296 DRC / 432 interpreter): 386 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays, all 47 regression scripts and 44 runner-protocol tests pass; `-validate`
+reports no diagnostics. Extracted MSB-inversion and wrong-bank mutants compile and
+fail sprite-window assertions; the unmodified extracted suite passes 1,376,256
+sprite-window probes. Production code and the previously linked executable are unchanged.
+
+Primary basis: ST-058 pp.187–190 and ST-013-R3 p.38 (CPU drawing-bank access and
+manual next-field change), pinned SDK revision documented below. Cross-checks:
+pinned Ymir renderer lines 2450–2463 and MiSTer VDP2 lines 3161–3168. The fixture
+waits across fields; injected register writes do **not** certify the documented
+interrupt/access window, latch timing, bus arbitration or VDP1 command execution.
+C03d is bounded to normal 16-bit framebuffer scanout and these NBG0 windows; mixed
+windows, other scanout modes, all layers/rotation, games and comparative performance
+remain separate acceptance work. Full VDP2 is not declared complete. Older totals
+below are historical checkpoints.
+
 ## V2-C04c: linked per-dot priority and special calculation — 2026-09-16
 
 Added **96 special-function scenes per configuration** using transparent/red/green
@@ -279,7 +307,7 @@ python regtests/saturn/run_vdp2_runtime.py \
   --boot-frames 900 --output /home/user/.cache/saturn/bios-jp
 ```
 
-For the 338-case two-background composition matrix, add `--composition` (mutually exclusive
+For the 386-case two-background composition matrix, add `--composition` (mutually exclusive
 with `--bios`) and use a separate output directory:
 
 ```sh
@@ -298,11 +326,11 @@ line-selected ratio, lower-history isolation and disabled top calculation.
 Cases 122–133 cover special-priority modes/attributes/selectors; 134–135 cover
 priority promotion/demotion through zero; 136–167 cover special-calculation
 modes/attributes/selectors/CC enable; 168–169 combine special priority with MSB
-calculation. Cases 170–338 repeat at the larger capacity. Line scenes use table bases at physical
+calculation. Cases 170–193 cover sprite-window types 2–7, coverage/calculation and retained areas. Cases 194–386 repeat at the larger capacity. Line scenes use table bases at physical
 capacity minus 16 and 0x60000, swapping which window wraps. Their foreground bitmap
 uses map 2 and their blue back word is at 0x5fffe, disjoint from both tables.
 The composition watchdog is 120 emulated seconds; completion still requires all
-338 ordered case records and the exact final marker. Sources are red over green;
+386 ordered case records and the exact final marker. Sources are red over green;
 additive saturation changes the lower source to yellow. Window scenes change expected colors per coordinate using retained-area predicates.
 Mosaic scenes replace the solid source data with a transparent/red/green foreground
 and yellow/white lower screen. Their source sample is displaced by scroll (5,7);

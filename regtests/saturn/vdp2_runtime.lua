@@ -130,9 +130,20 @@ if composition then
             end
         end
         for select=0,1 do special('combined',2,true,select,true,2,3) end
+        -- ST-058 pp.187–190: framebuffer MSB supplies SW for palette
+        -- sprite types 2–7. Exercise both retained areas and window uses.
+        for sprite_type=2,7 do
+            for _,calculation in ipairs({false,true}) do
+                for _,inside in ipairs({false,true}) do
+                    local c=add('sprite-window-'..sprite_type..'-'..tostring(calculation)..'-'..tostring(inside),
+                        0x0102,calculation and 1 or 0,15,0xff0000)
+                    c.sprite_window={sprite_type=sprite_type,calculation=calculation,inside=inside}
+                end
+            end
+        end
     end
 end
-assert(#cases==(composition and 338 or 46))
+assert(#cases==(composition and 386 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -283,6 +294,16 @@ local function configure(c)
         reg(0xee,t.kind=='priority' and 0 or t.kind=='combined' and 3 or t.mode)
         reg(0x2c,t.attribute and (t.kind=='priority' and 0x20 or t.kind=='combined' and 0x30 or 0x10) or 0)
     end
+    if c.sprite_window then
+        -- Stop BIOS command drawing and automatic bank changes. The caller
+        -- waits before touching the draw bank, then requests a manual change.
+        space:write_u16(0x05d00004,0);space:write_u16(0x05d0000c,0)
+        space:write_u16(0x05d00000,0);space:write_u16(0x05d00002,3)
+        reg(0xe0,0x10|c.sprite_window.sprite_type)
+        local control=0x20|(c.sprite_window.inside and 0x10 or 0)
+        if c.sprite_window.calculation then reg(0xd6,control<<8)
+        else reg(0xd0,control) end
+    end
     if c.offset then
         for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
     end
@@ -290,15 +311,37 @@ local function configure(c)
     c.dot=c.special and 0x00001111 or c.mosaic and 0x00011122 or dot;c.capacity=capacity
     c.address=(c.table_bases or c.line_color) and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
 end
+local function paint_sprite_window(inverted)
+    -- CPU framebuffer accesses target only the drawing bank (ST-013 p.38).
+    -- 16-bit 512x256 mode: every stored pixel is either 0000 or 8000.
+    for y=0,255 do
+        for x=0,511,2 do
+            local data=0
+            for sx=x,x+1 do
+                local inside=(sx//13+y//9)%2==0
+                if inverted then inside=not inside end
+                data=(data<<16)|(inside and 0x8000 or 0)
+            end
+            space:write_u32(0x05c80000+(y*512+x)*2,data)
+        end
+    end
+    space:write_u16(0x05d00002,3)
+end
 local function pixels(expected)
     local c=cases[index]
-    local xs=(c.window or c.mosaic or c.special) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
-    local ys=(c.window or c.mosaic or c.special) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
+    local xs=(c.window or c.mosaic or c.special or c.sprite_window) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
+    local ys=(c.window or c.mosaic or c.special or c.sprite_window) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
     if c.line_color then ys={0,1,2,3,4,5,7,8,17,63,127,223} end
     for _,y in ipairs(ys) do
         for _,x in ipairs(xs) do
             local actual=screen:pixel(x,y)&0xffffff
             local want=expected
+            if c.sprite_window and expected~=0x0000ff then
+                local inside=(x//13+y//9)%2==0
+                local keep=inside==c.sprite_window.inside
+                if c.sprite_window.calculation then want=keep and 0x7f7f00 or 0xff0000
+                else want=keep and 0xff0000 or 0x00ff00 end
+            end
             if c.special and expected~=0x0000ff then
                 local t=c.special
                 local code=(x//4+y//3)%3
@@ -379,8 +422,11 @@ local function step()
         if wait>0 then wait=wait-1 else phase='configure' end
         return
     end
-    if phase=='configure' then configure(cases[index]);phase='render';wait=3
+    if phase=='configure' then
+        configure(cases[index]);phase=cases[index].sprite_window and 'sprite-draw' or 'render';wait=3
     elseif wait>0 then wait=wait-1
+    elseif phase=='sprite-draw' then
+        paint_sprite_window(false);phase='render';wait=3
     elseif phase=='render' then
         pixels(cases[index].expected or 0xff0000);reference=screen:pixels();assert(#reference>0)
         saved=false;os.remove(output..'/runtime.sta');machine:save(output..'/runtime.sta');phase='save';wait=3
@@ -404,7 +450,14 @@ local function step()
         for offset=0xc0,0xde,2 do reg(offset,0) end
         for offset=0x110,0x11e,2 do reg(offset,0) end
         reg(0xf8,0);reg(0xfa,0);reg(0xfc,0);reg(0x0e,0);reg(6,cases[index].large and 0 or 0x8000)
-        phase='mutated';wait=3
+        if cases[index].sprite_window then
+            paint_sprite_window(true);phase='sprite-mutate-second'
+        else phase='mutated' end
+        wait=3
+    elseif phase=='sprite-mutate-second' then
+        -- The first change exposes the previous display bank to CPU writes.
+        -- Overwrite it too: restoring ownership alone must not pass replay.
+        paint_sprite_window(true);phase='mutated';wait=3
     elseif phase=='mutated' then
         pixels(0x0000ff);loaded=false;machine:load(output..'/runtime.sta');phase='load';wait=3
     elseif phase=='load' then

@@ -18,6 +18,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--old', action='store_true')
 p.add_argument('--ratio-baseline', action='store_true')
 p.add_argument('--sprite-window-mutation', action='store_true')
+p.add_argument('--sprite-bank-mutation', action='store_true')
 a = p.parse_args()
 source = (subprocess.check_output(['git','show',('baf9b069' if a.ratio_baseline else '9f6d2ccc')+':src/mame/sega/saturn.cpp'],cwd=ROOT,text=True)
           if a.old or a.ratio_baseline else (ROOT/'src/mame/sega/saturn.cpp').read_text())
@@ -32,6 +33,12 @@ functions='\n'.join(extract(sig) for sig in ('void saturn_state::draw_sprites(',
  'int saturn_state::vdp1_rotation_coordinate('))
 functions=extract('static uint32_t vdp2_gradation_color(')+'\n'+extract('static uint32_t vdp2_extended_color(')+'\n'+extract('void saturn_state::vdp2_compose_pixel(')+'\n'+extract('void saturn_state::vdp2_shadow_pixel(')+'\n'+extract('bool saturn_state::vdp2_sprite_window(')+'\n'+functions
 if a.sprite_window_mutation:functions=functions.replace('& 0x8000) != 0;', '& 0x8000) == 0;')
+if a.sprite_bank_mutation:
+    old='vdp1_display_pixel(sx, y, rotation)'
+    assert functions.count(old)==1
+    # Change only normal, in-bounds SW sampling to the opposite physical bank.
+    # Keep the other readout modes and the sprite color compositor untouched.
+    functions=functions.replace(old,'((VDP1_TVM() == 0 && sx < 512 && y < 256) ? m_vdp1_legacy.framebuffer[1 - m_vdp1_legacy.framebuffer_current_display].get()[y * 512 + sx] : vdp1_display_pixel(sx, y, rotation))')
 functions=extract('static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+functions
 assert 'vdp2_window_cache_invalidate();' in (ROOT/'src/mame/sega/saturn.cpp').read_text().split('void saturn_state::vdp2_state_save_postload() {',1)[1].split('void saturn_state::vdp2_exit()',1)[0]
 names=sorted(set(re.findall(r'VDP2_(\w+)',functions)))
