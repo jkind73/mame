@@ -15,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('--mutation', choices=('cumulative', 'ratio', 'line-history', 'disabled-ratio', 'shadow', 'extended', 'format', 'gradation', 'halo', 'offset', 'shadow-layer'))
+p.add_argument('--mutation', choices=('cumulative', 'ratio', 'line-history', 'disabled-ratio', 'shadow', 'extended', 'format', 'gradation', 'halo', 'offset', 'shadow-layer', 'line-ratio'))
 a = p.parse_args()
 src = (ROOT / 'src/mame/sega/saturn.cpp').read_text()
 blend = (ROOT / 'src/emu/drawgfx.h').read_text()
@@ -44,6 +44,10 @@ if a.mutation == 'cumulative':
     functions = functions.replace('? m_vdp2_raw_top.pix(y, x) : dest', '? dest : dest')
 if a.mutation == 'ratio':
     functions = functions.replace('? m_vdp2_raw_alpha.pix(y, x) : alpha', '? alpha : alpha')
+if a.mutation == 'line-ratio':
+    old='vdp2_cc_blend_level(VDP2_CCRLB & 31)'
+    assert old in functions
+    functions=functions.replace(old,'vdp2_cc_blend_level((VDP2_CCRLB >> 8) & 31)')
 if a.mutation == 'line-history':
     functions = functions.replace('m_vdp2_raw_top.pix(y, x) = color;', 'm_vdp2_raw_top.pix(y, x) = insert_line ? line_color : color;')
 if a.mutation == 'disabled-ratio':

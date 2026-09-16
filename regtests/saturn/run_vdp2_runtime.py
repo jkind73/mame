@@ -35,7 +35,7 @@ if a.bios:
     expected=rf'^BIOS_RUNTIME PASS system={re.escape(a.system)} time=[0-9]+\.[0-9]+ pc=[0-9a-f]{{8}} full-image replay identical$'
     complete=re.search(expected,text,re.M) is not None
 else:
-    count=226 if a.composition else 46
+    count=242 if a.composition else 46
     records=[int(m[1]) for m in re.finditer(r'^VDP2_RUNTIME case=(\d+) .* pixels/save/load PASS$',text,re.M)]
     complete=(records==list(range(1,count+1)) and
               re.search(rf'^VDP2_RUNTIME PASS cases={count}$',text,re.M) is not None)

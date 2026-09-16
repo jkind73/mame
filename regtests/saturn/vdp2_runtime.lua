@@ -95,9 +95,19 @@ if composition then
                 c.mosaic={width=size[1],height=size[2],blend=blend}
             end
         end
+        -- ST-058 pp.172–174,231,241–244: LNCL is a selected second
+        -- image, not a globally painted layer or a cumulative lower result.
+        for _,per_line in ipairs({false,true}) do
+            for _,kind in ipairs({'top','second-ratio','lower','disabled'}) do
+                local control=kind=='second-ratio' and 0x0201 or kind=='lower' and 3 or kind=='disabled' and 2 or 1
+                local c=add('line-color-'..kind..(per_line and '-rows' or '-single'),
+                    0x0102,control,15|(31<<8),0xff0000)
+                c.line_color={per_line=per_line,kind=kind}
+            end
+        end
     end
 end
-assert(#cases==(composition and 226 or 46))
+assert(#cases==(composition and 242 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -213,21 +223,52 @@ local function configure(c)
         reg(0x9a,1);reg(0x9c,3);reg(0x9e,0)
         for offset=0,252,4 do space:write_u32(vram+0x60000+offset,0x00090000) end
     end
+    if c.line_color then
+        -- The wrapping table must not alias displayed bitmap or back data.
+        reg(0x3c,0x0012)
+        for offset=0,0xfffc,4 do space:write_u32(vram+0x40000+offset,dot) end
+        space:write_u16(vram+0x5fffe,0x7c00);reg(0xac,2)
+        space:write_u16(cram+10,0x7c00) -- pen 5 blue; pen 3 remains yellow
+        c.line_color.base=capacity-8
+        for row=0,255 do
+            space:write_u16(vram+((c.line_color.base+row*2)%capacity),0xf800|(row%2==0 and 5 or 3))
+        end
+        local wordbase=c.line_color.base//2
+        reg(0xa8,(c.line_color.per_line and 0x8000 or 0)|(wordbase>>16))
+        reg(0xaa,wordbase&0xffff)
+        reg(0xe8,c.line_color.kind=='lower' and 2 or 1)
+        reg(0x10e,(31<<8)|7) -- distinct line, back and normal-layer ratios
+    end
     if c.offset then
         for word,value in ipairs(c.offset) do reg(0x10e+word*2,value) end
     end
     reg(0,0x8000)
     c.dot=c.mosaic and 0x00011122 or dot;c.capacity=capacity
-    c.address=c.table_bases and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
+    c.address=(c.table_bases or c.line_color) and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
 end
 local function pixels(expected)
     local c=cases[index]
     local xs=(c.window or c.mosaic) and {30,31,32,62,63,64,126,127,128,254,255,256} or {8,31,127,255}
     local ys=(c.window or c.mosaic) and {16,17,18,30,31,32,62,63,64,126,127,128} or {8,17,63,127}
+    if c.line_color then ys={0,1,2,3,4,5,7,8,17,63,127,223} end
     for _,y in ipairs(ys) do
         for _,x in ipairs(xs) do
             local actual=screen:pixel(x,y)&0xffffff
             local want=expected
+            if c.line_color and expected~=0x0000ff then
+                if c.line_color.kind=='disabled' then want=0xff0000
+                elseif c.line_color.kind=='lower' then want=0x7f7f00
+                else
+                    local line=(c.line_color.per_line and y%2==1) and 0xffff00 or 0x0000ff
+                    local ratio=c.line_color.kind=='second-ratio' and 7 or 15
+                    want=0
+                    for _,shift in ipairs({0,8,16}) do
+                        local top=(0xff0000>>shift)&255
+                        local under=(line>>shift)&255
+                        want=want|(((top*(31-ratio)+under*(ratio+1))//32)<<shift)
+                    end
+                end
+            end
             if c.mosaic and expected~=0x0000ff then
                 local sx=(x//c.mosaic.width)*c.mosaic.width+5
                 local sy=(y//c.mosaic.height)*c.mosaic.height+7
@@ -288,6 +329,12 @@ local function step()
             for _,base in ipairs(cases[index].table_bases) do
                 for row=0,255 do space:write_u32(vram+((base+row*4)%cases[index].capacity),0) end
             end
+        end
+        if cases[index].line_color then
+            for row=0,255 do
+                space:write_u16(vram+((cases[index].line_color.base+row*2)%cases[index].capacity),0)
+            end
+            reg(0xa8,0);reg(0xaa,0);reg(0xe8,0);reg(0x10e,0)
         end
         reg(0x22,0)
         for offset=0xc0,0xde,2 do reg(offset,0) end
