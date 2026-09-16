@@ -1,5 +1,42 @@
 # Saturn TODO Inventory — 2026-09-13 (post 07ee024a fix)
 
+## V2-C02d: linked RBG0 shadow identity and color operations — 2026-09-16
+
+Added **64 RBG0 shadow scenes per configuration**: normal-MSB precedence and
+transparent shadow; sprite priorities zero/below/tied/above; R0SDEN versus the
+wrong NBG0 shadow bit; plain versus calculated/offset RBG0; both VRAM capacities.
+RBG0 is an opaque magenta 11-bit cell layer over the blue back screen, using
+identity parameter A. The cells use the previously qualified 128-byte stride.
+
+RBG0 priority is 2. Its calculated/offset result is 7f10ff; a qualifying shadow must
+produce 3f087f, while a sprite below RBG0 must not darken it. The independent oracle
+checks 144 probes and real save/mutate/load/full-image replay per scene. CPU writes
+overwrite both VDP1 framebuffer banks during mutation, and a rotation character
+word is explicitly changed and checked after restore. Captures 497 (below RBG0)
+and 505 (above RBG0) were inspected.
+
+**4,352 synthetic cases pass freshly** (3,264 DRC / 1,088 interpreter): 1,042 composition
+plus 46 background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible
+BIOS replays, all 47 regression scripts and 44 protocol cases pass; `-validate` has
+no diagnostics. Extracted underlying-layer and offset-order mutations were rerun:
+both compile and fail assertions. Production and the previously rebuilt executable
+are unchanged; full-link/eleven-object evidence is retained, not a new source build.
+
+Primary ST-058 pp.148–150 and 259 were reread alongside the previously audited
+priority/shadow rules. Pattern names and character data use separate rotation-owned
+banks: RAMCTL 110e at 4 Mbit selects A0 for names and A1 for characters; RAMCTL
+1023 at 8 Mbit selects B for names and A for characters. The normal backgrounds
+are disabled in these scenes. Pinned MiSTer VDP2 lines 3276–3282 corroborate R0SDEN
+and sprite/RBG0 priority gating; pinned Ymir lines 3986–4001 corroborate selection
+of the underlying background shadow bit. Sega/MiSTer, not Ymir's differing offset
+order, remain the color-operation ordering basis.
+
+This qualifies **identity-rotation RBG0 composition**, not general rotation
+coordinates: the opaque constant-color source cannot prove transformed sampling,
+coefficient permissions/precision, RBG1 sharing or parameter latch timing. Framebuffer
+injection also does not establish VDP1 command timing or hardware access windows.
+Those acceptance items and full VDP2 remain open. Older totals below are historical.
+
 ## V2-C02c: linked shadow layer identity, rank and precedence — 2026-09-16
 
 Added **160 shadow-ranking scenes per configuration**: underlying NBG0, NBG1,

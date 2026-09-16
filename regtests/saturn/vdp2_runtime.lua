@@ -224,9 +224,23 @@ if composition then
                 end
             end
         end
+        -- RBG0 identity-rotation cells: extend rank/selection coverage to
+        -- the rotation layer, also after its own calculation and offset.
+        for _,kind in ipairs({'normal','transparent'}) do
+            for _,priority in ipairs({0,1,2,3}) do
+                for _,eligible in ipairs({false,true}) do
+                    for _,effect in ipairs({false,true}) do
+                        local c=shadow(kind,2,eligible,effect,kind=='transparent')
+                        c.name=c.name..'-RBG0-priority-'..priority
+                        c.shadow.target=4;c.shadow.priority=priority
+                        if kind=='normal' then c.shadow.dot=0x87fe end
+                    end
+                end
+            end
+        end
     end
 end
-assert(#cases==(composition and 978 or 46))
+assert(#cases==(composition and 1042 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -409,6 +423,19 @@ local function configure(c)
             for offset=0xf0,0xf6,2 do reg(offset,t.priority*0x0101) end
             if target==1 then reg(0xf8,0x0201)
             elseif target==5 then reg(0x20,0)
+            elseif target==4 then
+                -- Reuse the qualified 11-bit-cell rotation layout: PN at
+                -- map 4, four 128-byte characters at 20000, parameter A at 60000.
+                for entry=0,1023 do space:write_u16(vram+((0x80000+entry*2)%capacity),0) end
+                for offset=0,508,4 do space:write_u32(vram+0x20000+offset,0x00060006) end
+                space:write_u16(cram+12,0x7c1f) -- magenta RBG0, blue back
+                reg(0x20,0x10);reg(0xf8,0);reg(0xfc,2)
+                reg(0x2a,0x2100);reg(0x38,0x8004);reg(0x3e,4)
+                reg(0x0e,c.large and 0x1023 or 0x110e)
+                for word=0,23 do space:write_u32(vram+0x60000+word*4,0) end
+                for _,word in ipairs({0,4,5,7,11,19,20}) do space:write_u32(vram+0x60000+word*4,65536) end
+                reg(0xbc,3);reg(0xbe,0);reg(0xb2,7)
+                reg(0xec,t.effect and 0x10 or 0);reg(0x10c,15)
             elseif target==2 or target==3 then
                 -- Distinct yellow/white NBG2/3 cells over the blue back.
                 -- PN plane 60000, character data 40000; no bitmap overlap.
@@ -423,8 +450,8 @@ local function configure(c)
             end
         end
         if t.effect then
-            reg(0x110,t.kind=='self' and 0x40 or 1)
-            reg(0x114,16) -- top-owned red offset after 50:50 calculation
+            reg(0x110,t.target==4 and 0x10 or t.kind=='self' and 0x40 or 1)
+            reg(t.target==4 and 0x116 or 0x114,16) -- top-owned red offset after 50:50 calculation
         end
     end
     if c.extended then
@@ -464,6 +491,7 @@ local function configure(c)
     reg(0,0x8000)
     c.dot=c.gradation and c.gradation.source==0 and 0x11122233 or c.special and 0x00001111 or c.mosaic and 0x00011122 or dot;c.capacity=capacity
     c.address=(c.table_bases or c.line_color) and 0x40000 or c.cell and 0x20000 or (0x80000%capacity)
+    if c.shadow and c.shadow.target==4 then c.address=0x20000;c.dot=0x00060006 end
 end
 local function paint_sprite_framebuffer(inverted)
     -- CPU framebuffer accesses target only the drawing bank (ST-013 p.38).
@@ -500,7 +528,8 @@ local function pixels(expected)
                 local t=c.shadow
                 local inside=(x//13+y//9)%2==0
                 if t.target~=nil then
-                    want=({[0]=0xff0000,[1]=0x00ff00,[2]=0xffff00,[3]=0xffffff,[5]=0x0000ff})[t.target]
+                    want=({[0]=0xff0000,[1]=0x00ff00,[2]=0xffff00,[3]=0xffffff,[4]=0xff00ff,[5]=0x0000ff})[t.target]
+                    if t.target==4 and t.effect then want=0x7f10ff end
                     local top_priority=t.target==5 and 0 or 2
                     if inside and t.eligible and t.priority~=0 and t.priority>=top_priority then
                         want=(want&0xfefefe)>>1
