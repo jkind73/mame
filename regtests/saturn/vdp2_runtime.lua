@@ -165,9 +165,33 @@ if composition then
                 end
             end
         end
+        -- ST-058 pp.237–238: no line insertion, palette second and RGB
+        -- back-screen third. The disputed line-insertion fourth term is absent.
+        for _,palette_third in ipairs({false,true}) do
+            for mode=0,2 do
+                for _,extended in ipairs({false,true}) do
+                    for _,second_cc in ipairs({false,true}) do
+                        for _,second_ratio in ipairs({false,true}) do
+                            for _,top_cc in ipairs({false,true}) do
+                                local control=(extended and 0x400 or 0)|(second_cc and 2 or 0)|
+                                    (second_ratio and 0x200 or 0)|(top_cc and 1 or 0)
+                                local ratio=second_ratio and 7 or 15
+                                local mix=extended and second_cc and (not palette_third or mode==0)
+                                local green=mix and 127 or 255
+                                local blue=mix and 127 or 0
+                                local expected=top_cc and (((255*(31-ratio)//32)<<16)|
+                                    ((green*(ratio+1)//32)<<8)|(blue*(ratio+1)//32)) or 0xff0000
+                                local c=add('extended-'..tostring(palette_third)..'-'..mode..'-'..control,0x0102,control,15|(7<<8),expected)
+                                c.extended={mode=mode,palette_third=palette_third}
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 end
-assert(#cases==(composition and 466 or 46))
+assert(#cases==(composition and 658 or 46))
 local index,phase,wait=1,'settle',180
 local saved,loaded,reference=false,false,nil
 local subscriptions={}
@@ -334,6 +358,26 @@ local function configure(c)
         end
         if c.sprite_window.calculation then reg(0xd6,control<<8)
         else reg(0xd0,control) end
+    end
+    if c.extended then
+        reg(0x0e,c.extended.mode<<12)
+        if c.extended.palette_third then
+            -- Add opaque blue NBG2 cells below NBG1: PN at 60000,
+            -- four 4bpp 8x8 characters at 40000, distinct from both bitmaps.
+            for offset=0,2046,2 do space:write_u16(vram+0x60000+offset,0) end
+            for offset=0,124,4 do space:write_u32(vram+0x40000+offset,0x55555555) end
+            reg(0x34,0x8008);reg(0x2a,1);reg(0x3c,0x0314)
+            reg(0x20,7);reg(0xf8,0x0203);reg(0xfa,1)
+            for offset=0x10,0x1e,2 do reg(offset,0x4526) end
+            space:write_u16(cram+10,0x7c00)
+        end
+        if c.extended.mode==2 then
+            -- Mode-2 CPU longwords express RGB888; handlers distribute the
+            -- two word lanes over physical banks. Do not reuse RGB555 data.
+            space:write_u32(cram+4,0x000000ff)
+            space:write_u32(cram+8,0x0000ff00)
+            space:write_u32(cram+20,0x00ff0000)
+        end
     end
     if c.gradation then
         reg(0x0e,0) -- Gradation requires CRAM mode 0, not the default mode 1.

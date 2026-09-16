@@ -1,5 +1,40 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## V2-C06d: linked extended calculation and third-image format — 2026-09-16
+
+Added **192 extended-calculation scenes per configuration**: EXCCEN on/off, second
+image CC enable, top/second ratio source, top CC enable, CRAM modes 0/1/2, RGB versus
+palette third image, and both VRAM capacities. Opaque red NBG0 is above green NBG1;
+the third image is either the direct-RGB blue back screen or an added blue NBG2
+cell layer. The NBG2 plane, character data and bitmap data are disjoint and have
+real PN/CP cycle commands. Mode-2 colors are written as CPU RGB888 longwords.
+
+The independent expected colors distinguish second-image-only (4:0:0) from
+second/third (2:2:0) calculation. CRAM modes 1/2 must suppress extended mixing when
+the third image is palette, even if NBG1 CC is enabled; an RGB third remains eligible.
+Different top/second ratios (15/7) expose ratio ownership and raw lower-image
+history. Sixteen probes and real save/mutate/load/full-image replay pass per scene.
+Captures 263 (RGB third, 7f3f3f) and 311 (palette third, 7f7f00) were inspected.
+
+**2,816 synthetic cases pass freshly** (2,112 DRC / 704 interpreter): 658 composition
+plus 46 background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible
+BIOS save/load replays, all 47 regression scripts and 44 protocol cases pass;
+`-validate` has no diagnostics. Extracted extended-enable, third-format and
+ratio-metadata mutations compile and fail assertions. The composition watchdog is
+240 emulated seconds for the larger matrix; strict ordered case/PASS checks remain.
+Production and the previously rebuilt executable are unchanged.
+
+Primary ST-058 pp.237–238/Table 12.2 were reread from the pinned SDK PDF. Pinned
+MiSTer package lines 2401–2421 and main lines 3475–3483 corroborate arithmetic,
+third-format gating and top/second ratio selection. Pinned Ymir renderer lines
+4101–4134 corroborate second-enable-controlled lower-image combination, but this
+path does not establish the table's palette-format restriction and is not that
+restriction's oracle. These tests deliberately omit line insertion: the documented
+CRAM0 2:1:0 versus figure/reference 2:1:1 discrepancy is **not** resolved or qualified.
+This is bounded normal-resolution, opaque, no-line-color coverage, not all layer
+orders, RGB sprite inputs, display modes, timing, games or hardware evidence.
+Full VDP2 and parent C06 remain open; older totals below are historical checkpoints.
+
 ## V2-Q02c: fresh full rebuild and linked requalification — 2026-09-16
 
 Restored the missing external SDL/pkg-config dependency cache and rebuilt the
