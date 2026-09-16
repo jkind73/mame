@@ -1,5 +1,33 @@
 # Saturn Work List — ordered by reference coverage (5 refs: Ymir, MiSTer, mednafen, yabause, SaturnRecomp)
 
+## V2-C03d: linked displayed-framebuffer sprite windows — 2026-09-16
+
+Added **48 sprite-window scenes per configuration**: legal palette-only sprite types
+2–7, coverage/calculation-only windows and both retained areas, at both VRAM
+capacities. CPU-mapped VDP1 drawing-bank writes provide a 13-by-9 MSB checker;
+manual framebuffer change exposes it to VDP2. Sprite priorities are zero, leaving
+red/green backgrounds to reveal coverage and calculation independently. Each scene
+checks 144 coordinate/color probes and real save/mutate/load/full-image replay.
+Mutation overwrites **both physical framebuffer banks**, preventing a bank-selector
+restore alone from recovering the saved image. Captures 170 and 193 were inspected.
+
+**1,728 synthetic cases pass** (1,296 DRC / 432 interpreter): 386 composition plus 46
+background cases on JP/PAL/ST-V DRC and JP interpreter. Four fresh visible BIOS
+replays, all 47 regression scripts and 44 runner-protocol tests pass; `-validate`
+reports no diagnostics. Extracted MSB-inversion and wrong-bank mutants compile and
+fail sprite-window assertions; the unmodified extracted suite passes 1,376,256
+sprite-window probes. Production code and the previously linked executable are unchanged.
+
+Primary basis: ST-058 pp.187–190 and ST-013-R3 p.38 (CPU drawing-bank access and
+manual next-field change), pinned SDK revision documented below. Cross-checks:
+pinned Ymir renderer lines 2450–2463 and MiSTer VDP2 lines 3161–3168. The fixture
+waits across fields; injected register writes do **not** certify the documented
+interrupt/access window, latch timing, bus arbitration or VDP1 command execution.
+C03d is bounded to normal 16-bit framebuffer scanout and these NBG0 windows; mixed
+windows, other scanout modes, all layers/rotation, games and comparative performance
+remain separate acceptance work. Full VDP2 is not declared complete. Older totals
+below are historical checkpoints.
+
 ## V2-C04c: linked per-dot priority and special calculation — 2026-09-16
 
 Added **96 special-function scenes per configuration** using transparent/red/green
