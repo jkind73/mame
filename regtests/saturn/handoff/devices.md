@@ -123,7 +123,7 @@ required, **D** done this session, **—** not started this session.
 | CD-04 | P — | `cmd_check_copy_protection` / `cmd_get_disc_region` implemented in the HLE. |
 | CD-05 | P/V — | transfer state saved (`xfertype`, `xfertype32`, `xfer*`). **`hirqreg` round-trip now verified at runtime** by `test_scsp_savestate.py` (DCHG survives save/load, `0421` → `0421`). Still unqualified: the transfer state itself under an in-flight read, and the reset/abort paths. |
 | IO-01 | P/V **D** | `src/devices/bus/sat_ctrl/`: joy, racing, analog, mission, gun, pointer, mouse, keybd, joy_md, multitap, segatap. `read_pdr()` hook exists for direct-mode line protocols. **Audited this session against ST-169-R1 (SMPC User's Manual), extracted from the corpus: every peripheral ID, data size and data-byte layout checked out with no defect** — see §3 "Controller formats". Two things remain: the keyboard shift/kana semantics (**research required**, corpus exhausted — see §3) and the INTBACK report being truncated at 32 OREG bytes rather than using the manual's 15/255-byte port modes (**agent A's SMPC transport layer**). |
-| IO-02 | M/P — | Inventory incomplete. No modem/NetLink device; `saturn/st17xx.cpp` is a skeleton. |
+| IO-02 | P/V **D** | **Inventory completed this session** — see §3 "Communication devices". **Corrected:** `saturn/st17xx.cpp` is *not* a communication device, it is 10 skeleton DVD-player consoles (ST-1700h…ST-1714). Implemented and tested: the 315-5649 IOGA RS-422 link. Stubbed: SMPC `NETLINKON`/`NETLINKOFF`. Missing entirely: NetLink modem, Sega Saturn modem, XBAND. One game-motivated hardcoded byte found inside the CD block map and flagged, not fixed. |
 | CART-01 | P — | `src/devices/bus/saturn/`: `sat_bram_{4,8,16,32mb}`, `sat_dram_{8,32mb}`, `sat_rom`, `sat_cart_slot`. Capacity/bank/lane qualification outstanding. |
 | NVR-01 | P/V **D** | backup RAM + SMPC RTC exist. Persistence and byte-lane behaviour now verified by `test_backup_ram.py` — see §3. **Characterised limitation:** loading a save state does *not* restore backup RAM. Cold-start/battery-loss still unqualified. |
 | STV-01 | P — | `stv.cpp` board wiring, EEPROM `AK93C45F` modelled as `EEPROM_93C46_16BIT`. |
@@ -719,6 +719,70 @@ out rather than invented.
 
 Binary restored to the identical sha256 `3d536a7a…` after both mutations.
 
+### Communication devices — inventory completed (IO-02)
+
+**Correction first.** An earlier revision of this ledger cited
+`src/mame/saturn/st17xx.cpp` as evidence under IO-02 ("is a skeleton"). That was
+wrong: the file is a skeleton for **Saturn ST-17xx series DVD players** (Mediatek
+MT1379/MT1389), defining ten `CONS` entries `st1700h`, `st1701`–`st1708`, `st1714`,
+all `MACHINE_NO_SOUND | MACHINE_NOT_WORKING`. They are standalone DVD consoles, not
+communication devices.
+
+**Implemented and tested**
+
+| Device | Where | Status |
+|---|---|---|
+| 315-5649 IOGA RS-422 serial (ST-V) | `src/mame/sega/315_5649.cpp` | **verified** — `test_ioga_serial.py`, 4113 cases, `MUTATE_IOGA=1` fails. Loopback (mode bit 4) forwards writes to `m_serial_wr_cb[ch]`, latches `m_serial_rx_data[ch]`, and read-back clears the latch. `m_serial_rx_data` is a `save_item` (`315_5649.cpp:62`) |
+| SCSP MIDI in/out FIFOs | `src/devices/sound/scsp.cpp` | implemented over `device_serial_interface` — 32-entry `m_MidiStack`/`m_MidiOutStack`, both `save_item`s; TX drains via `tra_complete`, RX fills via `rcv_complete`; the MIDI-out-empty interrupt is raised on both the SCIPD and MCIPD sides. **Not yet exercised at runtime** — no fixture drives it |
+
+**Stubbed**
+
+SMPC commands `0x0a` (`NETLINKON`/`COPON`) and `0x0b` (`NETLINKOFF`/`COPOFF`) at
+`smpc.cpp:469-478` fall through to a log line and a `popmessage("%s: NetLink
+enabled")`. The code's own TODO asks the right question: *"understand where
+NetLink actually lies and implement delegation accordingly (is it really an SH1
+device like suggested by the space access or it overlays on CS2 bus?)"*. There is
+no NetLink device in the tree to delegate to. The command decode is agent A's SMPC
+core; the delegation **target** is IO-02/EXP-02.
+
+**A game-motivated hardcoded byte inside the CD block — flagged, not fixed**
+
+`saturn_cd_hle.cpp:296-299`:
+
+```cpp
+// NetLink/ Sega Saturn modem access
+// dragndrm expects this value, most likely for status
+// TODO: move out of here, breaks daytoncej boot
+map(0x85029, 0x85029).lr8(NAME([]() -> u8 { return 0x11; }));
+```
+
+`amap()` is installed at `0x05800000-0x0589ffff` (`sat_console.cpp:667-668`), so
+this reads `0x11` at **`0x05885029`** — inside the CD block's own 640 KiB window.
+Two things are wrong with that on its face: a modem status byte does not belong in
+the CD block's address space (the NetLink and the Sega Saturn modem were cartridge
+slot devices on CS2), and the comment records that the placement **breaks
+`daytoncej` boot**.
+
+**I did not change it.** Moving it requires knowing which game regresses, and
+neither `dragndrm` nor `daytoncej` ROMs are available here, so any relocation would
+be unverifiable — exactly the situation in which a "fix" becomes a new guess.
+Handed to agent four, who has the integrated build and the ROM set to test both
+sides. This is also the pattern the project brief rules out (game-specific values
+substituted for real hardware), so it should not be extended.
+
+**Missing entirely**
+
+NetLink modem (US), Sega Saturn modem (JP), XBAND. None has a device, a slot
+option, or a `sat_cart` softlist entry — the softlist contains only `kof95`,
+`ultraman`, `test1f`, `ar`, `pssat`, `ram8`, `ram32`, `bram4`, `bram8`, `bram16`,
+`bram32`.
+
+**Source note.** ST-169-R1 contains no occurrence of "serial", "communication",
+"modem", "RS-232" or "SMSH" in 118 pages, so the SMPC manual documents no
+communication port and the corpus gives no register-level basis for implementing
+one. The 315-5649 RS-422 link is the only communication path here with a
+primary-source basis.
+
 ### A pre-existing `run_all.py` failure, not mine
 
 `run_all.py` auto-discovers `test_*.py` (29 currently) and aborts at
@@ -820,6 +884,7 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | (this commit) | **IO-01:** audited all eleven `sat_ctrl` devices against ST-169-R1 (extracted this session). Peripheral IDs, data sizes and data-byte layouts all correct, including the mouse's active-high buttons and the keyboard's 12-entry Button/Key mapping. Two non-findings recorded honestly: `read_id`/`read_status` returning 0 for an absent card is **unreachable** (no `none` slot option, tap sub-ports hardwired), so it is not the cause of the `smpc.cpp:838` comment; and the 32-byte OREG truncation belongs to agent A's SMPC transport. Keyboard kana confirmed **research-required** after searching all 103 corpus PDFs. No code change. |
 | 2026-09-17 | (this commit) | **SND-05 / CD-05:** `test_scsp_savestate.py` round-trips the SCSP timer counter, prescaler and CD `hirqreg` (DCHG included) through `machine:save`/`machine:load`, exercising `scsp_device::device_post_load()`. Measured advanced=46, rewind=0.016732 s, drift=5, HIRQ `0421`→`0421`, prescaler 17/17. Mutation control: deleting the `base_time` rebase fails `prescale_survived got=0` because the stale base sits ahead of the rewound clock and `timer_sync` freezes the timer. Binary restored to the identical sha256. |
 | 2026-09-17 | (this commit) | **SND-02:** slot word 0 checked field-by-field against ST-077-R2 Figure 4.2 (all seven fields correct); `test_scsp_voice.py` keys a voice on and off and listens to the WAV — onset frame 30.12, offset 60.40, peak 17434, silent tail exact. Records that `StopSlot` enters the release phase rather than silencing, which is why an EGBYP + RR=0 configuration never goes quiet; and records that the `StopSlot` mutation was **not** caught because its `else` branch also stops the slot, so the fixture proves KEY_ON/KEY_OFF but not the release path. |
+| 2026-09-17 | (this commit) | **IO-02:** communication-device inventory completed. **Corrected** the ledger's claim that `saturn/st17xx.cpp` is a communication device — it is ten skeleton DVD-player consoles (`CONS` `st1700h`, `st1701`–`st1708`, `st1714`). Recorded the 315-5649 RS-422 link as the only verified comm path, the SMPC `NETLINKON`/`NETLINKOFF` stubs, the absent NetLink/Saturn-modem/XBAND devices, and a hardcoded `0x11` at `0x05885029` inside the CD block map (`saturn_cd_hle.cpp:299`) added for `dragndrm` whose own comment says it breaks `daytoncej` — flagged for agent four, not fixed, because neither ROM is available to verify a relocation. |
 
 ### Reproducibility — and a claim retracted
 
