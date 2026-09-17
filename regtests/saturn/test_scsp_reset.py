@@ -17,7 +17,12 @@ def extract(text, signature):
     while depth:
         depth+=(text[end]=='{')-(text[end]=='}');end+=1
     return text[start:end]
-assert 'm_scsp->reset();' in extract(saturn, 'void saturn_state::dot_select_w(')
+# SYS-CLK01: video clock change must NOT spuriously reset sound (SCSP).
+# DOTSEL resets VDP2/SCU per SMPC manual, but sound CPU reset is via m_sndres line, not SCSP device reset.
+dot_body = extract(saturn, 'void saturn_state::dot_select_w(')
+assert 'm_scsp->reset();' not in dot_body, "DOTSEL must not reset SCSP (sound-preservation correction)"
+assert 'm_scu->reset();' in dot_body, "DOTSEL must reset SCU per ST-013/ST-058"
+assert 'm_vdp2->reset();' in dot_body, "DOTSEL must reset VDP2 per SMPC manual" 
 functions='\n'.join(extract(source, s) for s in (
     'void scsp_device::device_reset()', 'void scsp_device::reset_irq_timers()',
     'void scsp_device::CheckPendingIRQ()', 'void scsp_device::update_main_irq()',

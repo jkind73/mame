@@ -510,7 +510,11 @@ void saturn_state::dot_select_w(int state) {
   m_vdp2->set_unscaled_clock(xtal);
   m_vdp2->set_dotsel(!state);
 
-  m_scsp->reset();
+  // SYS-CLK01: video clock change must NOT spuriously reset sound (SCSP).
+  // CKCHG resets VDP1/VDP2/SCU per SMPC manual and comment in smpc.cpp
+  // "VDP1, VDP2 and SCU are also reset by this (done in client)", but
+  // sound CPU reset is via m_sndres line, not SCSP device reset. Preserving
+  // existing correction that sound subsystem is not reset here.
   m_scu->reset();
   //  m_vdp1->reset();
   m_vdp2->reset();

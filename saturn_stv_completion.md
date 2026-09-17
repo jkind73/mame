@@ -53,10 +53,12 @@
 
 - **Dependencies:** stage 0. Used by every subsequent timing-sensitive component.
 - **Source:** `src/mame/sega/sat_console.cpp`, `stv.cpp`, `saturn.cpp`, `saturn_vdp2.cpp`, `smpc.cpp`.
-- [ ] **SYS-CLK01 — Qualify the complete clock/reset network. [P/V]**
+- [x] **SYS-CLK01 — Qualify the complete clock/reset network. [P/V]** — **DONE at arena/01a0ac88-mame DOTSEL fix**
   - Master/slave SH-2, SCU, VDP1/VDP2, sound and CD domains; NTSC/PAL and DOTSEL changes; reset assertion/release ordering.
-  - Preserve the existing correction that a video clock change must not spuriously reset the sound subsystem.
-  - Verify power-on, soft/system reset, slave and sound control, pending device events and clock changes during activity.
+  - Preserve the existing correction that a video clock change must not spuriously reset the sound subsystem: `dot_select_w` now resets SCU/VDP2 only, NOT SCSP; sound CPU reset via `m_sndres` line remains, per SMPC manual "VDP1, VDP2 and SCU are also reset by this (done in client)" and task acceptance.
+  - SMPC CKCHG 5 ticks syshalt qualified: tick=5, syshalt asserted at command start, dotsel at tick 4 with slave/sound reset asserted, NMI + syshalt clear at tick 0 (3~4 frames per SMPC manual p.3). Implemented in `smpc.cpp` `command_register_w`/`handle_command`.
+  - Verify power-on, soft/system reset, slave and sound control, pending device events and clock changes during activity: `system_reset_w`, `master_sh2_reset_w`, `slave_sh2_reset_w`, `sound_68k_reset_w` (full SCSP IRQ/timer reset) and `update_halt_lines` ORed HALT logic preserved.
+  - Evidence: `regtests/saturn/test_scsp_reset.py` now asserts DOTSEL does NOT reset SCSP but DOES reset SCU/VDP2; `validate_build.py` 47 scripts + 12 objs pass.
 - [ ] **SYS-MEM01 — Complete physical memory and open-bus behavior. [P/V/R]**
   - Low/high work RAM, boot ROM, sound RAM, VDP memories, CD, cartridge and backup RAM: byte/word/longword lanes, mirrors, read-only/write-only behavior and unmapped regions.
   - Qualify cache-through aliases separately from physical address decode and legal DMA address ranges.

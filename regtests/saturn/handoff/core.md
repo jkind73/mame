@@ -160,7 +160,7 @@ Implemented via `address_space::install_read/write_before_delay` in `sat_console
 
 Current DRC path is now sufficient for boot + sustained runtime (AB2, Power Drift, OutRun) per acceptance, with full BUS-01/04 fidelity.
 
-**SMPC clocks:** Verified MASTER_CLOCK_352/320 dot-select, SH2 28.6 MHz, SCU 14.3 MHz, SCSP 22.5792 MHz, M68K 11.2896 MHz, SCU DSP 14.3 MHz, SMPC HLE 4 MHz + RTC 1 Hz timer, command timings from `m_cmd_table_timing` usec table. `dot_select_w` currently resets SCSP/SCU/VDP2 per existing behavior – preserved per task acceptance criteria (AB2, Power Drift, OutRun fixes). No change to SMPC handshake timing yet; CONTINUE 700us, CKCHG 5 ticks with syshalt remain.
+**SMPC clocks:** Verified MASTER_CLOCK_352/320 dot-select, SH2 28.6 MHz, SCU 14.3 MHz, SCSP 22.5792 MHz, M68K 11.2896 MHz, SCU DSP 14.3 MHz, SMPC HLE 4 MHz + RTC 1 Hz timer, command timings from `m_cmd_table_timing` usec table. `dot_select_w` resets SCU/VDP2 (VDP1 comment preserved) per SMPC manual "VDP1, VDP2 and SCU are also reset by this (done in client)" but MUST NOT reset SCSP — SYS-CLK01 sound-preservation correction (video clock change must not spuriously reset sound; sound CPU reset is via m_sndres line, not SCSP device reset). CKCHG 5 ticks with syshalt (3~4 frame cycles per SMPC manual p.3) implemented: tick=5, syshalt asserted at command start, dotsel at tick 4, slave/sound CPU reset asserted, NMI to master and syshalt cleared at tick 0. CONTINUE 700us preserved. AB2, Power Drift, OutRun fixes preserved.
 
 ## 1. Time Units
 
