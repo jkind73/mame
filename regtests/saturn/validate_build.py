@@ -48,14 +48,14 @@ with tempfile.TemporaryDirectory(prefix="saturn-objects-") as directory:
         run([sys.executable, "scripts/build/complay.py", f"src/mame/layout/{layout}.lay",
              str(Path(directory) / (layout + ".lh")), "layout_" + layout])
     for name in ("saturn", "saturn_vdp2", "saturn_scu", "saturn_dcc", "sat_console", "stv",
-                 "saturn_cd_hle", "saturn_cdb", "smpc"):
+                 "saturn_cd_hle", "saturn_cdb", "smpc", "saturn_bus"):
         run([os.environ.get("CXX", "g++"), *flags, "-I", directory, f"src/mame/sega/{name}.cpp",
              "-o", str(Path(directory) / (name + ".o"))])
     run([os.environ.get("CXX", "g++"), *flags, "-I", directory,
          "src/devices/sound/scsp.cpp", "-o", str(Path(directory) / "scsp.o")])
     run([os.environ.get("CXX", "g++"), *flags, "-I", directory,
          "src/devices/cpu/sh/sh.cpp", "-o", str(Path(directory) / "sh.o")])
-print("Regressions and eleven object compilations passed (not a linked MAME build).", flush=True)
+print("Regressions and twelve object compilations passed (not a linked MAME build).", flush=True)
 
 if args.full:
     run(["make", f"-j{args.jobs}", "SUBTARGET=saturn", "REGENIE=1", "SYMBOLS=0", "OPTIMIZE=1",

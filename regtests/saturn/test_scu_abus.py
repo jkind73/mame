@@ -61,15 +61,25 @@ struct timer {
   bool stopped = false;
   void adjust(int value) { assert(value == attotime::never); stopped = true; }
 };
-struct bus_stub { bool found() const { return false; } void set_asr_regs(uint32_t,uint32_t,uint32_t){} };
-struct bus_opt { bus_stub impl; bool found() const { return impl.found(); } bus_stub* operator->(){ return &impl; } const bus_stub* operator->() const { return &impl; } };
 struct saturn_scu_device {
   void m_main_dtack_cb(int state) { assert(state == 0); }
   void m_sound_dtack_cb(int state) { assert(state == 0); }
 // PRODUCTION_TYPES
   u32 m_ism = 0, m_ist = 0xffffffff, m_abus_pending_ack = 0xffff;
-  bus_opt m_bus;
   u32 m_abus_asr[2]{}, m_abus_aref = 0;
+  // Stand-in for the saturn_bus arbiter (production API in
+  // src/mame/sega/saturn_bus.h): always present, recording ASR propagation.
+  struct bus_stub {
+    unsigned asr_calls = 0;
+    void set_asr_regs(uint32_t, uint32_t, uint32_t) { ++asr_calls; }
+  };
+  struct bus_finder {
+    bus_stub stub;
+    bool found() const { return true; }
+    bus_stub *operator->() { return &stub; }
+    const bus_stub *operator->() const { return &stub; }
+  };
+  bus_finder m_bus;
   u32 m_dma_status = 0xffffffff, m_current_irq_level = 15, m_current_vector = 0x40;
   bool m_tenb = true, m_t1md = true;
   u16 m_timer0_counter = 123, m_t0c = 456, m_t1s = 123, m_t1md_reg = 0x101;

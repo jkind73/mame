@@ -72,8 +72,21 @@ struct memory {
   u32 read_dword(u32 address) { reads.push_back(address); return 0xabcd1234; }
   void write_word(u32 address, u16 data) { writes.emplace_back(address, data); }
 };
-struct bus_stub { bool found() const { return false; } void set_asr_regs(uint32_t,uint32_t,uint32_t){} bool acquire_dma_buses(uint8_t,uint16_t,uint16_t,int,int){return true;} void release_dma_buses(uint8_t){} };
-struct bus_opt { bus_stub impl; bool found() const { return impl.found(); } bus_stub* operator->(){ return &impl; } const bus_stub* operator->() const { return &impl; } };
+// Stand-in for the saturn_bus arbiter (production API in src/mame/sega/saturn_bus.h):
+// always present and always granting, so the extracted BUS-01 acquire/release and
+// ASR propagation paths execute while DMA transfer behavior stays observable.
+struct bus_stub {
+  unsigned asr_calls = 0, acquires = 0, releases = 0;
+  void set_asr_regs(uint32_t, uint32_t, uint32_t) { ++asr_calls; }
+  bool acquire_dma_buses(uint8_t, uint16_t, uint16_t, int, int) { ++acquires; return true; }
+  void release_dma_buses(uint8_t) { ++releases; }
+};
+struct bus_opt {
+  bus_stub impl;
+  bool found() const { return true; }
+  bus_stub *operator->() { return &impl; }
+  const bus_stub *operator->() const { return &impl; }
+};
 struct saturn_scu_device {
 // PRODUCTION_BUS_FLAGS
 // PRODUCTION_CHANNEL
