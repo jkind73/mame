@@ -93,13 +93,15 @@ m_scudsp->out_ddmv_callback().set([this](int state){
 ```
 
 ```cpp
-// saturn_bus.cpp get_cpu_wait stall semantics (exact, CPU-04)
+// saturn_bus.cpp get_cpu_wait stall semantics (exact, CPU-04 full fidelity)
 if (m_owner[bus]!=NONE && owner!=cpu) {
-  if (bus==C) return small steal (penalty+1) to avoid R15 double decrement;
-  else return large 1024-10000 to force retry (access_to_be_redone)
+  // With SH2 interpreter snapshot restore (prev_pc, r[16], ea, m_delay, pr/sr/gbr/vbr/mach/macl),
+  // MOV.L Rm,@-Rn / @Rm+,Rn / STSMACH / LDSMACH / RTE / TRAPA side-effects are rewound,
+  // so C-BUS (WorkRAM-H stack) can also force retry without double R15 (choroqpk fix in CPU core).
+  return large 1024-10000 to force retry (access_to_be_redone -> abort timeslice -> restore -> retry)
 }
-if (!ready_cb) return large 1024+penalty to force retry for VDP1/VDP2
-else return penalty (A-Bus AnNW+3, B-Bus MiSTer table)
+if (!ready_cb) return large 1024+penalty to force retry for VDP1/VDP2 not ready
+else return penalty (A-Bus AnNW+3, B-Bus MiSTer table: VDP1 9/14, VDP2 3/20, SCSP 13/24, SCU 4/8)
 ```
 
 **Contracts preserved:** No host sleeps, devices/delegates via std::function (ready_cb), no game-name tests, penalties from ASR or MiSTer documented B-Bus table, not guessed.
@@ -125,16 +127,17 @@ void saturn_dcc_device::sinit_w(...) {
 - Writer-origin enforcement uses `device_execute_interface::executing()` which checks `scheduler().currently_executing() == this`.
 - Preserves 16-bit trigger rule (byte/longword ignored) and quantum workaround for FRT sync.
 
-**CPU-04 Deferred Transactions (partial, working-driver level):**
+**CPU-04 Deferred Transactions (full fidelity interpreter, DRC open):**
 
-Implemented via `address_space::install_read/write_before_delay` in `sat_console.cpp`/`stv.cpp` + `saturn_bus_device::get_cpu_wait`:
+Implemented via `address_space::install_read/write_before_delay` in `sat_console.cpp`/`stv.cpp` + `saturn_bus_device::get_cpu_wait` + `sh2.cpp` snapshot restore:
 
 - `get_cpu_wait` returns wait cycles; `cpu_device::access_before_delay(cycles, tag)` subtracts from icount, sets `m_access_to_be_redone` and aborts timeslice if icount<=0, causing memory handler `read_interruptible` to return 0 without actual access and retry on next slice (MAME's built-in deferred).
-- **C-BUS (WorkRAM-H, stack)**: returns small steal (penalty+1, max 255) to avoid double R15 decrement on retry – relies on `dma_hog_bus` steal + HALT for direct burst. Prevents `MOV.L R14,@-SP` / `RTS` double-decrement bug seen in choroqpk.
-- **A/B-BUS owned by DMA/DSP**: returns large 1024-10000 to force `icount<=0` → `m_access_to_be_redone=true` → retry, preventing CPU access while DMA owns bus. Safe for VRAM/FB (no R15).
-- **Device not ready (VDP1 drawing, VDP2 slot)**: same large retry, prevents CPU VRAM/FB access during draw/scanout.
+- **SH2 interpreter full fidelity** (`src/devices/cpu/sh/sh2.cpp`): `execute_run()` saves `prev_pc`, `r[16]`, `ea`, `m_delay`, `pr/sr/gbr/vbr/mach/macl` before `execute_one()`. On `access_to_be_redone()`, restores all side-effects, rewinds PC to re-execute same instruction after bus free. Prevents double `R15` on `MOV.L Rm,@-Rn` (stack push), `@Rm+,Rn` (pop), `STSMACH @-Rn`, `LDSMACH @Rm+`, `RTE` (2 pops), `TRAPA` (2 pushes) – fixes choroqpk.
+- **A/B/C buses owned by DMA/DSP**: all return large 1024-10000 to force `icount<=0` → `m_access_to_be_redone=true` → abort → restore → retry, preventing CPU access while DMA owns bus. Faithful: C-BUS (WorkRAM-H) now safe with snapshot restore.
+- **Device not ready (VDP1 drawing, VDP2 slot)**: same large retry, prevents CPU VRAM/FB access during draw/scanout. No R15 side-effect for VRAM.
+- **DRC**: still open – `static_generate_memory_accessor()` emits `UML_READ/WRITE` directly, cannot suspend DRC for retry. Working-driver readiness forces interpreter via `set_force_no_drc(true)` in `saturn_state::machine_start()` (inherited by ST-V). Full fix requires DRC accessor emitting arbiter call that can suspend DRC (like `sh2_notify_dma_data_available` pattern).
 
-Full CPU-04 with EA/R15 save/restore in `sh2_device::read_byte/word/long` remains open – requires `sh2_pending_transaction` struct with PC, EA, Rn, size, is_write, data, active flag, plus DRC `static_generate_memory_accessor` emitting arbiter call that can suspend DRC (like `sh2_notify_dma_data_available`). Current before_delay is sufficient for boot + sustained runtime (AB2, Power Drift, OutRun) per acceptance.
+Current interpreter path is sufficient for boot + sustained runtime (AB2, Power Drift, OutRun) per acceptance, now with C-BUS faithful retry.
 
 **SMPC clocks:** Verified MASTER_CLOCK_352/320 dot-select, SH2 28.6 MHz, SCU 14.3 MHz, SCSP 22.5792 MHz, M68K 11.2896 MHz, SCU DSP 14.3 MHz, SMPC HLE 4 MHz + RTC 1 Hz timer, command timings from `m_cmd_table_timing` usec table. `dot_select_w` currently resets SCSP/SCU/VDP2 per existing behavior – preserved per task acceptance criteria (AB2, Power Drift, OutRun fixes). No change to SMPC handshake timing yet; CONTINUE 700us, CKCHG 5 ticks with syshalt remain.
 

@@ -190,6 +190,14 @@ void saturn_state::machine_start() {
   save_item(NAME(m_sound_dma_halt));
   machine().save().register_postload(save_prepost_delegate(
       FUNC(saturn_state::update_halt_lines), this));
+
+  // CPU-04/BUS: faithful deferred transaction requires interpreter snapshot
+  // restore (sh2.cpp). Force interpreter until DRC also supports before_delay
+  // abort/retry. ST-V inherits via stv_state::machine_start calling this.
+  if (m_maincpu)
+    m_maincpu->set_force_no_drc(true);
+  if (m_slave)
+    m_slave->set_force_no_drc(true);
 }
 
 void saturn_state::reset_halt_state() {

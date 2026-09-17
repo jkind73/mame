@@ -253,18 +253,13 @@ uint32_t saturn_bus_device::get_cpu_wait(offs_t offset, bool is_write, saturn_bu
     saturn_bus_type bus = flags_to_bus(flags);
     if (bus>=SATURN_BUS_COUNT) return 0;
 
-    // If bus owned by other master, stall
+    // If bus owned by other master, stall – CPU-04 deferred via before_delay
+    // With SH2 snapshot restore (sh2.cpp execute_run saving r/ea/pr/sr/gbr/vbr/mach/macl/pc),
+    // pre-decrement/post-increment side-effects (MOV.L Rm,@-Rn stack push) are rewound,
+    // so C-BUS can also force retry without double R15 (choroqpk fix now in CPU core).
     if (m_owner[bus]!=SATURN_MASTER_NONE && m_owner[bus]!=(uint8_t)cpu_master) {
-        // For burst DMA (direct), CPU is already halted via main_dtack_cb, so this path is mainly for indirect cycle-steal
-        // For C-BUS (WorkRAM-H, stack), avoid large retry to prevent double R15 decrement – use steal only
-        if (bus == SATURN_BUS_C) {
-            int base = m_penalty[bus] + 1 + flags_to_penalty(flags, is_write);
-            if (base < 1) base = 1;
-            if (base > 255) base = 255;
-            LOGMASKED(LOG_BUS, "CPU %d C-BUS steal %d on bus %d owned by %d addr %08x\n", cpu_master, base, bus, m_owner[bus], addr);
-            return base;
-        }
-        // For A/B buses, force retry to prevent access while DMA owns bus
+        // For burst DMA (direct), CPU is already halted via main_dtack_cb, this path is mainly for indirect cycle-steal
+        // All buses including C-BUS force retry to prevent access while DMA owns bus (faithful)
         int base = m_penalty[bus] + 4;
         if (m_burst[bus]) base += 8;
         base += flags_to_penalty(flags, is_write);

@@ -306,6 +306,22 @@ void sh2_device::execute_run()
 	{
 		debugger_instruction_hook(m_sh2_state->pc);
 
+		// Save snapshot for bus-arbiter deferred transaction (CPU-04)
+		// If a data access triggers access_before_delay with large stall (A/B/C owned
+		// or device not ready), we must rewind PC and restore side-effects like
+		// pre-decrement/post-increment (MOV.L Rm,@-Rn / @Rm+,Rn) to avoid double R15.
+		uint32_t prev_pc = m_sh2_state->pc;
+		uint32_t saved_r[16];
+		memcpy(saved_r, m_sh2_state->r, sizeof(saved_r));
+		uint32_t saved_ea = m_sh2_state->ea;
+		uint32_t saved_m_delay = m_sh2_state->m_delay;
+		uint32_t saved_pr = m_sh2_state->pr;
+		uint32_t saved_sr = m_sh2_state->sr;
+		uint32_t saved_gbr = m_sh2_state->gbr;
+		uint32_t saved_vbr = m_sh2_state->vbr;
+		uint32_t saved_mach = m_sh2_state->mach;
+		uint32_t saved_macl = m_sh2_state->macl;
+
 		const uint16_t opcode = m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
 
 		if (m_sh2_state->m_delay)
@@ -317,6 +333,22 @@ void sh2_device::execute_run()
 			m_sh2_state->pc += 2;
 
 		execute_one(opcode);
+
+		if (access_to_be_redone())
+		{
+			// Restore registers side-effects, rewind PC to re-execute same instruction
+			// after bus becomes free. icount is already <=0 so timeslice will abort.
+			memcpy(m_sh2_state->r, saved_r, sizeof(saved_r));
+			m_sh2_state->ea = saved_ea;
+			m_sh2_state->m_delay = saved_m_delay;
+			m_sh2_state->pr = saved_pr;
+			m_sh2_state->sr = saved_sr;
+			m_sh2_state->gbr = saved_gbr;
+			m_sh2_state->vbr = saved_vbr;
+			m_sh2_state->mach = saved_mach;
+			m_sh2_state->macl = saved_macl;
+			m_sh2_state->pc = prev_pc;
+		}
 
 		if (m_test_irq && !m_sh2_state->m_delay)
 		{
