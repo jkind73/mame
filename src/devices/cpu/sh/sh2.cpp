@@ -603,15 +603,19 @@ void sh2_device::static_generate_entry_point()
 	UML_CMP(block, mem(&m_sh2_state->evec), 0xffffffff);        // cmp evec, 0xffffffff
 	UML_JMPc(block, COND_Z, skip);                  // jz skip
 
-	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
-	UML_MOV(block, I0, R32(15));                // mov r0, R15
+	UML_SUB(block, I0, R32(15), 4);            // r0 = R15-4
 	UML_MOV(block, I1, mem(&m_sh2_state->irqsr));           // mov r1, irqsr
 	UML_CALLH(block, *m_write32);                    // call write32
-
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, mem(&m_sh2_state->pc));
 	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
-	UML_MOV(block, I0, R32(15));                // mov r0, R15
+
+	UML_SUB(block, I0, R32(15), 4);            // r0 = R15-4
 	UML_MOV(block, I1, mem(&m_sh2_state->pc));              // mov r1, pc
 	UML_CALLH(block, *m_write32);                    // call write32
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, mem(&m_sh2_state->pc));
+	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 
 	UML_MOV(block, mem(&m_sh2_state->pc), mem(&m_sh2_state->evec));             // mov pc, evec
 
@@ -676,15 +680,19 @@ void sh2_device::generate_update_cycles(drcuml_block &block, compiler_state &com
 		UML_CMP(block, mem(&m_sh2_state->evec), 0xffffffff);        // cmp evec, 0xffffffff
 		UML_JMPc(block, COND_Z, skip);                  // jz skip
 
-		UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
-		UML_MOV(block, I0, R32(15));                // mov r0, R15
+		UML_SUB(block, I0, R32(15), 4);            // r0 = R15-4
 		UML_MOV(block, I1, mem(&m_sh2_state->irqsr));           // mov r1, irqsr
 		UML_CALLH(block, *m_write32);                    // call write32
-
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, param);
 		UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
-		UML_MOV(block, I0, R32(15));                // mov r0, R15
+
+		UML_SUB(block, I0, R32(15), 4);            // r0 = R15-4
 		UML_MOV(block, I1, param);              // mov r1, nextpc
 		UML_CALLH(block, *m_write32);                    // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, param);
+		UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 
 		UML_HASHJMP(block, 0, mem(&m_sh2_state->evec), *m_nocode);       // hashjmp m_sh2_state->evec
 

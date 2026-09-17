@@ -1307,12 +1307,13 @@ void sat_console_state::init_saturn() {
   m_maincpu->sh2drc_set_options(SH2DRC_STRICT_VERIFY | SH2DRC_STRICT_PCREL);
   m_slave->sh2drc_set_options(SH2DRC_STRICT_VERIFY | SH2DRC_STRICT_PCREL);
 
+  // BUS-01/04: keep only BIOS ROM as fastram. WorkRAM L/H are A/C bus
+  // masters that must go through before_delay so DRC respects bus arbiter
+  // stalls (C-BUS WorkRAM-H stack push/pop double-R15 fix). Removing them
+  // from fastram forces DRC memory accessors to call read/write handlers
+  // which trigger access_before_delay and abort/retry.
   m_maincpu->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
-  m_maincpu->sh2drc_add_fastram(0x00200000, 0x002fffff, 0, &m_workram_l[0]);
-  m_maincpu->sh2drc_add_fastram(0x06000000, 0x060fffff, 0, &m_workram_h[0]);
   m_slave->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
-  m_slave->sh2drc_add_fastram(0x00200000, 0x002fffff, 0, &m_workram_l[0]);
-  m_slave->sh2drc_add_fastram(0x06000000, 0x060fffff, 0, &m_workram_h[0]);
 
   m_backupram = make_unique_clear<uint8_t[]>(0x8000);
 }
