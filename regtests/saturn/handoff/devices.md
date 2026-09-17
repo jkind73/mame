@@ -113,7 +113,7 @@ required, **D** done this session, **—** not started this session.
 | ID | Status | Summary of verified state at baseline |
 |---|---|---|
 | SND-01 | P/V — | `sat_console.cpp:1098` runs the sound `M68000` at 11 289 600 Hz with `sound_mem`; `stv.cpp` mirrors it. Sound-RAM window is 512 KiB with the upper half unmapped (`stv.cpp:1245` comment cites ST-077 Figure 1.3). |
-| SND-02 | V/R — | 32-voice engine, FM, envelopes, LFO and DSP present in `src/devices/sound/scsp.cpp` (1766 lines). No chip-wide hardware audit exists. |
+| SND-02 | P/V **D** | 32-voice engine, FM, envelopes, LFO and DSP present in `src/devices/sound/scsp.cpp` (1766 lines). **Slot register word 0 now checked field-by-field against ST-077-R2 Figure 4.2, and the voice engine is now exercised end to end at runtime by `test_scsp_voice.py`** (KEY_ON → audible output → KEY_OFF → silence, captured from the WAV). See §3. Still unaudited: FM cross-modulation, LFO, and the DSP (SND-04). |
 | SND-03 | P/V **D** | Timers re-armed from a `timer_sync`/`timer_arm` pair, `exec_dma()` present, `main_irq_cb` routed to `saturn_scu_device::sound_req_w`. MIDI in/out FIFOs implemented over `device_serial_interface`. **DMA now verified at runtime against ST-077 Figure 4.3 by `test_scsp_dma.py`** — see §3. **The prescaler timers are now verified at runtime too: `test_scsp_timers.py` measures all eight ST-077-R2 increment divisions and the timer A interrupt.** The `reg_addr & 0xffe` wrap I had flagged as unsupported by the manual is in fact exactly the documented `DRGA[11:1]` field. |
 | SND-04 | V/R — | `scspdsp.cpp` is 326 lines. Not audited against ST-077 chapter 6. |
 | SND-05 | P/V **D** | `device_post_load()` exists and MIDI/DMA state is in `save_item`s. **Timer round-trip now verified at runtime by `test_scsp_savestate.py`** — counter, prescaler and the `base_time` rebase in `device_post_load()` all confirmed, with a mutation control. See §3. Still unqualified: round-trip while **voices/envelopes and DMA are actively running**, and MIDI FIFO state. |
@@ -172,6 +172,7 @@ is a test vehicle, not a shippable build.** See §1.
 | Live fixture | `regtests/saturn/test_cart_runtime.py` | **PASS**, `ram8` + `bram4` carts in a live machine; two mutation controls |
 | Live fixture | `regtests/saturn/test_scsp_dma.py` | **PASS**, SCSP DMA mem→reg / reg→mem / DGATE / completion; three mutation controls |
 | Live fixture | `regtests/saturn/test_backup_ram.py` | **PASS**, 4 emulator runs: lane behaviour, provenance, write, expect |
+| Live fixture | `regtests/saturn/test_scsp_voice.py` | **PASS**, KEY_ON→audio→KEY_OFF→silence from a captured WAV; one of two mutation controls caught, the other's limit recorded |
 | Live fixture | `regtests/saturn/test_scsp_savestate.py` | **PASS**, timer counter/prescaler + CD HIRQ round-trip via `device_post_load`; one mutation control |
 | Live fixture | `regtests/saturn/test_scsp_timers.py` | **PASS**, all 8 ST-077-R2 prescaler divisions + timer A interrupt; two mutation controls |
 | Live fixture | `regtests/saturn/test_cd_hirq.py` | **PASS**, CMOK handshake + HIRQ write-to-clear + DCHG reporting; two mutation controls (see "CD block host interface") |
@@ -638,6 +639,86 @@ check and `counter_restored` is deliberately a weak bound.
 It does **not** qualify a round-trip while voices/envelopes or a DMA transfer are
 actively in flight, nor MIDI FIFO state.
 
+### SCSP voice engine verified by listening to it (SND-02)
+
+Test: `regtests/saturn/test_scsp_voice.py` (live `saturnjp`, CPUs parked, audio
+captured with `-wavwrite`).
+
+Everything else in this suite observes registers, but the voice engine has no
+register that reports whether it is making sound — `UpdateSlotRegR()`
+(`scsp.cpp:1111`) is an empty function, so a slot's envelope and phase are not
+readable from either CPU. The only ground truth is the mixer output, so this test
+listens.
+
+**Register check first.** ST-077-R2 Figure 4.2 gives slot word 0 as
+`KX KB SBCTL SSCTL LPCTL 8B SA[19:16]`. MAME's macros (`scsp.cpp:65-73`) are:
+
+| Field | Manual position | MAME | |
+|---|---|---|---|
+| KYONEX | bit 12 | `0x1000` | ✓ |
+| KYONB | bit 11 | `0x0800` | ✓ |
+| SBCTL[1:0] | 10:9 | `>> 9 & 3` | ✓ |
+| SSCTL[1:0] | 8:7 | `>> 7 & 3` | ✓ |
+| LPCTL[1:0] | 6:5 | `>> 5 & 3` | ✓ |
+| PCM8B | bit 4 | `0x0010` | ✓ |
+| SA[19:16] | 3:0 | `& 0xF` | ✓ |
+
+The seven fields plus three unused top bits fill the word exactly. The KEY_ON
+semantics also match: ST-077 says a `1` in KYONEX "will execute KEY_ON, OFF for
+all of the slots" and that "there is no need to write a `0B` in KYONEX after
+writing a `1B`" — `UpdateSlotReg` (`scsp.cpp:925-944`) loops all 32 slots and
+then clears bit 12 itself.
+
+**Runtime result.** A 512-sample ±0x4000 square wave in sound RAM, slot 0 with
+TL = 0, DISDL = 7, DIPAN = centre, MVOL = 0xf, AR = 0x1f, D1R = D2R = 0 (hold),
+DL = 0x1f, RR = 0x1f:
+
+```
+onset  frame 30.12   (KYONEX written with KYONB set   at frame 30)
+offset frame 60.40   (KYONEX written with KYONB clear at frame 60)
+peak 17434, 12403 non-zero samples, silent tail exact (max abs 0)
+```
+
+Onset and offset land on the exact frames the keys were written — derived, not
+hardcoded, from the interleaved 2-channel 48 kHz WAV (stereo frame = index/2,
+seconds = stereo/48000, frame = seconds×60).
+
+**A configuration trap that produced a wrong first result.** `StopSlot(slot, 1)`
+(`scsp.cpp:807`) does **not** silence a slot:
+
+```cpp
+if (keyoff) slot->EG.state = SCSP_RELEASE;
+else        slot->active = 0;
+```
+
+It puts the slot into the release phase and lets the envelope decay. My first
+attempt used the undocumented EGBYP full-volume bypass (slot word 5 bit 15) with
+RR = 0, which pins the envelope open — so key-off never reached silence and the
+slot sounded to the end of the run (`offset_frame got=99.37`). Switching to a real
+envelope fixed it and exercises the envelope generator properly, which is better
+coverage anyway. An intermediate attempt with D1R = 0x1f decayed the note away in
+0.27 frames, before key-off — D1R must be 0 to hold.
+
+**Mutation controls** — one caught, one not, and the second is the more
+instructive:
+
+| Mutation | Result |
+|---|---|
+| `UpdateSlotReg`: `if (KEYONEX(slot))` → `if (false)` | **caught** — `WAV is entirely silent - key-on produced no audio at all` |
+| `StopSlot`: `if (keyoff)` → `if (false)` | **NOT caught** — test still passed, `offset frame 60.24`, silent tail exact |
+
+The second is a genuine limit of this fixture and is recorded as such rather than
+papered over: with `keyoff` false, `StopSlot` takes its `else` branch and sets
+`active = 0`, stopping the slot *immediately* instead of via the release
+envelope. Audio still stops at key-off, so an assertion about silence cannot tell
+the two apart. What this test therefore proves is that **KEY_ON produces audio and
+KEY_OFF ends it**; it does **not** prove that KEY_OFF goes through the release
+phase. Distinguishing that would need asserting a decay *duration*, which needs a
+hardware-calibrated release-rate table I do not have a source for — so it is left
+out rather than invented.
+
+Binary restored to the identical sha256 `3d536a7a…` after both mutations.
+
 ### A pre-existing `run_all.py` failure, not mine
 
 `run_all.py` auto-discovers `test_*.py` (29 currently) and aborts at
@@ -738,6 +819,7 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | `5cfafcad` | resolved the two remaining `(this commit)` placeholders in the log table; every row now carries a real hash. Documentation only. |
 | 2026-09-17 | (this commit) | **IO-01:** audited all eleven `sat_ctrl` devices against ST-169-R1 (extracted this session). Peripheral IDs, data sizes and data-byte layouts all correct, including the mouse's active-high buttons and the keyboard's 12-entry Button/Key mapping. Two non-findings recorded honestly: `read_id`/`read_status` returning 0 for an absent card is **unreachable** (no `none` slot option, tap sub-ports hardwired), so it is not the cause of the `smpc.cpp:838` comment; and the 32-byte OREG truncation belongs to agent A's SMPC transport. Keyboard kana confirmed **research-required** after searching all 103 corpus PDFs. No code change. |
 | 2026-09-17 | (this commit) | **SND-05 / CD-05:** `test_scsp_savestate.py` round-trips the SCSP timer counter, prescaler and CD `hirqreg` (DCHG included) through `machine:save`/`machine:load`, exercising `scsp_device::device_post_load()`. Measured advanced=46, rewind=0.016732 s, drift=5, HIRQ `0421`→`0421`, prescaler 17/17. Mutation control: deleting the `base_time` rebase fails `prescale_survived got=0` because the stale base sits ahead of the rewound clock and `timer_sync` freezes the timer. Binary restored to the identical sha256. |
+| 2026-09-17 | (this commit) | **SND-02:** slot word 0 checked field-by-field against ST-077-R2 Figure 4.2 (all seven fields correct); `test_scsp_voice.py` keys a voice on and off and listens to the WAV — onset frame 30.12, offset 60.40, peak 17434, silent tail exact. Records that `StopSlot` enters the release phase rather than silencing, which is why an EGBYP + RR=0 configuration never goes quiet; and records that the `StopSlot` mutation was **not** caught because its `else` branch also stops the slot, so the fixture proves KEY_ON/KEY_OFF but not the release path. |
 
 ### Reproducibility — and a claim retracted
 
