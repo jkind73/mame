@@ -72,7 +72,7 @@ bool saturn_bram_device::nvram_read(util::read_stream &file)
 bool saturn_bram_device::nvram_write(util::write_stream &file)
 {
 	auto const [err, actual] = write(file, &m_ext_bram[0], m_ext_bram.size());
-	return !err;
+	return !err && (actual == m_ext_bram.size());
 }
 
 void saturn_bram_device::nvram_default()
@@ -96,28 +96,38 @@ void saturn_bram_device::nvram_default()
  IO handlers
  -------------------------------------------------*/
 
-// Battery RAM: single chip
+/*
+  Battery RAM: single chip.
+
+  The console maps a fixed 8 MiB window (0x04000000-0x047fffff plus the
+  0x24000000 cache-through alias) whatever the fitted capacity is, and software
+  learns the real size from the cart ID (0x21/0x22/0x23/0x24 = 4/8/16/32 Mbit).
+  Only the 32 Mbit cart fills the window, so for every smaller capacity a plain
+  linear probe walks off the end of the array.  Reporting that as an open-bus
+  read and a logged write is the conservative reading; unlike the DRAM cart
+  there is no long-standing mirroring behaviour to preserve here, and no
+  document in the corpus states what the chip drives past its last address.
+*/
 
 uint32_t saturn_bram_device::read_ext_bram(offs_t offset)
 {
 	if (offset < m_ext_bram.size()/2)
 		return (m_ext_bram[offset * 2] << 16) | m_ext_bram[offset * 2 + 1];
-	else
-	{
-		popmessage("Battery RAM read beyond its boundary! offs: %X\n", offset);
-		return 0xffffffff;
-	}
+
+	logerror("%s: battery RAM read beyond its boundary (offs %X, size %X)\n", machine().describe_context(), offset, m_ext_bram.size());
+	return 0xffffffff;
 }
 
 void saturn_bram_device::write_ext_bram(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	if (offset < m_ext_bram.size()/2)
+	if (offset >= m_ext_bram.size()/2)
 	{
-		if (ACCESSING_BITS_16_23)
-			m_ext_bram[offset * 2 + 0] = (data & 0x00ff0000) >> 16;
-		if (ACCESSING_BITS_0_7)
-			m_ext_bram[offset * 2 + 1] = (data & 0x000000ff) >> 0;
+		logerror("%s: battery RAM write beyond its boundary (offs %X data %08X & %08X, size %X)\n", machine().describe_context(), offset, data, mem_mask, m_ext_bram.size());
+		return;
 	}
-	else
-		popmessage("Battery RAM write beyond its boundary! offs: %X data: %X\n", offset, data);
+
+	if (ACCESSING_BITS_16_23)
+		m_ext_bram[offset * 2 + 0] = (data & 0x00ff0000) >> 16;
+	if (ACCESSING_BITS_0_7)
+		m_ext_bram[offset * 2 + 1] = (data & 0x000000ff) >> 0;
 }

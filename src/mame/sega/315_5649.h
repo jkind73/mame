@@ -50,6 +50,7 @@ public:
 	auto serial_ch2_wr_callback() { return m_serial_wr_cb[1].bind(); }
 
 	template <unsigned N> auto in_counter_callback() { return m_cnt_cb[N].bind(); }
+	template <unsigned N> auto counter_reset_callback() { return m_cnt_reset_cb[N].bind(); }
 
 	uint8_t read(offs_t offset);
 	void write(offs_t offset, uint8_t data);
@@ -67,11 +68,16 @@ private:
 	devcb_read8::array<2> m_serial_rd_cb;
 	devcb_write8::array<2> m_serial_wr_cb;
 	devcb_read16::array<4> m_cnt_cb;
+	devcb_write_line::array<4> m_cnt_reset_cb;
 
 	uint8_t m_port_value[7];
 	uint8_t m_port_config;
 	uint8_t m_mode;
 	int m_analog_channel;
+
+	// RS-422 receive latch, filled by the loopback path
+	uint8_t m_serial_rx_data[2];
+	uint8_t m_serial_rx_valid[2];
 };
 
 // device type definition
