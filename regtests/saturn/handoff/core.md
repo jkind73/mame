@@ -94,6 +94,29 @@ m_scudsp->out_ddmv_callback().set([this](int state){
 
 **Contracts preserved:** No host sleeps, devices/delegates via std::function (ready_cb), no game-name tests, penalties from ASR or MiSTer documented B-Bus table, not guessed.
 
+## DCC-01 Implementation (2026-09-16)
+
+Implemented in `src/mame/sega/saturn_dcc.cpp`:
+
+```cpp
+void saturn_dcc_device::minit_w(...) {
+  if (mem_mask != 0x0000ffff && mem_mask != 0xffff0000) { logerror(...); return; }
+  if (!m_master_cpu->executing()) { logerror("minit_w: ignoring write from non-master"); return; }
+  machine().scheduler().add_quantum(...); synchronize(handle_frt_cb, 1);
+}
+void saturn_dcc_device::sinit_w(...) {
+  if (mem_mask != ...) return;
+  if (!m_slave_cpu->executing()) { logerror("sinit_w: ignoring write from non-slave"); return; }
+  ...
+}
+```
+
+- Cache-through aliases already mapped via `.mirror(0x20000000)` on 0x01000000 and 0x01800000 windows → 0x21000000/0x21800000 reach DCC, not SH-2 cache.
+- Writer-origin enforcement uses `device_execute_interface::executing()` which checks `scheduler().currently_executing() == this`.
+- Preserves 16-bit trigger rule (byte/longword ignored) and quantum workaround for FRT sync.
+
+**SMPC clocks:** Verified MASTER_CLOCK_352/320 dot-select, SH2 28.6 MHz, SCU 14.3 MHz, SCSP 22.5792 MHz, M68K 11.2896 MHz, SCU DSP 14.3 MHz, SMPC HLE 4 MHz + RTC 1 Hz timer, command timings from `m_cmd_table_timing` usec table. `dot_select_w` currently resets SCSP/SCU/VDP2 per existing behavior – preserved per task acceptance criteria (AB2, Power Drift, OutRun fixes). No change to SMPC handshake timing yet; CONTINUE 700us, CKCHG 5 ticks with syshalt remain.
+
 ## 1. Time Units
 
 - **Primary time base:** `attotime` derived from device clocks. No host `sleep`, no `std::this_thread::sleep`, no wall-clock delays.

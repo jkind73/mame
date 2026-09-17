@@ -73,6 +73,13 @@ void saturn_dcc_device::minit_w(offs_t offset, uint32_t data,
     return;
   }
 
+  // DCC-01: MINIT is master-only, SINIT slave-only per SH7604 FRT wiring.
+  // Enforce writer-origin; ignore if not from expected CPU.
+  if (!m_master_cpu->executing()) {
+    logerror("minit_w: ignoring write from non-master CPU (slave or other)\n");
+    return;
+  }
+
   machine().scheduler().add_quantum(
       attotime::from_hz(this->clock() / INTERLEAVE_DIV),
       attotime::from_usec(INTERLEAVE_DURATION));
@@ -85,6 +92,11 @@ void saturn_dcc_device::sinit_w(offs_t offset, uint32_t data,
   // as minit_w: a byte or longword write does not trigger the signal
   if (mem_mask != 0x0000ffff && mem_mask != 0xffff0000) {
     logerror("sinit_w: ignoring non 16-bit access, mask %08x\n", mem_mask);
+    return;
+  }
+
+  if (!m_slave_cpu->executing()) {
+    logerror("sinit_w: ignoring write from non-slave CPU (master or other)\n");
     return;
   }
 
