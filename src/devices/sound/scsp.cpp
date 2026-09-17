@@ -243,6 +243,7 @@ void scsp_device::device_start() {
     save_item(NAME(m_timers[i].prescale), i);
     save_item(NAME(m_timers[i].reload), i);
     save_item(NAME(m_timers[i].reload_pending), i);
+    save_item(NAME(m_timers[i].base_time), i);
   }
 
   save_item(NAME(m_dma.dmea));
@@ -333,11 +334,10 @@ void scsp_device::device_post_load() {
 
   update_master_volume();
 
-  // timers are scheduled against machine time, rebase and reschedule them
-  for (int i = 0; i < 3; i++) {
-    m_timers[i].base_time = machine().time();
+  // Machine time and timer origins are both restored. Rebasing to "now"
+  // would discard the saved sub-tick phase and delay pending interrupts.
+  for (int i = 0; i < 3; i++)
     timer_arm(i);
-  }
 }
 
 //-------------------------------------------------
@@ -474,7 +474,13 @@ void scsp_device::timer_sync(int idx) {
     return;
 
   u64 const inc_clocks = u64(SAMPLE_CLOCKS) << t.prescale;
-  u32 steps = u32((now - t.base_time).as_ticks(clock()) / inc_clocks);
+  attotime const elapsed = now - t.base_time;
+  u32 steps = u32(elapsed.as_ticks(clock()) / inc_clocks);
+  // from_ticks quantizes oscillator periods down to attoseconds; as_ticks
+  // can therefore report one fewer clock at that exact scheduled boundary.
+  // Use the same quantized boundary as timer_arm before deciding to defer it.
+  if (attotime::from_ticks((u64(steps) + 1) * inc_clocks, clock()) <= elapsed)
+    ++steps;
   if (steps == 0)
     return;
 
@@ -508,9 +514,11 @@ void scsp_device::timer_arm(int idx) {
   if (incs == 0)
     incs = 0x100;
 
-  t.timer->adjust(attotime::from_ticks(
-                      u64(incs) * (u64(SAMPLE_CLOCKS) << t.prescale), clock()),
-                  idx);
+  // timer_sync retains the fractional tick at base_time. Scheduling a full
+  // number of ticks from now would add that fraction to the IRQ deadline.
+  attotime const deadline = t.base_time + attotime::from_ticks(
+      u64(incs) * (u64(SAMPLE_CLOCKS) << t.prescale), clock());
+  t.timer->adjust(deadline - machine().time(), idx);
 }
 
 //-------------------------------------------------

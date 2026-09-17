@@ -165,12 +165,14 @@
   - Voices, FM, envelopes and DSP already exist. A chip-wide hardware audio audit is missing, not the entire synthesis implementation.
   - Investigate historical stuck-envelope/pitch reports against current recordings and configurations before declaring an engine defect.
 - [ ] **SND-03 — Complete timing, DMA and interrupt qualification. [P/V]**
+  - Current integration: Integrated timer phase-preserving rearm and attotime-boundary fix; extracted deadline and reset checks pass, live sound acceptance pending. See `regtests/saturn/handoff/integration.md`.
   - SCSP DMA transfer behavior, timer rates, sound/main IRQ interfaces, MIDI paths and sound-memory arbitration under streaming load.
   - Retain the corrected SCSP clock/sample relationship; audit transfer timing separately from synthesis rate.
 - [ ] **SND-04 — Qualify SCSP DSP and final mixer. [V/R]**
   - Instruction arithmetic, saturation/rounding, packed memory formats, delay/ring addressing, external inputs, stereo routing and gain.
   - Check audio output against deterministic hardware captures, including CD-DA and effects-heavy playback.
 - [ ] **SND-05 — Qualify sound state continuity. [V]**
+  - Current integration: Timer origins now save and restore without losing fractional phase; extracted restore checks pass, real save-manager/audio replay pending. See `regtests/saturn/handoff/integration.md`.
   - Save/load during envelopes, DMA, DSP delay lines, interrupt handshakes and CD audio; no lost/duplicated IRQs or discontinuities caused by unsaved state.
 
 ## 8. VDP1: drawing engine and framebuffer
@@ -310,6 +312,7 @@
   - Review the existing no-key hack-mode selection and other compatibility bypasses; replace them only when the genuine behavior is known and tested.
   - Protection devices already exist; this is not a claim that ST-V decryption is entirely missing.
 - [ ] **STV-03 — Complete standard arcade I/O and cabinet outputs. [P/V]**
+  - Current integration: Legacy IOGA inspection now preserves the counter cursor; 5,124 extracted cases pass, cabinet acceptance remains open. See `regtests/saturn/handoff/integration.md`.
   - IOGA access/timing, coin/service/test, coin counters/lockouts, lamps, displays, EEPROM and watchdog/reset behavior.
   - Resolve configurable output bits, legacy fallback handlers, documented maintenance coin errors and missing defaults.
 - [ ] **STV-04 — Implement missing specialty inputs and serial peripherals. [M/P/R]**

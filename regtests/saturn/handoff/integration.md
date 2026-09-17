@@ -85,3 +85,28 @@ those inputs do not relabel or invalidate the measured binary. Source/test/build
 input changes still invalidate the result. Resume the single-job incremental
 build after this implementation checkpoint; do not infer success from an earlier
 interrupted build.
+
+
+## Integrated IOGA and SCSP follow-ups after workspace restoration
+
+The workspace was restored to `868d72fc` with the older mixed local patchset;
+remote `1a23cf6c` was intact. The restored tracked diff and non-ROM untracked
+files were archived locally before recovering the pushed branch. No unrelated
+restored changes were imported. The earlier native build and its logs were
+lost: **there is no linked result for that run**.
+
+The previously reviewed `saturn_pending` IOGA and SCSP patches are now applied.
+Their tests were rerun on production paths: 5,124 legacy IOGA cases; 49,152
+ideal-clock plus 49,152 actual-attotime SCSP phase cases; 24 SCSP reset cases;
+262,144 CD HIRQ cases, 336 CD transfer cases and boot-trace checks; 44+18 runner
+protocol controls. All pass. Three SCSP mutations compile then assertion-fail.
+SCSP and ST-V translation units pass C++20 syntax checking. These are extracted,
+syntax and protocol results, **not linked device or gameplay acceptance**.
+
+The SCSP fix registers timer origins for saving, preserves restored fractional
+ticks, and schedules interrupts from tick origins using consistent attotime
+quantization. It does not change reload policy, sound-reset wiring or working
+flags. The legacy IOGA change only guards inspection cursor advancement.
+Detailed scope and the unresolved primary-reference timing discrepancy remain
+in `saturn_pending/README.md`. Start a new gated native validation against this
+integrated revision; no result is inherited from the lost build.
