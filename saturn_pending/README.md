@@ -1,7 +1,7 @@
 # Integrated follow-up patches
 
-Both patches in this directory are now applied to production source and their
-regression tests. They are retained as historical review artifacts against
+The IOGA inspection and SCSP timer-phase patches are now applied to production
+source and their regression tests. The later SMPC port-mode patch is still pending. They are retained as historical review artifacts against
 `8f2c12ff`; **do not apply them again**. The native build that was measuring that
 revision was lost during workspace restoration and has no completion result.
 The integrated revision is being rebuilt and must earn its own live acceptance.
