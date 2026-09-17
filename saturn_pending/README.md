@@ -127,3 +127,14 @@ BIOS/background replay matrix. It rechecks source/binary provenance and local
 BIOS hashes at the end. Logs stay outside the checkout, stale success status is
 removed, and any failure records the failing phase. Shell syntax checks pass;
 **end-to-end artifact consumption and live execution are still pending**.
+
+**First CI outcome:** run 35287036055 failed before Saturn compilation in
+`3rdparty/bimg/3rdparty/astc-encoder/source/astcenc_block_sizes.cpp:1168–1169`:
+GCC 11's `-Werror=maybe-uninitialized` reported `quant_mode`, `weight_bits` and
+`is_dual_plane`. The log was retrieved through the web fetch tool when `gh`
+redirected log/artifact downloads returned EOF. No emulator or vendor source
+was changed to silence this. The workflow now explicitly installs/selects GCC
+12 (the local validation compiler family), retains partial compiler caches on
+failure, and exposes the final compiler diagnostics as check annotations.
+The original run is failed, not running or validated; a new push-triggered run
+must be checked separately.
