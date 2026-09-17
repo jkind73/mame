@@ -261,6 +261,7 @@
 - **Dependencies:** stages 1–4, SMPC/control wiring and sound output. Primarily console hardware; only applicable ST-V configurations need CD-related interfaces.
 - **Source:** `src/mame/sega/{saturn_cd_hle,saturn_cdb}.cpp`.
 - [ ] **CD-01 — Complete host command/transfer-state behavior. [P/V]**
+  - Current integration: Inspection reads now avoid HIRQ mutation/IRQ callbacks; CPU read behavior retained. Extracted debugger/CPU matrix passes; linked acceptance pending. See `regtests/saturn/handoff/integration.md`.
   - Current integration: DCHG read/ack correction is now an implementation WIP; extracted read/ack and old-behavior negative tests pass, live tray/boot acceptance pending. See `regtests/saturn/handoff/integration.md`.
   - DRDY and related status/interrupt transitions, buffer-full/empty behavior, transfer completion, command overlap and dual-port host interface semantics.
   - Audit filters/partitions, sector routing, file/sector access and reset/abort interactions through actual command sequences, not successful executable loading alone.
@@ -290,6 +291,7 @@
   - Existing ROM, DRAM and backup-RAM cartridge devices need complete capacity/bank/address/lane and persistence qualification for supported variants.
   - Handle identification, empty-slot/open-bus reads, write protection and mapping conflicts without cartridge-specific shortcuts.
 - [ ] **NVR-01 — Complete persistent-state and machine-variant behavior. [P/V/R]**
+  - Current integration: Internal console backup RAM now registers for save states; persistence and save/mutate/load fixture prepared, live acceptance pending. See `regtests/saturn/handoff/integration.md`.
   - Internal backup RAM, cartridge backup RAM, RTC/settings and model/region/BIOS changes; avoid corrupting saves on configuration changes.
   - Audit cold start, battery-loss/default data and real shutdown/restart, separately from MAME save states.
 - [ ] **IO-02 — Inventory and implement remaining expansion/communication devices. [M/P/R]**

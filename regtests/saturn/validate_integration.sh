@@ -13,11 +13,13 @@ case "$LOG_DIR/" in "$ROOT/"*) echo 'Use a log directory outside the repository'
 phase=preflight
 trap 'rc=$?; if ((rc)); then printf "FAIL phase=%s exit=%s\n" "$phase" "$rc" | tee "$LOG_DIR/status.txt"; fi' EXIT
 # Do not accidentally attribute uncommitted production/test inputs to HEAD.
-git diff --exit-code HEAD -- src regtests/saturn > "$LOG_DIR/input-diff.log"
+git diff --exit-code HEAD -- src regtests/saturn 3rdparty scripts makefile hash > "$LOG_DIR/input-diff.log"
 git rev-parse HEAD > "$LOG_DIR/source-commit.txt"
+git rev-parse HEAD:src HEAD:regtests/saturn HEAD:3rdparty HEAD:scripts HEAD:makefile HEAD:hash > "$LOG_DIR/input-trees.txt"
 for rom in saturnjp saturneu stvbios; do
     test -s "regtests/$rom.zip" || { echo "Missing user-supplied $rom BIOS" >&2; exit 2; }
 done
+sha256sum regtests/saturnjp.zip regtests/saturneu.zip regtests/stvbios.zip > "$LOG_DIR/bios.sha256"
 phase=dependencies
 echo "[$phase]"
 if [[ ! -f "$SDK_PREFIX/build-env.sh" ]]; then
@@ -43,6 +45,7 @@ python regtests/saturn/run_all.py > "$LOG_DIR/regressions.log" 2>&1
 # no-binary/no-ROM skips. run_all exit status alone is not live-device evidence.
 grep -q 'CD block HIRQ: CMOK command handshake' "$LOG_DIR/regressions.log"
 grep -q 'Saturn cart runtime: 2 cartridges exercised' "$LOG_DIR/regressions.log"
+grep -q 'fresh-directory provenance and save/mutate/load all verified' "$LOG_DIR/regressions.log"
 for spec in 'saturnjp drc' 'saturnjp interpreter' 'saturneu drc' 'stvbios drc'; do
     read -r system engine <<< "$spec"
     args=()
@@ -58,7 +61,11 @@ for spec in 'saturnjp drc' 'saturnjp interpreter' 'saturneu drc' 'stvbios drc'; 
     done
 done
 phase=provenance
-git diff --exit-code HEAD -- src regtests/saturn > "$LOG_DIR/final-input-diff.log"
-test "$(git rev-parse HEAD)" = "$(cat "$LOG_DIR/source-commit.txt")"
+git diff --exit-code HEAD -- src regtests/saturn 3rdparty scripts makefile hash > "$LOG_DIR/final-input-diff.log"
+# Permit checkpoint-only commits elsewhere, but never changes to build/test
+# inputs. Keep the starting commit, rather than relabeling an existing binary.
+git rev-parse HEAD:src HEAD:regtests/saturn HEAD:3rdparty HEAD:scripts HEAD:makefile HEAD:hash > "$LOG_DIR/final-input-trees.txt"
+cmp "$LOG_DIR/input-trees.txt" "$LOG_DIR/final-input-trees.txt"
 sha256sum -c "$LOG_DIR/binary.sha256"
+sha256sum -c "$LOG_DIR/bios.sha256"
 printf 'PASS: build, validate, regression batch, required CD/cart execution, four BIOS/background replay configurations. Not gameplay/hardware acceptance.\n' | tee "$LOG_DIR/status.txt"

@@ -57,7 +57,9 @@ print(f'{count} fake-executable runner protocol cases passed (not linked MAME ex
 device_fake=r'''#!/usr/bin/env python3
 import os,sys
 mode=os.environ['SATURN_DEVICE_FAKE_RESULT']
-if '-cart' in sys.argv:
+if 'SATURN_BRMODE' in os.environ:
+ marker='BACKUP_RAM';message=marker+' OK '+os.environ['SATURN_BRMODE']
+elif '-cart' in sys.argv:
  cart=sys.argv[sys.argv.index('-cart')+1]
  marker='CART_RUNTIME'
  message=marker+' PASS '+('dram (ram8)' if cart=='ram8' else 'bram (bram4)')
@@ -73,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='saturn-device-protocol-') as temp:
     d=Path(temp);exe=d/'fake';exe.write_text(device_fake);exe.chmod(0o755)
     (d/'saturnjp.zip').touch();(d/'sat_cart.xml').touch()
     count=0
-    for name in ('test_cd_hirq.py','test_cart_runtime.py'):
+    for name in ('test_cd_hirq.py','test_cart_runtime.py','test_backup_ram.py'):
         for mode in ('good','empty','substring','fail','lua','nonzero'):
             command=[sys.executable,str(HERE/name),'--executable',str(exe),'--rompath',str(d)]
             if name=='test_cart_runtime.py':command+=['--hashpath',str(d)]
@@ -81,4 +83,4 @@ with tempfile.TemporaryDirectory(prefix='saturn-device-protocol-') as temp:
             result=subprocess.run(command,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=10)
             assert (result.returncode==0)==(mode=='good'),(name,mode,result.stdout)
             count+=1
-    print(f'{count} fake-executable CD/cart failure-protocol cases passed (not hardware evidence)')
+    print(f'{count} fake-executable CD/cart/backup failure-protocol cases passed (not hardware evidence)')
