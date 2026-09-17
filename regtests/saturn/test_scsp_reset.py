@@ -41,6 +41,7 @@ struct attotime {
  static attotime from_ticks(u64 n,unsigned){return {int64_t(n)};}
  int64_t as_ticks(unsigned)const{return ticks;}
  bool operator<=(attotime b)const{return ticks<=b.ticks;}
+ attotime operator+(attotime b)const{return {ticks+b.ticks};}
  attotime operator-(attotime b)const{return {ticks-b.ticks};}
  attotime &operator+=(attotime b){ticks+=b.ticks;return *this;}
 };
