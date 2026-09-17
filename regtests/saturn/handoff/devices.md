@@ -140,8 +140,10 @@ Binary: `mamesatdev`, MAME v0.289 (unknown), driver-filtered subtarget
 (`src/mame/satdev.flt`), `-O1`, `REGENIE=0` incremental.
 
 ```
+sha256  00dd75d13557adaa52f152432a72eab9a4dc595b8d07d81e551e45a3a5afb890  mamesatdev
+        (third build; produced by bootstrap_toolchain.sh + build_satdev.sh)
 sha256  0309955846af7591083447a5c5edf0e7ac63e00521ab365425acca2313b888e2  mamesatdev
-        (second build, toolchain recreated from scratch after the first was wiped)
+        (second build; superseded, no longer on disk)
 sha256  b3d285886ba75656fd0efc317d5b2db80a1fc12765dcef3241f700a91280e255  mamesatdev
         (first build; superseded, no longer on disk)
 size    87 772 768 bytes
@@ -291,20 +293,47 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | `9a50420f` | `devices.md` §1 rewritten after rebuilding the toolchain; two false claims removed (`libSDL2_ttf.a` cannot be empty — 54 `TTF_` call sites in `font_sdl.cpp`; fontconfig is `fontconfig/fontconfig@2.13.1`, not a maintainer fork at `master`) |
 | 2026-09-17 | (this commit) | toolchain recreated, subtarget rebuilt (`03099558…`), all §3 results re-run and identical to the first build. **Corrected the `ram8` account**: it *does* declare `dram0`/`dram1` data areas, so the vectors are allocated and the empty-region guard is not what it exercises. Measured with a memory tap: the BIOS makes **zero** accesses to either DRAM window (control 3 077 295 workram reads in the same run), so `dram.cpp`/`bram.cpp` accessors remain unexecuted at runtime |
 
-### Reproducibility, and the sandbox note
+### Reproducibility — and a claim retracted
 
-The toolchain that produced the first binary lived at `/home/user/sdk`, outside
-the repository, and was wiped from the sandbox along with `mamesatdev`. It was
-then recreated from scratch per §1 and the subtarget rebuilt. The two
-independently built binaries — different `libSDL2.a`, different object files,
-different link — produce **identical** boot/replay results on every
-configuration: `saturnjp time=15.560998664 pc=06040226`,
-`saturneu time=18.439710253 pc=060402e4`,
-`stvbios time=15.543578728 pc=060154a8`,
-`saturn time=15.560998664 pc=060402e4`,
-`saturnkr time=15.560998664 pc=06040226`, each with full-image replay identical.
+An earlier revision of this ledger said two independently built binaries
+"produce **identical** boot/replay results on every configuration", quoting
+matching `pc=` values as the evidence. **That was not a supported claim.** The
+emulated timestamp is stable; the sampled PC is not.
 
-Every result in §3 above has been re-run against the current `03099558…` binary.
+Measured on a single binary (`00dd75d1…`), same ROM set, fresh output directory
+each time, `saturnjp`:
+
+| runs | `time=` | `pc=` |
+|---|---|---|
+| first pair | `15.560998664` | `06040226` |
+| one earlier run | `15.560998664` | `06040228` |
+| six later runs | `15.560998664` | `0604022a` |
+
+`time=` is identical in every single run, including across two separately
+bootstrapped toolchains. `pc=` took three different values, all even and within
+two instructions of each other. Removing and restoring the `saturn` parent ROM
+set did not change it, and I could not attribute the variation to any specific
+cause.
+
+**Consequence: `pc=` must not be used as a reproducibility fingerprint, and
+matching `pc=` values between two builds are not evidence of equivalence.** The
+invariant that does hold, and the one the fixture actually asserts, is
+*within-run* save/load determinism — "full-image replay identical" — which
+passed on every run without exception. Use that, plus `time=`, for comparison.
+
+All five configurations still pass, on the current binary and the previous one:
+`saturnjp`, `saturneu`, `stvbios`, `saturn`, `saturnkr`, each reporting
+full-image replay identical.
+
 The `-lEGL`, `Fc*` and `315_5195` / `315_5296` / `315-6154` link failures that
 were flagged as a risk in an earlier revision did **not** occur; the subtarget
 links cleanly with the flags in `build_satdev.sh`.
+
+### Sandbox note
+
+Everything the build depends on outside the repository — `$MAME_SDK`, `build/`
+and the `mamesatdev` binary — is wiped whenever the sandbox is recycled, which
+has happened three times mid-session. `bootstrap_toolchain.sh` recreates the
+toolchain from a clean slate in about a minute; `build_satdev.sh` then rebuilds
+the subtarget. Results recorded above were produced by binaries that no longer
+exist on disk, so the binary hashes are the only way to tie a result to a build.
