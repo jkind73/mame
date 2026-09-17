@@ -122,7 +122,7 @@ required, **D** done this session, **—** not started this session.
 | CD-03 | M — | `saturn_cdb.cpp` is a 52-line skeleton. The SH-1 is instantiated **and disabled**: `cdbcpu.set_disable(); // we're not actually using the CD Block ROM for now`. Only `map(0, 0xffff).rom()` exists — no YGR019 registers, no sound/CD RAM, no host interface. |
 | CD-04 | P — | `cmd_check_copy_protection` / `cmd_get_disc_region` implemented in the HLE. |
 | CD-05 | P — | transfer state saved (`xfertype`, `xfertype32`, `xfer*`). Reset/abort paths not qualified. |
-| IO-01 | P — | `src/devices/bus/sat_ctrl/`: joy, racing, analog, mission, gun, pointer, mouse, keybd, joy_md, multitap, segatap. `read_pdr()` hook exists for direct-mode line protocols. |
+| IO-01 | P/V **D** | `src/devices/bus/sat_ctrl/`: joy, racing, analog, mission, gun, pointer, mouse, keybd, joy_md, multitap, segatap. `read_pdr()` hook exists for direct-mode line protocols. **Audited this session against ST-169-R1 (SMPC User's Manual), extracted from the corpus: every peripheral ID, data size and data-byte layout checked out with no defect** — see §3 "Controller formats". Two things remain: the keyboard shift/kana semantics (**research required**, corpus exhausted — see §3) and the INTBACK report being truncated at 32 OREG bytes rather than using the manual's 15/255-byte port modes (**agent A's SMPC transport layer**). |
 | IO-02 | M/P — | Inventory incomplete. No modem/NetLink device; `saturn/st17xx.cpp` is a skeleton. |
 | CART-01 | P — | `src/devices/bus/saturn/`: `sat_bram_{4,8,16,32mb}`, `sat_dram_{8,32mb}`, `sat_rom`, `sat_cart_slot`. Capacity/bank/lane qualification outstanding. |
 | NVR-01 | P/V **D** | backup RAM + SMPC RTC exist. Persistence and byte-lane behaviour now verified by `test_backup_ram.py` — see §3. **Characterised limitation:** loading a save state does *not* restore backup RAM. Cold-start/battery-loss still unqualified. |
@@ -488,6 +488,99 @@ cycle. Handed to agent A / agent four as a candidate, with the ST-077 wording
 quoted above so it can be settled against the hardware or a real title. It is
 also deliberately **not** frozen into a test — a future fix would break it.
 
+### Controller formats audited against ST-169-R1 (IO-01)
+
+New primary source extracted this session: `ST-169-R1-072694.pdf`, SMPC User's
+Manual, 118 pages → `/tmp/st169.txt`. Figure 3.15 defines the peripheral ID as
+`[bit7:4 Peripheral Type][bit3:0 Data Size]`, and Figure 3.19 states that an
+unconnected tap peripheral reports ID `FFH`.
+
+Every device in `src/devices/bus/sat_ctrl/` was checked against that scheme and
+against its own data-format table. **No defect found.** The declared data size
+matches the number of `read_ctrl` offsets each device implements in every case:
+
+| Device | MAME ID | type / size | Data bytes implemented | Manual |
+|---|---|---|---|---|
+| `joy.cpp` standard pad | `0x02` | 0 / 2 | offsets 0–1 | Table 3.18: 1st = R L D U Start A C B, 2nd = R X Y Z L + `111` ✓ |
+| `joy_md.cpp` MD 3-button | `0xe1` | E / 1 | offset 0 | 1st = R L D U Start A C B ✓ |
+| `joy_md.cpp` MD 6-button | `0xe2` | E / 2 | offsets 0–1 | 2nd = MODE X Y Z `1111` ✓ |
+| `mouse.cpp` Saturn mouse | `0xe3` | E / 3 | offsets 0–2 | Table 3.16: 1st = Y Over, X Over, Y Sign, X Sign, Start, Middle, Right, Left; 2nd = XD; 3rd = YD ✓ |
+| `keybd.cpp` keyboard | `0x34` | 3 / 4 | offsets 0–3 | Table 3.13 ✓ |
+| `racing.cpp` wheel | `0x13` | 1 / 3 | offsets 0–2 | ✓ |
+| `pointer.cpp` trackball | `0x23` | 2 / 3 | offsets 0–2 | ✓ |
+| `mission.cpp` mission stick | `0x15` | 1 / 5 | offsets 0–4 | ✓ |
+| `gun.cpp` light gun | `0xa0` | A / 0 | none — uses `read_pdr()` | size 0 is consistent: the Virtua Gun speaks its own line protocol in SH-2 direct mode, so it has no standard data table |
+
+Two details worth recording because they are the kind of thing that is easy to
+get backwards and both are right:
+
+* **The mouse buttons are active *high*** ("Start, Middle, Right, Left: Becomes 1
+  when button is pushed"), opposite the pad, whose buttons "become 0 when the
+  button is pushed". `mouse.cpp` uses `IP_ACTIVE_HIGH` for all four and
+  `joy.cpp`/`joy_md.cpp` use `IP_ACTIVE_LOW`. Correct.
+* **The keyboard's game-key mapping matches Table 3.13's Button/Key table on all
+  12 entries**: Right/Left/Down/Up, Start = ESC, A TRG = Z, C TRG = C, B TRG = X,
+  R TRG = Q, X TRG = A, Y TRG = S, Z TRG = D, L TRG = E. `get_game_key()` in
+  `keybd.cpp:276` implements exactly this. Its status byte (`m_status | 6`) also
+  matches: bit7 = 0, bit6 Caps Lock, bit5 Num Lock, bit4 Scroll Lock, bit3 Make,
+  bits 2 and 1 forced to 1, bit0 Break — and `key_make`/`key_break`
+  (`keybd.cpp:256,263`) set Make and Break mutually exclusively, as the table
+  requires.
+
+Port status bytes (the low nibble is the peripheral count that
+`smpc.cpp:read_saturn_ports` iterates over): single controllers `0xf1` (one
+peripheral), `multitap.h` `0x16` (six connectors), `segatap.h` `0x04` — which is
+**exactly** Table 3.17's "Multitap ID `0H`, No. of Connectors `4H`".
+
+### Two IO-01 findings that are *not* what they first looked like
+
+**1. `read_id`/`read_status` returning 0 for an absent card is latent, not live.**
+`saturn_control_port_device::read_id()` and `read_status()` (`ctrl.cpp:79-89`)
+return **0** when `m_device` is null, whereas the interface defaults in `ctrl.h`
+are `0xff` and `0xf0` and Figure 3.19 requires `FFH` for an unconnected
+peripheral. I initially took this as the root cause of the bug MAME documents
+itself at `smpc.cpp:838-842` ("if I put multitap in port2 with inserted joy1,
+joy2 and joy4 it does not see joy4 … The same happens if I skip controllers with
+id = 0xff … how did a real unit behave in this case?").
+
+**It is not.** The path is unreachable: `-listxml` shows `ctrl1` has 12 slot
+options (`segatap joy_md6 mouse joy_md3 trackball multitap keyboard lightgun
+analog mission racing joypad`) and **no `none`/disabled option**, and the tap
+sub-ports are hardwired in `device_add_mconfig` to `SATURN_CONTROL_PORT(config,
+port, saturn_joys, "joypad")` where `saturn_joys` offers only `"joypad"`. So
+`m_device` is never null in any configuration the user can select, and the code
+is defensive only. I also tried to demonstrate the empty-port case at runtime and
+could not: `-ctrl1 none` is rejected ("Unknown slot option"), and OREG stayed
+`ff` for 900 frames so I could not observe an INTBACK fill from Lua either.
+Recorded as a latent inconsistency, **not** a defect and **not** a cause.
+
+**2. The INTBACK report is truncated, and the fix is not mine.**
+`read_saturn_ports()` stops filling at `sizeof(m_oreg)` = 32 bytes (the guard's
+comment cites mamedev MT06893, two multitaps at once). One multitap already needs
+1 + 6×(1+2) = 19 bytes, so two need 38. ST-169-R1 Table 3.8/3.9 address exactly
+this with 15-byte and 255-byte **port modes** selected via IREG1, which MAME does
+not model. That is SMPC transport (agent A); flagged with the table reference
+rather than patched across the boundary.
+
+### Keyboard shift / kana — corpus exhausted, research required
+
+`keybd.cpp:308` carries `TODO: how shift key actually works? EGWord uses it in
+order to switch between hiragana and katakana modes.`, and `keybd.cpp:82` declares
+a key literally named `"KANA SHIFT?"` with **no `PORT_CODE`**, so it can never be
+pressed.
+
+I searched all 103 PDFs in the corpus for `hiragana` / `katakana` / `kana` before
+calling this a blocker. Hits: `ST-151-R4` (SW Development Standards),
+`ST-160-R1`, `ST-193`, `ST-203`, `e702090_superh`. **Every one is about font
+files or text rendering, not keyboard input** — `ST-160-R1-092994.pdf`, which I
+had not previously catalogued, turns out to be a 9-page font specification
+(`ASCII.FON`, `KANA.FON`, `KANJI.FON`, JIS code tables). ST-169-R1 itself contains
+no occurrence of "shift", "kana", "hiragana" or "katakana" anywhere in 118 pages.
+
+So the corpus genuinely does not define the kana toggle. Left as
+**research-required**, unchanged — inventing a key mapping for a Japanese
+word-processor title without a source would be worse than the honest gap.
+
 ### A pre-existing `run_all.py` failure, not mine
 
 `run_all.py` auto-discovers `test_*.py` (29 currently) and aborts at
@@ -585,6 +678,8 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | `834a5609` | **CD-01:** removed the force-clear of DCHG in `hirq_r()`, which had made the ST-136-R2 tray-open detection path unobservable; added `test_cd_hirq.py` (CMOK handshake, HIRQ write-to-clear, DCHG reporting) with two mutation controls. All five BIOS configs re-verified at their pre-fix baseline times. New binary `3d536a7a…` |
 | 2026-09-17 | `c97eaa9b` | **STV-02 count corrected twice.** `machine().rand()` in `HACK_MODE_NO_KEY` is MAME's fixed-seed LCG (`machine.cpp:106`, seed `0x9d14abd7`) whose seed is a `save_item`, so it is reproducible and save-state stable — a missing cipher, not a determinism hazard. `init_decathlt_nokey` is used by **9** `GAME()` entries, not "20+" (§2) and not 8 (§5); `nclubv2` belongs in the STV-02 group. Both figures verified from `grep` over `src/mame/sega/*.cpp`. |
 | 2026-09-17 | `22d2d525` | **SND-03:** `test_scsp_timers.py` measures all eight ST-077-R2 prescaler divisions and the timer A interrupt in a live machine, with two mutation controls. Records a one-count-cycle discrepancy against the manual's interrupt-time formula as **code-derived and unmeasured** — the attempted measurement is written up and retracted, since `timer_sync`'s sub-increment remainder defeats frame-granular sampling. Not changed (sound timing is protected) and not frozen into a test. |
+| 2026-09-17 | `5cfafcad` | resolved the two remaining `(this commit)` placeholders in the log table; every row now carries a real hash. Documentation only. |
+| 2026-09-17 | (this commit) | **IO-01:** audited all eleven `sat_ctrl` devices against ST-169-R1 (extracted this session). Peripheral IDs, data sizes and data-byte layouts all correct, including the mouse's active-high buttons and the keyboard's 12-entry Button/Key mapping. Two non-findings recorded honestly: `read_id`/`read_status` returning 0 for an absent card is **unreachable** (no `none` slot option, tap sub-ports hardwired), so it is not the cause of the `smpc.cpp:838` comment; and the 32-byte OREG truncation belongs to agent A's SMPC transport. Keyboard kana confirmed **research-required** after searching all 103 corpus PDFs. No code change. |
 
 ### Reproducibility — and a claim retracted
 
