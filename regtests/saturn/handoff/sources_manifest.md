@@ -62,8 +62,8 @@ This file tracks which pinned external sources contributed to each modified file
 - **License:** BSD-3-Clause, LGPL-2.1+ historical
 
 ### src/mame/sega/saturn.cpp / saturn.h / sat_console.cpp / stv.cpp
-- **Change:** Clock tree MASTER_CLOCK_352=14.318181*4, MASTER_CLOCK_320=14.318181*3.75, SH2 /2, SCU /4, DCC 352, VDP2 320, SMPC HLE 4MHz + RTC 1Hz; dot_select_w PLL handling (preserves existing reset of SCSP/SCU/VDP2 per accepted AB2/Power Drift/OutRun fixes); HALT OR-ing via update_halt_lines preserving SMPC halt; fastram BIOS-only for DRC bus fidelity; machine_start no longer forces no-DRC; is_vdp1_cpu_accessible / is_vdp2_cpu_accessible readiness gates via VDP1 drawing/erase state and VDP2 slot check
-- **Parents:** Sega schematics, ST-169, MiSTer dot-select wiring, Ymir clock tree, independent.
+- **Change:** Clock tree MASTER_CLOCK_352=14.318181*4, MASTER_CLOCK_320=14.318181*3.75, SH2 /2, SCU /4, DCC 352, VDP2 320, SMPC HLE 4MHz + RTC 1Hz; dot_select_w PLL handling now resets SCU/VDP2 only, NOT SCSP per SYS-CLK01 sound-preservation correction (video clock change must not spuriously reset sound; sound CPU reset via m_sndres line). Preserves AB2/Power Drift/OutRun fixes. CKCHG 5 ticks syshalt qualified. HALT OR-ing via update_halt_lines preserving SMPC halt; fastram BIOS-only for DRC bus fidelity; machine_start no longer forces no-DRC; is_vdp1_cpu_accessible / is_vdp2_cpu_accessible readiness gates via VDP1 drawing/erase state and VDP2 slot check
+- **Parents:** Sega schematics, ST-169 (SMPC CKCHG reset of VDP1/VDP2/SCU per manual p.3 and smpc.cpp comment "VDP1, VDP2 and SCU are also reset by this (done in client)"), MiSTer dot-select wiring (a95b085), Ymir clock tree (6d779960), independent correction for SCSP non-reset per task acceptance (AB2 boot/explosions, Power Drift, OutRun flashing fixes preserved).
 - **License:** LGPL-2.1+
 
 ### src/mame/sega/saturn_vdp2.cpp / saturn.cpp VDP1 section
