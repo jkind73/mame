@@ -191,13 +191,11 @@ void saturn_state::machine_start() {
   machine().save().register_postload(save_prepost_delegate(
       FUNC(saturn_state::update_halt_lines), this));
 
-  // CPU-04/BUS: faithful deferred transaction requires interpreter snapshot
-  // restore (sh2.cpp). Force interpreter until DRC also supports before_delay
-  // abort/retry. ST-V inherits via stv_state::machine_start calling this.
-  if (m_maincpu)
-    m_maincpu->set_force_no_drc(true);
-  if (m_slave)
-    m_slave->set_force_no_drc(true);
+  // BUS-01/04: DRC now supports faithful deferred transactions (sh.cpp
+  // icount guard after CALLH + devcpu forced retry >=1024 + SH2 snapshot
+  // restore). Interpreter and DRC both correctly rewind pre-dec/post-inc
+  // side-effects (R15 double-decrement choroqpk fix) and retry via
+  // saturn_bus acquire/release. No need to force interpreter.
 }
 
 void saturn_state::reset_halt_state() {

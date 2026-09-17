@@ -562,22 +562,12 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
   auto const [dst_flags, dst_penalty] =
       get_address_flags(m_dma[level].dst, true);
 
-  // BUS-01: try to acquire buses via arbiter; if busy, stay in WAIT
-  if (m_bus.found()) {
-    m_bus->set_asr_regs(m_abus_asr[0], m_abus_asr[1], m_abus_aref);
-    if (!m_bus->acquire_dma_buses(level, src_flags, dst_flags, src_penalty, dst_penalty)) {
-      // Keep in WAIT, retry later
-      m_dma_tick_timer->adjust(attotime::from_ticks(2, m_dma_clock_ref));
-      return;
-    }
-  }
-
   //  printf("%04x %04x\n", src_flags, dst_flags);
 
   // check if params are well formed:
   // - can't transfer from BIOS, Work RAM L, backup RAM (gamebas, wc98,
   // batmanfu)
-  // - SCU also can't do same bus transfers
+  // - SCU also can't do same bus transfers (direct only; indirect same-bus allowed)
   // - the controller has no path to its own register space at all
   // - SCU Final Specifications and Precautions (ST-210-110194): No.01 makes the
   //   A-Bus a read source only, never a DMA destination, and No.02 makes the
@@ -592,6 +582,16 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
     m_ist |= IST_DMAILL;
     test_pending_irqs();
     return;
+  }
+
+  // BUS-01: try to acquire buses via arbiter; if busy, stay in WAIT
+  if (m_bus.found()) {
+    m_bus->set_asr_regs(m_abus_asr[0], m_abus_asr[1], m_abus_aref);
+    if (!m_bus->acquire_dma_buses(level, src_flags, dst_flags, src_penalty, dst_penalty)) {
+      // Keep in WAIT, retry later
+      m_dma_tick_timer->adjust(attotime::from_ticks(2, m_dma_clock_ref));
+      return;
+    }
   }
 
   /* max size */
@@ -782,8 +782,10 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
 
     if (m_dma[level].mode & DMA_MODE_INDIRECT) {
       if (m_dma[level].indirect_fetch_phase) {
-        // BUS-01: acquire bus for descriptor fetch (index address)
+        // BUS-01/04: acquire bus for descriptor fetch (index address)
+        // Release any buses held from previous chunk before fetching next descriptor
         if (m_bus.found()) {
+          m_bus->release_dma_buses(level);
           auto const [idx_f, idx_p] = get_address_flags(m_dma[level].index, false);
           if (idx_f) {
             if (!m_bus->acquire_dma_buses(level, idx_f, idx_f, idx_p, idx_p)) {
@@ -844,7 +846,9 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       }
 
       // BUS-01: ensure buses for this indirect chunk are owned
+      // Release descriptor-fetch bus before acquiring src/dst for chunk
       if (m_bus.found()) {
+        m_bus->release_dma_buses(level);
         auto const [src_f, src_p] = get_address_flags(m_dma[level].live_src, false);
         auto const [dst_f, dst_p] = get_address_flags(m_dma[level].live_dst, true);
         if (src_f && dst_f) {
@@ -868,10 +872,14 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
         LOGMASKED(LOG_DMA_END, "DMA%d indirect ended at %08x %08x\n", level,
                   m_dma[level].live_src, m_dma[level].live_dst);
 
-        if (m_dma[level].indirect_end_flag)
+        if (m_dma[level].indirect_end_flag) {
           m_dma[level].done = true;
-        else
+        } else {
           m_dma[level].indirect_fetch_phase = true;
+          // Indirect cycle-steal: release buses between chunks so CPU can run
+          if (m_bus.found())
+            m_bus->release_dma_buses(level);
+        }
       }
     } else {
       // direct mode
