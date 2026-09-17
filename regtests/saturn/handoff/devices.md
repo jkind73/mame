@@ -221,13 +221,37 @@ is a test vehicle, not a shippable build.** See §1.
   * Control on the same script, same run: `CONTROL_workram_read=3077295` over
     `0x06000000-0x060fffff`. The tap mechanism works, so the zeros are real.
 
-  **Conclusion, stated plainly: the BIOS never touches the cartridge DRAM
-  windows.** That is expected — only a title that uses a Data RAM cart (`kof95`,
-  `ultraman`) would — and there are no game ROMs here. So `dram.cpp` and
-  `bram.cpp` are instantiated at runtime but their accessors are still **not
-  executed** by any test I can run. The unit fixture `test_sat_cart.py`, which
-  extracts the production handlers verbatim and drives 24 cases including the
-  empty-region one, remains the only executed coverage of that code.
+  **The BIOS never touches the cartridge DRAM windows** — expected, since only a
+  title using a Data RAM cart (`kof95`, `ultraman`) would, and there are no game
+  ROMs here. So BIOS runs alone leave `dram.cpp` and `bram.cpp` unexecuted.
+
+  **That gap is now closed by `regtests/saturn/test_cart_runtime.py`**, which
+  drives the windows from Lua through the main CPU program space on a real
+  machine booted with a cartridge selected via the `sat_cart` software list — so
+  the `sat_console.cpp` handler installation, the address decode and the
+  accessors are exercised together rather than separately:
+
+  * `ram8`: cart ID `0x5a`; `dram0` round-trip; the 4× aliasing of a 512 KiB
+    chip across its 2 MiB window at `+0x80000`, `+0x100000`, `+0x180000`; the
+    next word being separate storage; `dram1` independent of `dram0`.
+  * `bram4`: cart ID `0x21`; byte-lane spread (`0xaabbccdd` → `0x00bb00dd`);
+    the last valid word at `0x040ffffc`; open bus at `0x04100000`, the first
+    address past the chip inside the 8 MiB window.
+
+  Sensitivity was proven by mutation rather than assumed. With
+  `read_ext_dram1` pointed at `m_ext_dram0`, the run fails with
+  `dram1.unwritten got=11223344 want=00000000` and
+  `dram1.w0 got=11223344 want=a5a5a5a5`. With the BRAM bound widened from
+  `size()/2` to `size()`, it fails with `bram.oob got=00000000 want=ffffffff`.
+  Restoring both files reproduces the original binary exactly — same sha256
+  `03099558…` — so the revert is byte-exact and not merely "looks right".
+
+  Partial-lane writes cannot be driven from Lua: `space:write_u32` binds to
+  `addr_space::mem_write(offs_t, T)` at `luaengine_mem.cpp:364`, which takes no
+  `mem_mask`, so a third argument is silently dropped. That case stays with
+  `test_sat_cart.py`, which calls the extracted handler directly. The test skips
+  with exit 0 when no binary or BIOS set is present, so `run_all.py` remains
+  ROM-free.
 
 ## 4. Endpoint contracts
 
