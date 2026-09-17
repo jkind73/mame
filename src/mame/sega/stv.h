@@ -180,6 +180,11 @@ private:
   void stv_select_game(int gameno);
   uint8_t m_prev_gamebank_select = 0;
 
+  uint32_t main_bus_wait_r(offs_t offset);
+  uint32_t main_bus_wait_w(offs_t offset);
+  uint32_t slave_bus_wait_r(offs_t offset);
+  uint32_t slave_bus_wait_w(offs_t offset);
+
   void sound_mem(address_map &map) ATTR_COLD;
   void scsp_mem(address_map &map) ATTR_COLD;
   void stv_mem(address_map &map) ATTR_COLD;

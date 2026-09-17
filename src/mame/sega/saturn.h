@@ -10,6 +10,7 @@
 #include "315-5881_crypt.h"
 #include "saturn_dcc.h"
 #include "saturn_scu.h"
+#include "saturn_bus.h"
 
 // #include "saturn_vdp1.h"
 #include "saturn_vdp2.h"
@@ -35,7 +36,7 @@ public:
         m_sound_ram(*this, "sound_ram"), m_maincpu(*this, "maincpu"),
         m_slave(*this, "slave"), m_audiocpu(*this, "audiocpu"),
         m_dcc(*this, "dcc"), m_scsp(*this, "scsp"), m_smpc_hle(*this, "smpc"),
-        m_scu(*this, "scu"),
+        m_scu(*this, "scu"), m_bus(*this, "bus"),
         // m_vdp1(*this, "vdp1"),
         m_vdp2(*this, "vdp2"), m_gfxdecode(*this, "gfxdecode"),
         m_screen(*this, "screen"), m_palette(*this, "palette") {}
@@ -142,6 +143,7 @@ protected:
   required_device<scsp_device> m_scsp;
   required_device<smpc_hle_device> m_smpc_hle;
   required_device<saturn_scu_device> m_scu;
+  required_device<saturn_bus_device> m_bus;
   //  required_device<saturn_vdp1_device> m_vdp1;
   required_device<saturn_vdp2_device> m_vdp2;
   required_device<gfxdecode_device> m_gfxdecode;

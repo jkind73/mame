@@ -9,8 +9,9 @@
 #include "cpu/scudsp/scudsp.h"
 #include "cpu/sh/sh7604.h"
 
-
 #include <tuple>
+
+class saturn_bus_device;
 
 //**************************************************************************
 //  TYPE DEFINITIONS
@@ -31,6 +32,7 @@ public:
   auto main_steal_cb() { return m_main_steal_cb.bind(); }
   auto sound_dtack_cb() { return m_sound_dtack_cb.bind(); }
   auto sound_steal_cb() { return m_sound_steal_cb.bind(); }
+  template <typename T> void set_bus(T &&tag) { m_bus.set_tag(std::forward<T>(tag)); }
 
   // I/O operations
   void regs_map(address_map &map) ATTR_COLD;
@@ -75,6 +77,7 @@ protected:
 private:
   required_device<scudsp_cpu_device> m_scudsp;
   required_device<sh7604_device> m_hostcpu;
+  optional_device<saturn_bus_device> m_bus;
   address_space *m_hostspace;
   devcb_write_line m_main_dtack_cb;
   devcb_write8 m_main_steal_cb;

@@ -577,6 +577,12 @@ private:
   required_device<saturn_control_port_device> m_ctrl1;
   required_device<saturn_control_port_device> m_ctrl2;
 
+  // BUS-01/02 CPU wait
+  uint32_t main_bus_wait_r(offs_t offset);
+  uint32_t main_bus_wait_w(offs_t offset);
+  uint32_t slave_bus_wait_r(offs_t offset);
+  uint32_t slave_bus_wait_w(offs_t offset);
+
   void saturn_mem(address_map &map) ATTR_COLD;
   void sound_mem(address_map &map) ATTR_COLD;
   void scsp_mem(address_map &map) ATTR_COLD;
@@ -773,8 +779,36 @@ static INPUT_PORTS_START(saturn) PORT_START("RESET") /* hardwired buttons */
   memcpy(data, init, sizeof(init));
 }
 
+uint32_t sat_console_state::main_bus_wait_r(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, false, SATURN_MASTER_MAIN_SH2); }
+uint32_t sat_console_state::main_bus_wait_w(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, true, SATURN_MASTER_MAIN_SH2); }
+uint32_t sat_console_state::slave_bus_wait_r(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, false, SATURN_MASTER_SLAVE_SH2); }
+uint32_t sat_console_state::slave_bus_wait_w(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, true, SATURN_MASTER_SLAVE_SH2); }
+
 void sat_console_state::machine_start() {
   saturn_state::machine_start();
+
+  // BUS-01: install CPU wait before_delay for A/B/C buses
+  // A-Bus 0x02000000-0x05ffffff (cart, dummy, CD, sound, VDP1/2, SCU) and
+  // C-Bus 0x06000000-0x07ffffff (WorkRAM-H). 0x002/0x004 already mapped but
+  // also need wait for C-Bus contention.
+  auto install_bus_wait = [this](address_space &space, bool is_main) {
+    // A-Bus + B-Bus
+    space.install_read_before_delay(0x02000000 >> 2, 0x05ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_r))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_r)));
+    space.install_write_before_delay(0x02000000 >> 2, 0x05ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_w))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_w)));
+    // C-Bus WorkRAM-H
+    space.install_read_before_delay(0x06000000 >> 2, 0x07ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_r))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_r)));
+    space.install_write_before_delay(0x06000000 >> 2, 0x07ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_w))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_w)));
+  };
+  install_bus_wait(m_maincpu->space(AS_PROGRAM), true);
+  install_bus_wait(m_slave->space(AS_PROGRAM), false);
 
   m_maincpu->space(AS_PROGRAM)
       .install_readwrite_handler(
@@ -1099,8 +1133,11 @@ void sat_console_state::saturn(machine_config &config) {
   m_audiocpu->set_addrmap(AS_PROGRAM, &sat_console_state::sound_mem);
   m_audiocpu->reset_cb().set(FUNC(sat_console_state::m68k_reset_callback));
 
+  SATURN_BUS(config, m_bus, 0);
+
   SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
   m_scu->set_hostcpu(m_maincpu);
+  m_scu->set_bus(m_bus);
   m_scu->main_dtack_cb().set(FUNC(sat_console_state::main_dma_halt_w));
   m_scu->sound_dtack_cb().set(FUNC(sat_console_state::sound_dma_halt_w));
   m_scu->main_steal_cb().set([this](u8 data) {

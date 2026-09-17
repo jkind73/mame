@@ -33,6 +33,7 @@ C-Bus: $0600'0000 - $07ff'ffff (Work RAM-H, mirrored)
 
 #include "emu.h"
 #include "saturn_scu.h"
+#include "saturn_bus.h"
 
 
 #define LOG_DMA_MOVE                                                           \
@@ -60,6 +61,7 @@ saturn_scu_device::saturn_scu_device(const machine_config &mconfig,
                                      uint32_t clock)
     : device_t(mconfig, SATURN_SCU, tag, owner, clock),
       m_scudsp(*this, "scudsp"), m_hostcpu(*this, finder_base::DUMMY_TAG),
+      m_bus(*this, finder_base::DUMMY_TAG),
       m_main_dtack_cb(*this), m_main_steal_cb(*this), m_sound_dtack_cb(*this),
       m_sound_steal_cb(*this) {}
 
@@ -550,6 +552,16 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
   auto const [dst_flags, dst_penalty] =
       get_address_flags(m_dma[level].dst, true);
 
+  // BUS-01: try to acquire buses via arbiter; if busy, stay in WAIT
+  if (m_bus.found()) {
+    m_bus->set_asr_regs(m_abus_asr[0], m_abus_asr[1], m_abus_aref);
+    if (!m_bus->acquire_dma_buses(level, src_flags, dst_flags, src_penalty, dst_penalty)) {
+      // Keep in WAIT, retry later
+      m_dma_tick_timer->adjust(attotime::from_ticks(2, m_dma_clock_ref));
+      return;
+    }
+  }
+
   //  printf("%04x %04x\n", src_flags, dst_flags);
 
   // check if params are well formed:
@@ -716,6 +728,8 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       m_dma[level].live_count = 0;
       m_main_dtack_cb(0);
       m_sound_dtack_cb(0);
+      if (m_bus.found())
+        m_bus->release_dma_buses(level);
 
       const uint16_t irqmask = 1 << (11 - level);
 
@@ -758,6 +772,16 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
 
     if (m_dma[level].mode & DMA_MODE_INDIRECT) {
       if (m_dma[level].indirect_fetch_phase) {
+        // BUS-01: acquire bus for descriptor fetch (index address)
+        if (m_bus.found()) {
+          auto const [idx_f, idx_p] = get_address_flags(m_dma[level].index, false);
+          if (idx_f) {
+            if (!m_bus->acquire_dma_buses(level, idx_f, idx_f, idx_p, idx_p)) {
+              m_dma_tick_timer->adjust(attotime::from_ticks(2, m_dma_clock_ref));
+              return;
+            }
+          }
+        }
         u32 indirect_src, indirect_dst, indirect_size;
         indirect_size = m_hostspace->read_dword(m_dma[level].index);
         indirect_dst = m_hostspace->read_dword(m_dma[level].index + 4);
@@ -807,6 +831,18 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
         // yield 3 clock cycles out of fetching the new data
         m_dma_tick_timer->adjust(attotime::from_ticks(3, m_dma_clock_ref));
         return;
+      }
+
+      // BUS-01: ensure buses for this indirect chunk are owned
+      if (m_bus.found()) {
+        auto const [src_f, src_p] = get_address_flags(m_dma[level].live_src, false);
+        auto const [dst_f, dst_p] = get_address_flags(m_dma[level].live_dst, true);
+        if (src_f && dst_f) {
+          if (!m_bus->acquire_dma_buses(level, src_f, dst_f, src_p, dst_p)) {
+            m_dma_tick_timer->adjust(attotime::from_ticks(2, m_dma_clock_ref));
+            return;
+          }
+        }
       }
 
       (this->*dma_transfer_table[m_dma[level].mode & 3])(m_dma[level]);
@@ -868,6 +904,18 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
   }
 
   if (wait_level > level) {
+    // BUS-01: try to acquire buses for wait_level before promoting
+    if (m_bus.found()) {
+      auto const [src_f, src_p] = get_address_flags(m_dma[wait_level].live_src ? m_dma[wait_level].live_src : m_dma[wait_level].src, false);
+      auto const [dst_f, dst_p] = get_address_flags(m_dma[wait_level].live_dst ? m_dma[wait_level].live_dst : m_dma[wait_level].dst, true);
+      if (src_f && dst_f) {
+        if (!m_bus->acquire_dma_buses(wait_level, src_f, dst_f, src_p, dst_p)) {
+          // Can't acquire yet, keep waiting
+          m_dma_tick_timer->adjust(attotime::from_ticks(2, m_dma_clock_ref));
+          return;
+        }
+      }
+    }
     // clear wait, set move
     update_dma_status(wait_level, DMA_STATE_MOVE);
 
@@ -882,6 +930,11 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       LOGMASKED(LOG_DMA_STATE, "Push DMA%d in background\n", level);
 
       m_dma_status |= (1 << (16 + level));
+      if (m_bus.found()) {
+        // Release old level's bus to allow new level to proceed; old will
+        // re-acquire when it resumes (via trigger logic or retry)
+        m_bus->release_dma_buses(level);
+      }
     }
   }
 
@@ -998,6 +1051,8 @@ void saturn_scu_device::dma_force_stop_w(uint32_t data, uint32_t mem_mask) {
     m_dma[level].pending_trigger = false;
     m_dma[level].indirect_fetch_phase = false;
     m_dma[level].read_buffer_valid = false;
+    if (m_bus.found())
+      m_bus->release_dma_buses(level);
   }
   m_dma_status &= ~(DMA_LV0_BK | DMA_LV1_BK);
   m_dma_tick_timer->adjust(attotime::never);
@@ -1316,12 +1371,16 @@ void saturn_scu_device::abus_set_w(offs_t offset, uint32_t data,
   // preread significant bits (31 and 15) of ASR0/ASR1 must be set to 0 and
   // are not stored
   m_abus_asr[offset & 1] &= ~0x8000'8000;
+  if (m_bus.found())
+    m_bus->set_asr_regs(m_abus_asr[0], m_abus_asr[1], m_abus_aref);
 }
 
 void saturn_scu_device::abus_refresh_w(uint32_t data, uint32_t mem_mask) {
   COMBINE_DATA(&m_abus_aref);
   // Only ARFEN (bit 4) and ARWT (bits 3:0) are implemented.
   m_abus_aref &= 0x1f;
+  if (m_bus.found())
+    m_bus->set_asr_regs(m_abus_asr[0], m_abus_asr[1], m_abus_aref);
 }
 
 uint32_t saturn_scu_device::version_r() {

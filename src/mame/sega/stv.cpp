@@ -1318,8 +1318,11 @@ void stv_state::stv(machine_config &config) {
   m_audiocpu->set_addrmap(AS_PROGRAM, &stv_state::sound_mem);
   m_audiocpu->reset_cb().set(FUNC(stv_state::m68k_reset_callback));
 
+  SATURN_BUS(config, m_bus, 0);
+
   SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
   m_scu->set_hostcpu(m_maincpu);
+  m_scu->set_bus(m_bus);
   m_scu->main_dtack_cb().set(FUNC(stv_state::main_dma_halt_w));
   m_scu->sound_dtack_cb().set(FUNC(stv_state::sound_dma_halt_w));
   m_scu->main_steal_cb().set([this](u8 data) {
@@ -1575,8 +1578,31 @@ stv_state::load_cart(device_image_interface &image, generic_slot_device *slot) {
   return std::make_pair(std::error_condition(), std::string());
 }
 
+uint32_t stv_state::main_bus_wait_r(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, false, SATURN_MASTER_MAIN_SH2); }
+uint32_t stv_state::main_bus_wait_w(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, true, SATURN_MASTER_MAIN_SH2); }
+uint32_t stv_state::slave_bus_wait_r(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, false, SATURN_MASTER_SLAVE_SH2); }
+uint32_t stv_state::slave_bus_wait_w(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, true, SATURN_MASTER_SLAVE_SH2); }
+
 void stv_state::machine_start() {
   saturn_state::machine_start();
+
+  // BUS-01: CPU wait for A/B/C buses (same as Saturn)
+  auto install_bus_wait = [this](address_space &space, bool is_main) {
+    space.install_read_before_delay(0x02000000 >> 2, 0x05ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(stv_state::main_bus_wait_r))
+              : ws_delay_delegate(*this, FUNC(stv_state::slave_bus_wait_r)));
+    space.install_write_before_delay(0x02000000 >> 2, 0x05ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(stv_state::main_bus_wait_w))
+              : ws_delay_delegate(*this, FUNC(stv_state::slave_bus_wait_w)));
+    space.install_read_before_delay(0x06000000 >> 2, 0x07ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(stv_state::main_bus_wait_r))
+              : ws_delay_delegate(*this, FUNC(stv_state::slave_bus_wait_r)));
+    space.install_write_before_delay(0x06000000 >> 2, 0x07ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(stv_state::main_bus_wait_w))
+              : ws_delay_delegate(*this, FUNC(stv_state::slave_bus_wait_w)));
+  };
+  install_bus_wait(m_maincpu->space(AS_PROGRAM), true);
+  install_bus_wait(m_slave->space(AS_PROGRAM), false);
 
   // fill in the factory EEPROM image before the NVRAM device copies the
   // region during nvram_load()
