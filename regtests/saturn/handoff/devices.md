@@ -111,7 +111,7 @@ required, **D** done this session, **—** not started this session.
 |---|---|---|
 | SND-01 | P/V — | `sat_console.cpp:1098` runs the sound `M68000` at 11 289 600 Hz with `sound_mem`; `stv.cpp` mirrors it. Sound-RAM window is 512 KiB with the upper half unmapped (`stv.cpp:1245` comment cites ST-077 Figure 1.3). |
 | SND-02 | V/R — | 32-voice engine, FM, envelopes, LFO and DSP present in `src/devices/sound/scsp.cpp` (1766 lines). No chip-wide hardware audit exists. |
-| SND-03 | P — | Timers re-armed from a `timer_sync`/`timer_arm` pair, `exec_dma()` present, `main_irq_cb` routed to `saturn_scu_device::sound_req_w`. MIDI in/out FIFOs implemented over `device_serial_interface`. |
+| SND-03 | P/V **D** | Timers re-armed from a `timer_sync`/`timer_arm` pair, `exec_dma()` present, `main_irq_cb` routed to `saturn_scu_device::sound_req_w`. MIDI in/out FIFOs implemented over `device_serial_interface`. **DMA now verified at runtime against ST-077 Figure 4.3 by `test_scsp_dma.py`** — see §3. The `reg_addr & 0xffe` wrap I had flagged as unsupported by the manual is in fact exactly the documented `DRGA[11:1]` field. |
 | SND-04 | V/R — | `scspdsp.cpp` is 326 lines. Not audited against ST-077 chapter 6. |
 | SND-05 | P — | `device_post_load()` exists and MIDI/DMA state is in `save_item`s. Round-trip under live envelopes/DMA not yet qualified. |
 | CD-01 | P — | `saturn_cd_hle.cpp` (4249 lines) implements the full CR1–CR4 command set. **Known open:** `device_reset()` sets `hirqreg = 0x0001` with a `FIXME` saying zero "breaks CD auto load and azelpanztai". |
@@ -254,6 +254,42 @@ is a test vehicle, not a shippable build.** See §1.
   `test_sat_cart.py`, which calls the extracted handler directly. The test skips
   with exit 0 when no binary or BIOS set is present, so `run_all.py` remains
   ROM-free.
+
+### SCSP DMA verified at runtime (SND-03)
+
+`regtests/saturn/test_scsp_dma.py` drives the SCSP DMA controller from Lua on a
+live `saturnjp`, through the main CPU's view of the SCSP register window
+(`0x05b00400`), and asserts:
+
+| case | assertion |
+|---|---|
+| mem → reg, 2 words | timer A high byte `0x12`, timer B high byte `0x56` — both addresses stepped |
+| reg → mem, ungated | `MCIEB` (`0x0055`) lands byte-exact in sound RAM |
+| reg → mem, `DGATE = 1` | destination stores `0x0000`, not the register value |
+| completion | `SCIPD` bit 4 raised, `DEXE` clears itself |
+
+Timer registers can only be compared by high byte: `UpdateRegR` (`scsp.cpp`,
+cases `0x18`–`0x1d`) deliberately replaces the low byte with the live counter on
+read, so a full-word comparison would never be stable.
+
+**An audit note of mine was wrong and is retracted here.** I had recorded that
+`exec_dma`'s `reg_addr & 0xffe` wrap "is not backed by ST-077, which implies
+≤ `0xEE3`". ST-077-R2 Figure 4.3 defines the field as `DRGA[11:1]` — a 12-bit
+byte address, i.e. a 4 KB window — so `& 0xffe` is exactly right, and the same
+figure's `DMEA[19:1]` and `DTLG[11:1]` match MAME's `& 0xffffe` and `& 0x0ffe`
+masks. There was no defect to fix, and the code should not be "corrected".
+
+Sensitivity proven by mutation, then reverted to the identical binary
+(sha256 `00dd75d1…` both before and after):
+
+* dropping `m_udata.data[0x20/2] |= 0x10;` → `dma_end_irq got=0000 want=0010`
+* changing `write_word(mem_addr, gate ? 0 : tmp)` to ignore the gate →
+  `gate_zeroes got=0055 want=0000`
+
+One trap worth recording: `DRGA` is in the same address space as
+`scsp_device::r16`/`w16`, where `0x000-0x3FF` are **slot** registers and the
+common control registers start at `0x400`. A first attempt used `DRGA = 0x018`
+and silently wrote slot 0; the correct destination is `0x418`.
 
 ## 4. Endpoint contracts
 
