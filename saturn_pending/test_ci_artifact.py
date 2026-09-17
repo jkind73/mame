@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix='saturn-ci-artifact-test-') as tmp:
         try:
             check_artifact(d, run, trees)
         except (ValueError, FileNotFoundError):
-            assert mode != 'good', mode
+            if mode == 'good': raise RuntimeError('Valid artifact rejected')
         else:
-            assert mode == 'good', mode
+            if mode != 'good': raise RuntimeError('Bad artifact accepted: ' + mode)
 print('12 synthetic CI artifact provenance cases passed (not native execution)')
