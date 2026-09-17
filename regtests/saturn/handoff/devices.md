@@ -140,7 +140,10 @@ Binary: `mamesatdev`, MAME v0.289 (unknown), driver-filtered subtarget
 (`src/mame/satdev.flt`), `-O1`, `REGENIE=0` incremental.
 
 ```
+sha256  0309955846af7591083447a5c5edf0e7ac63e00521ab365425acca2313b888e2  mamesatdev
+        (second build, toolchain recreated from scratch after the first was wiped)
 sha256  b3d285886ba75656fd0efc317d5b2db80a1fc12765dcef3241f700a91280e255  mamesatdev
+        (first build; superseded, no longer on disk)
 size    87 772 768 bytes
 ```
 
@@ -187,19 +190,44 @@ is a test vehicle, not a shippable build.** See §1.
   `ram8`, `ram32`, `bram4`, `bram8`, `bram16`, `bram32` whose
   `feature name="slot"` values match those internal option names one for one.
 
-  Note what that implies for the fix: those softlist entries declare a single
-  `cart` part with **no datafile**, so `sat_cart_slot_device::call_load()` takes
-  the non-ROM branch and finds no `bram` / `dram0` / `dram1` region either —
-  every `*_alloc()` is skipped and the vectors stay empty. That is precisely the
-  `size() == 0` case in which the pre-fix handler evaluated `offset % 0`. So
-  loading `-cart ram8` instantiates `saturn_dram8mb_device` with no allocated
-  memory, and the guard is what keeps an access to `0x02400000` from trapping.
+  **Corrected, and now measured.** An earlier revision of this ledger said those
+  softlist entries declare no data area, so every `*_alloc()` is skipped and the
+  vectors stay empty. That was wrong — it came from a regex that matched only the
+  single-line `<feature>` element and missed the `<dataarea>` elements, which
+  span two lines. `-listsoftware saturnjp` shows `ram8` actually declares:
 
-  **Unverified at runtime.** Confirming it needs a binary, and the vendored
-  toolchain under `/home/user/sdk` that produced the results above was wiped
-  from this sandbox after they were recorded, so it has not been re-run. The
-  unit fixture (`test_sat_cart.py`, which extracts the production handlers
-  verbatim) remains the only executed coverage of that path.
+  ```xml
+  <part name="cart" interface="sat_cart">
+      <feature name="slot" value="ram8" />
+      <dataarea name="dram0" size="524288"></dataarea>
+      <dataarea name="dram1" size="524288"></dataarea>
+  </part>
+  ```
+
+  So `call_load()` takes the non-ROM branch, finds both regions and calls
+  `dram0_alloc(524288)` / `dram1_alloc(524288)` — each vector gets
+  `524288 / sizeof(uint32_t)` = `0x20000` words. **Not empty**, so the
+  `m_ext_dramN.empty()` guard is *not* what `ram8` exercises; what it exercises
+  is the aliasing branch, 512 KiB of chip answering inside the 2 MiB window.
+
+  Measured with the rebuilt binary:
+
+  * `-listdevices saturnjp -cart ram8` shows `exp / ram8 — Saturn Data RAM 8Mbit
+    Cart`; the same command without `-cart` shows the `exp` slot with no child.
+    The device is genuinely instantiated.
+  * A 300-frame BIOS run with `-cart ram8`, counting via
+    `install_read_tap` / `install_write_tap` on the main CPU program space:
+    `dram0 read=0 write=0 dram1 read=0 write=0`.
+  * Control on the same script, same run: `CONTROL_workram_read=3077295` over
+    `0x06000000-0x060fffff`. The tap mechanism works, so the zeros are real.
+
+  **Conclusion, stated plainly: the BIOS never touches the cartridge DRAM
+  windows.** That is expected — only a title that uses a Data RAM cart (`kof95`,
+  `ultraman`) would — and there are no game ROMs here. So `dram.cpp` and
+  `bram.cpp` are instantiated at runtime but their accessors are still **not
+  executed** by any test I can run. The unit fixture `test_sat_cart.py`, which
+  extracts the production handlers verbatim and drives 24 cases including the
+  empty-region one, remains the only executed coverage of that code.
 
 ## 4. Endpoint contracts
 
@@ -236,12 +264,23 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | (this commit) | subtarget links; `-validate` clean; BIOS boot/replay PASS on `saturn`, `saturnjp`, `saturneu`, `saturnkr`, `stvbios`. Recorded that the `exp` cart slot registers no options, so `dram.cpp` / `bram.cpp` are not runtime-reachable |
 | 2026-09-17 | `9add769b` | drop `regtests/saturn.zip` (a 1 014 371-byte ROM archive) that `946a2184` had swept in via `git add -A`; ROMs stay outside tracked source |
 | 2026-09-17 | (this commit) | **corrected the previous row's claim.** The `exp` slot *does* register all seven carts (`sat_console.cpp:1191-1198`, `option_add_internal`); they are reachable through the `sat_cart` software list, not the command line. The `size() == 0` softlist path is exactly what the DRAM guard protects. See §3 |
+| 2026-09-17 | `9a50420f` | `devices.md` §1 rewritten after rebuilding the toolchain; two false claims removed (`libSDL2_ttf.a` cannot be empty — 54 `TTF_` call sites in `font_sdl.cpp`; fontconfig is `fontconfig/fontconfig@2.13.1`, not a maintainer fork at `master`) |
+| 2026-09-17 | (this commit) | toolchain recreated, subtarget rebuilt (`03099558…`), all §3 results re-run and identical to the first build. **Corrected the `ram8` account**: it *does* declare `dram0`/`dram1` data areas, so the vectors are allocated and the empty-region guard is not what it exercises. Measured with a memory tap: the BIOS makes **zero** accesses to either DRAM window (control 3 077 295 workram reads in the same run), so `dram.cpp`/`bram.cpp` accessors remain unexecuted at runtime |
 
-### Sandbox note
+### Reproducibility, and the sandbox note
 
-The vendored toolchain that produced the §3 results lived at `/home/user/sdk`
-and was **outside** the repository, so it is not recoverable from git. It was
-wiped from this sandbox after those results were recorded, along with the
-`mamesatdev` binary. The results above stand as recorded — they were produced by
-the `b3d28588…` binary at the time — but nothing has been re-verified since, and
-rebuilding requires recreating the toolchain per §1.
+The toolchain that produced the first binary lived at `/home/user/sdk`, outside
+the repository, and was wiped from the sandbox along with `mamesatdev`. It was
+then recreated from scratch per §1 and the subtarget rebuilt. The two
+independently built binaries — different `libSDL2.a`, different object files,
+different link — produce **identical** boot/replay results on every
+configuration: `saturnjp time=15.560998664 pc=06040226`,
+`saturneu time=18.439710253 pc=060402e4`,
+`stvbios time=15.543578728 pc=060154a8`,
+`saturn time=15.560998664 pc=060402e4`,
+`saturnkr time=15.560998664 pc=06040226`, each with full-image replay identical.
+
+Every result in §3 above has been re-run against the current `03099558…` binary.
+The `-lEGL`, `Fc*` and `315_5195` / `315_5296` / `315-6154` link failures that
+were flagged as a risk in an earlier revision did **not** occur; the subtarget
+links cleanly with the flags in `build_satdev.sh`.
