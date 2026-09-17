@@ -141,7 +141,8 @@ must be checked separately.
 
 ## Pending SMPC-04 / IO-01 port-mode correction
 
-`smpc-port-mode.patch` is **not applied**. It captures port modes from
+`smpc-port-mode.patch` is **not applied** and is superseded by the combined
+`smpc-transport.patch` below. Keep it as a historical review artifact only. It captures port modes from
 IREG1[7:4] before either INTBACK request path. Current production code instead
 reads IREG0[7:4] in the status path and leaves the previous mode unchanged in
 the peripheral-only path. This makes the low SR mode bits incorrect except in
@@ -178,3 +179,67 @@ https://github.com/jkind73/mame/actions/runs/35287467065 at source
 `5008a92331e4bf6698b7a9e53116c2167ddcc673`. Use that run's actual final outcome;
 the earlier GCC11 run is failed. For a successful replacement artifact, substitute
 this run ID and full SHA in the download/verification commands above.
+
+
+## Pending combined SMPC transport correction (SMPC-04 / IO-01)
+
+`smpc-transport.patch` includes the port-mode fix and replaces truncation/repeated
+sampling with a saved report buffer and a cursor over 32-byte OREG pages. Apply
+this combined patch **instead of** the earlier port-mode patch, not after it.
+Production/CI inputs remain unchanged until the current build is measured.
+
+Implemented in the isolated candidate:
+
+- Snapshot both included ports once, then preserve subsequent bytes across
+  CONTINUE requests. Two standard six-pad multitaps produce 38 bytes and now
+  return the tail instead of losing it. Relative-motion callbacks are not
+  repeatedly sampled while draining a report.
+- Derive PDL from the first page and NPE from actual bytes remaining. End a
+  short report immediately rather than pretending every response has two pages.
+- Use all 32 output bytes. Initialize the command marker before copying data,
+  so it cannot overwrite payload at OREG31 on a full page.
+- Skip the complete port in 0-byte mode, including its status callback. Treat
+  the documented FF unconnected-tap ID as ID-only, not 15 data bytes.
+- Register buffer, size and cursor for save states; clear cursors on reset,
+  BREAK and a new request. Preserve the existing no-controller/ST-V callback
+  behavior, including its command marker.
+
+The buffer is bounded for the existing controller interface: two status bytes
+plus up to 15 devices per port, each an ID and at most 15 data bytes = 482 bytes.
+The fixture includes 15-connector capacity stress, not a claim of a supported
+15-device physical tap. Existing multitap slot configuration remains unchanged.
+Extended-size peripheral IDs, bit-serial acquisition/timing, RESB sampling and
+VBlank collection timeout are not implemented by this patch; the parents remain
+open. Filling unused output bytes is a deterministic emulator policy, not a
+hardware measurement.
+
+Fresh checks against actual candidate functions:
+
+- **5,402** packet/page/mode/OREG31/snapshot/cancel cases pass: varying port
+  counts and payload sizes, gaps, legal port-mode encodings, and both INTBACK
+  request forms. Save restoration copies the registered fields in the fixture;
+  it does not execute MAME's save manager. Port/timer/IRQ endpoints are stand-ins.
+- **1,175** handshake/cancel/reset/no-controller cases pass in the adapted
+  handshake fixture. The adaptation stops requiring OREG31 to equal a command
+  marker when it legitimately holds payload, and counts a snapshot only once.
+- Six compiled negative controls are rejected: OREG31 clobber, page resampling,
+  missing NPE, querying a disabled port, FF-as-payload and stale BREAK cursors.
+  The original implementation also compiles and fails the new completion test.
+- Candidate SMPC translation-unit C++20 syntax checking passes. Save field
+  registration is source-checked; real save/load and live peripherals are pending.
+
+Primary ST-169-R1-072694, SDK revision and PDF blob as above, freshly read:
+pp.41 (OREG31 can be overwritten by peripheral data), 50–53 (continuation and
+termination), 63–66 (port omission and PDL/NPE), and 73 (FF unconnected tap).
+Pinned Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+`libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:837–865`, independently corroborates a
+single snapshot, 32-byte pages and separate first/remaining flags. Its unused
+OREG filler policy differs; it is a cross-check, not a hardware oracle. No Ymir
+code is imported.
+
+```sh
+git apply --check --unidiff-zero saturn_pending/smpc-transport.patch
+git apply --unidiff-zero saturn_pending/smpc-transport.patch
+python regtests/saturn/test_smpc_transport.py
+python regtests/saturn/test_smpc_handshake.py
+```
