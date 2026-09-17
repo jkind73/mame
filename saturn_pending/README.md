@@ -243,3 +243,17 @@ git apply --unidiff-zero saturn_pending/smpc-transport.patch
 python regtests/saturn/test_smpc_transport.py
 python regtests/saturn/test_smpc_handshake.py
 ```
+
+## General-CI checkpoint scheduling
+
+The repository's ordinary workflows started overlapping full Linux/macOS/Windows
+and shader runs for earlier session checkpoints while the targeted GCC12 run
+remained queued. General workflows now group superseded runs **only for this
+session branch** and cancel obsolete revisions. Their triggers, permissions,
+matrices and job steps are unchanged; the latest revision still runs all checks.
+Other branches receive unique run-ID groups and keep independent execution.
+The dedicated Saturn workflow retains `cancel-in-progress: false` so its long
+measured build is not discarded by preservation pushes. YAML structure checks
+confirmed no existing workflow content changed except the added concurrency map.
+Already-running jobs created before this policy do not inherit the new grouping;
+this is not a claim that the current backlog has been canceled or cleared.

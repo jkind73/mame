@@ -15,6 +15,12 @@ on:
 permissions:
   contents: read
 
+# Frequent preservation pushes on the Arena session branch must not build
+# every superseded revision. Other branches retain independent runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ (github.head_ref == 'arena/01a09f50-mame' || github.ref == 'refs/heads/arena/01a09f50-mame') && 'latest' || github.run_id }}
+  cancel-in-progress: ${{ github.head_ref == 'arena/01a09f50-mame' || github.ref == 'refs/heads/arena/01a09f50-mame' }}
+
 jobs:
   validate:
     runs-on: ubuntu-latest
