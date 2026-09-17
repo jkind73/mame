@@ -55,3 +55,33 @@ JP DRC/interpreter, PAL DRC and ST-V DRC BIOS/background save-replay checks. It
 never edits sources, commits, pushes or changes driver flags. A failed or missing
 `status.txt` PASS is not acceptance. SDKs, binaries and large logs stay external;
 source and the reproducible command are pushed before starting the long run.
+
+
+Additional CD-01/NVR-01 implementation WIP:
+
+- Debugger/inspection HIRQ reads now expose the live overlay without modifying
+  stored HIRQ or invoking the IRQ-update callback. Real CPU reads retain their
+  existing behavior. The extended 262,144-row extracted matrix includes two
+  debugger reads, no-mutation/IRQ checks, CPU reads and acknowledgements. It
+  fails against the preceding implementation and passes with the guard.
+- Console internal backup RAM is explicitly registered with the save manager.
+  `nvram_device::set_base` only handles file persistence; it does not register
+  the allocation for save states. Existing cartridge allocations already do
+  register their memory in `sat_slot.cpp`. This change does not alter file
+  formats, hardware address decoding or ST-V's separate board configuration.
+- The supplied backup-RAM fixture is extended with real save/mutate/load,
+  notifier checks, and a following process checking that restored bytes persist
+  at shutdown. All six runner modes use isolated temporary NVRAM directories.
+  Its Python syntax and failure protocol are checked; actual save/load is
+  **pending the linked build**, not reported as passed.
+- The candidate console translation unit passed `-fsyntax-only` with narrowing
+  errors enabled; 44 existing plus 18 CD/cart/backup runner protocol controls
+  pass. These are not hardware tests. Full current-revision acceptance remains
+  pending and neither CD-01 nor NVR-01 is closed.
+
+The validation script now compares build/test input trees and BIOS checksums,
+retaining its starting commit and binary hash. Checkpoint-only commits outside
+those inputs do not relabel or invalidate the measured binary. Source/test/build
+input changes still invalidate the result. Resume the single-job incremental
+build after this implementation checkpoint; do not infer success from an earlier
+interrupted build.

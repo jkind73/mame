@@ -92,6 +92,10 @@ int main(){
   for(unsigned bits=0;bits<65536;++bits)for(bool full:{false,true})for(bool sector:{false,true}){
    t->hirqreg=bits;t->buffull=full;t->sectorstore=sector;
    unsigned want=(bits&~unsigned(BFUL|CSCT))|(full?BFUL:0)|(sector?CSCT:0);
+   t->debug=true;unsigned irq_before=t->irqs;
+   assert(t->hirq_r()==want);assert(t->hirq_r()==want);
+   assert(t->hirqreg==bits && t->irqs==irq_before);
+   t->debug=false;
    assert(t->hirq_r()==want);assert(t->hirq_r()==want);
    t->hirq_w(uint16_t(~DCHG));assert(t->hirqreg==(want&~DCHG));
    t->hirq_w(0xffff);assert(t->hirqreg==(want&~DCHG));

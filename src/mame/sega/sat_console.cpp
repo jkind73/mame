@@ -793,6 +793,8 @@ void sat_console_state::machine_start() {
   m_slave->space(AS_PROGRAM).nop_readwrite(0x04000000, 0x047fffff);
 
   m_nvram->set_base(m_backupram.get(), 0x8000);
+  // NVRAM file persistence does not register this allocation for save states.
+  save_pointer(NAME(m_backupram), 0x8000);
 
   if (m_exp) {
     switch (m_exp->get_cart_type()) {
