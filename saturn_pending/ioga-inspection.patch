@@ -1,0 +1,68 @@
+--- a/src/mame/sega/stv.cpp
++++ b/src/mame/sega/stv.cpp
+@@ -152,3 +152,3 @@
+-      m_ioga_portg =
+-          (m_ioga_portg & 0xf8) |
+-          ((m_ioga_portg + 1) & 0x07); // counter# is auto-incremented on read
++      // Match the 315-5649 device: inspection must not advance the byte cursor.
++      if (!machine().side_effects_disabled())
++        m_ioga_portg = (m_ioga_portg & 0xf8) | ((m_ioga_portg + 1) & 0x07);
+--- /dev/null
++++ b/regtests/saturn/test_ioga_legacy.py
+@@ -0,0 +1,56 @@
++#!/usr/bin/env python3
++# license:BSD-3-Clause
++# Extracted legacy ST-V input reads. No cabinet/link timing claim.
++from pathlib import Path
++import os,subprocess,tempfile
++ROOT=Path(__file__).resolve().parents[2]
++s=(ROOT/'src/mame/sega/stv.cpp').read_text()
++a=s.index('uint8_t stv_state::ioga_r(');b=s.index('{',a)+1;depth=1
++while depth:
++    depth+=(s[b]=='{')-(s[b]=='}');b+=1
++function=s[a:b]
++code=r'''
++#include <array>
++#include <cassert>
++#include <cstdint>
++#include <iostream>
++using offs_t=uint32_t;
++struct port {uint16_t value=0;uint16_t read(){return value;}};
++struct stv_state {
++ bool peek=false;unsigned logs=0;
++ uint8_t m_ioga_mode=0,m_ioga_portg=0,m_system_output=0x5a;
++ uint16_t m_ioga_count[4]{};
++ std::array<port,4> counters;
++ std::array<port,7> ports;
++ std::array<port*,4> m_ioga_counters;
++ std::array<port*,7> m_ioga_ports;
++ stv_state(){for(unsigned i=0;i<4;++i)m_ioga_counters[i]=&counters[i];for(unsigned i=0;i<7;++i){m_ioga_ports[i]=&ports[i];ports[i].value=0xa0+i;}}
++ auto &machine(){return *this;}bool side_effects_disabled(){return peek;}
++ template<class... T>void logerror(const char*,T...){++logs;}
++ uint8_t ioga_r(offs_t);
++};
++// FUNCTION
++int main(){unsigned cases=0;
++ for(unsigned cursor=0;cursor<256;++cursor)for(bool mirror:{false,true})for(bool peek:{false,true})
++ for(unsigned sample:{0u,1u,0x7fffu,0x8000u,0xffffu}){
++  stv_state s;s.peek=peek;s.m_ioga_mode=0x80;s.m_ioga_portg=cursor;
++  for(unsigned i=0;i<4;++i){s.counters[i].value=uint16_t(sample+i*0x1234);s.m_ioga_count[i]=uint16_t(0xff00+i*0x111);}
++  unsigned select=(cursor>>1)&3;
++  uint16_t delta=uint16_t(s.counters[select].value-s.m_ioga_count[select]);
++  uint8_t want=(cursor&1)?(delta&255):(delta>>8);
++  assert(s.ioga_r(mirror?0x16:6)==want);
++  assert(s.m_ioga_portg==(peek?cursor:((cursor&0xf8)|((cursor+1)&7))));
++  assert(s.logs==(mirror&&!peek));++cases;
++ }
++ for(bool peek:{false,true})for(bool mirror:{false,true}){
++  stv_state s;s.peek=peek;s.m_ioga_portg=0xef;
++  for(unsigned i:{0u,1u,2u,4u,5u,6u})assert(s.ioga_r(i|(mirror?16:0))==0xa0+i);
++  assert(s.m_ioga_portg==0xef);++cases;
++ }
++ std::cout<<cases<<" legacy IOGA counter/peek/alias/input cases passed\n";
++}
++'''.replace('// FUNCTION',function)
++with tempfile.TemporaryDirectory(prefix='stv-ioga-legacy-') as t:
++ p=Path(t);(p/'test.cpp').write_text(code)
++ subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-O1','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(p/'test.cpp'),'-o',str(p/'test')],check=True)
++ subprocess.run([str(p/'test')],check=True)
