@@ -600,8 +600,12 @@ uint16_t saturn_cd_hle_device::hirq_r() {
   else
     rv &= ~CSCT;
 
-  hirqreg = rv;
-  update_hirq();
+  // Debugger/inspection reads expose the live status without committing the
+  // overlay or changing the host interrupt line.
+  if (!machine().side_effects_disabled()) {
+    hirqreg = rv;
+    update_hirq();
+  }
 
   trace_host_read(0, rv);
   return rv;
