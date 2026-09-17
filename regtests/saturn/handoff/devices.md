@@ -127,7 +127,7 @@ required, **D** done this session, **—** not started this session.
 | CART-01 | P — | `src/devices/bus/saturn/`: `sat_bram_{4,8,16,32mb}`, `sat_dram_{8,32mb}`, `sat_rom`, `sat_cart_slot`. Capacity/bank/lane qualification outstanding. |
 | NVR-01 | P/V **D** | backup RAM + SMPC RTC exist. Persistence and byte-lane behaviour now verified by `test_backup_ram.py` — see §3. **Characterised limitation:** loading a save state does *not* restore backup RAM. Cold-start/battery-loss still unqualified. |
 | STV-01 | P — | `stv.cpp` board wiring, EEPROM `AK93C45F` modelled as `EEPROM_93C46_16BIT`. |
-| STV-02 | M/P — | `sega_315_5838_comp_device::get_decompressed_byte()` returns **`machine().rand()`** in `HACK_MODE_NO_KEY`, which 20+ drivers select via `init_decathlt_nokey()`. The keyed cipher is not implemented. |
+| STV-02 | M/P — | `sega_315_5838_comp_device::get_decompressed_byte()` returns **`machine().rand()`** in `HACK_MODE_NO_KEY`. **Corrected count:** that mode is selected only by `stv_state::init_decathlt_nokey()` (`stv.cpp:1123`), which is referenced by exactly **9** `GAME()` entries (`nameclub nclubv2 pclove pclove2 pclubnbc pclubsc5 pclubsc6 pcpooh2 pcpooh3`) — not the "20+ drivers" an earlier revision of this ledger claimed. The other hack mode, `HACK_MODE_DOA`, has a single user (`model2.cpp:7619`, Dead or Alive) and returns a hardcoded Tecmo string. Everything else uses `HACK_MODE_NONE`, the constructor default, which takes the **real** tree/dictionary decompressor at `315-5838_317-0229_comp.cpp:98`. So the keyed cipher is missing for 10 drivers total, not the platform. **Determinism:** `machine().rand()` is MAME's LCG with a fixed seed `0x9d14abd7` (`machine.cpp:106`) and the seed is a `save_item` (`machine.cpp:283`), so these bytes are reproducible run-to-run and stable across save states — the gap is a missing cipher, **not** a non-determinism or replay hazard. |
 | STV-03 | P — | `315_5649.cpp` implements ports A–G, direction register, analog mux and G-counter mode. |
 | STV-04 | M/P — | printer/hopper hooks exist (`m_hopper`, `m_billboard`); protocol depth unverified. |
 | STV-05 | M — | `315_5649.cpp` RS-422 status register is `data = 0x0c; // HACK, recv buffers always full, transmit buffers always empty`. `stvdev.cpp` is a 76-line i486 skeleton (`stvdev_io()` empty). |
@@ -476,12 +476,15 @@ into a test (it would break the day someone fixes it). See §3.
 
 * ~45 are Atlus **Print Club / Purikura** titles on `stvpc_state` (external
   "837-12764 486 BD FOR ST-V" i486 board) → **STV-05**.
-* 8 use `init_decathlt_nokey()` (`pclove`, `pclove2`, `pcpooh2`, `pcpooh3`,
-  `pclubsc5`, `pclubsc6`, `pclubnbc`, `nameclub`) → **STV-02**.
+* 9 use `init_decathlt_nokey()` (`pclove`, `pclove2`, `pcpooh2`, `pcpooh3`,
+  `pclubsc5`, `pclubsc6`, `pclubnbc`, `nameclub`, `nclubv2`) → **STV-02**.
+  Verified as the complete set: `init_decathlt_nokey` appears in exactly 9
+  `GAME()` lines and nowhere else. An earlier revision of this ledger said 8 and
+  listed `nclubv2` under the remainder instead.
 * remainder: `aclub`, `chalgolf`, `choroqhr`, `decathlt`, `decathlto`, `dfeverg`,
   `fanzonem`, `finlarch`, `magzun`, `myfairld`, `sackids`, `sfish2`, `sfish2j`,
   `slotbatt`, `smleague`, `stress`, `tsuribor`, `twcup98`, `twsoc98`, `vfremix`,
-  `wasafari`, `wwshin`, `yattrmnp`, plus `pckobe99`, `nclubdis`, `nclubv2`.
+  `wasafari`, `wwshin`, `yattrmnp`, plus `pckobe99`, `nclubdis`.
 
 All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 `saturnkr`, `vsaturn`, `hisaturn`) are `MACHINE_NOT_WORKING` at
@@ -508,7 +511,8 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | `860da5ee` | **retracted** the cross-build "identical results" claim; disproved the missing-parent-ROM hypothesis for `pc=` variation |
 | 2026-09-17 | `8d7d137b` | `test_scsp_dma.py` — SCSP DMA verified against ST-077-R2 Figure 4.3 at runtime, three mutation controls; `exec_dma` masking confirmed correct |
 | 2026-09-17 | `d691cddc` | `test_backup_ram.py` — backup RAM lanes and nvram-file persistence; recorded that save state does **not** restore backup RAM |
-| 2026-09-17 | (this commit) | **CD-01:** removed the force-clear of DCHG in `hirq_r()`, which had made the ST-136-R2 tray-open detection path unobservable; added `test_cd_hirq.py` (CMOK handshake, HIRQ write-to-clear, DCHG reporting) with two mutation controls. All five BIOS configs re-verified at their pre-fix baseline times. New binary `3d536a7a…` |
+| 2026-09-17 | `834a5609` | **CD-01:** removed the force-clear of DCHG in `hirq_r()`, which had made the ST-136-R2 tray-open detection path unobservable; added `test_cd_hirq.py` (CMOK handshake, HIRQ write-to-clear, DCHG reporting) with two mutation controls. All five BIOS configs re-verified at their pre-fix baseline times. New binary `3d536a7a…` |
+| 2026-09-17 | (this commit) | **STV-02 count corrected twice.** `machine().rand()` in `HACK_MODE_NO_KEY` is MAME's fixed-seed LCG (`machine.cpp:106`, seed `0x9d14abd7`) whose seed is a `save_item`, so it is reproducible and save-state stable — a missing cipher, not a determinism hazard. `init_decathlt_nokey` is used by **9** `GAME()` entries, not "20+" (§2) and not 8 (§5); `nclubv2` belongs in the STV-02 group. Both figures verified from `grep` over `src/mame/sega/*.cpp`. |
 
 ### Reproducibility — and a claim retracted
 
