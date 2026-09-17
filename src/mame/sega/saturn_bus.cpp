@@ -249,31 +249,36 @@ void saturn_bus_device::release_dma_buses(uint8_t level)
 uint32_t saturn_bus_device::get_cpu_wait(offs_t offset, bool is_write, saturn_bus_master cpu_master)
 {
     uint32_t addr = offset & 0x07FFFFFF;
-    // Strip cache alias bit 29 already done via & 0x07FFFFFF, plus 0x40000000 purge page handled by caller
     uint16_t flags = address_to_flags(addr);
     saturn_bus_type bus = flags_to_bus(flags);
     if (bus>=SATURN_BUS_COUNT) return 0;
 
     // If bus owned by other master, stall
     if (m_owner[bus]!=SATURN_MASTER_NONE && m_owner[bus]!=(uint8_t)cpu_master) {
-        // For burst DMA, CPU must wait until DMA releases
-        // Return penalty that causes retry: at least 1 + bus penalty + extra for burst
-        int base = m_penalty[bus] + 1;
-        if (m_burst[bus]) base += 4; // extra for burst mode
-        // Also include device-specific wait from ASR
+        // For burst DMA (direct), CPU is already halted via main_dtack_cb, so this path is mainly for indirect cycle-steal
+        // For C-BUS (WorkRAM-H, stack), avoid large retry to prevent double R15 decrement – use steal only
+        if (bus == SATURN_BUS_C) {
+            int base = m_penalty[bus] + 1 + flags_to_penalty(flags, is_write);
+            if (base < 1) base = 1;
+            if (base > 255) base = 255;
+            LOGMASKED(LOG_BUS, "CPU %d C-BUS steal %d on bus %d owned by %d addr %08x\n", cpu_master, base, bus, m_owner[bus], addr);
+            return base;
+        }
+        // For A/B buses, force retry to prevent access while DMA owns bus
+        int base = m_penalty[bus] + 4;
+        if (m_burst[bus]) base += 8;
         base += flags_to_penalty(flags, is_write);
-        // Cap at reasonable, but must be >0 to trigger access_before_delay retry when icount low
-        if (base < 1) base = 4;
-        if (base > 255) base = 255;
-        LOGMASKED(LOG_BUS, "CPU %d wait %d on bus %d owned by %d addr %08x flags %04x\n", cpu_master, base, bus, m_owner[bus], addr, flags);
+        if (base < 1024) base = 1024;
+        if (base > 10000) base = 10000;
+        LOGMASKED(LOG_BUS, "CPU %d wait %d on bus %d owned by %d addr %08x flags %04x (FORCE RETRY)\n", cpu_master, base, bus, m_owner[bus], addr, flags);
         return base;
     }
 
-    // Check device readiness (optional)
+    // Check device readiness (VDP1/VDP2)
     if (m_ready_cb[bus]) {
         saturn_bus_transaction trans;
         trans.address = addr;
-        trans.size = is_write ? 4 : 4; // approximate, caller could refine
+        trans.size = is_write ? 4 : 4;
         trans.is_write = is_write;
         trans.is_fetch = false;
         trans.is_burst = false;
@@ -284,23 +289,18 @@ uint32_t saturn_bus_device::get_cpu_wait(offs_t offset, bool is_write, saturn_bu
         trans.committed = false;
         bool ready = m_ready_cb[bus](trans);
         if (!ready) {
-            int base = trans.penalty + 4;
-            if (base < 4) base = 4;
-            LOGMASKED(LOG_BUS, "CPU %d device not ready on bus %d addr %08x\n", cpu_master, bus, addr);
+            // Device not ready (VDP1 drawing, VDP2 slot) – force retry, no double side effect for VRAM/FB (no R15)
+            int base = trans.penalty + 1024;
+            if (base < 1024) base = 1024;
+            if (base > 10000) base = 10000;
+            LOGMASKED(LOG_BUS, "CPU %d device not ready on bus %d addr %08x (FORCE RETRY %d)\n", cpu_master, bus, addr, base);
             return base;
         }
     }
 
-    // No wait, but still account for A-Bus wait states as cycles (not retry)
-    // For A-Bus, we want to subtract cycles without retry if bus free
-    // The before_delay mechanism will subtract cycles and only retry if icount <=0
-    // So return small penalty for A-Bus even when free
+    // No ownership stall, no readiness stall – just wait-state penalty as steal
     int penalty = flags_to_penalty(flags, is_write);
     if (penalty>0) {
-        // If icount > penalty, it will just subtract and continue (no retry)
-        // If icount <= penalty, it will retry, which is okay for A-Bus? Actually A-Bus wait should not cause retry, just delay
-        // So we need to distinguish: For A-Bus, we want after_delay? But we use before_delay for simplicity
-        // Returning penalty will cause retry only when icount low, which still preserves correctness (access redone)
         return penalty;
     }
     return 0;
