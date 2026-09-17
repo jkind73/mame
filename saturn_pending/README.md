@@ -91,3 +91,39 @@ This requires GitHub Actions to be enabled for the repository. A pushed workflow
 is not evidence of an executing job. Record the actual run ID/status before
 claiming the durable build is running. Failed jobs may retain diagnostic-only
 artifacts without an executable or success marker.
+
+The first durable run is now confirmed executing:
+https://github.com/jkind73/mame/actions/runs/35287036055
+at source `31266601e27c2c44719d58591c57b6576a9dd61e`. Dependency installation,
+source provenance and cache setup completed; native compilation started. This
+is a running job, not a passed build. Push triggering worked; manual workflow
+dispatch is not authorized by this session's GitHub integration and is not
+needed for this run.
+
+### Consume the artifact without another full native rebuild
+
+After that run succeeds, download its named artifact into an external directory:
+
+```sh
+gh run download 35287036055 --repo jkind73/mame \
+  --name saturn-linux-31266601e27c2c44719d58591c57b6576a9dd61e \
+  --dir /home/user/saturn-ci-artifact
+python3 saturn_pending/verify_ci_artifact.py /home/user/saturn-ci-artifact \
+  --run-id 35287036055
+bash saturn_pending/validate_ci_runtime.sh /home/user/saturn-ci-artifact 35287036055
+```
+
+The verifier requires a successful run from the named workflow/session branch,
+matching run/artifact source IDs, identical local production/build/test input
+trees, a complete CI success record, and a matching executable checksum. Its
+checks remain active under Python optimization. Twelve synthetic positive and
+failure controls pass; this does not authenticate a signed supply-chain
+attestation or establish emulator behavior.
+
+The local runtime command never rebuilds MAME. It prepares real runtime
+libraries, checks local configuration, requires actual CD/cart/backup and SCSP
+completion markers, and runs the JP DRC/interpreter, PAL DRC and ST-V DRC
+BIOS/background replay matrix. It rechecks source/binary provenance and local
+BIOS hashes at the end. Logs stay outside the checkout, stale success status is
+removed, and any failure records the failing phase. Shell syntax checks pass;
+**end-to-end artifact consumption and live execution are still pending**.
