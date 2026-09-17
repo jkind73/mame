@@ -43,3 +43,31 @@ https://github.com/jkind73/saturnsdk/ . The manual's longest-time table implies
 policy is therefore retained rather than silently replaced by a guessed timing
 policy. This is scheduling/save consistency work, not resolution of that
 hardware discrepancy. STV-03, SND-03 and SND-05 remain open.
+
+
+## Current regression batch and auxiliary live timer fixture
+
+The full ROM-free batch on `10579b9c` completed: **53 scripts**, final
+`All Saturn regression scripts passed.` marker present. The three optional
+live-device scripts skipped because the native binary is not yet built; these
+skips are not CD/cart/backup acceptance. The gated native run must execute them
+again and require their actual completion markers. Its source inputs remain
+unchanged by this documentation/auxiliary-tool checkpoint.
+
+`test_scsp_timers.py` in this directory adapts the supplied live fixture to all
+three timers and eight prescalers, correct SCIRE acknowledgement, explicit
+clear-before-reassert assertions, absolute executable/ROM paths and strict
+completion/error checking. It isolates NVRAM/configuration in temporary folders.
+Python syntax and `test_scsp_timer_runner.py`'s 10 fake-executable protocol cases
+pass; **the live fixture has not run against MAME yet**. Frame-rate sampling
+cannot establish sub-tick reload or restore phase, and no such claim is made.
+
+After the integrated native binary is built:
+
+```sh
+python saturn_pending/test_scsp_timers.py --executable ./saturn --rompath ./regtests
+```
+
+This auxiliary fixture lives outside the frozen build/test input trees so it
+can be prepared and preserved while the baseline run continues. It is not part
+of the gated run's automatic acceptance; record its separate execution result.
