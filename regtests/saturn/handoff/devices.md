@@ -101,11 +101,54 @@ required, **D** done this session, **—** not started this session.
 
 ---
 
-## 3. Endpoint contracts
+## 3. Verified build + runtime results
+
+Binary: `mamesatdev`, MAME v0.289 (unknown), driver-filtered subtarget
+(`src/mame/satdev.flt`), `-O1`, `REGENIE=0` incremental.
+
+```
+sha256  b3d285886ba75656fd0efc317d5b2db80a1fc12765dcef3241f700a91280e255  mamesatdev
+size    87 772 768 bytes
+```
+
+**This binary links against a stub SDL_ttf and therefore renders no UI text. It
+is a test vehicle, not a shippable build.** See §1.
+
+| Check | Command | Result |
+|---|---|---|
+| Static validation | `./mamesatdev -validate` | **exit 0**, no diagnostics |
+| Driver list | `-listxml` | all 8 present: `saturn saturnjp saturneu saturnkr vsaturn hisaturn stvbios stvdev` |
+| BIOS boot + save/load replay | `run_vdp2_runtime.py --system saturnjp --bios` | **PASS** `time=15.560998664 pc=06040226 full-image replay identical` |
+| " | `--system saturneu` | **PASS** `time=18.439710253 pc=060402e4` |
+| " | `--system stvbios` | **PASS** `time=15.543578728 pc=060154a8` |
+| " | `--system saturn` (needs `saturneu.zip` copied to `saturn.zip` — parent set is only packaged under the clone) | **PASS** `time=15.560998664 pc=060402e4` |
+| " | `saturnkr` direct (not a `--system` choice in `run_vdp2_runtime.py`) | **PASS** `time=15.560998664 pc=06040226` |
+| Unit fixture | `regtests/saturn/test_ioga_serial.py` | **PASS**, 4113 cases; `MUTATE_IOGA=1` fails |
+| Unit fixture | `regtests/saturn/test_sat_cart.py` | **PASS**, 24 cases; `MUTATE_CART=1` fails with `runtime error: division by zero` / SIGFPE |
+| Compile | `g++ -fsyntax-only -std=c++20` on `dram.cpp`, `bram.cpp`, `315_5649.cpp` | **PASS** |
+
+`run_vdp2_runtime.py --system saturnkr` is rejected by its own argparse
+`choices`; invoke `mamesatdev` directly with `bios_runtime.lua` instead.
+
+### Which changed code each check actually reaches
+
+* `315_5649.cpp` — **reached.** `stvbios` instantiates two `315_5649` devices
+  (`-listdevices`), so the passing ST-V BIOS boot executes the modified
+  `read`/`write` paths, including status `0x0d`.
+* `dram.cpp` / `bram.cpp` — **NOT reached by any runtime check.** The `exp`
+  slot exists (`required_device<sat_cart_slot_device> m_exp`, mapped at
+  `sat_console.cpp:807-880`) but `-listxml saturnjp` shows
+  `<slot name="exp"></slot>` — **no `slot_option` is registered anywhere**, and
+  no driver calls `slot_option` for `SATURN_DRAM_*` / `SATURN_BRAM_*`. The cart
+  devices are unreachable from the driver today, so the division-by-zero fix is
+  covered only by the unit fixture, which extracts the production handlers
+  verbatim. **Recorded as a CART-01 gap, not as verified runtime behaviour.**
+
+## 4. Endpoint contracts
 
 *(filled in as endpoints are implemented — see the per-section notes below)*
 
-## 4. NOT_WORKING inventory in owned drivers
+## 5. NOT_WORKING inventory in owned drivers
 
 `src/mame/sega/stv.cpp` carries 66 `MACHINE_NOT_WORKING` entries:
 
@@ -124,8 +167,13 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 
 ---
 
-## 5. Log
+## 6. Log
 
 | Date | Commit | What |
 |---|---|---|
 | 2026-09-16 | `03c19a78` | session start; baseline recorded; vendored build environment established |
+| 2026-09-16 | `e64f5e50` | `dram.cpp` / `bram.cpp` bounds from region size; `315_5649` RS-422 loopback + port G counter reset; `build_satdev.sh`; this ledger |
+| 2026-09-16 | `f25b191e` | `test_ioga_serial.py` — 4113 cases, `MUTATE_IOGA` control |
+| 2026-09-16 | `31694ccf` | `test_sat_cart.py` — 24 cases, `MUTATE_CART` control |
+| 2026-09-16 | `341a556f` | `build_satdev.sh`: `NO_USE_XINPUT=1` is the knob that excludes `input_x11.cpp` |
+| 2026-09-17 | (this commit) | subtarget links; `-validate` clean; BIOS boot/replay PASS on `saturn`, `saturnjp`, `saturneu`, `saturnkr`, `stvbios`. Recorded that the `exp` cart slot registers no options, so `dram.cpp` / `bram.cpp` are not runtime-reachable |
