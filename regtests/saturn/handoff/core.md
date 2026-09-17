@@ -92,9 +92,19 @@ m_scudsp->out_ddmv_callback().set([this](int state){
 });
 ```
 
+```cpp
+// saturn_bus.cpp get_cpu_wait stall semantics (exact, CPU-04)
+if (m_owner[bus]!=NONE && owner!=cpu) {
+  if (bus==C) return small steal (penalty+1) to avoid R15 double decrement;
+  else return large 1024-10000 to force retry (access_to_be_redone)
+}
+if (!ready_cb) return large 1024+penalty to force retry for VDP1/VDP2
+else return penalty (A-Bus AnNW+3, B-Bus MiSTer table)
+```
+
 **Contracts preserved:** No host sleeps, devices/delegates via std::function (ready_cb), no game-name tests, penalties from ASR or MiSTer documented B-Bus table, not guessed.
 
-## DCC-01 Implementation (2026-09-16)
+## DCC-01 Implementation (2026-09-16) + CPU-04 Deferred via before_delay
 
 Implemented in `src/mame/sega/saturn_dcc.cpp`:
 
@@ -114,6 +124,17 @@ void saturn_dcc_device::sinit_w(...) {
 - Cache-through aliases already mapped via `.mirror(0x20000000)` on 0x01000000 and 0x01800000 windows → 0x21000000/0x21800000 reach DCC, not SH-2 cache.
 - Writer-origin enforcement uses `device_execute_interface::executing()` which checks `scheduler().currently_executing() == this`.
 - Preserves 16-bit trigger rule (byte/longword ignored) and quantum workaround for FRT sync.
+
+**CPU-04 Deferred Transactions (partial, working-driver level):**
+
+Implemented via `address_space::install_read/write_before_delay` in `sat_console.cpp`/`stv.cpp` + `saturn_bus_device::get_cpu_wait`:
+
+- `get_cpu_wait` returns wait cycles; `cpu_device::access_before_delay(cycles, tag)` subtracts from icount, sets `m_access_to_be_redone` and aborts timeslice if icount<=0, causing memory handler `read_interruptible` to return 0 without actual access and retry on next slice (MAME's built-in deferred).
+- **C-BUS (WorkRAM-H, stack)**: returns small steal (penalty+1, max 255) to avoid double R15 decrement on retry – relies on `dma_hog_bus` steal + HALT for direct burst. Prevents `MOV.L R14,@-SP` / `RTS` double-decrement bug seen in choroqpk.
+- **A/B-BUS owned by DMA/DSP**: returns large 1024-10000 to force `icount<=0` → `m_access_to_be_redone=true` → retry, preventing CPU access while DMA owns bus. Safe for VRAM/FB (no R15).
+- **Device not ready (VDP1 drawing, VDP2 slot)**: same large retry, prevents CPU VRAM/FB access during draw/scanout.
+
+Full CPU-04 with EA/R15 save/restore in `sh2_device::read_byte/word/long` remains open – requires `sh2_pending_transaction` struct with PC, EA, Rn, size, is_write, data, active flag, plus DRC `static_generate_memory_accessor` emitting arbiter call that can suspend DRC (like `sh2_notify_dma_data_available`). Current before_delay is sufficient for boot + sustained runtime (AB2, Power Drift, OutRun) per acceptance.
 
 **SMPC clocks:** Verified MASTER_CLOCK_352/320 dot-select, SH2 28.6 MHz, SCU 14.3 MHz, SCSP 22.5792 MHz, M68K 11.2896 MHz, SCU DSP 14.3 MHz, SMPC HLE 4 MHz + RTC 1 Hz timer, command timings from `m_cmd_table_timing` usec table. `dot_select_w` currently resets SCSP/SCU/VDP2 per existing behavior – preserved per task acceptance criteria (AB2, Power Drift, OutRun fixes). No change to SMPC handshake timing yet; CONTINUE 700us, CKCHG 5 ticks with syshalt remain.
 
