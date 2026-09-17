@@ -21,24 +21,57 @@ outside tracked source:
 | Component | Source | Revision / tag | Installed at |
 |---|---|---|---|
 | SDL2 (static) | `github.com/libsdl-org/SDL` | `release-2.30.11` | `/home/user/sdk/sdl2` |
-| fontconfig headers | `github.com/behdad/fontconfig` (maintainer fork of freedesktop.org/fontconfig) | `master`, `FC_MAJOR 2 FC_MINOR 13 FC_REVISION 1` | `/home/user/sdk/inc/fontconfig` |
+| fontconfig headers | `github.com/fontconfig/fontconfig` | `2.13.1` (`FC_MAJOR 2 FC_MINOR 13 FC_REVISION 1`, verified in `fontconfig.h:54-56`) | `/home/user/sdk/inc/fontconfig` |
 | FreeType headers | `github.com/freetype/freetype` | `VER-2-13-2` | `/home/user/sdk/inc/freetype2` |
 | pkg-config shim | local script | — | `/home/user/sdk/bin/pkg-config` |
-| `libSDL2_ttf.a`, `libX11.a`, `libXinerama.a`, `libXext.a`, `libXi.a`, `libEGL.a` | empty archives | — | `/home/user/sdk/lib` |
+| `libSDL2_ttf.a` | **stub object, 8 real symbols** (see below) | — | `/home/user/sdk/lib` |
+| `libX11.a`, `libXinerama.a`, `libXext.a`, `libXi.a`, `libEGL.a` | empty archives | — | `/home/user/sdk/lib` |
+| `SDL2/SDL_ttf.h` | API-subset stub header | — | `/home/user/sdk/sdl2/include/SDL2` |
+| `inc/SDL2` | symlink → `sdl2/include/SDL2` | — | `/home/user/sdk/inc/SDL2` |
+
+SDL2 configure line (all optional backends off, static only):
+
+```
+./configure --prefix=/home/user/sdk/sdl2 --enable-static --disable-shared \
+  --disable-video-x11 --disable-video-wayland --disable-video-opengl \
+  --disable-video-opengles --disable-video-kmsdrm --disable-video-vivante \
+  --disable-video-cocoa --disable-render-d3d --disable-audio-pipewire \
+  --disable-libudev --disable-dbus --disable-ibus --disable-fcitx \
+  --disable-sdl2-config --disable-oss --disable-alsa --disable-pulseaudio \
+  --disable-jack --disable-esd --disable-nas --disable-sndio
+```
+
+FreeType note: the release tarball has `include/freetype/`, **not**
+`include/freetype2/`. The `freetype2` wrapper directory is created by
+`make install`, so when taking headers straight from the archive you must build
+that level yourself (`cp -r include/freetype inc/freetype2/` plus
+`include/ft2build.h`).
+
+The shim must emit **both** `-I$SDL/include/SDL2` (for `<SDL.h>`) and `-I$INC`
+with the `inc/SDL2` symlink (for `<SDL2/SDL.h>`), and both `-L$LIBS` and
+`-L$SDL/lib` on `--libs` — `libSDL2.a` installs under `$SDL/lib`, not `$LIBS`.
 
 Notes on the stubs (honest labelling — these are build-time link satisfiers, not
 working libraries):
 
-* `libSDL2_ttf.a` is empty because MAME's `scripts/src/osd/sdl.lua` still links
-  it, but `grep -rn "TTF_" src/osd/` returns **no** call sites.
-* `libX11/Xinerama/Xext/Xi/EGL.a` are empty because SDL2 was configured with
-  `--disable-video-x11 --disable-video-wayland --disable-video-kmsdrm
-  --disable-video-rpi --disable-video-vulkan`, so no X11/EGL symbol is
-  referenced.  SDL2 reports `Video drivers: dummy offscreen opengl_es2` and
-  `Audio drivers: disk dummy oss`.
+* **`libSDL2_ttf.a` must not be empty.** An earlier revision of this ledger said
+  it could be, on the grounds that `grep -rn "TTF_" src/osd/` returned no call
+  sites. That is false: the grep returns **54** hits, all in
+  `src/osd/modules/font/font_sdl.cpp` (`TTF_Init`, `TTF_Quit`, `TTF_GetError`,
+  `TTF_OpenFontIndex`, `TTF_CloseFont`, `TTF_SetFontStyle`, `TTF_FontLineSkip`,
+  `TTF_RenderUTF8_Solid`). An empty archive fails the link with undefined
+  symbols, so the archive now contains a stub object defining exactly those
+  eight entry points. **Consequence: this build renders no UI text.**
+  `font_sdl.cpp:165` guards on `if (drawsurf)` and `TTF_OpenFontIndex` returning
+  `nullptr` is handled, so the binary runs headless correctly — but it is not
+  shippable.
+* `libX11/Xinerama/Xext/Xi/EGL.a` are empty because SDL2 was configured without
+  those backends, so no X11/EGL symbol is referenced. Note this is independent
+  of MAME's own `input_x11.cpp`, which needs `NO_USE_XINPUT=1` — see
+  `build_satdev.sh`.
 * `fontconfig` links against the image's `libfontconfig.so.1` via a
-  `libfontconfig.so` symlink.  Header version (2.13.1) differs from the runtime
-  (2.14.x); the five `Fc*` entry points MAME uses are unchanged between them.
+  `libfontconfig.so` symlink. Header version (2.13.1) differs from the runtime
+  (2.14.x); the `Fc*` entry points MAME uses are unchanged between them.
 
 ### Driver-filtered subtarget build
 
