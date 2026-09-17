@@ -42,3 +42,16 @@ implementation WIP, not a validated release. CART-01 and CD-01 remain open.
 IOGA, the incremental video patch, Agent1 CPU/bus changes and working/save-flag
 promotion are excluded. A separately reviewed IOGA follow-up must discard local
 receive-valid state on reset before that patch can be considered for integration.
+
+Reproduce the remaining integrated checks with:
+
+```sh
+LOG_DIR=/home/user/saturn-validation bash regtests/saturn/validate_integration.sh
+```
+
+The checked-in runner builds with one compiler job, requires the supplied BIOS
+files, rejects silent CD/cart skips, records source/binary provenance, and runs
+JP DRC/interpreter, PAL DRC and ST-V DRC BIOS/background save-replay checks. It
+never edits sources, commits, pushes or changes driver flags. A failed or missing
+`status.txt` PASS is not acceptance. SDKs, binaries and large logs stay external;
+source and the reproducible command are pushed before starting the long run.
