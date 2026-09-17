@@ -116,12 +116,12 @@ required, **D** done this session, **—** not started this session.
 | SND-02 | V/R — | 32-voice engine, FM, envelopes, LFO and DSP present in `src/devices/sound/scsp.cpp` (1766 lines). No chip-wide hardware audit exists. |
 | SND-03 | P/V **D** | Timers re-armed from a `timer_sync`/`timer_arm` pair, `exec_dma()` present, `main_irq_cb` routed to `saturn_scu_device::sound_req_w`. MIDI in/out FIFOs implemented over `device_serial_interface`. **DMA now verified at runtime against ST-077 Figure 4.3 by `test_scsp_dma.py`** — see §3. **The prescaler timers are now verified at runtime too: `test_scsp_timers.py` measures all eight ST-077-R2 increment divisions and the timer A interrupt.** The `reg_addr & 0xffe` wrap I had flagged as unsupported by the manual is in fact exactly the documented `DRGA[11:1]` field. |
 | SND-04 | V/R — | `scspdsp.cpp` is 326 lines. Not audited against ST-077 chapter 6. |
-| SND-05 | P — | `device_post_load()` exists and MIDI/DMA state is in `save_item`s. Round-trip under live envelopes/DMA not yet qualified. |
+| SND-05 | P/V **D** | `device_post_load()` exists and MIDI/DMA state is in `save_item`s. **Timer round-trip now verified at runtime by `test_scsp_savestate.py`** — counter, prescaler and the `base_time` rebase in `device_post_load()` all confirmed, with a mutation control. See §3. Still unqualified: round-trip while **voices/envelopes and DMA are actively running**, and MIDI FIFO state. |
 | CD-01 | P/V **D** | `saturn_cd_hle.cpp` (4249 lines) implements the full CR1–CR4 command set. **Fixed this session:** `hirq_r()` force-cleared DCHG on every read, which made the documented tray-open detection path unobservable to software — see §3 "CD block host interface". CMOK command completion, HIRQ write-to-clear and DCHG reporting are now verified at runtime by `test_cd_hirq.py`, with mutation controls. **Still open:** `device_reset()` sets `hirqreg = 0x0001` with a `FIXME` saying zero "breaks CD auto load and azelpanztai"; and `hirq_r()` ignores `side_effects_disabled()` (unlike `hirqmask_r()`), so peeking HIRQ from a debugger or cheat mutates it. Both left alone — resolving them needs ST-172, which is not in the local corpus. |
 | CD-02 | P — | `cdrom`/`cdda` subdevices; seek/sector timers. Drive timing not calibrated against hardware. |
 | CD-03 | M — | `saturn_cdb.cpp` is a 52-line skeleton. The SH-1 is instantiated **and disabled**: `cdbcpu.set_disable(); // we're not actually using the CD Block ROM for now`. Only `map(0, 0xffff).rom()` exists — no YGR019 registers, no sound/CD RAM, no host interface. |
 | CD-04 | P — | `cmd_check_copy_protection` / `cmd_get_disc_region` implemented in the HLE. |
-| CD-05 | P — | transfer state saved (`xfertype`, `xfertype32`, `xfer*`). Reset/abort paths not qualified. |
+| CD-05 | P/V — | transfer state saved (`xfertype`, `xfertype32`, `xfer*`). **`hirqreg` round-trip now verified at runtime** by `test_scsp_savestate.py` (DCHG survives save/load, `0421` → `0421`). Still unqualified: the transfer state itself under an in-flight read, and the reset/abort paths. |
 | IO-01 | P/V **D** | `src/devices/bus/sat_ctrl/`: joy, racing, analog, mission, gun, pointer, mouse, keybd, joy_md, multitap, segatap. `read_pdr()` hook exists for direct-mode line protocols. **Audited this session against ST-169-R1 (SMPC User's Manual), extracted from the corpus: every peripheral ID, data size and data-byte layout checked out with no defect** — see §3 "Controller formats". Two things remain: the keyboard shift/kana semantics (**research required**, corpus exhausted — see §3) and the INTBACK report being truncated at 32 OREG bytes rather than using the manual's 15/255-byte port modes (**agent A's SMPC transport layer**). |
 | IO-02 | M/P — | Inventory incomplete. No modem/NetLink device; `saturn/st17xx.cpp` is a skeleton. |
 | CART-01 | P — | `src/devices/bus/saturn/`: `sat_bram_{4,8,16,32mb}`, `sat_dram_{8,32mb}`, `sat_rom`, `sat_cart_slot`. Capacity/bank/lane qualification outstanding. |
@@ -172,6 +172,7 @@ is a test vehicle, not a shippable build.** See §1.
 | Live fixture | `regtests/saturn/test_cart_runtime.py` | **PASS**, `ram8` + `bram4` carts in a live machine; two mutation controls |
 | Live fixture | `regtests/saturn/test_scsp_dma.py` | **PASS**, SCSP DMA mem→reg / reg→mem / DGATE / completion; three mutation controls |
 | Live fixture | `regtests/saturn/test_backup_ram.py` | **PASS**, 4 emulator runs: lane behaviour, provenance, write, expect |
+| Live fixture | `regtests/saturn/test_scsp_savestate.py` | **PASS**, timer counter/prescaler + CD HIRQ round-trip via `device_post_load`; one mutation control |
 | Live fixture | `regtests/saturn/test_scsp_timers.py` | **PASS**, all 8 ST-077-R2 prescaler divisions + timer A interrupt; two mutation controls |
 | Live fixture | `regtests/saturn/test_cd_hirq.py` | **PASS**, CMOK handshake + HIRQ write-to-clear + DCHG reporting; two mutation controls (see "CD block host interface") |
 | Compile | `g++ -fsyntax-only -std=c++20` on `dram.cpp`, `bram.cpp`, `315_5649.cpp` | **PASS** |
@@ -581,6 +582,62 @@ So the corpus genuinely does not define the kana toggle. Left as
 **research-required**, unchanged — inventing a key mapping for a Japanese
 word-processor title without a source would be worse than the honest gap.
 
+### SCSP save-state round-trip verified (SND-05, CD-05)
+
+Test: `regtests/saturn/test_scsp_savestate.py` (live `saturnjp`, all three CPUs
+parked).
+
+`scsp_device::device_post_load()` (`scsp.cpp:330-341`) exists specifically because
+the timers are scheduled against machine time:
+
+```cpp
+// timers are scheduled against machine time, rebase and reschedule them
+for (int i = 0; i < 3; i++) {
+  m_timers[i].base_time = machine().time();
+  timer_arm(i);
+}
+```
+
+`counter`, `prescale`, `reload` and `reload_pending` are `save_item`s
+(`scsp.cpp:242-245`) but **`base_time` is not**, so it has to be rebuilt on load.
+Because `timer_read` derives the counter from `base_time` on every access, a stale
+`base_time` is immediately visible as a wrong counter — which is what makes this
+testable. Nothing exercised the path before.
+
+Measured, saving at frame 34 and loading at frame 42 with timer A at prescale 7:
+
+```
+SAVESTATE advanced=46 rewind=0.016732 drift=5 hirq 0421->0421
+PRESCALE_AFTER_LOAD dt=0.050196770 predicted=17 measured=17
+```
+
+| Assertion | Value | Meaning |
+|---|---|---|
+| timer advanced before load | 46 | 8 frames × 5.75 increments ≈ 46 — the timer really was running, so the test is not vacuous |
+| clock rewound | 0.016732 s | exactly one frame, not the 0.134 s of the 8 elapsed frames — `machine:load()` restored machine time |
+| counter drift after load | 5 | c1 + one frame's worth (≈6), **not** c1 + 46 — the counter was restored, not left running |
+| HIRQ before → after | `0421` → `0421` | CD block `hirqreg` survived, **including DCHG (bit 5)** — see CD-05 |
+| prescaler after load | 17 / 17 | re-measured over 3 frames against ST-077-R2's prescale-7 rate; exact |
+
+**Mutation control** (rebuilt, caught, then reverted and the binary restored to the
+identical sha256 `3d536a7a…`):
+
+| Mutation | Result |
+|---|---|
+| delete `m_timers[i].base_time = machine().time();` from `device_post_load()` | `FAIL prescale_survived got=0 want=17 or 18` |
+
+The failure mode is instructive and confirms the assertion is the right one: with
+`base_time` left at its pre-save value it is now *ahead* of the rewound machine
+time, so `timer_sync` takes its `now <= t.base_time` early return and the restored
+timer **freezes** until machine time catches up. The other four assertions still
+passed — including `counter_restored`, because a frozen counter trivially satisfies
+"did not keep running" — which is why the prescaler re-measurement is the load-bearing
+check and `counter_restored` is deliberately a weak bound.
+
+**Still open for SND-05:** this qualifies the timers and the CD interrupt register.
+It does **not** qualify a round-trip while voices/envelopes or a DMA transfer are
+actively in flight, nor MIDI FIFO state.
+
 ### A pre-existing `run_all.py` failure, not mine
 
 `run_all.py` auto-discovers `test_*.py` (29 currently) and aborts at
@@ -680,6 +737,7 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | `22d2d525` | **SND-03:** `test_scsp_timers.py` measures all eight ST-077-R2 prescaler divisions and the timer A interrupt in a live machine, with two mutation controls. Records a one-count-cycle discrepancy against the manual's interrupt-time formula as **code-derived and unmeasured** — the attempted measurement is written up and retracted, since `timer_sync`'s sub-increment remainder defeats frame-granular sampling. Not changed (sound timing is protected) and not frozen into a test. |
 | 2026-09-17 | `5cfafcad` | resolved the two remaining `(this commit)` placeholders in the log table; every row now carries a real hash. Documentation only. |
 | 2026-09-17 | (this commit) | **IO-01:** audited all eleven `sat_ctrl` devices against ST-169-R1 (extracted this session). Peripheral IDs, data sizes and data-byte layouts all correct, including the mouse's active-high buttons and the keyboard's 12-entry Button/Key mapping. Two non-findings recorded honestly: `read_id`/`read_status` returning 0 for an absent card is **unreachable** (no `none` slot option, tap sub-ports hardwired), so it is not the cause of the `smpc.cpp:838` comment; and the 32-byte OREG truncation belongs to agent A's SMPC transport. Keyboard kana confirmed **research-required** after searching all 103 corpus PDFs. No code change. |
+| 2026-09-17 | (this commit) | **SND-05 / CD-05:** `test_scsp_savestate.py` round-trips the SCSP timer counter, prescaler and CD `hirqreg` (DCHG included) through `machine:save`/`machine:load`, exercising `scsp_device::device_post_load()`. Measured advanced=46, rewind=0.016732 s, drift=5, HIRQ `0421`→`0421`, prescaler 17/17. Mutation control: deleting the `base_time` rebase fails `prescale_survived got=0` because the stale base sits ahead of the rewound clock and `timer_sync` freezes the timer. Binary restored to the identical sha256. |
 
 ### Reproducibility — and a claim retracted
 
