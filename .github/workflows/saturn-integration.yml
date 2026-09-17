@@ -1,0 +1,82 @@
+name: Saturn integration artifact
+
+on:
+  push:
+    branches: [arena/01a09f50-mame]
+    paths:
+      - '.github/workflows/saturn-integration.yml'
+      - 'src/**'
+      - '3rdparty/**'
+      - 'scripts/**'
+      - 'makefile'
+      - 'hash/**'
+      - 'regtests/saturn/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Do not cancel an expensive build when a preservation checkpoint is pushed.
+concurrency:
+  group: saturn-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 1G
+      CXXFLAGS: '--param=ggc-min-expand=10 --param=ggc-min-heapsize=32768'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install real build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 ccache libsdl2-dev libsdl2-ttf-dev libfontconfig1-dev
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: saturn-ubuntu22-gcc-${{ github.sha }}
+          restore-keys: saturn-ubuntu22-gcc-
+      - name: Record source and toolchain provenance
+        run: |
+          mkdir -p validation-artifact
+          git rev-parse HEAD > validation-artifact/source-commit.txt
+          git rev-parse HEAD:src HEAD:regtests/saturn HEAD:3rdparty HEAD:scripts HEAD:makefile HEAD:hash > validation-artifact/input-trees.txt
+          git diff --exit-code HEAD
+          gcc --version > validation-artifact/compiler.txt
+          ldd --version > validation-artifact/libc.txt
+          # This public baseline is used by the ROM-free counter fixture.
+          git fetch --depth=1 origin 868d72fc669765f8a0b9af6503a59642d293cbae
+      - name: Build Saturn and ST-V
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          make -j2 SUBTARGET=saturn REGENIE=1 SYMBOLS=0 OPTIMIZE=1 \
+            SOURCES=src/mame/sega/saturn.cpp,src/mame/sega/sat_console.cpp,src/mame/sega/stv.cpp \
+            USE_QTDEBUG=0 NO_X11=1 NO_USE_XINPUT=1 NO_OPENGL=1 NO_USE_MIDI=1 \
+            NO_USE_PORTAUDIO=1 NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 \
+            2>&1 | tee validation-artifact/build.log
+          cp saturn validation-artifact/saturn
+          (cd validation-artifact && sha256sum saturn > binary.sha256)
+          ldd saturn > validation-artifact/libraries.txt
+      - name: Configuration and ROM-free regressions
+        run: |
+          ./saturn -validate 2>&1 | tee validation-artifact/validate.log
+          python3 regtests/saturn/run_all.py 2>&1 | tee validation-artifact/regressions.log
+          git diff --exit-code HEAD -- src regtests/saturn 3rdparty scripts makefile hash
+          echo 'PASS: native build, configuration validation and ROM-free regression batch. No BIOS, gameplay or live save/load acceptance.' > validation-artifact/status.txt
+      - name: Preserve binary and diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: saturn-linux-${{ github.sha }}
+          path: validation-artifact/
+          if-no-files-found: error
+          retention-days: 14

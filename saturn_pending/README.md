@@ -71,3 +71,23 @@ python saturn_pending/test_scsp_timers.py --executable ./saturn --rompath ./regt
 This auxiliary fixture lives outside the frozen build/test input trees so it
 can be prepared and preserved while the baseline run continues. It is not part
 of the gated run's automatic acceptance; record its separate execution result.
+
+## Build persistence after repeated workspace resets
+
+The native build started at `10579b9c` was lost during another workspace reset;
+its logs and dependencies are absent. It has **no completion result**. Production
+changes remain recovered from GitHub. Do not inherit runtime acceptance from it.
+
+`.github/workflows/saturn-integration.yml` prepares a durable Ubuntu 22.04 build
+and artifact, restricted to this session branch. It uses real SDL dependencies,
+two compiler jobs, a compiler cache, pinned checkout/artifact actions, and
+read-only repository permissions. No BIOS or game images are uploaded. The
+artifact includes the executable, source/tree IDs, binary hash, linked-library
+list and build/validation/regression logs. A `status.txt` PASS only certifies
+build/configuration/ROM-free checks; optional BIOS fixtures still skip on CI.
+Ubuntu 22.04 is used for a glibc baseline compatible with the Debian 12 sandbox.
+
+This requires GitHub Actions to be enabled for the repository. A pushed workflow
+is not evidence of an executing job. Record the actual run ID/status before
+claiming the durable build is running. Failed jobs may retain diagnostic-only
+artifacts without an executable or success marker.
