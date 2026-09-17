@@ -261,6 +261,7 @@
 - **Dependencies:** stages 1–4, SMPC/control wiring and sound output. Primarily console hardware; only applicable ST-V configurations need CD-related interfaces.
 - **Source:** `src/mame/sega/{saturn_cd_hle,saturn_cdb}.cpp`.
 - [ ] **CD-01 — Complete host command/transfer-state behavior. [P/V]**
+  - Current integration: DCHG read/ack correction is now an implementation WIP; extracted read/ack and old-behavior negative tests pass, live tray/boot acceptance pending. See `regtests/saturn/handoff/integration.md`.
   - DRDY and related status/interrupt transitions, buffer-full/empty behavior, transfer completion, command overlap and dual-port host interface semantics.
   - Audit filters/partitions, sector routing, file/sector access and reset/abort interactions through actual command sequences, not successful executable loading alone.
 - [ ] **CD-02 — Complete drive/media timing and state transitions. [P/V/R]**
@@ -285,6 +286,7 @@
   - Audit identification, packet/latch timing, hot-plug/missing-device behavior, analog ranges and chained multitaps; fix remaining keyboard kana/shift semantics.
   - Verify lightgun coordinates and beam interrupts in each supported display mode, not only host input mapping.
 - [ ] **CART-01 — Qualify ROM/RAM/backup cartridge hardware. [P/V]**
+  - Current integration: Reviewed empty-DRAM guards and backup-RAM write-count checking are now an implementation WIP; extracted tests pass, linked acceptance pending. See `regtests/saturn/handoff/integration.md`.
   - Existing ROM, DRAM and backup-RAM cartridge devices need complete capacity/bank/address/lane and persistence qualification for supported variants.
   - Handle identification, empty-slot/open-bus reads, write protection and mapping conflicts without cartridge-specific shortcuts.
 - [ ] **NVR-01 — Complete persistent-state and machine-variant behavior. [P/V/R]**

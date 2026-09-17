@@ -16,6 +16,7 @@ def extract(text, signature):
         depth += (text[end]=='{')-(text[end]=='}'); end += 1
     return text[start:end]
 functions = '\n'.join(extract(source, s) for s in (
+    'uint16_t saturn_cd_hle_device::hirq_r()', 'void saturn_cd_hle_device::hirq_w(',
     'void saturn_cd_hle_device::trace_host_read(', 'void saturn_cd_hle_device::trace_boot_state(',
     'uint16_t saturn_cd_hle_device::dr1_r()', 'uint16_t saturn_cd_hle_device::dr2_r()',
     'uint16_t saturn_cd_hle_device::dr3_r()', 'uint16_t saturn_cd_hle_device::dr4_r()',
@@ -25,6 +26,8 @@ functions = '\n'.join(extract(source, s) for s in (
     'void saturn_cd_hle_device::cmd_end_data_transfer()',
     'void saturn_cd_hle_device::cd_free_block(',
     'void saturn_cd_hle_device::cd_defragblocks('))
+if os.environ.get('MUTATE_CD_HIRQ') == '1':
+    functions = functions.replace('rv = hirqreg;', 'rv = hirqreg & ~DCHG;', 1)
 types = '\n'.join(extract(header, s)+';' for s in ('struct blockT', 'struct partitionT', 'enum transT', 'enum trans32T'))
 harness = r'''
 #include <algorithm>
@@ -35,7 +38,8 @@ harness = r'''
 #include <cstdio>
 #include <string>
 #include <vector>
-using u8=uint8_t; using u32=uint32_t;
+using u8=uint8_t; using u16=uint16_t; using u32=uint32_t;
+constexpr int DCHG=0x20, CSCT=4;
 constexpr int MAX_BLOCKS=200, EHST=0x80, CMOK=1, BFUL=8, CD_STAT_TRANS=0x4000;
 constexpr int STATE_GENPC=0, CD_STAT_PERI=0x2000;
 struct cpu_device { uint32_t state_int(int){return 0x06001234;} };
@@ -65,6 +69,7 @@ struct saturn_cd_hle_device {
  int64_t m_trace_second=-1;uint64_t m_trace_reads[5]{};uint16_t m_trace_last_read[5]{};
  uint16_t cd_next_stat=0,hirqmask=0;unsigned cmd_pending=15,cd_curfad=0xab,fadstoplay=18,playtype=1;
  void trace_host_read(unsigned,uint16_t);void trace_boot_state(const char*,bool=false);
+ uint16_t hirq_r();void hirq_w(uint16_t);
  uint16_t dr1_r();uint16_t dr2_r();uint16_t dr3_r();uint16_t dr4_r();
  auto &machine(){return *this;} bool side_effects_disabled(){return debug;}
  void update_hirq(){++irqs;}
@@ -79,6 +84,22 @@ struct saturn_cd_hle_device {
 // FUNCTIONS
 int main(){
  unsigned cases=0;
+ // ST-136-R2 printed p.50: software detects tray changes through DCHG.
+ // Exercise the actual read/write handlers; update_hirq is a recording stub,
+ // so this checks register semantics, not interrupt timing or drive mechanics.
+ {
+  auto t=std::make_unique<saturn_cd_hle_device>();
+  for(unsigned bits=0;bits<65536;++bits)for(bool full:{false,true})for(bool sector:{false,true}){
+   t->hirqreg=bits;t->buffull=full;t->sectorstore=sector;
+   unsigned want=(bits&~unsigned(BFUL|CSCT))|(full?BFUL:0)|(sector?CSCT:0);
+   assert(t->hirq_r()==want);assert(t->hirq_r()==want);
+   t->hirq_w(uint16_t(~DCHG));assert(t->hirqreg==(want&~DCHG));
+   t->hirq_w(0xffff);assert(t->hirqreg==(want&~DCHG));
+   t->hirq_w(0);assert(!t->hirqreg);
+  }
+  std::cout<<"CD HIRQ: 262144 status-overlay/read/ack cases passed\n";
+ }
+
  for(auto mode : {saturn_cd_hle_device::XFERTYPE32_INVALID,saturn_cd_hle_device::XFERTYPE32_PUTSECTOR,saturn_cd_hle_device::XFERTYPE32_MOVESECTOR}){
   auto s=std::make_unique<saturn_cd_hle_device>();s->xfertype32=mode;
   assert(s->dataxfer_long_r()==0xffffffff);assert(s->xferdnum==0&&s->irqs==0);++cases;
