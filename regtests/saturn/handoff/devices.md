@@ -135,14 +135,38 @@ is a test vehicle, not a shippable build.** See §1.
 * `315_5649.cpp` — **reached.** `stvbios` instantiates two `315_5649` devices
   (`-listdevices`), so the passing ST-V BIOS boot executes the modified
   `read`/`write` paths, including status `0x0d`.
-* `dram.cpp` / `bram.cpp` — **NOT reached by any runtime check.** The `exp`
-  slot exists (`required_device<sat_cart_slot_device> m_exp`, mapped at
-  `sat_console.cpp:807-880`) but `-listxml saturnjp` shows
-  `<slot name="exp"></slot>` — **no `slot_option` is registered anywhere**, and
-  no driver calls `slot_option` for `SATURN_DRAM_*` / `SATURN_BRAM_*`. The cart
-  devices are unreachable from the driver today, so the division-by-zero fix is
-  covered only by the unit fixture, which extracts the production handlers
-  verbatim. **Recorded as a CART-01 gap, not as verified runtime behaviour.**
+* `dram.cpp` / `bram.cpp` — **not reached by any runtime check I ran**, but the
+  devices are wired up and *are* reachable. An earlier revision of this ledger
+  claimed no slot option was registered anywhere; that was wrong. Corrected
+  account:
+
+  `sat_console.cpp:1191-1198` registers all seven cards —
+  `rom`, `ram8`, `ram32`, `bram4`, `bram8`, `bram16`, `bram32` — via
+  `device_slot_interface::option_add_internal()`. Per `src/emu/dislot.h:146` an
+  *internal* option is deliberately not user-selectable (contrast `option_add`,
+  documented at `dislot.h:120-126` as selectable "via the command line"), which
+  is exactly why `-listxml saturnjp` renders `<slot name="exp"></slot>` with no
+  `<slotoption>` children. The empty slot element is not evidence of missing
+  wiring.
+
+  The intended entry point is the software list: `SOFTWARE_LIST(config,
+  "cart_list").set_original("sat_cart")`, and `hash/sat_cart.xml` carries
+  `ram8`, `ram32`, `bram4`, `bram8`, `bram16`, `bram32` whose
+  `feature name="slot"` values match those internal option names one for one.
+
+  Note what that implies for the fix: those softlist entries declare a single
+  `cart` part with **no datafile**, so `sat_cart_slot_device::call_load()` takes
+  the non-ROM branch and finds no `bram` / `dram0` / `dram1` region either —
+  every `*_alloc()` is skipped and the vectors stay empty. That is precisely the
+  `size() == 0` case in which the pre-fix handler evaluated `offset % 0`. So
+  loading `-cart ram8` instantiates `saturn_dram8mb_device` with no allocated
+  memory, and the guard is what keeps an access to `0x02400000` from trapping.
+
+  **Unverified at runtime.** Confirming it needs a binary, and the vendored
+  toolchain under `/home/user/sdk` that produced the results above was wiped
+  from this sandbox after they were recorded, so it has not been re-run. The
+  unit fixture (`test_sat_cart.py`, which extracts the production handlers
+  verbatim) remains the only executed coverage of that path.
 
 ## 4. Endpoint contracts
 
@@ -177,3 +201,14 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-16 | `31694ccf` | `test_sat_cart.py` — 24 cases, `MUTATE_CART` control |
 | 2026-09-16 | `341a556f` | `build_satdev.sh`: `NO_USE_XINPUT=1` is the knob that excludes `input_x11.cpp` |
 | 2026-09-17 | (this commit) | subtarget links; `-validate` clean; BIOS boot/replay PASS on `saturn`, `saturnjp`, `saturneu`, `saturnkr`, `stvbios`. Recorded that the `exp` cart slot registers no options, so `dram.cpp` / `bram.cpp` are not runtime-reachable |
+| 2026-09-17 | `9add769b` | drop `regtests/saturn.zip` (a 1 014 371-byte ROM archive) that `946a2184` had swept in via `git add -A`; ROMs stay outside tracked source |
+| 2026-09-17 | (this commit) | **corrected the previous row's claim.** The `exp` slot *does* register all seven carts (`sat_console.cpp:1191-1198`, `option_add_internal`); they are reachable through the `sat_cart` software list, not the command line. The `size() == 0` softlist path is exactly what the DRAM guard protects. See §3 |
+
+### Sandbox note
+
+The vendored toolchain that produced the §3 results lived at `/home/user/sdk`
+and was **outside** the repository, so it is not recoverable from git. It was
+wiped from this sandbox after those results were recorded, along with the
+`mamesatdev` binary. The results above stand as recorded — they were produced by
+the `b3d28588…` binary at the time — but nothing has been re-verified since, and
+rebuilding requires recreating the toolchain per §1.
