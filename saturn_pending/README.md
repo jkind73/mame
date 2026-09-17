@@ -138,3 +138,43 @@ was changed to silence this. The workflow now explicitly installs/selects GCC
 failure, and exposes the final compiler diagnostics as check annotations.
 The original run is failed, not running or validated; a new push-triggered run
 must be checked separately.
+
+## Pending SMPC-04 / IO-01 port-mode correction
+
+`smpc-port-mode.patch` is **not applied**. It captures port modes from
+IREG1[7:4] before either INTBACK request path. Current production code instead
+reads IREG0[7:4] in the status path and leaves the previous mode unchanged in
+the peripheral-only path. This makes the low SR mode bits incorrect except in
+the common default-mode case.
+
+Primary source freshly read: ST-169-R1-072694, SDK revision
+`0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+`943930551f755c68431847d23dfb6a6fad60e0c6`, printed pp.37,59,62 (PDF 47,69,72).
+IREG0 is the status-acquisition switch; IREG1 carries P2MD/P1MD; the peripheral
+SR format echoes those modes in bits 3:0. Source: https://github.com/jkind73/saturnsdk/ .
+
+Fresh candidate checks: 576 request/mode/previous-mode/OPE cases pass, covering
+both status-plus-peripheral and peripheral-only requests, legal mode values
+0/1/3 for each port, both OPE choices and all 16 prior cached nibbles. The existing
+1,173 handshake/cancel/reset cases pass. Wrong-register and missing-peripheral-
+only-capture mutants compile and fail. Original production code also compiled
+and failed the new test. Candidate SMPC translation-unit syntax passes.
+
+These are extracted control-path tests with recording endpoints, not real
+controllers, packet transport, clock timing or BIOS acceptance. In particular,
+this does not fix the existing truncated multitap report or implement 255-byte
+transport. The current CI production inputs stay unchanged; review/apply after
+that measured revision is available:
+
+```sh
+git apply --check --unidiff-zero saturn_pending/smpc-port-mode.patch
+git apply --unidiff-zero saturn_pending/smpc-port-mode.patch
+python regtests/saturn/test_smpc_port_mode.py
+python regtests/saturn/test_smpc_handshake.py
+```
+
+The GCC12 replacement CI run is
+https://github.com/jkind73/mame/actions/runs/35287467065 at source
+`5008a92331e4bf6698b7a9e53116c2167ddcc673`. Use that run's actual final outcome;
+the earlier GCC11 run is failed. For a successful replacement artifact, substitute
+this run ID and full SHA in the download/verification commands above.
