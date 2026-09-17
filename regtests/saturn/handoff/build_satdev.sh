@@ -45,12 +45,20 @@ export PATH="$SDK/bin:$PATH"
 # OPT_FLAGS  : -DUSE_OZONE stops bgfx' bundled EGL/eglplatform.h from pulling
 #              in X11/Xlib.h; the ggc params cap cc1plus peak RSS so two
 #              parallel jobs survive on a 3 GB machine.
+# NO_USE_XINPUT=1 : NO_X11=1 only removes the X11 *libraries* from the link
+#              (scripts/src/osd/sdl.lua:27).  src/osd/modules/input/
+#              input_x11.cpp is instead gated on the generated USE_XINPUT
+#              define, which stays 1, so it still compiles and dies on
+#              "X11/Xlib.h: No such file or directory".  NO_USE_XINPUT=1 is the
+#              knob that actually leaves the file out.  Harmless here: there is
+#              no X server in the sandbox and the device tests run headless.
 exec make SUBTARGET=satdev -j"$JOBS" "$@" \
 	REGENIE=1 \
 	NOWERROR=1 \
 	USE_QTDEBUG=0 \
 	NO_OPENGL=1 \
 	NO_X11=1 \
+	NO_USE_XINPUT=1 \
 	OPTIMIZE="${OPTIMIZE:-1}" \
 	OPT_FLAGS="-DUSE_OZONE --param=ggc-min-expand=10 --param=ggc-min-heapsize=65536" \
 	NO_USE_MIDI=1 \
