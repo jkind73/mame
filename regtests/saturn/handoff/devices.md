@@ -114,7 +114,7 @@ required, **D** done this session, **—** not started this session.
 |---|---|---|
 | SND-01 | P/V — | `sat_console.cpp:1098` runs the sound `M68000` at 11 289 600 Hz with `sound_mem`; `stv.cpp` mirrors it. Sound-RAM window is 512 KiB with the upper half unmapped (`stv.cpp:1245` comment cites ST-077 Figure 1.3). |
 | SND-02 | V/R — | 32-voice engine, FM, envelopes, LFO and DSP present in `src/devices/sound/scsp.cpp` (1766 lines). No chip-wide hardware audit exists. |
-| SND-03 | P/V **D** | Timers re-armed from a `timer_sync`/`timer_arm` pair, `exec_dma()` present, `main_irq_cb` routed to `saturn_scu_device::sound_req_w`. MIDI in/out FIFOs implemented over `device_serial_interface`. **DMA now verified at runtime against ST-077 Figure 4.3 by `test_scsp_dma.py`** — see §3. The `reg_addr & 0xffe` wrap I had flagged as unsupported by the manual is in fact exactly the documented `DRGA[11:1]` field. |
+| SND-03 | P/V **D** | Timers re-armed from a `timer_sync`/`timer_arm` pair, `exec_dma()` present, `main_irq_cb` routed to `saturn_scu_device::sound_req_w`. MIDI in/out FIFOs implemented over `device_serial_interface`. **DMA now verified at runtime against ST-077 Figure 4.3 by `test_scsp_dma.py`** — see §3. **The prescaler timers are now verified at runtime too: `test_scsp_timers.py` measures all eight ST-077-R2 increment divisions and the timer A interrupt.** The `reg_addr & 0xffe` wrap I had flagged as unsupported by the manual is in fact exactly the documented `DRGA[11:1]` field. |
 | SND-04 | V/R — | `scspdsp.cpp` is 326 lines. Not audited against ST-077 chapter 6. |
 | SND-05 | P — | `device_post_load()` exists and MIDI/DMA state is in `save_item`s. Round-trip under live envelopes/DMA not yet qualified. |
 | CD-01 | P/V **D** | `saturn_cd_hle.cpp` (4249 lines) implements the full CR1–CR4 command set. **Fixed this session:** `hirq_r()` force-cleared DCHG on every read, which made the documented tray-open detection path unobservable to software — see §3 "CD block host interface". CMOK command completion, HIRQ write-to-clear and DCHG reporting are now verified at runtime by `test_cd_hirq.py`, with mutation controls. **Still open:** `device_reset()` sets `hirqreg = 0x0001` with a `FIXME` saying zero "breaks CD auto load and azelpanztai"; and `hirq_r()` ignores `side_effects_disabled()` (unlike `hirqmask_r()`), so peeking HIRQ from a debugger or cheat mutates it. Both left alone — resolving them needs ST-172, which is not in the local corpus. |
@@ -172,6 +172,7 @@ is a test vehicle, not a shippable build.** See §1.
 | Live fixture | `regtests/saturn/test_cart_runtime.py` | **PASS**, `ram8` + `bram4` carts in a live machine; two mutation controls |
 | Live fixture | `regtests/saturn/test_scsp_dma.py` | **PASS**, SCSP DMA mem→reg / reg→mem / DGATE / completion; three mutation controls |
 | Live fixture | `regtests/saturn/test_backup_ram.py` | **PASS**, 4 emulator runs: lane behaviour, provenance, write, expect |
+| Live fixture | `regtests/saturn/test_scsp_timers.py` | **PASS**, all 8 ST-077-R2 prescaler divisions + timer A interrupt; two mutation controls |
 | Live fixture | `regtests/saturn/test_cd_hirq.py` | **PASS**, CMOK handshake + HIRQ write-to-clear + DCHG reporting; two mutation controls (see "CD block host interface") |
 | Compile | `g++ -fsyntax-only -std=c++20` on `dram.cpp`, `bram.cpp`, `315_5649.cpp` | **PASS** |
 
@@ -417,6 +418,76 @@ that actually reacts to a tray change. `hisaturn` could not be included in the
 five — it requires `mpr-18100.bin`, which is not in `regtests/`; that is a ROM
 availability limit, not a defect.
 
+### SCSP prescaler timers verified against ST-077 (SND-03)
+
+Test: `regtests/saturn/test_scsp_timers.py` (live `saturnjp`, all three CPUs
+parked). ST-077-R2 §4 gives the increment table explicitly — TACTL/TBCTL/TCCTL
+`[2:0]` = 0..7 → once every 1, 2, 4, 8, 16, 32, 64, 128 samples. MAME encodes
+that as `inc_clocks = SAMPLE_CLOCKS << prescale` with `SAMPLE_CLOCKS = 512` and a
+22 579 200 Hz SCSP clock (`sat_console.cpp:1169`, 8.4672 MHz × 8 / 3), so one
+increment period is `(1 << prescale) / 44100` s.
+
+Measured over a 3-frame window (`dt = 0.050196770` s in every case):
+
+| prescale | predicted increments | measured (mod 256) | predicted (mod 256) |
+|---|---|---|---|
+| 0 | 2213 | 166 | 165 |
+| 1 | 1106 | 82 | 82 |
+| 2 | 553 | 42 | 41 |
+| 3 | 276 | 21 | 20 |
+| 4 | 138 | 138 | 138 |
+| 5 | 69 | 69 | 69 |
+| 6 | 34 | 35 | 34 |
+| 7 | 17 | 18 | 17 |
+
+Every entry is the predicted value or predicted + 1. The +1 is not sloppiness:
+`timer_sync` advances `base_time` by whole increment periods, so a window that is
+not an exact multiple carries its remainder into the next measurement. The
+assertion therefore accepts N or N+1, which still separates adjacent table
+entries by a factor of two — a wrong shift cannot pass.
+
+`timer_cb` raising SCIPD (common control `0x20`) bit 6 for timer A is asserted
+separately with the fastest timer and the shortest reload.
+
+**Mutation control** (both applied in one build, both caught, then reverted and
+the binary restored to the identical sha256 `3d536a7a…`):
+
+| Mutation | Result |
+|---|---|
+| `t.prescale = (data >> 8) & 0x7` → `& 0x3` | `FAIL prescale4_rate got=166 want=138 or 139`, and likewise prescale 5/6/7 — prescales 0–3 still passed, so the fixture localises the fault |
+| comment out `m_udata.data[0x20 / 2] \|= 0x40 << idx` in `timer_cb` | `FAIL timer_a_irq_raised got=0 want=1..1` |
+
+**Method note that cost a wrong first result.** The unmodified BIOS programs the
+SCSP timers during sound init, so measuring from Lua while it runs produces
+nonsense: a first pass read timer A advancing 230 counts in one frame at
+prescale 4, where the table predicts 46. The test parks all three CPUs first —
+`bra` to self plus `nop` at `0x06000000` with SR = 0xf0 for the two SH-2s (the
+technique `vdp2_runtime.lua` already uses), and `bra *` (`0x60fe`) in sound RAM
+with SR = 0x2700 for the 68EC000.
+
+**One count cycle, found by reading and NOT measured.** ST-077-R2 states
+*"Interrupt Time = {255 (FFH) – TIMA (B, C) settings} × count cycle time"* and
+*"Counting begins immediately after the settings are set to TIMA"*. Taken
+literally, from a TIMA write to the interrupt is `(0xff - reload)` increment
+periods. `timer_sync` instead consumes one tick to load the pending value
+(`t.counter = t.reload; … steps--;`), so `timer_arm` schedules
+`0x100 - reload` periods — one count cycle later, ≈22.7 µs at prescale 0.
+
+I tried to measure this and **could not**, and am recording the attempt so nobody
+repeats it: I predicted the counter one frame after a `TIMA = 0` write as
+`floor(dt × 44100)` = 737 (so 224 under MAME's model, 225 under the manual's) and
+observed **0** on the first try, then 225 on a cleaner run. Both predictions were
+wrong for the same reason — `timer_sync` leaves a sub-increment remainder in
+`base_time`, so the elapsed tick count is `dt + r`, not `dt`, and `steps` comes
+out 738. Resolving a single 22.7 µs difference needs sub-frame sampling, which
+the Lua frame callback cannot do.
+
+So: **code-derived, unmeasured, and deliberately not changed.** It touches sound
+timing, which is explicitly protected behaviour, and the difference is one count
+cycle. Handed to agent A / agent four as a candidate, with the ST-077 wording
+quoted above so it can be settled against the hardware or a real title. It is
+also deliberately **not** frozen into a test — a future fix would break it.
+
 ### A pre-existing `run_all.py` failure, not mine
 
 `run_all.py` auto-discovers `test_*.py` (29 currently) and aborts at
@@ -513,6 +584,7 @@ All six Saturn console configurations (`saturn`, `saturnjp`, `saturneu`,
 | 2026-09-17 | `d691cddc` | `test_backup_ram.py` — backup RAM lanes and nvram-file persistence; recorded that save state does **not** restore backup RAM |
 | 2026-09-17 | `834a5609` | **CD-01:** removed the force-clear of DCHG in `hirq_r()`, which had made the ST-136-R2 tray-open detection path unobservable; added `test_cd_hirq.py` (CMOK handshake, HIRQ write-to-clear, DCHG reporting) with two mutation controls. All five BIOS configs re-verified at their pre-fix baseline times. New binary `3d536a7a…` |
 | 2026-09-17 | (this commit) | **STV-02 count corrected twice.** `machine().rand()` in `HACK_MODE_NO_KEY` is MAME's fixed-seed LCG (`machine.cpp:106`, seed `0x9d14abd7`) whose seed is a `save_item`, so it is reproducible and save-state stable — a missing cipher, not a determinism hazard. `init_decathlt_nokey` is used by **9** `GAME()` entries, not "20+" (§2) and not 8 (§5); `nclubv2` belongs in the STV-02 group. Both figures verified from `grep` over `src/mame/sega/*.cpp`. |
+| 2026-09-17 | (this commit) | **SND-03:** `test_scsp_timers.py` measures all eight ST-077-R2 prescaler divisions and the timer A interrupt in a live machine, with two mutation controls. Records a one-count-cycle discrepancy against the manual's interrupt-time formula as **code-derived and unmeasured** — the attempted measurement is written up and retracted, since `timer_sync`'s sub-increment remainder defeats frame-granular sampling. Not changed (sound timing is protected) and not frozen into a test. |
 
 ### Reproducibility — and a claim retracted
 
