@@ -1,8 +1,8 @@
 # Saturn/ST-V Bus and Execution Handoff — Core Contracts
-**Status:** Implemented BUS-01/02/03 v2 — Agent A ownership SYS-CLK01/SYS-MEM01/CPU-04/BUS-01..03/SCU-02..04/DSP-02/03/DCC-01
+**Status:** Implemented BUS-01/04 + SCU DMA v3 — DRC fidelity complete, force_no_drc removed — Agent A ownership SYS-CLK01/SYS-MEM01/CPU-04/BUS-01..04/SCU-02..04/DSP-02/03/DCC-01
 **Baseline:** 03c19a78e4cee7e9008a1100118934e8d84c0ea5 (arena/01a0ac88-mame)
-**Date:** 2026-09-16 UTC — Updated with BUS-02/03 implementation
-**Branch:** arena/01a0ac88-mame (PR #4 merged d98482eb, continuing)
+**Date:** 2026-09-17 UTC — DRC guards + forced retry >=1024 + indirect DMA bus release + DRC enable
+**Branch:** arena/01a0ac88-mame (commits ac8c90ca DRC fidelity, 0d29b1a1 DMA validation + DRC enable)
 
 This file defines the exact API signatures and contracts required before implementing coherent bus arbitration and deferred CPU transactions. It is the blocking prerequisite for BUS-01/02/03 and CPU-04.
 
@@ -93,15 +93,33 @@ m_scudsp->out_ddmv_callback().set([this](int state){
 ```
 
 ```cpp
-// saturn_bus.cpp get_cpu_wait stall semantics (exact, CPU-04 full fidelity)
+// saturn_bus.cpp get_cpu_wait stall semantics (exact, CPU-04 full fidelity + DRC)
 if (m_owner[bus]!=NONE && owner!=cpu) {
   // With SH2 interpreter snapshot restore (prev_pc, r[16], ea, m_delay, pr/sr/gbr/vbr/mach/macl),
   // MOV.L Rm,@-Rn / @Rm+,Rn / STSMACH / LDSMACH / RTE / TRAPA side-effects are rewound,
   // so C-BUS (WorkRAM-H stack) can also force retry without double R15 (choroqpk fix in CPU core).
+  // DRC: sh.cpp all memory ops guard after CALLH with CMP icount,0; EXHc LE,out_of_cycles,pc
+  // to abort same-PC retry, preventing double R15 and zero-data dest writes.
+  // Penalty >=1024 is forced retry threshold (saturn_bus returns 1024-10000 for owned/not-ready)
+  // devcpu.cpp::access_before_delay treats >=1024 as unconditional abort: icount=0, redone=true.
   return large 1024-10000 to force retry (access_to_be_redone -> abort timeslice -> restore -> retry)
 }
 if (!ready_cb) return large 1024+penalty to force retry for VDP1/VDP2 not ready
 else return penalty (A-Bus AnNW+3, B-Bus MiSTer table: VDP1 9/14, VDP2 3/20, SCSP 13/24, SCU 4/8)
+
+// devcpu.cpp forced retry (exact)
+bool devcpu_device::access_before_delay(offs_t offset, bool is_write, int &cycles, ...) {
+  if (m_access_before_delay_tag != tag && cycles >= 1024) {
+    *icount = 0; m_access_before_delay_tag=tag; m_access_to_be_redone=true; return true;
+  }
+  *icount -= cycles; ...
+}
+
+// sat_console.cpp / stv.cpp fastram (exact) — BUS-01/04 DRC fidelity
+// Only BIOS ROM is fastram; WorkRAM L/H removed to force through before_delay arbiter
+m_maincpu->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
+m_slave->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
+// No WorkRAM L/H fastram -> DRC static_generate_memory_accessor -> handler_entry_read/write_before_delay -> get_cpu_wait -> retry
 ```
 
 **Contracts preserved:** No host sleeps, devices/delegates via std::function (ready_cb), no game-name tests, penalties from ASR or MiSTer documented B-Bus table, not guessed.
@@ -127,17 +145,20 @@ void saturn_dcc_device::sinit_w(...) {
 - Writer-origin enforcement uses `device_execute_interface::executing()` which checks `scheduler().currently_executing() == this`.
 - Preserves 16-bit trigger rule (byte/longword ignored) and quantum workaround for FRT sync.
 
-**CPU-04 Deferred Transactions (full fidelity interpreter, DRC open):**
+**CPU-04 Deferred Transactions (full fidelity interpreter + DRC complete):**
 
-Implemented via `address_space::install_read/write_before_delay` in `sat_console.cpp`/`stv.cpp` + `saturn_bus_device::get_cpu_wait` + `sh2.cpp` snapshot restore:
+Implemented via `address_space::install_read/write_before_delay` in `sat_console.cpp`/`stv.cpp` + `saturn_bus_device::get_cpu_wait` + `sh2.cpp` snapshot restore + `sh.cpp` DRC guards + `devcpu.cpp` forced retry:
 
-- `get_cpu_wait` returns wait cycles; `cpu_device::access_before_delay(cycles, tag)` subtracts from icount, sets `m_access_to_be_redone` and aborts timeslice if icount<=0, causing memory handler `read_interruptible` to return 0 without actual access and retry on next slice (MAME's built-in deferred).
+- `get_cpu_wait` returns wait cycles; `cpu_device::access_before_delay(cycles, tag)` now has forced-retry path: if `cycles>=1024` and tag mismatch, sets `*icount=0`, `m_access_before_delay_tag=tag`, `m_access_to_be_redone=true`, returns true regardless of remaining icount. This ensures bus-owned/device-not-ready (1024-10000 from saturn_bus) always retries without performing access. Penalty-only <1024 (B-BUS 3-24) subtracts and proceeds.
+- For interpreter: `read_interruptible` returns 0 and skips write, aborting timeslice, causing `execute_run()` snapshot restore to rewind pre-dec/post-inc and retry same PC.
+- For DRC: `CALLH` to `handler_entry_read/write_before_delay` sets icount via `access_before_delay`. Guard `CMP icount,0; EXHc LE,out_of_cycles,pc` after CALLH triggers `m_nocode`/`out_of_cycles` same-PC retry, preventing double R15 and zero-data dest writes. Covers all memory ops: group_6 MOVBP/WP/LP, MOVBL/WL/LL, MOVBL0/WL0/LL0, MOVBL4/WL4, MOVLL4, MOVWI/LI, MOVBLG/WLG/LLG, pre-dec stores MOVBM/WM/LM, STSMMACH/MACL/MPR, STCMGBR/MVBR/MSR, TRAPA double push, RTE pops, TAS, ANDM/XORM/ORM RMW, all writes/reads.
 - **SH2 interpreter full fidelity** (`src/devices/cpu/sh/sh2.cpp`): `execute_run()` saves `prev_pc`, `r[16]`, `ea`, `m_delay`, `pr/sr/gbr/vbr/mach/macl` before `execute_one()`. On `access_to_be_redone()`, restores all side-effects, rewinds PC to re-execute same instruction after bus free. Prevents double `R15` on `MOV.L Rm,@-Rn` (stack push), `@Rm+,Rn` (pop), `STSMACH @-Rn`, `LDSMACH @Rm+`, `RTE` (2 pops), `TRAPA` (2 pushes) – fixes choroqpk.
-- **A/B/C buses owned by DMA/DSP**: all return large 1024-10000 to force `icount<=0` → `m_access_to_be_redone=true` → abort → restore → retry, preventing CPU access while DMA owns bus. Faithful: C-BUS (WorkRAM-H) now safe with snapshot restore.
+- **A/B/C buses owned by DMA/DSP**: all return large 1024-10000 to force retry → abort → restore → retry, preventing CPU access while DMA owns bus. Faithful: C-BUS (WorkRAM-H) now safe with snapshot restore + DRC guard.
 - **Device not ready (VDP1 drawing, VDP2 slot)**: same large retry, prevents CPU VRAM/FB access during draw/scanout. No R15 side-effect for VRAM.
-- **DRC**: still open – `static_generate_memory_accessor()` emits `UML_READ/WRITE` directly, cannot suspend DRC for retry. Working-driver readiness forces interpreter via `set_force_no_drc(true)` in `saturn_state::machine_start()` (inherited by ST-V). Full fix requires DRC accessor emitting arbiter call that can suspend DRC (like `sh2_notify_dma_data_available` pattern).
+- **DRC**: now complete – all memory accessors guarded, fastram limited to BIOS ROM only (WorkRAM L/H removed) to force through `before_delay` arbiter path. `set_force_no_drc(true)` removed in `saturn_state::machine_start()` (2026-09-17), both CPUs now run DRC with faithful bus stall retry.
+- **SCU DMA validation (2026-09-17)**: Direct = burst + CPU HALT via `main_dtack_cb(true)` + bus ownership + steal; Indirect = cycle-steal (no HALT, steal only) + forced retry via bus arbiter. Indirect same-bus allowed (quirks TBD), direct same-bus illegal (DMAILL). Indirect bus release between chunks and before descriptor fetch prevents leak and allows CPU interleaving. Direct illegal check before bus acquire prevents ownership leak.
 
-Current interpreter path is sufficient for boot + sustained runtime (AB2, Power Drift, OutRun) per acceptance, now with C-BUS faithful retry.
+Current DRC path is now sufficient for boot + sustained runtime (AB2, Power Drift, OutRun) per acceptance, with full BUS-01/04 fidelity.
 
 **SMPC clocks:** Verified MASTER_CLOCK_352/320 dot-select, SH2 28.6 MHz, SCU 14.3 MHz, SCSP 22.5792 MHz, M68K 11.2896 MHz, SCU DSP 14.3 MHz, SMPC HLE 4 MHz + RTC 1 Hz timer, command timings from `m_cmd_table_timing` usec table. `dot_select_w` currently resets SCSP/SCU/VDP2 per existing behavior – preserved per task acceptance criteria (AB2, Power Drift, OutRun fixes). No change to SMPC handshake timing yet; CONTINUE 700us, CKCHG 5 ticks with syshalt remain.
 
