@@ -149,9 +149,9 @@ uint8_t stv_state::ioga_r(offs_t offset) {
       res = ((m_ioga_counters[sel]->read() - m_ioga_count[sel]) >>
                  ((~m_ioga_portg & 1) * 8) &
              0xff);
-      m_ioga_portg =
-          (m_ioga_portg & 0xf8) |
-          ((m_ioga_portg + 1) & 0x07); // counter# is auto-incremented on read
+      // Match the 315-5649 device: inspection must not advance the byte cursor.
+      if (!machine().side_effects_disabled())
+        m_ioga_portg = (m_ioga_portg & 0xf8) | ((m_ioga_portg + 1) & 0x07);
       break;
     }
     [[fallthrough]];
