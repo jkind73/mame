@@ -122,7 +122,7 @@ required, **D** done this session, **—** not started this session.
 | IO-01 | P — | `src/devices/bus/sat_ctrl/`: joy, racing, analog, mission, gun, pointer, mouse, keybd, joy_md, multitap, segatap. `read_pdr()` hook exists for direct-mode line protocols. |
 | IO-02 | M/P — | Inventory incomplete. No modem/NetLink device; `saturn/st17xx.cpp` is a skeleton. |
 | CART-01 | P — | `src/devices/bus/saturn/`: `sat_bram_{4,8,16,32mb}`, `sat_dram_{8,32mb}`, `sat_rom`, `sat_cart_slot`. Capacity/bank/lane qualification outstanding. |
-| NVR-01 | P — | backup RAM + SMPC RTC exist. Cold-start/battery-loss behaviour not qualified. |
+| NVR-01 | P/V **D** | backup RAM + SMPC RTC exist. Persistence and byte-lane behaviour now verified by `test_backup_ram.py` — see §3. **Characterised limitation:** loading a save state does *not* restore backup RAM. Cold-start/battery-loss still unqualified. |
 | STV-01 | P — | `stv.cpp` board wiring, EEPROM `AK93C45F` modelled as `EEPROM_93C46_16BIT`. |
 | STV-02 | M/P — | `sega_315_5838_comp_device::get_decompressed_byte()` returns **`machine().rand()`** in `HACK_MODE_NO_KEY`, which 20+ drivers select via `init_decathlt_nokey()`. The keyed cipher is not implemented. |
 | STV-03 | P — | `315_5649.cpp` implements ports A–G, direction register, analog mux and G-counter mode. |
@@ -290,6 +290,37 @@ One trap worth recording: `DRGA` is in the same address space as
 `scsp_device::r16`/`w16`, where `0x000-0x3FF` are **slot** registers and the
 common control registers start at `0x400`. A first attempt used `DRGA = 0x018`
 and silently wrote slot 0; the correct destination is `0x418`.
+
+### Backup RAM persistence characterised (NVR-01)
+
+`regtests/saturn/test_backup_ram.py` runs the emulator four times and asserts:
+
+| case | assertion |
+|---|---|
+| byte lanes | `0x1122` reads back `0x0022`, `0xffff` reads back `0x00ff` |
+| provenance | a fresh `-nvram_directory` does *not* already hold the pattern |
+| persistence | a second run reusing the same `-nvram_directory` does |
+
+The even-byte holes are deliberate: `saturn_state::backupram_r`
+(`src/mame/sega/saturn.cpp`) returns 0 for even offsets with the comment *"yes,
+it makes sure the 'holes' are there"*. Storage is a plain `uint8_t[]` passed to
+the NVRAM device with `set_base()`.
+
+**Verified limitation, deliberately not frozen into a test.** Loading a save
+state does not restore backup RAM. Measured on binary `00dd75d1`: with a pattern
+written and saved, the memory clobbered, and the state loaded, the clobbered
+value is what reads back. The cause is structural — `nvram_device::set_base`
+registers no `save_item`; `src/devices/machine/nvram.cpp` only `read()`s and
+`write()`s the nvram file. So the file is the sole persistence path, and it does
+work across sessions (asserted above).
+
+This is recorded rather than "fixed" because MAME drivers are split on it: of
+the drivers using `set_base`, some call `save_pointer` for the region
+(`adds/multivision.cpp`, `akai/mpc60.cpp`, `amiga/cubo.cpp`) and most do not.
+Changing it would touch shared state in `saturn.h` / `sat_console.cpp` for a
+behaviour that may be intentional, so it needs the integration agent's call. A
+test asserting the current behaviour was left out on purpose — it would fail the
+day someone fixes it.
 
 ## 4. Endpoint contracts
 
