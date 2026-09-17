@@ -583,7 +583,13 @@ uint16_t saturn_cd_hle_device::hirq_r() {
 
   rv = hirqreg;
 
-  rv &= ~DCHG; // always clear bit 6 (tray open)
+  // DCHG (bit 5) used to be force-cleared here on every read, which made the
+  // tray-change condition unreadable: set_tray_open() raises it and drives the
+  // interrupt line, but software polling HIRQ to find the cause saw bit 5
+  // already gone. ST-136-R2 states that "a '1' value for the DCHG bit (bit 5) of
+  // the interrupt factor register (HIRQREQ) of the CD block is also treated as a
+  // tray open condition", i.e. reading it is the documented detection path, so
+  // it must survive a read and be cleared only by hirq_w().
 
   if (buffull)
     rv |= BFUL;
