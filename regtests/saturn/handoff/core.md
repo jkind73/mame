@@ -1,8 +1,8 @@
 # Saturn/ST-V Bus and Execution Handoff — Core Contracts
-**Status:** Implemented BUS-01/04 + SCU DMA v3 — DRC fidelity complete, force_no_drc removed — Agent A ownership SYS-CLK01/SYS-MEM01/CPU-04/BUS-01..04/SCU-02..04/DSP-02/03/DCC-01
+**Status:** Implemented BUS-01/04 + SCU DMA v3 — DRC fidelity complete, force_no_drc removed, source manifest added — Agent A ownership SYS-CLK01/SYS-MEM01/CPU-04/BUS-01..04/SCU-02..04/DSP-02/03/DCC-01
 **Baseline:** 03c19a78e4cee7e9008a1100118934e8d84c0ea5 (arena/01a0ac88-mame)
-**Date:** 2026-09-17 UTC — DRC guards + forced retry >=1024 + indirect DMA bus release + DRC enable
-**Branch:** arena/01a0ac88-mame (commits ac8c90ca DRC fidelity, 0d29b1a1 DMA validation + DRC enable)
+**Date:** 2026-09-17 UTC — DRC guards + forced retry >=1024 + indirect DMA bus release + DRC enable + sources_manifest.md
+**Branch:** arena/01a0ac88-mame (commits ac8c90ca DRC fidelity, 0d29b1a1 DMA validation + DRC enable, 006b1b09 source manifest, caeafe5d completion report)
 
 This file defines the exact API signatures and contracts required before implementing coherent bus arbitration and deferred CPU transactions. It is the blocking prerequisite for BUS-01/02/03 and CPU-04.
 
@@ -379,7 +379,8 @@ Required:
 
 - Primary: Sega ST-097-R5 (SCU), ST-058-R4 (VDP2), ST-013-R3 (VDP1), ST-077 (sound map), ST-169 (SMPC), ST-210 (SCU errata), Hitachi SH7604 HW manual.
 - Pinned emulators: Ymir 6d779960, MiSTer a95b085, mednafen f0ee9d59, Yabause 82cb2917, SaturnRecomp 26c9715e, saturnsdk 0fab2c30, Cassini (to be pinned).
-- No code imported yet in this branch; this file is documentation only. Future imports must note file, revision, license, and attribution in commit message.
+- Detailed per-file manifest: `regtests/saturn/handoff/sources_manifest.md` — tracks file-level parents, license policy, reuse vs independent, penalties from MiSTer, DMA logic cross-checked Ymir/Mednafen but independently implemented, DRC guards independent.
+- No verbatim GPL code copied; MiSTer GPL-2.0 values documented and independently implemented, Ymir MIT cross-checked.
 
 ## 13. Open Questions (R)
 
