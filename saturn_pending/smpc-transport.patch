@@ -1,0 +1,324 @@
+--- a/src/mame/sega/smpc.cpp
++++ b/src/mame/sega/smpc.cpp
+@@ -138,0 +139,3 @@
++  save_item(NAME(m_peripheral_data));
++  save_item(NAME(m_peripheral_size));
++  save_item(NAME(m_peripheral_pos));
+@@ -202,0 +206 @@
++  m_peripheral_size = m_peripheral_pos = 0;
+@@ -243,0 +248 @@
++        m_peripheral_size = m_peripheral_pos = 0;
+@@ -595,0 +601,3 @@
++  m_peripheral_size = m_peripheral_pos = 0;
++  // Port modes are in IREG1, for both forms of peripheral INTBACK.
++  m_pmode = m_intback_buf[1] >> 4;
+@@ -633 +640,0 @@
+-    m_pmode = m_intback_buf[0] >> 4;
+@@ -659,7 +666,16 @@
+-  if (m_has_ctrl_ports == true)
+-    read_saturn_ports();
+-
+-  if (m_intback_stage == 2) {
+-    sr_set(0x80 |
+-           m_pmode); // pad 2, no more data, echo back pad mode set by intback
+-    m_intback_stage = 0;
++  if (m_has_ctrl_ports) {
++    bool const first = m_intback_stage == 1;
++    if (first)
++      read_saturn_ports();
++
++    // OREG31 may contain peripheral data (ST-169 p.41). Set the command
++    // marker before the copy, never over the final byte of a full page.
++    std::fill(std::begin(m_oreg), std::end(m_oreg), 0xff);
++    m_oreg[31] = 0x10;
++    unsigned const count = std::min<unsigned>(sizeof(m_oreg), m_peripheral_size - m_peripheral_pos);
++    std::copy_n(m_peripheral_data + m_peripheral_pos, count, m_oreg);
++    m_peripheral_pos += count;
++    bool const more = m_peripheral_pos < m_peripheral_size;
++    // PDL marks the first page; NPE describes remaining data, not port #.
++    sr_set(0x80 | (first ? 0x40 : 0) | (more ? 0x20 : 0) | m_pmode);
++    m_intback_stage = more ? 2 : 0;
+@@ -667,3 +683,9 @@
+-    sr_set(0xc0 |
+-           m_pmode); // pad 1, more data, echo back pad mode set by intback
+-    m_intback_stage++;
++    // Keep the existing no-controller/ST-V handshake path unchanged.
++    if (m_intback_stage == 2) {
++      sr_set(0x80 | m_pmode);
++      m_intback_stage = 0;
++    } else {
++      sr_set(0xc0 | m_pmode);
++      m_intback_stage++;
++    }
++    m_oreg[31] = 0x10;
+@@ -672,2 +693,0 @@
+-
+-  m_oreg[31] = 0x10; // callback for last command issued
+@@ -846,42 +866,23 @@
+-  uint8_t status1 = m_ctrl1 ? m_ctrl1->read_status() : 0xf0;
+-  uint8_t status2 = m_ctrl2 ? m_ctrl2->read_status() : 0xf0;
+-
+-  uint8_t reg_offset = 0;
+-  uint8_t ctrl1_offset =
+-      0; // this is used when there is segatap or multitap connected
+-  uint8_t ctrl2_offset =
+-      0; // this is used when there is segatap or multitap connected
+-
+-  // the report has to fit in the 32 OREG bytes. A single multitap can already
+-  // ask for more than that - six sub-peripherals, each an ID byte plus up to
+-  // six data bytes - so stop filling when the register file is full instead of
+-  // writing past it (mamedev MT06893 has two multitaps inserted at once)
+-  constexpr size_t oreg_max = sizeof(m_oreg);
+-
+-  m_oreg[reg_offset++] = status1;
+-
+-  // read ctrl1
+-  for (int i = 0; (i < (status1 & 0xf)) && (reg_offset < oreg_max); i++) {
+-    uint8_t id = m_ctrl1->read_id(i);
+-
+-    m_oreg[reg_offset++] = id;
+-    for (int j = 0; (j < (id & 0xf)) && (reg_offset < oreg_max); j++)
+-      m_oreg[reg_offset++] = m_ctrl1->read_ctrl(j + ctrl1_offset);
+-
+-    ctrl1_offset += (id & 0xf);
+-  }
+-
+-  if (reg_offset < oreg_max)
+-    m_oreg[reg_offset++] = status2;
+-
+-  // read ctrl2
+-  for (int i = 0; (i < (status2 & 0xf)) && (reg_offset < oreg_max); i++) {
+-    uint8_t id = m_ctrl2->read_id(i);
+-
+-    m_oreg[reg_offset++] = id;
+-
+-    for (int j = 0; (j < (id & 0xf)) && (reg_offset < oreg_max); j++)
+-      m_oreg[reg_offset++] = m_ctrl2->read_ctrl(j + ctrl2_offset);
+-
+-    ctrl2_offset += (id & 0xf);
+-  }
++  m_peripheral_size = m_peripheral_pos = 0;
++  for (unsigned port = 0; port < 2; ++port) {
++    // 0-byte mode must not query the port, including its connection status.
++    if (((m_pmode >> (port * 2)) & 3) == 3)
++      continue;
++    auto &ctrl = port ? m_ctrl2 : m_ctrl1;
++    uint8_t const status = ctrl ? ctrl->read_status() : 0xf0;
++    m_peripheral_data[m_peripheral_size++] = status;
++    unsigned offset = 0;
++    for (unsigned i = 0; i < (status & 0xf); ++i) {
++      uint8_t const id = ctrl->read_id(i);
++      m_peripheral_data[m_peripheral_size++] = id;
++      // FF is an unconnected tap, not a 15-byte peripheral (ST-169 p.73).
++      unsigned const size = id == 0xff ? 0 : (id & 0xf);
++      for (unsigned j = 0; j < size; ++j)
++        m_peripheral_data[m_peripheral_size++] = ctrl->read_ctrl(offset + j);
++      offset += size;
++    }
++  }
++  // Snapshot once: continuation must not reread relative-motion devices or
++  // replace later bytes with input from a different polling instant.
++  // Extended-size peripheral IDs need a controller-interface extension;
++  // all currently registered devices use the <=15-byte format handled here.
+--- a/src/mame/sega/smpc.h
++++ b/src/mame/sega/smpc.h
+@@ -114,0 +115,5 @@
++  // Existing controller interface: two ports, at most 15 devices per port,
++  // each with an ID and up to 15 data bytes (482 bytes including statuses).
++  uint8_t m_peripheral_data[512]{};
++  uint16_t m_peripheral_size = 0;
++  uint16_t m_peripheral_pos = 0;
+--- /dev/null
++++ b/regtests/saturn/test_smpc_transport.py
+@@ -0,0 +1,158 @@
++#!/usr/bin/env python3
++# license:BSD-3-Clause
++# copyright-holders:MAMEdev Team
++"""Extracted INTBACK transport, page flags, cancellation and restore tests.
++
++The actual SMPC methods execute against recording timer/IRQ/controller endpoints.
++Snapshot restore copies the saved fields, not MAME's save manager. No bit-serial
++controller timing, VBlank timeout or extended-size peripheral support is claimed.
++"""
++import os, subprocess, tempfile
++from pathlib import Path
++ROOT=Path(__file__).resolve().parents[2]
++source=(ROOT/'src/mame/sega/smpc.cpp').read_text()
++
++def extract(signature):
++    start=source.index(signature);end=source.index('{',start)+1;depth=1
++    while depth:
++        depth+=(source[end]=='{')-(source[end]=='}');end+=1
++    return source[start:end]
++functions='\n'.join(extract(s) for s in ('void smpc_hle_device::resolve_intback()', 'void smpc_hle_device::read_saturn_ports()', 'void smpc_hle_device::ireg_w(', 'inline void smpc_hle_device::sr_ack()', 'inline void smpc_hle_device::sr_set(', 'inline void smpc_hle_device::sf_ack(', 'inline void smpc_hle_device::sf_set()', 'TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request)', 'void smpc_hle_device::device_reset()'))
++mutation=os.environ.get('MUTATE_SMPC_TRANSPORT','')
++if mutation=='oreg31':
++    functions=functions.replace('  irq_request();\n  sf_ack(false);\n}', '  irq_request();\n  m_oreg[31] = 0x10;\n  sf_ack(false);\n}')
++if mutation=='resample':
++    functions=functions.replace('    if (first)\n      read_saturn_ports();', '    read_saturn_ports();')
++if mutation=='remaining':
++    functions=functions.replace('(more ? 0x20 : 0)', '0')
++if mutation=='zero-mode':
++    functions=functions.replace('if (((m_pmode >> (port * 2)) & 3) == 3)', 'if (false)')
++if mutation=='empty-tap':
++    functions=functions.replace('id == 0xff ? 0 : (id & 0xf)', '(id & 0xf)')
++if mutation=='break':
++    functions=functions.replace('        m_peripheral_size = m_peripheral_pos = 0;', '')
++harness=r'''
++#include <algorithm>
++#include <array>
++#include <vector>
++#include <cassert>
++#include <cstdint>
++#include <cstring>
++#include <iostream>
++using u8=uint8_t; using offs_t=unsigned;
++#define LOGMASKED(...) ((void)0)
++#define TIMER_CALLBACK_MEMBER(name) void name(int param)
++struct attotime {
++ static constexpr int zero=0;
++ static int from_usec(int n){return n;}
++ static int from_seconds(int n){return n*1000000;}
++};
++struct timer {
++ bool pending=false; unsigned arms=0;
++ void reset(){pending=false;}
++ void adjust(int n){assert(n==700);pending=true;++arms;}
++ void adjust(int n,int p,int rate){assert(n==0&&p==0&&rate==1000000);pending=true;}
++};
++struct port {
++ u8 status=0xf0;std::vector<u8> ids, data;
++ unsigned status_reads=0,id_reads=0,data_reads=0;
++ u8 read_status(){++status_reads;return status;}
++ u8 read_id(unsigned i){++id_reads;return ids.at(i);}
++ u8 read_ctrl(unsigned i){++data_reads;return data.at(i);}
++};
++struct smpc_hle_device {
++ bool m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
++ u8 m_sr=0,m_ddr1=0,m_ddr2=0,m_pdr1_readback=0,m_pdr2_readback=0;
++ u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
++ bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;
++ u8 m_intback_stage=0,m_pmode=0;
++ u8 m_intback_buf[3]{},m_smem[5]{},m_rtc_data[7]{},m_region_code=1;
++ u8 m_peripheral_data[512]{};uint16_t m_peripheral_size=0,m_peripheral_pos=0;
++ port *m_ctrl1=nullptr,*m_ctrl2=nullptr;
++ unsigned ports=0,irqs=0;
++ timer cmd,intback,snd,rtc;
++ timer *m_cmd_timer=&cmd,*m_intback_timer=&intback,*m_sndres_timer=&snd,*m_rtc_timer=&rtc;
++ void resolve_intback();void read_saturn_ports(); void irq_request(){++irqs;}
++ void ireg_w(offs_t,uint8_t);void sr_ack();void sr_set(uint8_t);void sf_ack(bool);void sf_set();
++ void intback_continue_request(int);void device_reset();
++ void fire(){if(intback.pending){intback.pending=false;intback_continue_request(0);}}
++};
++// FUNCTIONS
++void setup(port &p,unsigned count,unsigned size,bool gap,unsigned seed){
++ p.status=count==0?0xf0:count==1?0xf1:0x10|count;
++ for(unsigned i=0;i<count;++i){
++  bool absent=gap&&i==count/2;
++  p.ids.push_back(absent?0xff:0x20|size);
++  if(!absent)for(unsigned j=0;j<size;++j)p.data.push_back(u8(seed+i*17+j));
++ }
++}
++std::vector<u8> expected(port const &p){
++ std::vector<u8> v{p.status};unsigned off=0;
++ for(u8 id:p.ids){v.push_back(id);if(id!=0xff)for(unsigned j=0;j<(id&15);++j)v.push_back(p.data.at(off++));}
++ return v;
++}
++int main(){
++ unsigned cases=0;
++ for(unsigned n1:{0u,1u,4u,6u,15u})for(unsigned n2:{0u,1u,4u,6u,15u})
++ for(unsigned size:{2u,3u,4u,5u,6u,15u})for(bool gap:{false,true})
++ for(unsigned mode1:{0u,1u,3u})for(unsigned mode2:{0u,1u,3u})for(bool status:{false,true}){
++  port p1,p2;setup(p1,n1,size,gap,0x31);setup(p2,n2,size,gap,0x87);
++  std::vector<u8> want;
++  for(auto [p,mode]:{std::pair{&p1,mode1},std::pair{&p2,mode2}})
++   if(mode!=3){auto part=expected(*p);want.insert(want.end(),part.begin(),part.end());}
++  smpc_hle_device s;s.m_ctrl1=&p1;s.m_ctrl2=&p2;s.m_sr=0;
++  s.m_intback_buf[0]=status;s.m_intback_buf[1]=((mode2<<2|mode1)<<4)|8;
++  s.resolve_intback();
++  if(status){s.ireg_w(1,0x80);s.fire();}
++  unsigned cursor=0,page=0;std::vector<u8> got;
++  for(;;){
++   unsigned take=std::min<unsigned>(32,want.size()-cursor);
++   bool more=cursor+take<want.size();
++   assert(s.m_sr==(0x80|(page==0?0x40:0)|(more?0x20:0)|(mode2<<2)|mode1));
++   assert(s.m_intback_stage==(more?2:0)&&!s.m_sf);
++   got.insert(got.end(),s.m_oreg,s.m_oreg+take);
++   for(unsigned j=0;j<take;++j)assert(s.m_oreg[j]==want.at(cursor+j));
++   if(take<32)assert(s.m_oreg[31]==0x10);
++   cursor+=take;++page;
++   if(!more)break;
++   // Save/mutate/restore the registered packet state; mutate physical inputs
++   // separately so any unintended resampling corrupts the remaining pages.
++   std::array<u8,512> saved;std::copy_n(s.m_peripheral_data,512,saved.begin());
++   auto pos=s.m_peripheral_pos,total=s.m_peripheral_size;
++   std::fill(std::begin(s.m_peripheral_data),std::end(s.m_peripheral_data),0);
++   s.m_peripheral_pos=s.m_peripheral_size=0;
++   std::copy(saved.begin(),saved.end(),s.m_peripheral_data);
++   s.m_peripheral_pos=pos;s.m_peripheral_size=total;
++   std::fill(p1.data.begin(),p1.data.end(),0xee);std::fill(p2.data.begin(),p2.data.end(),0xdd);
++   u8 cont=s.m_ireg[0]^0x80;s.ireg_w(1,cont);assert(s.m_sf&&s.intback.pending);
++   s.fire();
++  }
++  assert(got==want);
++  assert(p1.status_reads==unsigned(mode1!=3)&&p2.status_reads==unsigned(mode2!=3));
++  assert(p1.id_reads==(mode1==3?0:n1)&&p2.id_reads==(mode2==3?0:n2));
++  assert(s.irqs==page+unsigned(status));
++  // No callback/continue after completion may poll inputs or emit an IRQ.
++  auto irqs=s.irqs;s.intback_continue_request(0);assert(s.irqs==irqs);
++  ++cases;
++ }
++ for(bool reset:{false,true}){
++  port p;setup(p,15,15,false,0x21);
++  smpc_hle_device s;s.m_ctrl1=&p;s.m_intback_buf[1]=8;s.resolve_intback();
++  assert(s.m_intback_stage==2);
++  s.ireg_w(1,0x80);assert(s.intback.pending);
++  if(reset)s.device_reset();else s.ireg_w(1,0xc0);
++  auto irqs=s.irqs;s.fire();s.intback_continue_request(0);
++  assert(s.irqs==irqs&&!s.intback.pending&&!s.m_intback_stage);
++  assert(!s.m_peripheral_size&&!s.m_peripheral_pos);
++  ++cases;
++ }
++ std::cout<<cases<<" SMPC page/snapshot/mode/OREG31/cancel cases passed\n";
++}
++'''
++with tempfile.TemporaryDirectory(prefix='saturn-smpc-') as temp:
++    cpp=Path(temp)/'smpc.cpp';exe=Path(temp)/'smpc';cpp.write_text(harness.replace('// FUNCTIONS',functions))
++    subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)
++    subprocess.run([str(exe)],check=True)
++# Registration is source-checked; the fixture's rewind is not a live save manager.
++for field in ('m_peripheral_data', 'm_peripheral_size', 'm_peripheral_pos'):
++    assert f'save_item(NAME({field}));' in source
+--- a/regtests/saturn/test_smpc_handshake.py
++++ b/regtests/saturn/test_smpc_handshake.py
+@@ -21,0 +22 @@
++#include <algorithm>
+@@ -45,0 +47 @@
++ u8 m_peripheral_data[512]{};uint16_t m_peripheral_size=64,m_peripheral_pos=0;
+@@ -49 +51 @@
+- void read_saturn_ports(){++ports;} void irq_request(){++irqs;}
++ void read_saturn_ports(){++ports;m_peripheral_size=64;m_peripheral_pos=0;} void irq_request(){++irqs;}
+@@ -62 +64 @@
+-    smpc_hle_device s;s.m_intback_stage=stage;s.m_ireg[0]=previous;s.m_sr=0xe5;
++    smpc_hle_device s;s.m_intback_stage=stage;s.m_peripheral_pos=stage==2?32:0;s.m_ireg[0]=previous;s.m_sr=0xe5;
+@@ -70,2 +72,2 @@
+-    assert(s.irqs==unsigned(cont)&&s.ports==unsigned(cont));
+-    if(cont){assert(!s.m_sf&&s.m_oreg[31]==0x10);assert(s.m_intback_stage==(stage==2?0:2));}
++    assert(s.irqs==unsigned(cont)&&s.ports==unsigned(cont&&stage==1));
++    if(cont){assert(!s.m_sf&&s.m_oreg[31]==0);assert(s.m_intback_stage==(stage==2?0:2));}
+@@ -76 +78 @@
+-   smpc_hle_device s;s.m_intback_stage=stage;s.m_ireg[0]=previous;s.m_sr=0xe7;
++   smpc_hle_device s;s.m_intback_stage=stage;s.m_peripheral_pos=stage==2?32:0;s.m_ireg[0]=previous;s.m_sr=0xe7;
+@@ -91 +93 @@
+-  smpc_hle_device s;s.m_intback_stage=stage;s.intback.adjust(700);s.m_sf=true;
++  smpc_hle_device s;s.m_intback_stage=stage;s.m_peripheral_pos=stage==2?32:0;s.intback.adjust(700);s.m_sf=true;
+@@ -97 +99,8 @@
+- assert(cases==1173);
++ for(unsigned stage:{1u,2u}){
++  smpc_hle_device s;s.m_has_ctrl_ports=false;s.m_intback_stage=stage;
++  s.intback_continue_request(0);
++  assert(s.m_oreg[31]==0x10&&s.m_sr==(stage==1?0xc0:0x80));
++  assert(s.ports==0&&s.irqs==1&&s.m_intback_stage==(stage==1?2:0));
++  ++cases;
++ }
++ assert(cases==1175);
