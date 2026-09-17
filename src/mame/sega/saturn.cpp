@@ -801,6 +801,14 @@ void saturn_state::vdp1_advance_vblank_erase(uint32_t words) {
     v.vblank_erase_active = false;
     return;
   }
+  // CPU/SCU framebuffer accesses since the last raster outranked the erase
+  // writer (ST-013 printed p.20) and consumed its pixel-time. Convert the
+  // stolen pixel-times to erased-word capacity of the active format.
+  const unsigned pixels_per_word = (VDP1_TVM() & 1) ? 4 : 2;
+  const unsigned stolen_words =
+      std::min<unsigned>(words, v.erase_stolen_pixels / pixels_per_word);
+  v.erase_stolen_pixels -= stolen_words * pixels_per_word;
+  words -= stolen_words;
   unsigned remaining = std::min(words, v.vblank_erase_budget);
   while (remaining && v.vblank_erase_y <= v.vblank_erase_bottom) {
     const unsigned address = ((v.vblank_erase_y * v.vblank_erase_stride) +
@@ -841,6 +849,7 @@ void saturn_state::vdp1_begin_display_erase() {
   e.right = std::min<unsigned>(e.right, ((m_vdp2->get_hreso() & 1) ? 352 : 320) + 4);
   e.bottom = std::min<unsigned>(e.bottom, m_vdp2->get_vblank_start_position() - 2);
   e.next_row = e.top;
+  e.next_col = e.left;
   e.step = m_vdp2->get_ystep_count();
   vdp1_trace("display-erase-begin");
 }
@@ -860,9 +869,29 @@ void saturn_state::vdp1_advance_display_erase(int scanline) {
     return;
   const unsigned last_row = std::min<unsigned>(e.bottom, completed_rows - 1);
   m_screen->update_partial((last_row + 1) * e.step - 1);
-  for (; e.next_row <= last_row; ++e.next_row)
-    for (unsigned x = e.left; x < e.right; ++x)
-      m_vdp1_legacy.framebuffer[e.bank][(e.next_row & 255) * 512 + (x & 511)] = e.data;
+  // One raster's surplus after readout clears roughly one erase row; the
+  // manual states the erase shares the display-period framebuffer with
+  // readout (ST-013 printed p.49). CPU/SCU framebuffer accesses since the
+  // last raster outranked the erase writer and consumed its word capacity.
+  unsigned words = (last_row - e.next_row + 1) * (e.right - e.left);
+  {
+    const unsigned pixels_per_word = (VDP1_TVM() & 1) ? 4 : 2;
+    const unsigned stolen_words = std::min<unsigned>(words,
+        m_vdp1_legacy.erase_stolen_pixels / pixels_per_word);
+    m_vdp1_legacy.erase_stolen_pixels -= stolen_words * pixels_per_word;
+    words -= stolen_words;
+  }
+  while (words && e.next_row <= last_row) {
+    const unsigned length = e.right - std::max(e.left, e.next_col);
+    const unsigned drawn = std::min<unsigned>(length, words);
+    for (unsigned i = 0; i < drawn; ++i, ++e.next_col)
+      m_vdp1_legacy.framebuffer[e.bank][(e.next_row & 255) * 512 + (e.next_col & 511)] = e.data;
+    words -= drawn;
+    if (e.next_col >= e.right) {
+      e.next_col = e.left;
+      ++e.next_row;
+    }
+  }
   if (e.next_row > e.bottom) {
     e.pending = false;
     vdp1_trace("display-erase-end");
@@ -1098,12 +1127,19 @@ void saturn_state::vdp1_regs_w(offs_t offset, uint16_t data,
 }
 
 uint32_t saturn_state::vdp1_vram_r(offs_t offset) {
+  // System-controller read of drawing VRAM: outranks and interrupts drawing
+  // (ST-013 printed p.19). The drawing timeline is charged the stolen time.
+  vdp1_cpu_memory_access(true, false);
   return m_vdp1_vram[offset];
 }
 
 void saturn_state::vdp1_vram_w(offs_t offset, uint32_t data,
                                uint32_t mem_mask) {
   uint8_t *vdp1 = m_vdp1_legacy.gfx_decode.get();
+
+  // System-controller write of drawing VRAM: outranks and interrupts drawing
+  // (ST-013 printed p.19).
+  vdp1_cpu_memory_access(false, false);
 
   COMBINE_DATA(&m_vdp1_vram[offset]);
 
@@ -1124,6 +1160,9 @@ void saturn_state::vdp1_vram_w(offs_t offset, uint32_t data,
 void saturn_state::vdp1_framebuffer0_w(offs_t offset, uint32_t data,
                                        uint32_t mem_mask) {
   offset &= 0xffff; // 2-Mbit drawing bank; the upper CPU window is a mirror.
+  // System-controller framebuffer access outranks drawing and the background
+  // erase writer on the same memory (ST-013 printed p.20).
+  vdp1_cpu_memory_access(false, true);
   // popmessage ("STV VDP1 Framebuffer 0 WRITE offset %08x data %08x",offset,
   // data);
   if (VDP1_TVM() & 1) {
@@ -1174,6 +1213,8 @@ void saturn_state::vdp1_framebuffer0_w(offs_t offset, uint32_t data,
 
 uint32_t saturn_state::vdp1_framebuffer0_r(offs_t offset, uint32_t mem_mask) {
   offset &= 0xffff;
+  // System-controller framebuffer read: outranks drawing and erase.
+  vdp1_cpu_memory_access(true, true);
   uint32_t result = 0;
   // popmessage ("STV VDP1 Framebuffer 0 READ offset %08x",offset);
   if (VDP1_TVM() & 1) {
@@ -2436,14 +2477,87 @@ void saturn_state::vdp1_reset_raster_queue() {
 int saturn_state::vdp1_raster_slice_cycles() const {
   if (m_vdp1_raster.index == m_vdp1_raster.count)
     return 16; // Next command fetch, not another raster slice.
+  int clocks = 0;
   int dots = 0;
   for (int i = m_vdp1_raster.index; i < m_vdp1_raster.count && dots < 16; ++i) {
     const int32_t *const data = m_vdp1_raster.segments.data() + vdp1_raster_state::segment_words * i;
-    dots += std::max(std::abs(data[2] - data[0]), std::abs(data[3] - data[1])) + 1;
-    if (i == m_vdp1_raster.index)
-      dots -= m_vdp1_raster.dot;
+    int const length = std::max(std::abs(data[2] - data[0]), std::abs(data[3] - data[1])) + 1;
+    int const drawn = std::min(length - (i == m_vdp1_raster.index ? m_vdp1_raster.dot : 0), 16 - dots);
+    // Each queued span is one drawn line: line-setup cost when the segment
+    // starts, then the per-dot cost of its pixel operations.
+    if (i == m_vdp1_raster.index ? m_vdp1_raster.dot == 0 : true)
+      clocks += vdp1_line_setup_clocks();
+    clocks += drawn * vdp1_pixel_draw_clocks();
+    dots += drawn;
   }
-  return std::min(16, dots);
+  return std::max(1, clocks);
+}
+
+unsigned saturn_state::vdp1_line_setup_clocks() const {
+  // Mednafen charges 8 clocks per drawn line plus 4 when the pre-clip detection
+  // stage runs (PCD=0). ST-013 printed p.83 documents the pre-clipping overhead
+  // as "up to five CPU clock cycles for one line"; the 8-clock line setup is the
+  // Mednafen-measured baseline, not a Sega-published number.
+  return 8 + ((current_sprite.CMDPMOD & 0x0800) ? 0 : 4);
+}
+
+unsigned saturn_state::vdp1_pixel_draw_clocks() const {
+  // One pixel is drawn per VDP1 clock (ST-013 printed p.20). Pixel operations
+  // that read the framebuffer back (MSB shadow, mode 1, and the half-transparent
+  // blend, mode 3) cost five clocks; that weight is Mednafen-measured, not
+  // documented by Sega. 8-bit display supports replace only.
+  if (!(VDP1_TVM() & 1)) {
+    const unsigned mode = current_sprite.CMDPMOD & 3;
+    if (mode == 1 || mode == 3)
+      return 5;
+  }
+  return 1;
+}
+
+unsigned saturn_state::vdp1_overhead_clocks(unsigned clocks) {
+  // Fractional refresh/turnaround overhead on drawn clocks: 48/256 in 16-bit
+  // display, 24/256 in 8-bit (Mednafen AdjustDrawTiming, approximating VRAM/
+  // FBRAM refresh and burst turnaround; MiSTer models the same gaps as explicit
+  // 13-clock recoveries and RAS cycles). This is an approximation, not a
+  // silicon-measured constant.
+  m_vdp1_legacy.draw_overhead += clocks * ((VDP1_TVM() & 1) ? 24 : 48);
+  const unsigned extra = m_vdp1_legacy.draw_overhead >> 8;
+  m_vdp1_legacy.draw_overhead &= 0xff;
+  return clocks + extra;
+}
+
+void saturn_state::vdp1_cpu_memory_access(bool read, bool framebuffer) {
+  // ST-013 printed pp.19-20: system-controller (CPU/SCU) accesses outrank
+  // drawing on both VRAM and the framebuffer and interrupt it; the memory is
+  // unavailable to the drawing engine for the access plus its turnaround.
+  // MiSTer's arbiter charges a 13-clock recovery per CPU access
+  // (DRAW_ACCESS_WAIT); the drawing timeline is delayed by that amount here.
+  if (m_vdp1_legacy.drawing)
+    m_vdp1_legacy.bus_hold_clocks += VDP1_CPU_ACCESS_STEAL;
+  if (framebuffer &&
+      (m_vdp1_legacy.vblank_erase_active || m_vdp1_display_erase.pending)) {
+    // The erase writer shares the framebuffer bus and also yields: the CPU
+    // access costs the erase its pixel-time. Erase pacing is one pixel per
+    // clock (two 8-bit dots per clock).
+    m_vdp1_legacy.erase_stolen_pixels +=
+        (VDP1_TVM() & 1) ? VDP1_CPU_ACCESS_STEAL * 2 : VDP1_CPU_ACCESS_STEAL;
+  }
+  (void)read;
+}
+
+unsigned saturn_state::vdp1_cpu_wait_cycles(bool read, bool framebuffer) const {
+  // CPU/SCU-side wait estimate for an access issued now. ST-013 printed p.19
+  // documents "more than 10 wait cycles" when the request collides with an
+  // in-flight drawing access; with CEF set (drawing ended) VRAM is accessible
+  // "without the overhead for stopping drawing and without causing the CPU to
+  // wait" (printed p.52). Register accesses never touch the drawing memories.
+  // This figure is a contract input for the shared-bus arbiter; it is not
+  // applied to SH-2 execution in this implementation.
+  if (framebuffer)
+    return 0; // CPU framebuffer window is the drawing bank; no display contention.
+  if (!m_vdp1_legacy.drawing)
+    return 0;
+  return read ? 12 : 10;
 }
 
 void saturn_state::vdp1_draw_raster_slice() {
@@ -2920,6 +3034,10 @@ void saturn_state::vdp1_abort_draw() {
   vdp1_reset_raster_queue();
   m_vdp1_raster_building = m_vdp1_raster_running = false;
   m_vdp1_raster_budget = 0;
+  // Pending bus holds belonged to the terminated list; a new list starts from
+  // its plot trigger. The fractional overhead accumulator is retained.
+  m_vdp1_legacy.bus_hold_clocks = 0;
+  m_vdp1_legacy.command_setup_clocks = 0;
   if (m_vdp1_legacy.draw_end_timer)
     m_vdp1_legacy.draw_end_timer->adjust(attotime::never);
   if (m_vdp1_legacy.terminate_timer)
@@ -2945,10 +3063,20 @@ void saturn_state::vdp1_process_list() {
   m_vdp1_legacy.copr = 0;
   m_vdp1_legacy.drawing = true;
   clear_gouraud_shading();
+  // ST-013 printed p.53: BEF is "written with the value of the CEF value when
+  // the frame buffer is changed or at the start of drawing". Latch the just
+  // finished frame's status before clearing CEF for the new list.
+  if (VDP1_CEF)
+    BEF_1();
+  else
+    BEF_0();
   CEF_0();
   vdp1_trace("start");
-  // Fetch cost as in Ymir VDP1ProcessCommand. All legal primitives then
-  // advance in bounded raster slices. Bus arbitration costs remain incomplete.
+  // Fetch cost as in Ymir VDP1ProcessCommand and Mednafen DoDrawing. All legal
+  // primitives then advance in bounded, cost-weighted raster slices. Command
+  // fetch, gouraud/color-lookup fetches and the memory bus hold are charged in
+  // VDP1 clocks; exact silicon wait states remain approximated (see
+  // vdp1_raster_slice_cycles and vdp1_overhead_clocks).
   m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(16));
 }
 
@@ -2961,7 +3089,19 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
 
   if (m_vdp1_raster.index < m_vdp1_raster.count) {
     vdp1_draw_raster_slice();
-    m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_raster_slice_cycles()));
+    // Arm the next action with its own hardware cost: drawn clocks plus the
+    // fractional refresh/turnaround overhead, plus any drawing time stolen by
+    // CPU/SCU memory accesses since the last arm (the bus hold). When this
+    // slice emptied the queue the next action is the plain 16-clock command
+    // fetch, which carries no drawing overhead.
+    unsigned clocks;
+    if (m_vdp1_raster.index < m_vdp1_raster.count)
+      clocks = vdp1_overhead_clocks(vdp1_raster_slice_cycles());
+    else
+      clocks = 16;
+    clocks += m_vdp1_legacy.bus_hold_clocks;
+    m_vdp1_legacy.bus_hold_clocks = 0;
+    m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(clocks));
     return; // Never fetch END or another command while a segment is pending.
   }
 
@@ -3099,6 +3239,19 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
 
     /* continue to draw this sprite only if the command wasn't to skip it */
     if (draw_this_sprite == 1) {
+      // Hardware fetch costs between command decode and the first drawn pixel:
+      // the gouraud table (4 words) and, for 4-bpp lookup color mode, the
+      // color lookup table (16 words). MiSTer VS_GRD_READ/VS_CLT_READ read the
+      // same lengths; Mednafen charges the same 4/16 clocks. These costs also
+      // delay a fully clipped command's successor.
+      m_vdp1_legacy.command_setup_clocks = 0;
+      if ((current_sprite.CMDCTRL & 0x000f) < 8) {
+        if (current_sprite.CMDPMOD & 4)
+          m_vdp1_legacy.command_setup_clocks += 4;
+        if ((current_sprite.CMDPMOD & 0x0038) == 0x0008)
+          m_vdp1_legacy.command_setup_clocks += 16;
+      }
+
       // Outside clipping needs the system rectangle for rasterization;
       // vdp1_pixel_visible rejects pixels inside the excluded user rectangle.
       if ((current_sprite.CMDPMOD & 0x0600) == 0x0400)
@@ -3230,7 +3383,22 @@ TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end) {
     }
   }
 
-  m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(vdp1_raster_slice_cycles()));
+  {
+    // Arm the next action: first raster slice of this command (after its setup
+    // fetches) or, if it produced no raster work, the next command fetch. The
+    // fractional refresh overhead applies to drawn clocks only, never to
+    // command/gouraud/CLUT fetch words.
+    unsigned clocks;
+    if (m_vdp1_raster.index < m_vdp1_raster.count)
+      clocks = vdp1_overhead_clocks(vdp1_raster_slice_cycles()) +
+               m_vdp1_legacy.command_setup_clocks;
+    else
+      clocks = 16 + m_vdp1_legacy.command_setup_clocks;
+    clocks += m_vdp1_legacy.bus_hold_clocks;
+    m_vdp1_legacy.bus_hold_clocks = 0;
+    m_vdp1_legacy.command_setup_clocks = 0;
+    m_vdp1_legacy.draw_end_timer->adjust(m_maincpu->cycles_to_attotime(clocks));
+  }
   return;
 
 end:
@@ -3355,6 +3523,7 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_display_erase.top));
   save_item(NAME(m_vdp1_display_erase.bottom));
   save_item(NAME(m_vdp1_display_erase.next_row));
+  save_item(NAME(m_vdp1_display_erase.next_col));
   save_item(NAME(m_vdp1_display_erase.step));
 
   save_item(NAME(m_vdp1_texture_end));
@@ -3415,6 +3584,13 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.drawing));
   save_item(NAME(m_vdp1_legacy.command_position));
   save_item(NAME(m_vdp1_legacy.command_return));
+
+  // Drawing-cost and memory-arbitration accounting: these advance the emulated
+  // drawing timeline across scheduler and save boundaries.
+  save_item(NAME(m_vdp1_legacy.draw_overhead));
+  save_item(NAME(m_vdp1_legacy.bus_hold_clocks));
+  save_item(NAME(m_vdp1_legacy.erase_stolen_pixels));
+  save_item(NAME(m_vdp1_legacy.command_setup_clocks));
 
   // framebuffer geometry latched from TVMR/DIE; double_interlace is also read
   // back outside the reconfiguration guard

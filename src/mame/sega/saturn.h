@@ -82,6 +82,7 @@ protected:
     uint8_t bank = 0;
     uint16_t data = 0, left = 0, right = 0, top = 0, bottom = 0;
     uint16_t next_row = 0;
+    uint16_t next_col = 0; // word cursor inside a partially erased deferred row
     uint8_t step = 1;
   } m_vdp1_display_erase;
   // Host dispatch guards only; never live across an emulated timer boundary.
@@ -128,6 +129,14 @@ protected:
     int command_return = -1;
     emu_timer *draw_end_timer = nullptr;
     emu_timer *terminate_timer = nullptr;
+
+    // Hardware-faithful drawing-cost and memory-arbitration accounting.
+    // Units are VDP1 clocks (= SH-2 clocks; ST-013 printed p.20). Sources and
+    // approximations are documented at the model entry points in saturn.cpp.
+    uint32_t draw_overhead = 0;     // fractional refresh/turnaround accumulator
+    uint16_t bus_hold_clocks = 0;   // drawing/erase time stolen by CPU/SCU access
+    uint16_t erase_stolen_pixels = 0; // erase pixels lost to CPU framebuffer access
+    uint16_t command_setup_clocks = 0; // gouraud/CLUT fetch cost of the live command
   } m_vdp1_legacy;
 
   struct {
@@ -266,6 +275,15 @@ protected:
   void vdp1_draw_segment(const rectangle &cliprect, const spoint &a, const spoint &b, uint16_t color_a, uint16_t color_b,
                          bool edge_coverage = false, int texture_row = -1, int texture_width = 0);
   int vdp1_raster_slice_cycles() const;
+  // Hardware-faithful drawing-cost model (ST-013 pp.19-20,52,83; cross-checked
+  // against pinned MiSTer a95b0850 and Mednafen f0ee9d5). All returns are VDP1
+  // clocks; approximations are labeled in the definitions.
+  static constexpr unsigned VDP1_CPU_ACCESS_STEAL = 13; // MiSTer DRAW_ACCESS_WAIT
+  unsigned vdp1_pixel_draw_clocks() const;
+  unsigned vdp1_line_setup_clocks() const;
+  unsigned vdp1_overhead_clocks(unsigned clocks);
+  void vdp1_cpu_memory_access(bool read, bool framebuffer);
+  unsigned vdp1_cpu_wait_cycles(bool read, bool framebuffer) const;
   // Host-only diagnostics; deliberately not part of emulated save state.
   int64_t m_boot_trace_second = -1;
   bool boot_trace_word(u32 address, bool sound, u16 &word);

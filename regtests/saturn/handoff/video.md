@@ -114,8 +114,8 @@ per-change sections appended there. This table records the current branch state.
 
 | Parent | Status on this branch | Notes |
 |---|---|---|
-| V1-01 command/pixel pipeline timing+arbitration | **partial→implemented (timing costs + video-side arbitration)** | Hardware-faithful cost stack (fetch/gouraud/CLUT, line setup, per-dot weights, refresh overhead) and CPU/SCU-access drawing steal implemented; CPU-side wait insertion awaits agent A CPU-04 (API + patch provided). ENDR ~30-clock termination retained. |
-| V1-02 erase/swap/latches | **partial** | Progressive display/VBlank erase, latch set, BEF-at-draw-start fix implemented. Within-raster CPU/erase arbitration: CPU FB access now steals erase/pixel bus time; exact HBlank edge phase remains approximated. |
+| V1-01 command/pixel pipeline timing+arbitration | **partial→implemented (timing costs + video-side arbitration)** | Hardware-faithful cost stack (fetch/gouraud/CLUT — charged even when fully clipped, line setup, per-dot weights, refresh overhead on drawn clocks only) and CPU/SCU-access drawing steal (13-clock bus hold on the next arm) implemented; BEF latches CEF at draw start; erase writers yield stolen pixel-times to CPU FB accesses; CPU-side wait insertion awaits agent A CPU-04 (API + patch provided). Mutation-verified; details in `vdp1_completion.md` 2026-09-16. ENDR ~30-clock termination retained. |
+| V1-02 erase/swap/latches | **partial** | Progressive display/VBlank erase, latch set, BEF-at-draw-start fix implemented. Within-raster CPU/erase arbitration: CPU FB access now steals erase/pixel bus time (13 px, 26 in 8-bpp) with sub-word remainder carry, and display erase resumes partial rows from the saved `next_col` cursor; exact HBlank edge phase remains approximated. |
 | V1-03 rasterization/texture qualification | **partial (qualification open)** | Native walkers implemented; silicon edge qualification open. |
 | V1-04 framebuffer modes/readout | **partial** | Packed/rotation/interlace implemented; physical phase/byte-lane hardware qualification open. |
 | V1-05 undocumented behavior | **partial** | Prohibited opcode flow unchanged (documented abort); FBCR window documented; open-bus reads unchanged. |
@@ -147,7 +147,7 @@ per-change sections appended there. This table records the current branch state.
 ## 6. Build/test commands and current results (this branch)
 
 ```bash
-# ROM-free regression suite (46 scripts; needs pinned history reachable)
+# ROM-free regression suite (47 scripts; needs pinned history reachable)
 python3 regtests/saturn/run_all.py
 # object-level compile validation of Saturn/ST-V TUs (no SDL needed)
 python3 regtests/saturn/validate_build.py
@@ -158,6 +158,13 @@ python3 regtests/saturn/validate_build.py --full
 - Baseline run at the start of this branch: 45/46 scripts pass; `test_vcounter.py`
   required `868d72fc` from the un-squashed history (fixed by fetching
   `refs/heads/*` from origin; all 46 then pass).
+- 2026-09-16 (VDP1 drawing-cost model + memory arbitration): **47/47 scripts and
+  the eleven-TU object build pass.** `test_vdp1.py` totals now 788 interruptible
+  line/polyline cases, 184 active-display erase cases, 158 bounded VBlank erase
+  cases, 32832 command/completion scenarios; five new negative mutations
+  (`bef_latch`, `bus_hold`, `setup_cost`, `erase_steal`, `column_resume`) all
+  fail assertions. Evidence in `regtests/saturn/vdp1_completion.md` (2026-09-16
+  section).
 - Update this section with the results of each committed change.
 
 ## 7. Integration patches for the other agents (minimal, ordered)

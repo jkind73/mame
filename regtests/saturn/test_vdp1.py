@@ -13,7 +13,7 @@ import argparse, os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--baseline', choices=('commands','framebuffer','clipping','sequencer','packed'))
-p.add_argument('--render-mutation',choices=('display_progress','display_order','display_limit','erase_progress','hss_end_pixel','rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank'))
+p.add_argument('--render-mutation',choices=('display_progress','display_order','display_limit','erase_progress','hss_end_pixel','rgb_end_transparency','mon','round','gouraud','endcode','rotation','parameter_b','scale_anchor','scaled_end','line_gouraud','texture_step','eos','line_coverage','quad_coverage','quad_edge','field_boundary','erase_latch','erase_budget','erase_bank','erase_snapshot','line_quantum','line_resume','reset_bank','coverage_resume','texture_row','rectangle_end','rectangle_resume','rectangle_bottom','rectangle_origin','rectangle_fractional','legacy_shading_origin','normal_preclip','scaled_preclip','native_preclip','normal_hidden_end','manual_erase_early','manual_erase_bank','bef_latch','bus_hold','setup_cost','erase_steal','column_resume'))
 a=p.parse_args()
 path='src/mame/sega/saturn.cpp';current=(ROOT/path).read_text()
 baseline_revision='aebdb3de991b7601e4ab2f73786b11730ef6cb47' if a.baseline in ('sequencer','packed') else 'f3b0a5fceb0eeccc21dc83e799c618d79085cc7c'
@@ -26,6 +26,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
+functions+='\n'.join(extract(current,s) for s in ('unsigned saturn_state::vdp1_line_setup_clocks()', 'unsigned saturn_state::vdp1_pixel_draw_clocks()', 'unsigned saturn_state::vdp1_overhead_clocks(', 'void saturn_state::vdp1_cpu_memory_access(', 'unsigned saturn_state::vdp1_cpu_wait_cycles('))+'\n'
 functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_advance_display_erase(', 'void saturn_state::vdp1_begin_display_erase()', 'void saturn_state::vdp1_finish_display_erase()', 'void saturn_state::vdp1_draw_rectangle_slice(', 'void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_line_capacity()', 'void saturn_state::vdp1_advance_vblank_erase(', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
@@ -56,6 +57,11 @@ if a.render_mutation:
         'erase_progress': ('vdp1_advance_vblank_erase(m_vdp1_legacy.vblank_erase_words_per_line);', '(void)0;'),
         'manual_erase_early': ('vdp1_begin_display_erase();\n    }', 'vdp1_clear_framebuffer(m_vdp1_legacy.framebuffer_current_display);\n    }'),
         'manual_erase_bank': ('framebuffer[e.bank][(e.next_row & 255)', 'framebuffer[m_vdp1_legacy.framebuffer_current_display][(e.next_row & 255)'),
+        'bef_latch': ('if (VDP1_CEF)\n    BEF_1();\n  else\n    BEF_0();\n  CEF_0();', 'BEF_0();\n  CEF_0();'),
+        'bus_hold': ('m_vdp1_legacy.bus_hold_clocks += VDP1_CPU_ACCESS_STEAL;', '(void)0;'),
+        'setup_cost': ('if ((current_sprite.CMDCTRL & 0x000f) < 8) {', 'if (false) {'),
+        'erase_steal': ('m_vdp1_legacy.erase_stolen_pixels +=\n        (VDP1_TVM() & 1) ? VDP1_CPU_ACCESS_STEAL * 2 : VDP1_CPU_ACCESS_STEAL;', '(void)0;'),
+        'column_resume': ('const unsigned length = e.right - std::max(e.left, e.next_col);', 'const unsigned length = e.right - e.left;'),
         'normal_hidden_end': ('if (preclip && x < cliprect.min_x) // clip x', 'if (x < cliprect.min_x) // clip x'),
         'scaled_preclip': ('const bool preclip_enabled = !(current_sprite.CMDPMOD & 0x0800);', 'const bool preclip_enabled = true;'),
         'native_preclip': ('if (!(current_sprite.CMDPMOD & 0x0800) && major < 2048 &&', 'if (major < 2048 &&'),
@@ -108,8 +114,10 @@ assert 'vdp1_request_termination();' in extract(current,'void saturn_state::vdp1
 for bank in (0,1):
     for name in ('framebuffer','field_framebuffer'):
         assert f'save_pointer(NAME(m_vdp1_legacy.{name}[{bank}]), 0x20000);' in current
-for field in ('pending','bank','data','left','right','top','bottom','next_row','step'):
+for field in ('pending','bank','data','left','right','top','bottom','next_row','next_col','step'):
     assert f'save_item(NAME(m_vdp1_display_erase.{field}));' in current
+for field in ('draw_overhead','bus_hold_clocks','erase_stolen_pixels','command_setup_clocks'):
+    assert f'save_item(NAME(m_vdp1_legacy.{field}));' in current
 for name in ('field_valid','draw_field','draw_eos','erase_upper_left','erase_lower_right'):
     assert f'save_item(NAME(m_vdp1_legacy.{name}));' in current
 for name in ('pending','active','bank','stride','data','left','right','top','bottom','budget','x','y','words_per_line','step'):
@@ -196,6 +204,11 @@ struct saturn_state {
  bool m_vdp1_raster_building=false,m_vdp1_raster_running=false,execute_lines=false,execute_quads=false;
  int m_vdp1_raster_budget=0;
  int vdp1_raster_slice_cycles() const;
+ unsigned vdp1_line_setup_clocks() const;
+ unsigned vdp1_pixel_draw_clocks() const;
+ unsigned vdp1_overhead_clocks(unsigned);
+ void vdp1_cpu_memory_access(bool,bool);
+ unsigned vdp1_cpu_wait_cycles(bool,bool) const;
  void vdp1_trace(const char*,int=-1,const spoint *bounds=nullptr){}
  void vdp1_vram_w(offs_t,uint32_t,uint32_t);
  void vdp1_reset_raster_queue();
@@ -219,6 +232,7 @@ struct saturn_state {
   uint32_t vblank_erase_budget=0;
   uint16_t vblank_erase_x=0,vblank_erase_y=0,vblank_erase_words_per_line=0;
   uint8_t vblank_erase_step=1;
+  uint32_t draw_overhead=0;uint16_t bus_hold_clocks=0,erase_stolen_pixels=0,command_setup_clocks=0;
   byte_buffer gfx_decode=byte_buffer(0x100000,0x11);
   uint16_t *framebuffer_draw_lines[512]{},*framebuffer_display_lines[512]{};
  } m_vdp1_legacy;
@@ -279,6 +293,7 @@ struct saturn_state {
  void vdp1_draw_poly_line(const rectangle &r){++draws;if(execute_lines)raster_poly_line(r);}
  void vdp1_draw_line(const rectangle &r){++draws;if(execute_lines)raster_line(r);}
  int VDP1_TVM() const {return tvm;}
+ static constexpr unsigned VDP1_CPU_ACCESS_STEAL = 13;
  int VDP1_VBE() const {return (m_vdp1_regs[0]>>3)&1;}
  void vdp1_video_update();
  uint16_t vdp1_read_pixel(const uint16_t *,int) const;
@@ -828,7 +843,7 @@ int main(){
   restored->m_vdp1_raster=quad_engine->m_vdp1_raster;restored->current_sprite=quad_engine->current_sprite;
   restored->m_vdp1_vram=quad_engine->m_vdp1_vram;*restored->vdp1_shading_data=*quad_engine->vdp1_shading_data;
   auto &a=quad_engine->m_vdp1_legacy;auto &b=restored->m_vdp1_legacy;
-  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;
+  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;b.draw_overhead=a.draw_overhead;b.bus_hold_clocks=a.bus_hold_clocks;b.command_setup_clocks=a.command_setup_clocks;
   b.framebuffer_current_draw=0;b.framebuffer_current_display=1;b.framebuffer_mode=0;b.framebuffer_width=512;b.framebuffer_height=256;
   b.framebuffer_double_interlace=0;b.system_cliprect=a.system_cliprect;b.user_cliprect=a.user_cliprect;
   for(int bank=0;bank<2;++bank)b.framebuffer[bank]=a.framebuffer[bank];
@@ -1055,7 +1070,7 @@ int main(){
   restored->m_vdp1_raster=quad_engine->m_vdp1_raster;restored->current_sprite=quad_engine->current_sprite;
   restored->m_vdp1_texture_end=quad_engine->m_vdp1_texture_end;restored->m_vdp1_vram=quad_engine->m_vdp1_vram;
   auto &a=quad_engine->m_vdp1_legacy;auto &b=restored->m_vdp1_legacy;
-  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;
+  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;b.draw_overhead=a.draw_overhead;b.bus_hold_clocks=a.bus_hold_clocks;b.command_setup_clocks=a.command_setup_clocks;
   b.framebuffer_current_draw=0;b.framebuffer_current_display=1;b.framebuffer_width=512;b.framebuffer_height=256;
   b.system_cliprect=a.system_cliprect;b.user_cliprect=a.user_cliprect;
   for(int i=0;i<2;++i)b.framebuffer[i]=a.framebuffer[i];
@@ -1090,7 +1105,7 @@ int main(){
   restored->m_vdp1_raster=quad_engine->m_vdp1_raster;restored->current_sprite=quad_engine->current_sprite;
   restored->m_vdp1_texture_end=quad_engine->m_vdp1_texture_end;restored->m_vdp1_vram=quad_engine->m_vdp1_vram;
   auto &a=quad_engine->m_vdp1_legacy;auto &b=restored->m_vdp1_legacy;
-  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;
+  b.drawing=a.drawing;b.command_position=a.command_position;b.command_return=a.command_return;b.copr=a.copr;b.draw_overhead=a.draw_overhead;b.bus_hold_clocks=a.bus_hold_clocks;b.command_setup_clocks=a.command_setup_clocks;
   b.framebuffer_current_draw=0;b.framebuffer_current_display=1;b.framebuffer_width=512;b.framebuffer_height=256;
   b.system_cliprect=a.system_cliprect;b.user_cliprect=a.user_cliprect;
   for(int i=0;i<2;++i)b.framebuffer[i]=a.framebuffer[i];
@@ -1231,28 +1246,51 @@ int main(){
   assert(queued->m_vdp1_legacy.framebuffer[0]==reference->m_vdp1_legacy.framebuffer[0]);
   ++sliced_cases;
  }
- // ENDR in each phase of a slice kills pending pixels, not just command fetch.
- for(int phase=0;phase<16;++phase){
-  line_program(*queued,6,0xc3,0,63,0);auto &l=queued->m_vdp1_legacy;
-  l.system_cliprect.set(0,511,0,255);queued->vdp1_process_list();queued->fire();queued->advance(phase);
-  queued->vdp1_regs_w(6,0,0xffff);queued->advance(29);
-  assert(l.drawing&&!queued->cef&&queued->scu_.irqs==0);queued->advance(1);
-  assert(!l.drawing&&queued->m_vdp1_raster.count==0&&queued->timer_.delay==-1&&l.copr==0);
-  unsigned pixels=((phase+29)/16)*16;
-  for(int x=64;x<=127;++x)assert(l.framebuffer[0][64*512+x]==(unsigned(x-64)<pixels?0xdef7:0xffff));
-  auto image=l.framebuffer[0];queued->advance(128);assert(l.framebuffer[0]==image&&queued->scu_.irqs==0);
-  queued->vdp1_process_list();assert(queued->m_vdp1_raster.count==0&&l.command_position==0);++sliced_cases;
- }
- // Short final slices do not invent a full 16 clocks of raster work.
- for(int dots : {1,2,15,16,17,31,32,33,64}){
-  line_program(*queued,6,0xc0,0,dots-1,0);queued->m_vdp1_legacy.system_cliprect.set(0,511,0,255);
-  queued->vdp1_process_list();queued->advance(16);assert(queued->timer_.delay==std::min(16,dots));
-  queued->advance(dots);assert(queued->m_vdp1_raster.index==queued->m_vdp1_raster.count&&!queued->cef);
-  queued->advance(15);assert(!queued->cef);queued->advance(1);assert(queued->cef&&queued->scu_.irqs==1);++sliced_cases;
+ // ENDR partway through a slice kills pending pixels, not just command fetch.
+ // The oracle mirrors the documented cost model independently: 16-clock command
+ // fetch (bypassed by fire()), 12-clock line setup with pre-clipping enabled,
+ // 5 clocks per mode-3 dot, and the 48/256 refresh overhead charged on drawn
+ // clocks; the terminate deadline wins ties against slice deadlines.
+ {
+  unsigned accum=0;
+  auto cost=[&](unsigned clocks){accum+=clocks*48;unsigned extra=accum>>8;accum&=0xff;return clocks+extra;};
+  for(int phase=0;phase<=40;++phase){
+   line_program(*queued,6,0xc3,0,63,0);auto &l=queued->m_vdp1_legacy;
+   l.system_cliprect.set(0,511,0,255);
+   l.draw_overhead=0;accum=0;
+   queued->vdp1_process_list();queued->fire();
+   const unsigned deadline=phase*5+30;
+   unsigned expected=0,now=0,arm=cost(12+16*5),slice=1;
+   while(now+arm<deadline&&slice<=4){now+=arm;expected+=16;arm=cost(80);++slice;}
+   queued->advance(phase*5);
+   queued->vdp1_regs_w(6,0,0xffff);queued->advance(29);
+   assert(l.drawing&&!queued->cef&&queued->scu_.irqs==0);queued->advance(1);
+   assert(!l.drawing&&queued->m_vdp1_raster.count==0&&queued->timer_.delay==-1&&l.copr==0);
+   for(int x=64;x<=127;++x)assert(l.framebuffer[0][64*512+x]==(unsigned(x-64)<expected?0xdef7:0xffff));
+   auto image=l.framebuffer[0];queued->advance(128);assert(l.framebuffer[0]==image&&queued->scu_.irqs==0);
+   queued->vdp1_process_list();assert(queued->m_vdp1_raster.count==0&&l.command_position==0);++sliced_cases;
+  }
+  // Slice costs track the dots actually drawn: a short final slice is charged
+  // only for the setup plus its own dots, never a full 16-dot slice.
+  for(int dots : {1,2,15,16,17,31,32,33,64}){
+   line_program(*queued,6,0xc0,0,dots-1,0);queued->m_vdp1_legacy.system_cliprect.set(0,511,0,255);
+   queued->m_vdp1_legacy.draw_overhead=0;accum=0;
+   queued->vdp1_process_list();queued->advance(16);
+   int remain=dots;
+   assert(queued->timer_.delay==(int)cost(12+std::min(remain,16)));
+   while(queued->m_vdp1_raster.index<queued->m_vdp1_raster.count){
+    remain-=16;queued->advance(queued->timer_.delay);
+    if(remain>0)assert(queued->timer_.delay==(int)cost(std::min(remain,16)));
+   }
+   assert(!queued->cef);
+   queued->advance(15);assert(!queued->cef);queued->advance(1);assert(queued->cef&&queued->scu_.irqs==1);++sliced_cases;
+  }
  }
  // A real END before the ENDR deadline cancels that deadline, not the IRQ.
  line_program(*queued,6,0xc0,0,0,0);queued->vdp1_process_list();queued->advance(16);
- queued->vdp1_regs_w(6,0,0xffff);queued->advance(17);
+ while(queued->m_vdp1_raster.index<queued->m_vdp1_raster.count)queued->advance(queued->timer_.delay);
+ queued->vdp1_regs_w(6,0,0xffff);queued->advance(15);
+ assert(!queued->cef&&queued->terminate_.delay!=-1);queued->advance(1);
  assert(queued->cef&&queued->scu_.irqs==1&&queued->terminate_.delay==-1);queued->advance(30);assert(queued->scu_.irqs==1);++sliced_cases;
  // Framebuffer traffic between slices is observed by the next color blend.
  line_program(*queued,6,0xc3,0,63,0);queued->vdp1_process_list();queued->fire();queued->fire();
@@ -1291,16 +1329,115 @@ int main(){
   auto restored=std::make_unique<saturn_state>();restored->execute_lines=true;restored->tvm=queued->tvm;
   restored->m_vdp1_raster=queued->m_vdp1_raster;restored->current_sprite=queued->current_sprite;
   auto &l=queued->m_vdp1_legacy;auto &r=restored->m_vdp1_legacy;
-  r.drawing=l.drawing;r.command_position=l.command_position;r.command_return=l.command_return;r.copr=l.copr;
+  r.drawing=l.drawing;r.command_position=l.command_position;r.command_return=l.command_return;r.copr=l.copr;r.draw_overhead=l.draw_overhead;r.bus_hold_clocks=l.bus_hold_clocks;r.command_setup_clocks=l.command_setup_clocks;
   r.framebuffer_width=l.framebuffer_width;r.framebuffer_height=l.framebuffer_height;r.framebuffer_double_interlace=l.framebuffer_double_interlace;
   r.framebuffer_current_draw=l.framebuffer_current_draw;r.framebuffer_current_display=l.framebuffer_current_display;
   r.system_cliprect=l.system_cliprect;r.user_cliprect=l.user_cliprect;
   for(int i=0;i<2;++i)r.framebuffer[i]=l.framebuffer[i];
   queued->m_vdp1_vram[1]^=0xffff;restored->m_vdp1_vram=queued->m_vdp1_vram;
   restored->timer_.delay=queued->timer_.delay;restored->terminate_.delay=queued->terminate_.delay;restored->vdp1_state_save_postload();
-  for(int i=0;i<100&&l.drawing;++i){queued->advance(16);restored->advance(16);}
+  for(int i=0;i<512&&l.drawing;++i){queued->advance(16);restored->advance(16);}
   assert(!l.drawing&&!r.drawing&&queued->cef==!stop&&restored->cef==!stop&&queued->scu_.irqs==unsigned(!stop)&&restored->scu_.irqs==unsigned(!stop));
   assert(l.framebuffer[0]==r.framebuffer[0]);++sliced_cases;
+ }
+ // V1-01 arbitration and fetch-cost regressions.
+ {
+  // queued has no scanline driver: retire any erase left pending by earlier
+  // lifecycle cases so steal accounting starts clean.
+  queued->m_vdp1_display_erase.pending=false;
+  queued->m_vdp1_legacy.vblank_erase_active=false;
+  queued->m_vdp1_legacy.erase_stolen_pixels=0;
+  queued->m_vdp1_legacy.bus_hold_clocks=0;
+  // BEF latches CEF at the start of drawing (ST-013 printed p.53); CEF then
+  // clears for the new list and stays clear through completion.
+  for(bool previous : {false,true}){
+   line_program(*queued,6,0xc3,0,63,0);
+   queued->cef=previous;queued->bef=!previous;
+   queued->vdp1_process_list();
+   assert(queued->bef==previous&&!queued->cef&&queued->m_vdp1_legacy.drawing);
+   while(queued->m_vdp1_legacy.drawing)queued->fire();
+   assert(queued->cef&&queued->bef==previous);++sliced_cases;
+  }
+  // CPU VRAM accesses outrank drawing (ST-013 printed p.19): each steals a
+  // 13-clock bus hold that defers the NEXT arm; the in-flight arm is not
+  // extended, the hold is consumed exactly once, and accesses issued while no
+  // list is running steal nothing.
+  {
+   unsigned accum=0;
+   auto cost=[&](unsigned clocks){accum+=clocks*48;unsigned extra=accum>>8;accum&=0xff;return clocks+extra;};
+   line_program(*queued,6,0xc3,0,63,0);auto &l=queued->m_vdp1_legacy;
+   l.system_cliprect.set(0,511,0,255);l.draw_overhead=0;accum=0;
+   queued->vdp1_process_list();queued->fire();
+   assert(queued->timer_.delay==(int)cost(12+16*5));
+   queued->fire();
+   const unsigned slice2=cost(80);
+   assert(queued->timer_.delay==(int)slice2);
+   queued->vdp1_vram_w(0x10,0x12345678,0xffffffff);
+   assert(l.bus_hold_clocks==13&&queued->timer_.delay==(int)slice2);
+   queued->fire();
+   assert(queued->timer_.delay==(int)(cost(80)+13)&&l.bus_hold_clocks==0);
+   while(l.drawing)queued->fire();
+   assert(queued->cef&&l.bus_hold_clocks==0&&l.command_setup_clocks==0);
+   queued->vdp1_vram_w(0x10,0,0xffffffff);
+   assert(l.bus_hold_clocks==0);++sliced_cases;
+  }
+  // A CPU framebuffer access during drawing steals the same hold; with no
+  // erase running it must not accrue erase pixel-time.
+  {
+   line_program(*queued,6,0xc0,0,63,0);auto &l=queued->m_vdp1_legacy;
+   l.system_cliprect.set(0,511,0,255);queued->vdp1_process_list();queued->fire();
+   queued->vdp1_framebuffer0_w(4,0xffffffff,0xffffffff);
+   assert(l.bus_hold_clocks==13&&l.erase_stolen_pixels==0);
+   while(l.drawing)queued->fire();
+   assert(queued->cef);++sliced_cases;
+  }
+  // CPU-side wait contract: a VRAM request colliding with drawing costs more
+  // than the documented ten waits (12 read / 10 write here), nothing once the
+  // list has ended; the CPU framebuffer window reports no display contention.
+  {
+   line_program(*queued,6,0xc0,0,63,0);auto &l=queued->m_vdp1_legacy;
+   l.system_cliprect.set(0,511,0,255);queued->vdp1_process_list();queued->fire();
+   assert(queued->vdp1_cpu_wait_cycles(true,false)==12);
+   assert(queued->vdp1_cpu_wait_cycles(false,false)==10);
+   assert(queued->vdp1_cpu_wait_cycles(true,true)==0);
+   while(l.drawing)queued->fire();
+   assert(queued->vdp1_cpu_wait_cycles(true,false)==0);++sliced_cases;
+  }
+  // Gouraud and color-lookup fetch costs ride the first-slice arm, and are
+  // charged even when pre-clipping rejects every pixel (they still delay the
+  // successor's fetch); skip and auxiliary commands never pay them.
+  {
+   unsigned accum=0;
+   auto cost=[&](unsigned clocks){accum+=clocks*48;unsigned extra=accum>>8;accum&=0xff;return clocks+extra;};
+   for(unsigned pmod : {0xc0u,0xc3u,0xc4u,0xc7u,0xc8u,0xcbu}){
+    line_program(*queued,6,pmod,0,63,0);auto &l=queued->m_vdp1_legacy;
+    l.system_cliprect.set(0,511,0,255);l.draw_overhead=0;accum=0;
+    queued->vdp1_process_list();queued->fire();
+    const unsigned dpc=((pmod&3)==1||(pmod&3)==3)?5u:1u;
+    const unsigned setup=(pmod&4?4u:0u)+((pmod&0x38)==8?16u:0u);
+    assert(queued->timer_.delay==(int)(cost(12+16*dpc)+setup));
+    while(l.drawing)queued->fire();
+    assert(queued->cef&&queued->scu_.irqs==1);++sliced_cases;
+   }
+   for(unsigned pmod : {0xc0u,0xc4u,0xc8u}){
+    line_program(*queued,6,pmod,0,63,0);auto &l=queued->m_vdp1_legacy;
+    l.system_cliprect.set(0,31,0,7); // pre-clip rejects the whole line
+    l.draw_overhead=0;
+    queued->vdp1_process_list();queued->fire();
+    const unsigned setup=(pmod&4?4u:0u)+((pmod&0x38)==8?16u:0u);
+    assert(queued->timer_.delay==(int)(16+setup));
+    while(l.drawing)queued->fire();
+    assert(queued->cef&&queued->scu_.irqs==1);++sliced_cases;
+   }
+   // A skip command fetches and jumps without any drawing cost.
+   line_program(*queued,6,0xc4,0,63,0);auto &l=queued->m_vdp1_legacy;
+   l.system_cliprect.set(0,511,0,255);
+   queued->m_vdp1_vram[0]|=0x4000<<16; // jump next without drawing
+   queued->vdp1_process_list();queued->fire();
+   assert(queued->timer_.delay==16);
+   while(l.drawing)queued->fire();
+   assert(queued->cef&&queued->scu_.irqs==1);++sliced_cases;
+  }
  }
  std::cout<<sliced_cases<<" interruptible line/polyline image/lifecycle cases passed\n";
  unsigned control_cases=0;
@@ -1419,6 +1556,48 @@ int main(){
   ++display_cases;
  }
 
+ // A CPU/SCU framebuffer access outranks the display erase writer mid-row:
+ // its pixel-time is deducted from the next raster's word capacity, leaving a
+ // partial row that later rasters resume from the saved column cursor without
+ // gaps or re-erased words.
+ for(int mode : {0,1})for(int bank : {0,1}){
+  auto t=make_display_state(mode,bank);auto &l=t->m_vdp1_legacy;
+  t->vdp2_.hreso=0;t->vdp2_.vblank_start=225;t->vdp2_.ystep=1;
+  const unsigned width=24;
+  l.erase_upper_left=1;l.erase_lower_right=((width/8)<<9)|4;l.ewdr=0xa1b2;
+  for(auto &fb:l.framebuffer)std::fill(fb.begin(),fb.end(),0x5678);
+  t->vdp1_regs_w(1,2,0xffff);
+  t->scanline_tick(0);assert(t->m_vdp1_display_erase.pending);
+  t->scanline_tick(2);
+  assert(l.framebuffer[bank^1][512]==0xa1b2&&l.framebuffer[bank^1][512+width-1]==0xa1b2);
+  assert(t->m_vdp1_display_erase.next_row==2&&t->m_vdp1_display_erase.next_col==0);
+  // 13 pixel-times (26 pixels in 8-bit mode) = six words of the next raster.
+  t->vdp1_framebuffer0_w(0,0xffffffff,0xffffffff);
+  const unsigned stolen=6;
+  t->scanline_tick(3);
+  assert(t->m_vdp1_display_erase.next_row==2&&t->m_vdp1_display_erase.next_col==width-stolen);
+  for(unsigned x=0;x<width;++x)
+   assert(l.framebuffer[bank^1][2*512+x]==(x<width-stolen?0xa1b2:0x5678));
+  // The next raster finishes the partial row and the row after it, but never
+  // runs past the rows already presented (row 4 waits for its own raster).
+  t->scanline_tick(4);
+  assert(t->m_vdp1_display_erase.next_row==4&&t->m_vdp1_display_erase.next_col==0);
+  for(unsigned x=0;x<width;++x){
+   assert(l.framebuffer[bank^1][3*512+x]==0xa1b2);
+   assert(l.framebuffer[bank^1][4*512+x]==0x5678);
+  }
+  // The final eligible raster completes the window exactly once.
+  t->scanline_tick(5);assert(!t->m_vdp1_display_erase.pending);
+  t->scanline_tick(6);
+  auto drawn_bank=l.framebuffer[bank]; // CPU-written draw bank, post-access
+  for(unsigned i=0;i<0x20000;++i){unsigned y=i/512,x=i%512;
+   bool erased=y>=1&&y<=4&&x<width;
+   assert(l.framebuffer[bank^1][i]==(erased?0xa1b2:0x5678));
+   assert(l.framebuffer[bank][i]==drawn_bank[i]);
+  }
+  ++display_cases;
+ }
+
  // One-cycle mode erases the displayed bank behind readout, not the newly
  // selected draw bank at swap. The erased bank becomes drawing-owned next field.
  for(int mode : {0,1})for(int bank : {0,1}){
@@ -1462,6 +1641,34 @@ int main(){
   l.erase_upper_left=0;l.erase_lower_right=1<<9;s->vdp1_begin_vblank_erase();
   l.vblank_erase_pending=true;s->vdp1_cancel_erase();s->vdp1_finish_vblank_erase();
   assert(!l.vblank_erase_pending&&!l.vblank_erase_active&&l.framebuffer[bank][0]==0x5555);
+  ++erase_cases;
+ }
+ // CPU/SCU framebuffer accesses outrank the VBlank erase writer (ST-013
+ // printed p.20): each costs the erase 13 pixel-times (26 in 8-bit modes),
+ // converted to whole words of that raster's capacity, with the sub-word
+ // remainder carried into the next stolen raster.
+ for(int bpp : {0,1})for(int bank=0;bank<2;++bank){
+  auto &l=s->m_vdp1_legacy;s->tvm=bpp;l.framebuffer_double_interlace=0;
+  s->vdp1_cancel_erase();s->vdp1_abort_draw();
+  l.bus_hold_clocks=0;l.erase_stolen_pixels=0;
+  l.framebuffer_width=512;l.framebuffer_height=256;
+  l.framebuffer_current_display=bank;l.framebuffer_current_draw=bank^1;
+  l.ewdr=0x1357;l.erase_upper_left=0;l.erase_lower_right=(2<<9)|3;
+  for(auto &fb:l.framebuffer)std::fill(fb.begin(),fb.end(),0x2468);
+  s->vdp1_begin_vblank_erase();
+  l.vblank_erase_budget=1000;
+  s->vdp1_framebuffer0_w(0,0xffffffff,0xffffffff);
+  const unsigned pixels=bpp?26:13,per_word=bpp?4:2;
+  const unsigned stolen1=pixels/per_word,remainder=pixels%per_word;
+  assert(l.erase_stolen_pixels==pixels&&l.bus_hold_clocks==0);
+  s->vdp1_advance_vblank_erase(20);
+  assert(l.erase_stolen_pixels==remainder);
+  for(unsigned i=0;i<16;++i)assert(l.framebuffer[bank][i]==(i<20-stolen1?0x1357:0x2468));
+  s->vdp1_framebuffer0_w(0,0xffffffff,0xffffffff);
+  const unsigned stolen2=(remainder+pixels)/per_word;
+  s->vdp1_advance_vblank_erase(20);
+  for(unsigned i=0;i<16;++i)assert(l.framebuffer[bank][i]==(i<40-stolen1-stolen2?0x1357:0x2468));
+  assert(l.erase_stolen_pixels==(remainder+pixels)%per_word);
   ++erase_cases;
  }
  // Mid-row exhaustion, sparse windows and restoration of a pending erase.

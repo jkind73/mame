@@ -1,5 +1,75 @@
 # VDP1 completion audit — 2026-09-14
 
+## Drawing-cost model and memory arbitration — 2026-09-16
+
+The command engine now charges a hardware-faithful cost stack for every action it
+arms, and CPU/SCU accesses to VDP1 memory steal time from drawing and erasing:
+
+- **Command fetch** 16 clocks (unchanged, Ymir `VDP1ProcessCommand` / Mednafen
+  `DoDrawing`). **Gouraud table +4 and CLUT +16 clocks** are charged after command
+  decode for drawing commands (opcode < 8), *including fully pre-clipped commands* —
+  the fetches happen before clipping can reject the primitive, so they delay the
+  successor's fetch. Skip and auxiliary (clip/system-clip) commands pay nothing.
+- **Line setup** 8 clocks per drawn line, +4 when pre-clip detection is enabled
+  (PCD=0). ST-013-R3-061694 printed p.83 documents the pre-clip stage as "up to five
+  CPU clock cycles for one line"; the 8-clock base is Mednafen-measured, not
+  Sega-published.
+- **Per-dot** 1 clock (ST-013 printed p.20), 5 clocks for destination-reading pixel
+  operations (half-transparent mode 3, MSB shadow mode 1; Mednafen-measured). A
+  raster slice is costed as the sum of its segments' line setups plus drawn dots,
+  so a short final slice is charged only for its own dots.
+- **Fractional refresh/turnaround overhead** 48/256 (16-bpp) / 24/256 (8-bpp) of
+  drawn clocks via a persisting accumulator (Mednafen `AdjustDrawTiming`). Applied
+  to drawn clocks only — never to command/gouraud/CLUT fetch words or the plain
+  16-clock fetch arm. The accumulator persists across lists and save/load; aborts
+  retain it but clear pending bus holds and setup charges.
+- **Bus hold:** each CPU/SCU VRAM or framebuffer access through the shared handlers
+  (`vdp1_vram_r/w`, `vdp1_framebuffer0_r/w`) adds 13 VDP1 clocks (MiSTer
+  `DRAW_ACCESS_WAIT` recovery) to the *next* arm while a list is drawing; the
+  in-flight arm is not extended. `vdp1_cpu_wait_cycles(read, framebuffer)` exposes
+  the CPU-side estimate (>10 waits per ST-013 printed p.19; 12 read / 10 write
+  here) as the contract input for agent A's arbiter — it is **not applied to SH-2
+  execution in this branch**.
+- **Erase steal:** a CPU/SCU framebuffer access during an active VBlank or display
+  erase costs the erase writer 13 pixel-times (26 in 8-bpp), converted to whole
+  erased words per raster with the sub-word remainder carried forward
+  (ST-013 printed p.20: the access outranks the erase writer).
+- **Display erase** now paces by a per-raster word budget
+  (`(last_row − next_row + 1) × row_width − stolen words`) with a saved
+  `next_col` cursor, so a stolen raster leaves a partial row that later rasters
+  resume without gaps or re-erased words. Rows are still only erased after being
+  presented (`update_partial` first) and never run past the rows readout completed.
+- **BEF latch:** `vdp1_process_list` latches BEF ← CEF before clearing CEF for the
+  new list (ST-013 printed p.53: BEF is written with the CEF value "when the frame
+  buffer is changed or at the start of drawing").
+
+Cross-checks: MiSTer Saturn VDP1 at `a95b085038ace57fa621558d60a7adc7a3c53f78`
+(`VS_GRD_READ`/`VS_CLT_READ` lengths, `DRAW_ACCESS_WAIT` recovery); Mednafen
+`f0ee9d5` (line setup, per-dot weights, `AdjustDrawTiming` overhead, same 4/16
+setup charges); Ymir `6d779960` (16-clock fetch). The Sega-published numbers are
+the fetch/erase priority statements and the p.83 pre-clip bound; the 8-clock line
+base, 5-clock destination-read dot weight and the 48/256 fraction remain labeled
+approximations, not silicon measurements.
+
+Validation: `test_vdp1.py` gained a from-scratch cost-oracle suite (the ENDR-phase
+and short-final-slice cases now predict slice deadlines from the documented model,
+including the fractional accumulator) plus regressions for the BEF latch, the bus
+hold (steal defers the next arm exactly once; no hold when idle), the CPU wait
+contract, clipped-gouraud/CLUT setup charges, VBlank erase steal with remainder
+carry, and display-erase partial-row resumption. Four mid-draw save/restore
+scenarios now copy the new timing accumulators, proving save/load keeps the
+drawing timeline deterministic. Five new negative mutations (`bef_latch`,
+`bus_hold`, `setup_cost`, `erase_steal`, `column_resume`) all compile and fail
+assertions. Totals: 788 interruptible line/polyline cases (was 773), 184
+active-display erase cases (was 180), 158 bounded VBlank erase cases (was 154);
+**47/47 regression scripts and the eleven-TU object build pass.**
+
+Remaining: CPU-side wait insertion into SH-2/SCU-DMA execution (agent A CPU-04 /
+BUS-02; API + §7 patch provided), exact silicon wait states (labeled
+approximations above), mid-slice granularity (pixels commit in 16-dot batches; an
+ENDR deadline cannot un-commit a fired slice), and real runtime/save-load
+qualification in the linked build. Full VDP1 completion is not claimed.
+
 ## Active-display erase — 2026-09-15
 
 Manual and one-cycle display erase now advance behind scanout, instead of clearing
