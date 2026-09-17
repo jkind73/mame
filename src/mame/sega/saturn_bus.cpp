@@ -141,10 +141,17 @@ int saturn_bus_device::flags_to_penalty(uint16_t flags, bool is_write) const
         case saturn_scu_device::A_BUS_CS1: return a1nw + 3;
         case saturn_scu_device::A_BUS_CS2: return a3nw + 3;
         case saturn_scu_device::A_BUS_DUMMY: return 3;
+        case saturn_scu_device::B_BUS_VDP1: return is_write ? 14 : 9;
+        case saturn_scu_device::B_BUS_VDP2: return is_write ? 20 : 3;
+        case saturn_scu_device::B_BUS_SCSP: return is_write ? 24 : 13;
+        case saturn_scu_device::B_BUS_SCU:  return is_write ? 8 : 4;
+        case saturn_scu_device::B_BUS: return is_write ? 8 : 4;
+        case saturn_scu_device::C_BUS: return 0;
         default: break;
     }
-    // B-Bus penalties not yet qualified from hardware; return 0 for now (R)
-    // Future: VDP1 9/14, VDP2 3/20, SCSP 13/24, SCU 4/8 per MiSTer
+    // Generic fallback based on bus
+    uint16_t bus = flags & 0x0300;
+    if (bus == 0x0200) return is_write ? 8 : 4;
     return 0;
 }
 

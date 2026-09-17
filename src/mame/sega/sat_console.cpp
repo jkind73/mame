@@ -810,6 +810,20 @@ void sat_console_state::machine_start() {
   install_bus_wait(m_maincpu->space(AS_PROGRAM), true);
   install_bus_wait(m_slave->space(AS_PROGRAM), false);
 
+  // BUS-02: B-Bus device readiness (VDP1 drawing stall, VDP2 cycle slots)
+  m_bus->set_ready_cb(SATURN_BUS_B, [this](const saturn_bus_transaction &t) -> bool {
+    uint16_t flags = t.flags;
+    uint32_t addr = t.address;
+    if (flags == saturn_scu_device::B_BUS_VDP1) {
+      return is_vdp1_cpu_accessible(addr);
+    }
+    if (flags == saturn_scu_device::B_BUS_VDP2) {
+      return is_vdp2_cpu_accessible(addr);
+    }
+    // SCSP and SCU always ready for CPU (penalty handles wait)
+    return true;
+  });
+
   m_maincpu->space(AS_PROGRAM)
       .install_readwrite_handler(
           0x02400000, 0x027fffff,

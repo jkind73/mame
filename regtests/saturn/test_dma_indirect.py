@@ -142,18 +142,21 @@ struct callback {
   int last = -1;
   void operator()(int value) { ++calls; last = value; }
 };
+struct bus_stub { bool found() const { return false; } void set_asr_regs(uint32_t,uint32_t,uint32_t){} bool acquire_dma_buses(uint8_t,uint16_t,uint16_t,int,int){return true;} void release_dma_buses(uint8_t){} void request_bus(int,int,bool=false){} void release_all(int){} };
+struct bus_opt { bus_stub impl; bool found() const { return impl.found(); } bus_stub* operator->(){ return &impl; } const bus_stub* operator->() const { return &impl; } };
 struct saturn_scu_device {
 // PRODUCTION_TYPES
   using dma_transfer_func = void (saturn_scu_device::*)(dma_channel_t &);
   static const dma_transfer_func dma_transfer_table[4];
   static constexpr u32 IST_DMAILL = 1 << 12;
-  u32 m_dma_status = 0, m_ist = 0, m_abus_asr[2]{};
+  u32 m_dma_status = 0, m_ist = 0, m_abus_asr[2]{}, m_abus_aref = 0x10;
   int m_dma_clock_ref = 100;
   unsigned irq_checks = 0;
   timer tim;
   timer *m_dma_tick_timer = &tim;
   memory mem;
   memory *m_hostspace = &mem;
+  bus_opt m_bus;
   callback m_main_dtack_cb, m_sound_dtack_cb, m_main_steal_cb, m_sound_steal_cb;
   saturn_scu_device() { for (auto &ch : m_dma) ch = {}; }
   void test_pending_irqs() { ++irq_checks; }

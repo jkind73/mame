@@ -1604,6 +1604,19 @@ void stv_state::machine_start() {
   install_bus_wait(m_maincpu->space(AS_PROGRAM), true);
   install_bus_wait(m_slave->space(AS_PROGRAM), false);
 
+  // BUS-02: B-Bus readiness same as Saturn
+  m_bus->set_ready_cb(SATURN_BUS_B, [this](const saturn_bus_transaction &t) -> bool {
+    uint16_t flags = t.flags;
+    uint32_t addr = t.address;
+    if (flags == saturn_scu_device::B_BUS_VDP1) {
+      return is_vdp1_cpu_accessible(addr);
+    }
+    if (flags == saturn_scu_device::B_BUS_VDP2) {
+      return is_vdp2_cpu_accessible(addr);
+    }
+    return true;
+  });
+
   // fill in the factory EEPROM image before the NVRAM device copies the
   // region during nvram_load()
   stv_make_default_eeprom();

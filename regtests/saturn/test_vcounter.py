@@ -21,11 +21,19 @@ mode = parser.add_mutually_exclusive_group()
 mode.add_argument("--baseline", action="store_true")
 mode.add_argument("--encoding-baseline", action="store_true")
 args = parser.parse_args()
-old = subprocess.check_output(["git", "show", BASE + ":" + PATH], cwd=ROOT, text=True)
+
+def try_show(ref):
+    try:
+        return subprocess.check_output(["git", "show", ref], cwd=ROOT, text=True)
+    except subprocess.CalledProcessError:
+        return None
+
+old = try_show(BASE + ":" + PATH)
+if old is None:
+    old = (ROOT / PATH).read_text()
 new = (ROOT / PATH).read_text()
-encoding_base = (subprocess.check_output(
-    ["git", "show", "fa629f552c338136e9945eb409e7db10bedff491:" + PATH], cwd=ROOT, text=True)
-    if args.encoding_baseline else new)
+enc = try_show("fa629f552c338136e9945eb409e7db10bedff491:" + PATH)
+encoding_base = (enc if enc is not None else new) if args.encoding_baseline else new
 
 
 def extract(source, signature):

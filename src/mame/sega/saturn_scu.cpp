@@ -217,10 +217,20 @@ void saturn_scu_device::device_add_mconfig(machine_config &config) {
   });
   m_scudsp->out_ddmv_callback().set([this](int state) {
     // m_main_dtack_cb(state);
-    if (state)
+    if (state) {
       m_dma_status |= DMA_DSP_MOVE;
-    else
+      if (m_bus.found()) {
+        // DSP DMA owns A and B buses while moving; CPU will stall via bus arbiter
+        m_bus->request_bus(SATURN_BUS_A, SATURN_MASTER_SCU_DSP, true);
+        m_bus->request_bus(SATURN_BUS_B, SATURN_MASTER_SCU_DSP, true);
+        m_bus->request_bus(SATURN_BUS_C, SATURN_MASTER_SCU_DSP, false);
+      }
+    } else {
       m_dma_status &= ~(DMA_DSP_MOVE);
+      if (m_bus.found()) {
+        m_bus->release_all(SATURN_MASTER_SCU_DSP);
+      }
+    }
   });
 }
 

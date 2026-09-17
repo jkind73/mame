@@ -72,18 +72,21 @@ struct memory {
   u32 read_dword(u32 address) { reads.push_back(address); return 0xabcd1234; }
   void write_word(u32 address, u16 data) { writes.emplace_back(address, data); }
 };
+struct bus_stub { bool found() const { return false; } void set_asr_regs(uint32_t,uint32_t,uint32_t){} bool acquire_dma_buses(uint8_t,uint16_t,uint16_t,int,int){return true;} void release_dma_buses(uint8_t){} };
+struct bus_opt { bus_stub impl; bool found() const { return impl.found(); } bus_stub* operator->(){ return &impl; } const bus_stub* operator->() const { return &impl; } };
 struct saturn_scu_device {
 // PRODUCTION_BUS_FLAGS
 // PRODUCTION_CHANNEL
   enum dma_state_t : u32 { DMA_STATE_IDLE=0, DMA_STATE_MOVE=0x10, DMA_STATE_WAIT=0x20 };
   enum { DMA_MODE_RESET=0, DMA_MODE_CBUS_WRITE=1, DMA_MODE_CD=2 };
   static constexpr u32 IST_DMAILL = 1 << 12;
-  u32 m_dma_status = 0, m_ist = 0, m_abus_asr[2]{};
+  u32 m_dma_status = 0, m_ist = 0, m_abus_asr[2]{}, m_abus_aref = 0x10;
   int m_dma_clock_ref = 100, irq_checks = 0;
   timer tim;
   timer *m_dma_tick_timer = &tim;
   memory mem;
   memory *m_hostspace = &mem;
+  bus_opt m_bus;
   saturn_scu_device() { for (auto &ch : m_dma) ch = {}; }
   void test_pending_irqs() { ++irq_checks; }
   std::tuple<u16, int> get_address_flags(u32, bool);

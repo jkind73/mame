@@ -1,9 +1,98 @@
 # Saturn/ST-V Bus and Execution Handoff — Core Contracts
-**Status:** Draft v1 — Agent A ownership SYS-CLK01/SYS-MEM01/CPU-04/BUS-01..03/SCU-02..04/DSP-02/03/DCC-01
+**Status:** Implemented BUS-01/02/03 v2 — Agent A ownership SYS-CLK01/SYS-MEM01/CPU-04/BUS-01..03/SCU-02..04/DSP-02/03/DCC-01
 **Baseline:** 03c19a78e4cee7e9008a1100118934e8d84c0ea5 (arena/01a0ac88-mame)
-**Date:** 2026-09-16 UTC
+**Date:** 2026-09-16 UTC — Updated with BUS-02/03 implementation
+**Branch:** arena/01a0ac88-mame (PR #4 merged d98482eb, continuing)
 
 This file defines the exact API signatures and contracts required before implementing coherent bus arbitration and deferred CPU transactions. It is the blocking prerequisite for BUS-01/02/03 and CPU-04.
+
+## Current Implementation Snapshot (BUS-02/03)
+
+Implemented in `src/mame/sega/saturn_bus.{h,cpp}`, `saturn.h/.cpp`, `sat_console.cpp`, `stv.cpp`, `saturn_scu.cpp`:
+
+```cpp
+// saturn_bus.h — master and bus enums (exact)
+enum saturn_bus_master : uint8_t {
+    SATURN_MASTER_NONE = 0xff,
+    SATURN_MASTER_MAIN_SH2 = 0,
+    SATURN_MASTER_SLAVE_SH2,
+    SATURN_MASTER_SCU_DMA0,
+    SATURN_MASTER_SCU_DMA1,
+    SATURN_MASTER_SCU_DMA2,
+    SATURN_MASTER_SCU_DSP,
+    SATURN_MASTER_SOUND_68K,
+    SATURN_MASTER_VDP1,
+    SATURN_MASTER_VDP2,
+    SATURN_MASTER_CD_BLOCK,
+    SATURN_MASTER_COUNT
+};
+enum saturn_bus_type : uint8_t {
+    SATURN_BUS_A = 0,
+    SATURN_BUS_B,
+    SATURN_BUS_C,
+    SATURN_BUS_SCU_REG,
+    SATURN_BUS_DSP,
+    SATURN_BUS_COUNT
+};
+struct saturn_bus_transaction {
+    uint32_t address;
+    uint8_t  size;
+    bool     is_write;
+    bool     is_fetch;
+    bool     is_burst;
+    saturn_bus_master master;
+    saturn_bus_type   bus;
+    uint16_t flags;   // from SCU get_address_flags
+    int      penalty;  // AnNW+3 etc
+    bool     committed;
+};
+using saturn_bus_ready_cb = std::function<bool (const saturn_bus_transaction &)>;
+class saturn_bus_device : public device_t {
+    bool request_bus(saturn_bus_type bus, saturn_bus_master master, bool burst=false);
+    void release_bus(saturn_bus_type bus, saturn_bus_master master);
+    void release_all(saturn_bus_master master);
+    bool is_bus_owned(saturn_bus_type bus, saturn_bus_master *owner=nullptr) const;
+    uint32_t get_cpu_wait(offs_t offset, bool is_write, saturn_bus_master cpu_master);
+    void set_ready_cb(saturn_bus_type bus, saturn_bus_ready_cb cb);
+    bool acquire_dma_buses(uint8_t level, uint16_t src_flags, uint16_t dst_flags, int src_penalty, int dst_penalty);
+    void release_dma_buses(uint8_t level);
+    void set_asr_regs(uint32_t asr0, uint32_t asr1, uint32_t aref);
+};
+```
+
+```cpp
+// saturn.h — readiness gates (exact)
+bool is_vdp1_cpu_accessible(uint32_t address) const; // checks m_vdp1_legacy.drawing, vblank_erase_active, display_erase.pending
+bool is_vdp2_cpu_accessible(uint32_t address) const; // if address in 0x05E00000-05EFFFFF, calls vdp2_normal_vram_access(addr,0)
+bool vdp2_normal_vram_access(uint32_t address, unsigned command) const; // existing, command 0=CPU
+```
+
+```cpp
+// sat_console.cpp / stv.cpp machine_start wiring (exact)
+m_bus->set_ready_cb(SATURN_BUS_B, [this](const saturn_bus_transaction &t)->bool {
+    if (t.flags == B_BUS_VDP1) return is_vdp1_cpu_accessible(t.address);
+    if (t.flags == B_BUS_VDP2) return is_vdp2_cpu_accessible(t.address);
+    return true;
+});
+```
+
+```cpp
+// saturn_bus.cpp flags_to_penalty (exact, MiSTer a95b085 derived)
+case B_BUS_VDP1: return is_write ? 14 : 9;
+case B_BUS_VDP2: return is_write ? 20 : 3;
+case B_BUS_SCSP: return is_write ? 24 : 13;
+case B_BUS_SCU:  return is_write ? 8 : 4;
+```
+
+```cpp
+// saturn_scu.cpp DSP arbitration (exact)
+m_scudsp->out_ddmv_callback().set([this](int state){
+    if(state){ m_dma_status|=DMA_DSP_MOVE; m_bus->request_bus(SATURN_BUS_A, SATURN_MASTER_SCU_DSP, true); m_bus->request_bus(SATURN_BUS_B, SATURN_MASTER_SCU_DSP, true); m_bus->request_bus(SATURN_BUS_C, SATURN_MASTER_SCU_DSP, false); }
+    else { m_dma_status&=~DMA_DSP_MOVE; m_bus->release_all(SATURN_MASTER_SCU_DSP); }
+});
+```
+
+**Contracts preserved:** No host sleeps, devices/delegates via std::function (ready_cb), no game-name tests, penalties from ASR or MiSTer documented B-Bus table, not guessed.
 
 ## 1. Time Units
 

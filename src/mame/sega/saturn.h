@@ -168,6 +168,8 @@ protected:
   std::array<std::array<uint8_t, 16>, 4> m_vdp2_fetch_slots{};
   void vdp2_prepare_vram_access();
   bool vdp2_normal_vram_access(uint32_t address, unsigned command) const;
+  bool is_vdp1_cpu_accessible(uint32_t address) const;
+  bool is_vdp2_cpu_accessible(uint32_t address) const;
   bool m_vdp2_composition_active = false;
   void vdp2_begin_composition(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void vdp2_compose_pixel(bitmap_rgb32 &bitmap, int x, int y, rgb_t color,

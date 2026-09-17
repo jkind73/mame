@@ -6221,6 +6221,30 @@ bool saturn_state::vdp2_normal_vram_access(uint32_t address, unsigned command) c
   return slots != 0;
 }
 
+bool saturn_state::is_vdp1_cpu_accessible(uint32_t address) const {
+  // VDP1 VRAM (0x05C00000-05C7FFFF) and framebuffer (0x05C80000-05CFFFFF)
+  // are stalled while drawing. Also vblank erase and display erase access FB.
+  // ST-013: CPU cannot access framebuffer being drawn or erased.
+  // Use m_vdp1_legacy.drawing as primary guard; erase active also blocks.
+  if (m_vdp1_legacy.drawing)
+    return false;
+  if (m_vdp1_legacy.vblank_erase_active)
+    return false;
+  if (m_vdp1_legacy.framebuffer_current_draw == m_vdp1_display_erase.bank && m_vdp1_display_erase.pending)
+    return false;
+  return true;
+}
+
+bool saturn_state::is_vdp2_cpu_accessible(uint32_t address) const {
+  // Only VRAM (0x05E00000-05EFFFFF) has cycle contention.
+  // CRAM (05F00000-05F7FFFF) and regs (05F80000-05FBFFFF) are always accessible.
+  uint32_t a = address & 0x07FFFFFF;
+  if ((a & 0x00F00000) != 0x00E00000)
+    return true;
+  // CPU access command is 0
+  return vdp2_normal_vram_access(a, 0);
+}
+
 uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
     uint8_t access_command_pnmdr, uint8_t access_command_cpdr,
     uint8_t bitmap_enable) {
