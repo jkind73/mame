@@ -183,6 +183,7 @@ void scudsp_cpu_device::set_dest_mem_reg( uint32_t mode, uint32_t value )
 			break;
 		case 0x4:   /* RX */
 			m_rx.ui = value;
+			m_update_mul = 1;
 			break;
 		case 0x5:   /* PL */
 			m_pl.ui = value;
