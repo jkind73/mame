@@ -18,11 +18,20 @@ methods='\n'.join(extract(sig) for sig in (
     'void scsp_device::UpdateReg(', 'void scsp_device::UpdateRegR(',
     'void scsp_device::CheckPendingIRQ(', 'void scsp_device::MainCheckPendingIRQ(',
     'void scsp_device::update_main_irq(', 'void scsp_device::ResetInterrupts('))
+# Bound old-source recursion before it can exhaust the host stack.
+dma=extract('void scsp_device::exec_dma(')
+dma=dma.replace('void scsp_device::exec_dma() {','void scsp_device::exec_dma() { assert(++dma_depth==1);')
+methods+='\n'+dma[:-1]+'--dma_depth;}'
 mutant=os.environ.get('SCSP_IRQ_MUTANT','')
 # Old-source negative controls retain their old bodies; add unused mask parameters
 # solely to make the old no-mask API callable by the same byte-lane harness.
 methods=methods.replace('u16 scsp_device::read(offs_t offset) {','u16 scsp_device::read(offs_t offset, u16 mem_mask) {').replace('u16 scsp_device::r16(u32 addr) {','u16 scsp_device::r16(u32 addr, u16 mem_mask) {').replace('void scsp_device::UpdateRegR(int reg) {','void scsp_device::UpdateRegR(int reg, u16 mem_mask) {')
 original=methods
+if mutant=='dma-self-write':methods=methods.replace('if (reg_addr < 0x412 || reg_addr > 0x416)', 'if (true)')
+if mutant=='dma-memory-step':methods=methods.replace('mem_addr = (mem_addr + 2) & 0xffffe;', 'mem_addr = mem_addr;')
+if mutant=='dma-register-step':methods=methods.replace('reg_addr = (reg_addr + 2) & 0xffe;', 'reg_addr = reg_addr;')
+if mutant=='dma-gate':methods=methods.replace('gate ? 0 : tmp', 'tmp')
+if mutant=='dma-wrap':methods=methods.replace('(mem_addr + 2) & 0xffffe', '(mem_addr + 2)')
 if mutant=='midi-read-mask':methods=methods.replace('(mem_mask & 0x00ff) && !machine().side_effects_disabled()', '!machine().side_effects_disabled()')
 if mutant=='midi-debug-pop':methods=methods.replace(' && !machine().side_effects_disabled()', '')
 if mutant=='midi-merge-pop':methods=methods.replace('r16(offset * 2, 0)', 'r16(offset * 2)')
@@ -42,6 +51,9 @@ cpp=r'''
 #include <cstdint>
 #include <iostream>
 #include <iterator>
+#include <map>
+#include <vector>
+#include <utility>
 using u8=uint8_t;using u16=uint16_t;using u32=uint32_t;using s16=int16_t;using s32=int32_t;using offs_t=u32;
 constexpr int CLEAR_LINE=0,ASSERT_LINE=1;
 #define COMBINE_DATA(p) (*(p)=(*(p)&~mem_mask)|(data&mem_mask))
@@ -62,8 +74,13 @@ struct scsp_device {
  bool inspecting=false;bool side_effects_disabled(){return inspecting;}
  auto &machine(){return *this;}const char*describe_context(){return "fixture";}
  template<class...T>void logerror(T...){}
- void update_master_volume(){}unsigned starts=0;void transmit_register_setup(u8){++starts;}void exec_dma(){assert(false);}
- void timer_write(int,u16,u16){assert(false);}u8 timer_read(int){return 0;}
+ void update_master_volume(){}unsigned starts=0;void transmit_register_setup(u8){++starts;}void exec_dma();unsigned dma_depth=0;
+ std::map<u32,u16> ram;std::vector<u32> reads;std::vector<std::pair<u32,u16>> writes;
+ auto &space(){return *this;}
+ u16 raw(u32 a){auto it=ram.find(a);return it==ram.end()?u16((a>>1)^0x5a5a):it->second;}
+ u16 read_word(u32 a){assert(a<=0xffffe&&!(a&1));reads.push_back(a);return raw(a);}
+ void write_word(u32 a,u16 v){assert(a<=0xffffe&&!(a&1));writes.emplace_back(a,v);ram[a]=v;}
+ void timer_write(int,u16,u16){}u8 timer_read(int){return 0;}
  void UpdateSlotReg(int,int){}void UpdateSlotRegR(int,int){}
  void write(offs_t,u16,u16=0xffff);u16 read(offs_t,u16=0xffff);
  void w16(u32,u16,u16=0xffff);u16 r16(u32,u16=0xffff);void UpdateReg(int,u16);void UpdateRegR(int,u16=0xffff);
@@ -82,6 +99,45 @@ struct scsp_device {
 };
 // METHODS
 int main(){
+ unsigned dma_cases=0;
+ // A self-executing payload would recursively enter exec_dma on the old core.
+ for(bool gate:{false,true})for(u16 trigger:{u16(0x1008),u16(0x7008),u16(0x2000),u16(0)}){
+  scsp_device s;s.seed(0,0,false);
+  s.ram[0x8000]=0x9000;s.ram[0x8002]=0x700;s.ram[0x8004]=trigger;s.ram[0x8006]=0x300;
+  s.write(0x412/2,0x8000);s.write(0x414/2,0x412);
+  s.write(0x416/2,0x1008|(gate?0x4000:0));
+  assert(s.m_dma.dmea==0x8000&&s.m_dma.drga==0x412&&s.m_dma.dtlg==8);
+  assert(s.m_dma.ddir==0&&s.m_dma.dgate==unsigned(gate));
+  assert(s.m_udata.data[0x12/2]==0x8000&&s.m_udata.data[0x14/2]==0x412);
+  assert(s.m_udata.data[0x16/2]==(8|(gate?0x4000:0)));
+  assert(s.m_udata.data[0x18/2]==(gate?0:0x300));
+  assert(s.reads==std::vector<u32>({0x8000,0x8002,0x8004,0x8006}));
+  s.verify(0x10,0x10);
+  s.ram[0x8006]=0x100;s.write(0x416/2,0x1008);
+  assert(s.m_udata.data[0x18/2]==0x100&&s.reads.size()==8);++dma_cases;
+ }
+ for(bool dir:{false,true})for(bool gate:{false,true})
+ for(u32 base:{0u,2u,0x7fff0u,0xffff0u})for(u16 length:{u16(0),u16(2),u16(32),u16(128)}){
+  scsp_device s;s.seed(0,0,false);
+  for(unsigned i=0;i<64;++i)s.m_DSP.COEF[i]=s16(0x8000^(i*13));
+  s.write(0x412/2,base&0xffff);s.write(0x414/2,((base>>4)&0xf000)|0x700);
+  s.write(0x416/2,0x1000|(dir?0x2000:0)|(gate?0x4000:0)|length);
+  assert(s.reads.size()==(dir?0:length/2));assert(s.writes.size()==(dir?length/2:0));
+  for(unsigned i=0;i<length/2;++i){
+   u32 a=(base+i*2)&0xffffe;
+   if(dir){assert(s.writes[i]==std::make_pair(a,u16(gate?0:0x8000^(i*13))));}
+   else{assert(s.reads[i]==a);assert(u16(s.m_DSP.COEF[i])==(gate?0:s.raw(a)));}
+  }
+  assert(!(s.m_udata.data[0x16/2]&0x1000));s.verify(0x10,0x10);++dma_cases;
+ }
+ // DGATE forces zero at the destination but must not suppress source reads.
+ for(bool gate:{false,true}){
+  scsp_device s;s.m_MidiW=1;s.m_MidiStack[0]=0xa5;s.seed(8,0,false);
+  s.write(0x412/2,0x8000);s.write(0x414/2,0x404);
+  s.write(0x416/2,0x3002|(gate?0x4000:0));
+  assert(s.m_MidiR==1&&s.ram[0x8000]==(gate?0:0xa5));s.verify(0x10,0x10);++dma_cases;
+ }
+ std::cout<<dma_cases<<" actual DMA transfer/gate/wrap/self-target safety cases passed\n";
  unsigned midi=0;
  for(unsigned pos=0;pos<32;++pos)for(unsigned count:{0u,1u,2u,31u})
  for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})

@@ -1545,21 +1545,10 @@ void scsp_device::DoMasterSamples(sound_stream &stream) {
    The wait states DMA imposes on the sound CPU are not modelled.
    darius2j uses this at startup with DGATE enabled. */
 void scsp_device::exec_dma() {
-  // work from snapshots: a mem->reg transfer can walk into the DMA's own
-  // parameter registers (0x12-0x17), and the loop must not have its
-  // addresses/count clobbered mid-transfer (mednafen snapshots the same
-  // way).  The register-file copies are restored afterwards so the DMA
-  // can't overwrite its own parameters; the references disagree here
-  // (mednafen leaves the written values behind, Ymir mutates its live
-  // parameters mid-transfer) and ST-077 declares DMEA/DRGA/DTLG
-  // write-only without describing self-targeting transfers, so there is
-  // no documented winner - keep MAME's long-standing behavior
-  u16 tmp_dma[3];
-  if (!(m_dma.ddir)) {
-    for (int i = 0; i < 3; i++)
-      tmp_dma[i] = m_udata.data[(0x12 + (i * 2)) / 2];
-  }
-
+  // ST-077 p.101 explicitly prohibits DMA access to its own control registers
+  // and guarantees no behavior for it. Ignore self-targeting writes below:
+  // this preserves the programmed parameters and prevents recursive DEXE,
+  // rather than treating forbidden guest accesses as nested host transfers.
   u32 mem_addr = m_dma.dmea;
   u32 reg_addr = m_dma.drga;
   u32 length = m_dma.dtlg;
@@ -1578,7 +1567,8 @@ void scsp_device::exec_dma() {
       this->space().write_word(mem_addr, gate ? 0 : tmp);
     } else {
       u16 const tmp = read_word(mem_addr);
-      w16(reg_addr, gate ? 0 : tmp);
+      if (reg_addr < 0x412 || reg_addr > 0x416)
+        w16(reg_addr, gate ? 0 : tmp);
     }
     // both addresses always advance and wrap: the memory address stays
     // word-aligned inside the 1 MB sound RAM window, the register
@@ -1586,12 +1576,6 @@ void scsp_device::exec_dma() {
     mem_addr = (mem_addr + 2) & 0xffffe;
     reg_addr = (reg_addr + 2) & 0xffe;
     length -= 2;
-  }
-
-  /*Resume the values*/
-  if (!(m_dma.ddir)) {
-    for (int i = 0; i < 3; i++)
-      m_udata.data[(0x12 + (i * 2)) / 2] = tmp_dma[i];
   }
 
   /* Job done */
