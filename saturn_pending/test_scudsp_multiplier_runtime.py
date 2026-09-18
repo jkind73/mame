@@ -31,7 +31,7 @@ local function run_all()
         end
         local code={0x1c00,0x1d00,0x1e00,0x1f00,0x2100000,0x8c000,0,
             0x20000,mode==5 and 0x1501 or 0x1500,3<<26,0x1000000,opcode,
-            6<<26,0x3209,0x320a,0,0x1000000,6<<26,0x3209,0x320a,0xf0000000}
+            (6<<26)|0x40000,0x3209,0x320a,0x20000,0x1000000,(6<<26)|0x40000,0x3209,0x320a,0xf0000000}
         for _,word in ipairs(code) do sp:write_u32(program,word) end
         sp:write_u32(control,0x18000);emu.wait(emu.attotime.from_usec(10))
         check('halt'..case,sp:read_u32(control)&0x10000,0)

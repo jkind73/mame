@@ -81,7 +81,7 @@ void check(unsigned xs,unsigned ys,unsigned ds,unsigned dest,unsigned ct,bool im
   else value=ds==9?0x89abcdefu:0x456789abu;
  }else opcode|=0x1000|(ds==9?0xc5:ds);
  opcode|=dest<<8;
- d.m_alu=0x456789abcdef;
+ d.m_acl.ui=0x89abcdef;d.m_ach.ui=0x4567;d.m_alu=0xdeadbeef1234;
  // Bank reads suppress D1 writes to that bank; other transfers use old CT.
  if(dest<4){if(!read[dest]){expected[dest*64+initial[dest]]=value;inc[dest]=true;}}
  unsigned final[4];for(unsigned bank=0;bank<4;++bank)final[bank]=(initial[bank]+inc[bank])&63;
@@ -96,7 +96,8 @@ void check(unsigned xs,unsigned ys,unsigned ds,unsigned dest,unsigned ct,bool im
  uint32_t pl=xs<8&&(xm&3)==3?word(xs%4,initial[xs%4]):0;
  if(dest==5)pl=value;
  assert(d.m_pl.ui==pl&&d.m_ph.ui==((pl>>31)?0xffff:0));
- assert(d.m_acl.ui==(ys<8&&(ym&3)==3?word(ys%4,initial[ys%4]):0));
+ assert(d.m_acl.ui==(ys<8&&(ym&3)==3?word(ys%4,initial[ys%4]):0x89abcdef));
+ assert(d.m_ach.ui==(ys<8&&(ym&3)==3?0:0x4567));
  assert(d.m_icount==-1);
 }
 int main(){

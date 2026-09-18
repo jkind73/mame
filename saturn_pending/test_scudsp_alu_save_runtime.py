@@ -56,7 +56,7 @@ emu.register_frame_done(function()
         put(0,0x10000);put(64,0x7fffffff);put(192,0x10000)
         -- (7fffffff * 10000) + 10000 = 800000000000: signed48 overflow.
         upload({0x1c00,0x1d00,0x1e00,0x1f00,0x60000,0x2100000,0x8c000,0,
-                0x1000000,6<<26,0x3209,0x320a,0xf0000000})
+                0x1000000,(6<<26)|0x40000,0x3209,0x320a,0xf0000000})
         image('original_image',0,0x80000000)
         m:save(state_path);emu.pause();phase='saved'
     end)
@@ -64,8 +64,8 @@ emu.register_frame_done(function()
         assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'save wait advanced time')
         overflow('original_flags')
         emu.unpause();put(0,1);put(64,1)
-        upload({0x1c00,0x1d00,0x1e00,0x60000,0x3501,4<<26,0x3209,0x320a,0xf0000000})
-        image('poisoned_image',2,0x80000000)
+        upload({0x1c00,0x1d00,0x1e00,0x60000,0x3501,(4<<26)|0x40000,0x3209,0x320a,0xf0000000})
+        image('poisoned_image',2,0)
         check('poisoned_v',sp:read_u32(control)&0x80000,0)
         print('DSP_ALU_SAVE mutated')
         m:load(state_path);emu.pause();phase='loaded'
@@ -73,10 +73,10 @@ emu.register_frame_done(function()
     elseif phase=='loaded' and loaded then step(function()
         assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'load did not restore time')
         overflow('restored_flags');image('restored_image',0,0x80000000)
-        -- Poison only the output RAM, then observe restored ALU through MOVs.
+        -- Poison only the output RAM, then observe restored accumulator through the ALU bypass.
         put(128,0xbad);put(129,0xbad)
         emu.unpause();upload({0x1e00,0x3209,0x320a,0xf0000000})
-        image('restored_alu',0,0x80000000);finish()
+        image('restored_accumulator',0,0x80000000);finish()
     end)
     end
 end)
