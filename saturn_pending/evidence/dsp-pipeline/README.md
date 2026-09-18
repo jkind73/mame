@@ -1,7 +1,8 @@
-# DSP-01 / DSP-03: wrapped delayed control flow (candidate)
+# DSP-01 / DSP-03: wrapped delayed control flow (integrated WIP)
 
-`scudsp-delay-slot.patch` is prepared, NOT APPLIED while production b5caa488
-undergoes native qualification. It separates delay-slot validity from its 8-bit
+`scudsp-delay-slot.patch` is now integrated after b5caa488 passed its complete
+native consumer, including DSP beat addressing and actual in-flight save replay.
+The patch is historical; do not apply it again. It separates delay-slot validity from its 8-bit
 address. Existing code uses address 0 as the no-slot sentinel; branches at FF
 therefore drop the prefetched instruction at 00. The candidate records validity
 for JMP/MVI-PC/BTM/LPS, consumes it exactly once, saves it and clears it on reset.
@@ -31,5 +32,5 @@ binary 7508e813a6b93bd4f9650dd5f4a0cfcf73b84d128008a89bc3a8c678365c5062.
 This historical negative does NOT match the current production source trees.
 
 Runtime parser: 12 controls pass. Native positive, real pending-slot save/load,
-full prefetch timing and DSP program-memory DMA remain open. The candidate must
-be integrated only after b5caa488's existing DMA native gates are qualified.
+full prefetch timing and DSP program-memory DMA remain open. The rebuilt b5caa488 binary independently reproduces the same five failures;
+see `b5caa488-live-negative.log`. New-source native qualification remains pending.
