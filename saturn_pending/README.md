@@ -1,28 +1,29 @@
-# Integrated DSP count-source decoder correction — native WIP
+# Native-qualified DSP count-source correction
 
-Memory-sourced DMA counts now decode only the three selector bits, preserving
-MCx fetch/increment when unused bit3 is set. Actual f1a65715 passes16 canonical
-controls and fails16 aliases. Extracted131,072 operand/MC-wrap/overlap cases,
-20,480 count cases,5,120 program loads, prior suites and full-TU syntax pass.
-New-source native positive is pending. Evidence: `evidence/dsp-count-operand/`.
+**Production and latest fully native-qualified source:8881caa1.**
+Build35356222037, export35357197920 and the entire expanded native consumer pass.
+Both source/binary provenance checks pass. Binary SHA256:
+`20dee11ce310bb553054f219d3b08ee23f6a8cf9f596461890183a18dc7ba47e`.
+Evidence: `evidence/8881caa1-live/`, including raw DSP runtime logs.
 
-**Latest fully native-qualified source: f1a65715.** Build35354598861 and
-export35355654569 passed, then the complete expanded native consumer passed:
-96 count programs across four configurations, actual zero-encoded256-word data
-and program save replay, pending-slot save,128 overlays,4096 read programs and
-all prior integration gates. SHA256:
-`4cd888c8bda5c2f2e0f72157e66ebd76a8ec5110fb6cc7ccbeb827a143e7e527`.
-Evidence: `evidence/f1a65715-live/`. Source/binary checks passed before and after.
+The formerly failing unused-bit aliases now pass **128 count-source/increment/
+wrap programs across four configurations**, alongside96 counter programs,
+128 program overlays,4096 read programs,48 control-flow programs,128 B-bus DMA
+programs, actual256-word data/program save replay and pending-slot save replay.
+All prior CD/cart/backup, SCSP, SMPC/controller/RESB, timeout/HV and four BIOS/
+background replay gates pass. Full60-script local and CI batches pass; three
+optional local live skips are excluded. No working-driver flags are promoted.
 
-The no-PCH build's six include-order failures are repaired. Full59-script local
-and CI batches pass. Successful build cache:1267 hits/1273 cacheable calls,
-6 misses,4 uncacheable calls. This is compilation evidence, not emulator speed.
-No driver flags promoted and no full hardware/gameplay completion claimed.
+Six controller/sound-DSP include-order dependencies were repaired for no-PCH
+builds. The prior successful f1a65715 build recorded1267/1273 cache hits; the
+8881caa1 build and CI regressions completed in8m36s. These are build observations,
+not emulator performance measurements or a controlled speed comparison.
 
-Concrete remaining ALU work and manual/reference caveats are recorded in
-`evidence/dsp-count-operand/alu-followup.md`; none of those arithmetic fixes or
-native ALU tests is implemented yet. Broader serializers and bus timing remain
-open. Earlier WIP statements below are historical, superseded by source labels.
+Arithmetic work remains under DSP-01. Exact findings, primary/reference caveats
+and fixture construction notes are in `evidence/dsp-count-operand/alu-followup.md`.
+No ALU candidate or native ALU test has been implemented. Alternate program-DMA
+serializers, shared grants, exact timing and broader hardware/gameplay acceptance
+remain open. Earlier WIP statements below are historical and source-labelled.
 
 ---
 
