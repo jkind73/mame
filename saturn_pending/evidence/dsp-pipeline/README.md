@@ -34,3 +34,8 @@ This historical negative does NOT match the current production source trees.
 Runtime parser: 12 controls pass. Native positive, real pending-slot save/load,
 full prefetch timing and DSP program-memory DMA remain open. The rebuilt b5caa488 binary independently reproduces the same five failures;
 see `b5caa488-live-negative.log`. New-source native qualification remains pending.
+
+The same five control-flow failures were also reproduced on ST-V/DRC with the
+verified b5caa488 binary; `b5caa488-stv-drc-negative.log`. The next native gate
+requires both DMA and pipeline programs in JP/interpreter, JP/DRC, PAL/DRC and
+ST-V/DRC. Production 89764c08 is building in CI 35308649438.

@@ -7,6 +7,8 @@ No private DSP state is patched. This qualifies beat addressing, not contention
 or cycle accuracy. Missing binary/BIOS is a skip, never a native pass.
 """
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -82,15 +84,23 @@ def main(success_message="DSP DMA: 32 mapped-program B-bus addressing cases pass
     p.add_argument('--executable',type=Path,default=ROOT/'saturn')
     p.add_argument('--rompath',type=Path,default=ROOT/'regtests')
     p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--system',choices=('saturnjp','saturneu','stvbios'),default='saturnjp')
+    p.add_argument('--drc',action='store_true')
     a=p.parse_args()
     exe=a.executable.resolve();rom=a.rompath.resolve();output=a.output.resolve()
-    if not exe.is_file() or not (rom/'saturnjp.zip').is_file():
-        print('SKIP: need native binary and saturnjp BIOS');return
+    if not exe.is_file() or not (rom/(a.system+'.zip')).is_file():
+        print('SKIP: need native binary and '+a.system+' BIOS');return
     output.mkdir(parents=True,exist_ok=True)
+    (output/'invocation.json').write_text(json.dumps({
+        'system':a.system, 'engine':'drc' if a.drc else 'interpreter',
+        'binary_sha256':hashlib.sha256(exe.read_bytes()).hexdigest(),
+        'bios_sha256':hashlib.sha256((rom/(a.system+'.zip')).read_bytes()).hexdigest(),
+        'lua_sha256':hashlib.sha256(LUA.encode()).hexdigest(),
+    },indent=2)+'\n')
     with tempfile.TemporaryDirectory(prefix='dsp-dma-live-') as tmp:
         d=Path(tmp);script=d/'test.lua';script.write_text(LUA)
-        command=[str(exe),'saturnjp','-rompath',str(rom),'-noreadconfig','-skip_gameinfo',
-                 '-nodrc','-video','none','-sound','none','-nothrottle','-seconds_to_run','30',
+        command=[str(exe),a.system,'-rompath',str(rom),'-noreadconfig','-skip_gameinfo',
+                 ('-drc' if a.drc else '-nodrc'),'-video','none','-sound','none','-nothrottle','-seconds_to_run','30',
                  '-autoboot_delay','0','-autoboot_script',str(script)]
         for kind,folder in [('nvram','nvram'),('cfg','cfg'),('state','sta'),('snapshot','snap')]:
             command += ['-'+kind+'_directory',str(d/folder)]

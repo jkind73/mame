@@ -59,6 +59,21 @@ phase=dsp-save
 python3 saturn_pending/test_scudsp_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-save" > "$LOG_DIR/dsp-save.log" 2>&1
 grep -q 'DSP save: busy transfer restored and 60000-word replay verified' "$LOG_DIR/dsp-save.log"
+# Default DSP fixtures above use JP/interpreter; exercise the other shared-core
+# configurations explicitly rather than inferring DSP acceptance from BIOS boot.
+for system in saturnjp saturneu stvbios; do
+    for fixture in dma pipeline; do
+        phase="dsp-$fixture-$system-drc"
+        python3 "saturn_pending/test_scudsp_${fixture}_runtime.py" \
+            --executable "$ARTIFACT/saturn" --rompath "$ROOT/regtests" \
+            --system "$system" --drc --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+        if [[ "$fixture" == dma ]]; then
+            grep -q 'DSP DMA: 32 mapped-program B-bus addressing cases passed live' "$LOG_DIR/$phase.log"
+        else
+            grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/$phase.log"
+        fi
+    done
+done
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
