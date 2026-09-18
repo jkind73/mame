@@ -34,6 +34,8 @@ passes631/fails128 of759 programs: all previous247 pass, and only enabled
 same-address current-operand checks fail. Subsequent operands and committed
 memory controls pass. Raw evidence included.
 
-Matching build,3036-program/four-profile acceptance and preceding runtime/save
+Full70-script local regression batch PASS for production35f5d58b.
+Build35393858442 is queued after the prior documentation-triggered build;
+matching3036-program/four-profile acceptance and preceding runtime/save
 gates are pending. This is not complete sound timing/arbitration, waveform or
 whole-driver acceptance. Signed addresses and full128 execution remain intact.
