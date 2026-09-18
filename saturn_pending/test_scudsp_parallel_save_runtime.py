@@ -53,7 +53,7 @@ emu.register_frame_done(function()
         park();sp:write_u32(control,0x8000);fill()
         --4096 repetitions: X=MC0, Y=MC0, D1 MC0->MC1. All read the same word.
         upload({0x1c00,0x1d00,0x1e00,0xa8000fff,0xe8000000,0x2493104,
-                0x1000000,0x20000,6<<26,0x3209,0x320a,0xf0000000})
+                0x1000000,0x20000,(6<<26)|0x40000,0x3209,0x320a,0xf0000000})
         local status=sp:read_u32(control)
         check('active_before_save',status&0x10000,0x10000)
         -- ST-097 pp.53-54 forbids data-port access while EX=1. Observe

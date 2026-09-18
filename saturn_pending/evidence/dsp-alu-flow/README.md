@@ -1,3 +1,20 @@
+# ALU entry-A forwarding integrated — native WIP
+
+The preserved prototype has been applied after complete pause qualification.
+The147456-case actual-method test is in the default suite. Existing ALU,
+parallel and multiplier oracles now use explicit entry A and result latching;
+all targeted DSP suites and full-TU C++20 syntax pass. The full69-script batch,
+CI and candidate native acceptance (768 dataflow programs/four configurations
+plus every prior gate) are pending.
+
+Corrected fixtures on qualified f944ce85:211 ALU,64 multiplier,144 parallel
+programs and actual active parallel-copy replay PASS. The revised ALU save
+fixture completes all phases and has exactly one old-binary failure: after
+loading A=1 and adding1, its poisoned result incorrectly retains8000 in the
+high half instead of zero. Original/restored48-bit accumulator and V controls
+still pass. Nothing is removed from the result/flag/save assertions.
+Earlier prototype notes below are historical; do not reapply the patch.
+
 # DSP-01 / DSP-03: ALU entry-A forwarding prototype (NOT INTEGRATED)
 
 The ALU currently retains a prior result on NOP and retains that prior result's

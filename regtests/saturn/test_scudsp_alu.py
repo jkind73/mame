@@ -63,7 +63,7 @@ void check(unsigned op,uint64_t a,uint64_t b,bool prior_v){
   overflow=math<-(__int128(1)<<(bits-1))||math>((__int128(1)<<(bits-1))-1);
   result=(op==5?a-b:a+b)&mask;carry=op==5?a<b:a+b>mask;
  }
- uint64_t expected=op==6?result:(0xa55a00000000ull|result);
+ uint64_t expected=op==6?result:(concat_64(d.m_ach.ui,0)|result);
  uint32_t flags=(original&~(C|Z|S))|(carry?C:0)|(result==0?Z:0)|((result&(1ull<<(bits-1)))?S:0)|(overflow?V:0);
  d.op_alu(op<<26);
  assert(uint64_t(d.m_alu)==expected);assert(d.m_flags==flags);

@@ -55,7 +55,7 @@ local function test()
                 if source<8 then
                     local b=source%4;reads[b]=true;value=ram[b*64+pos]
                     if source>=4 and dest~=b then inc[b]=true end
-                end -- ALL is zero from setup XOR
+                end -- ALU bypasses entry A, zero from setup CLR
             end
             op=op|(dest<<8)
             if dest<4 then
@@ -74,7 +74,7 @@ local function test()
         sp:write_u32(addr,0)
         for i=0,255 do check('ram'..case..'_'..i,sp:read_u32(data),ram[i]) end
         -- Separate stopped phase: observe P+A and RX*RY without hiding markers.
-        execute({0x1f00,4<<26,0x3309,0x20000,0x1000000,6<<26,0x3309,0x330a,0xf0000000})
+        execute({0x1f00,(4<<26)|0x40000,0x3309,0x20000,0x1000000,(6<<26)|0x40000,0x3309,0x330a,0xf0000000})
         sp:write_u32(addr,192)
         check('sum'..case,sp:read_u32(data),(ac+pl)&0xffffffff)
         local product=(rx*ry)&0xffffffffffff

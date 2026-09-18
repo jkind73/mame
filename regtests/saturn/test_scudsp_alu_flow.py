@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 src=Path(os.environ.get('SCUDSP_ALU_FLOW_SOURCE',ROOT/'src/devices/cpu/scudsp/scudsp.cpp')).read_text()
 def extract(signature):
     start=src.index(signature);end=src.index('{',start)+1;depth=1
