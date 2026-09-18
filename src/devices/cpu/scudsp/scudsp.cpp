@@ -418,6 +418,8 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 	int32_t i3;
 	int update_ct[4] = {0,0,0,0};
 	int dsp_mem;
+	uint8_t *const ct[] = { &m_ct0, &m_ct1, &m_ct2, &m_ct3 };
+	unsigned ram_reads = 0;
 
 
 	/* ALU */
@@ -548,6 +550,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			dsp_mem &= 3;
 			update_ct[dsp_mem] = 1;
 		}
+		ram_reads |= 1U << dsp_mem;
 		m_rx.ui = get_source_mem_value( dsp_mem );
 		m_update_mul = 1;
 	}
@@ -567,6 +570,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 				dsp_mem &= 3;
 				update_ct[dsp_mem] = 1;
 			}
+			ram_reads |= 1U << dsp_mem;
 			m_pl.ui = get_source_mem_value(  dsp_mem );
 			m_ph.si = (m_pl.si < 0) ? -1 : 0;
 			break;
@@ -582,6 +586,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			dsp_mem &= 3;
 			update_ct[dsp_mem] = 1;
 		}
+		ram_reads |= 1U << dsp_mem;
 		m_ry.ui = get_source_mem_value( dsp_mem );
 		m_update_mul = 1;
 	}
@@ -604,33 +609,69 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 				dsp_mem &= 3;
 				update_ct[dsp_mem] = 1;
 			}
+			ram_reads |= 1U << dsp_mem;
 			m_acl.ui = get_source_mem_value( dsp_mem );
 			m_ach.si = ((m_acl.si < 0) ? -1 : 0);
 			break;
 	}
 
-	/* update CT registers */
-	if (update_ct[0]) { m_ct0++; m_ct0 &= 0x3f; };
-	if (update_ct[1]) { m_ct1++; m_ct1 &= 0x3f; };
-	if (update_ct[2]) { m_ct2++; m_ct2 &= 0x3f; };
-	if (update_ct[3]) { m_ct3++; m_ct3 &= 0x3f; };
-
+	// All buses use the instruction-entry CT values.  Commit each requested
+	// increment once, after D1; an explicit CTx destination takes precedence.
+	auto const write_d1 = [this, &ct, &update_ct, &ram_reads](unsigned dest, uint32_t value)
+	{
+		if (dest < 4)
+		{
+			// A bank selected for reading cannot also accept a D1 write.
+			if (!(ram_reads & (1U << dest)))
+			{
+				scudsp_writemem(*ct[dest], dest, value);
+				update_ct[dest] = 1;
+			}
+		}
+		else
+		{
+			set_dest_mem_reg(dest, value);
+			if (dest >= 0xc)
+				update_ct[dest - 0xc] = 0;
+		}
+	};
 
 	/* D1-Bus */
-	switch( (opcode & 0x3000) >> 12 )
+	unsigned const dest = (opcode >> 8) & 0xf;
+	switch ((opcode >> 12) & 3)
 	{
 		case 0x0:   /* NOP */
 			break;
 		case 0x1:   /* MOV SImm,[d] */
-			set_dest_mem_reg((opcode & 0xf00) >> 8, int32_t(int8_t(opcode & 0xff)));
+			write_d1(dest, int32_t(int8_t(opcode & 0xff)));
 			break;
 		case 0x2:
 			/* ??? */
 			break;
 		case 0x3:   /* MOV [s],[d] */
-			set_dest_mem_reg((opcode & 0xf00) >> 8, get_source_mem_reg_value(opcode & 0xf));
+		{
+			unsigned const source = opcode & 0xf;
+			if (source < 8)
+			{
+				unsigned const bank = source & 3;
+				ram_reads |= 1U << bank;
+				// A same-bank D1 RAM copy is a no-op, including its increment.
+				if (dest != bank)
+				{
+					if (source & 4)
+						update_ct[bank] = 1;
+					write_d1(dest, get_source_mem_value(bank));
+				}
+			}
+			else
+				write_d1(dest, get_source_mem_reg_value(source));
 			break;
+		}
 	}
+
+	for (unsigned bank = 0; bank < 4; ++bank)
+		if (update_ct[bank])
+			*ct[bank] = (*ct[bank] + 1) & 0x3f;
 
 	m_icount -= 1;
 }
