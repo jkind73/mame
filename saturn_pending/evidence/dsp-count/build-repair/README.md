@@ -17,3 +17,7 @@ cache hits,202 misses,4 uncacheable calls and about0.03GB cache. These partial-b
 statistics are not a completed-build speedup measurement or native acceptance.
 The no-PCH build experiment remains enabled; successful rebuild and full native
 counter/save qualification are still required. Latest accepted binary: cd074b71.
+
+The complete repaired local batch passed59 scripts (exit0), including the five
+no-PCH translation units; three optional live skips are excluded. The SDK/runtime
+dependencies have been restored outside Git. CI35352902888 remains in progress.
