@@ -1,3 +1,13 @@
+# Stopped PC-load correction integrated — native WIP
+
+Integrated after c33fe0da passed its complete native consumer. The existing
+host-control model now executes262144 masked flag/PC/slot/state cases. The
+existing pause native fixture now has20 programs (80/four configurations),
+retaining all six earlier pause/DMA programs. Parser/consumer counts are updated;
+the default suite remains69 scripts. Targeted suites and full-TU syntax pass.
+Full local/CI and rebuilt native qualification are pending. Historical prototype
+notes follow; do not reapply the patch. Full ES/prefetch/timing remains open.
+
 # Stopped PC-load correction prototype — NOT INTEGRATED
 
 ST-097 printed52/PDF68 says LE loads the start address only while EX=0.

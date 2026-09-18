@@ -1,0 +1,6 @@
+DSP_PRAM_SAVE armed
+DSP_PRAM_SAVE saved
+DSP_PRAM_SAVE mutated
+DSP_PRAM_SAVE loaded
+DSP_PRAM_SAVE PASS words=256 wrap=1 busy=1 replay=exact
+Average speed: 229.47% (2 seconds)

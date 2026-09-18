@@ -363,6 +363,7 @@ uint32_t scudsp_cpu_device::program_control_r()
 void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	uint32_t oldval, newval;
+	bool const stopped_on_entry = !BIT(m_flags, EXF) || m_paused;
 
 	oldval = (m_flags & 0xffffff00) | (m_pc & 0xff);
 	newval = oldval;
@@ -386,10 +387,13 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 		m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
 	}
 
-	// set new PC if transfer enable is set
-	// NOTE: doesn't get transfered in flags
-	if (BIT(data, LEF) && ACCESSING_BITS_0_15)
+	// LE is a masked write strobe, accepted only while stopped (ST-097 p.52).
+	// Test entry state so a stopped load-and-start write still loads the PC.
+	if (BIT(commands, LEF) && stopped_on_entry)
+	{
 		m_pc = newval & 0xff;
+		m_delay_pending = false;
+	}
 
 	//printf("%08x PRG CTRL\n",data);
 	// run DSP if EXF is on
