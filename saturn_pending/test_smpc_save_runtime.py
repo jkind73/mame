@@ -145,7 +145,7 @@ def validate_output(text, returncode):
         raise RuntimeError('SMPC save fixture failed:\n' + text[-10000:])
 
 
-def main():
+def main(success_message="SMPC save: partial report snapshot/cursor/mode restored through scheduled file save/load"):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--executable', type=Path, default=ROOT/'saturn')
     p.add_argument('--rompath', type=Path, default=ROOT/'regtests')
@@ -180,7 +180,7 @@ def main():
         state = d/'sta/multitap.sta'
         if not state.is_file() or state.stat().st_size <= 32 or state.read_bytes()[:8] != b'MAMESAVE':
             raise RuntimeError('Missing or malformed scheduled save file')
-    print('SMPC save: partial report snapshot/cursor/mode restored through scheduled file save/load')
+    print(success_message)
 
 
 if __name__ == '__main__':
