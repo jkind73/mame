@@ -1,3 +1,12 @@
+# Read-only S/Z correction integrated — native WIP
+
+The mask correction is now in production, following complete C-bus native
+qualification of f1fe8e09. The default suite includes28672 actual-method UBSan
+cases in regtests/saturn/test_scudsp_hostflags.py. Full-TU C++20 syntax passes.
+The expanded native consumer requires448 host-flag programs/four configurations,
+plus every earlier gate. Build/full67-script/native acceptance are pending.
+Earlier external-prototype notes below are historical; do not reapply the patch.
+
 # DSP-01 / DSP-03: read-only S/Z prototype; legal conditional-branch setup
 
 The production control-port mask incorrectly accepts host writes to S/Z. Sega
