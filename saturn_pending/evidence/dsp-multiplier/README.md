@@ -42,3 +42,14 @@ Full SCUDSP translation-unit syntax, existing80,968 ALU cases, shell syntax and
 12 parser controls pass. New native consumer requires256 multiplier programs
 across four configurations plus all accepted arithmetic and earlier gates.
 New-source native positive and full batch/build remain pending. No parent closed.
+
+
+Reference caveat: simultaneous X-bus and D1 writes to RX have different priority
+in Ymir (D1 suppressed) versus Beetle and current MAME (D1 wins). The eight such
+programs are explicitly compatibility controls, not hardware-priority acceptance.
+The production change does not alter this existing collision behavior. Primary
+instruction concurrency text does not resolve that conflict here.
+
+Three targeted mutants are rejected: suppressing the MVI refresh, clobbering P
+while updating RX, and losing X-bus refresh. The removed destination refresh is
+also rejected by the before-source run. No new-source native positive yet.
