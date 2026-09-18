@@ -19,9 +19,9 @@ high half instead of zero. Original/restored48-bit accumulator and V controls
 still pass. Nothing is removed from the result/flag/save assertions.
 Earlier prototype notes below are historical; do not reapply the patch.
 
-# DSP-01 / DSP-03: ALU entry-A forwarding prototype (NOT INTEGRATED)
+## Historical prototype evidence (before f8022878)
 
-The ALU currently retains a prior result on NOP and retains that prior result's
+The preceding production ALU retained a prior result on NOP and retains that prior result's
 upper16 bits for32-bit operations. Both pinned implementations instead begin
 each operation from entry-state A: NOP bypasses A,32-bit operations replace its
 low32 bits, and AD2 replaces all48 bits. Y writes occur after that evaluation.
@@ -51,7 +51,7 @@ Qualified dacd1f99 native JP/interpreter completes192 public-port programs:
 ALU value with multiplication, replace A, then capture the operation result
 on its own instruction and latch A for the next high-word observation. This
 reproduces stale NOP output and unrelated upper16 bits without private DSP writes.
-No candidate native positive yet.
+No candidate native positive existed at prototype capture; qualification is recorded above.
 
 IMPORTANT FIXTURE CORRECTION FOR INTEGRATION: existing ALU/multiplier/parallel
 fixtures sometimes read a previous result using later NOP instructions without
