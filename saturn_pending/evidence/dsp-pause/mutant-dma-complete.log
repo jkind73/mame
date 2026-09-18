@@ -1,0 +1,7 @@
+test: /tmp/scudsp-pause-9mkhu_js/test.cpp:438: int main(): Assertion `s.halt&&restored.halt&&s.m_paused&&restored.m_paused' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_pause_model.py", line 94, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-pause-9mkhu_js/test']' died with <Signals.SIGABRT: 6>.
