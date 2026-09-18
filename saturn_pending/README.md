@@ -357,3 +357,9 @@ binary and are not counted as live acceptance. The durable native rebuild is
 https://github.com/jkind73/mame/actions/runs/35291979814 and has started compiling.
 The already-verified `5008a923` binary remains separate. An additional JP DRC
 composition run is measuring that baseline, not the new SMPC source.
+
+The additional JP DRC composition run on verified baseline `5008a923` completed:
+**1,042 composition cases passed**, including pixel and save/mutate/load checks.
+Its log is now preserved alongside the earlier 184 background cases and four
+BIOS replay configurations. This result belongs to the baseline executable;
+the new SMPC transport's native build/live-positive check is still pending.
