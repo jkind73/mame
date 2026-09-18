@@ -19,3 +19,13 @@ this pre-timeout binary. The timeout/edge-history fix is not part of this binary
 
 Text evidence only; no ROMs, NVRAM or save states are committed. Full software,
 wire timing, extended IDs and full hardware completion are not inferred.
+
+`sync-save-before.log` is another linked negative control. It saves during
+active display, advances naturally into HBlank+VBlank, restores the file, then
+samples the first restored HBlank. Actual SCU IST bits are **2**, not the
+expected **4**: a spurious VBlank-OUT replaces the HBlank edge. Both missing
+edge-history save items are also observed. All save/mutate/load notifications
+complete without Lua errors or time-restore failures. The fixture only reads
+save items and uses mapped registers for its interrupt oracle; it never
+manually overwrites the missing fields. This supports the 2781 source fix but
+is not that fix's positive native acceptance.
