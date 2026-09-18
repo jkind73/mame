@@ -1,0 +1,13 @@
+test: /tmp/scsp-irq-_wd_cu7q/test.cpp:431: void scsp_device::exec_dma(): Assertion `++dma_depth==1' failed.
+Traceback (most recent call last):
+  File "/tmp/scsp-fixedpoint-ihdus0ta/test.py", line 190, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-_wd_cu7q/test']' died with <Signals.SIGABRT: 6>.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scsp_dma_recursion.py", line 23, in <module>
+    subprocess.run([sys.executable,str(path)],env=env,check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/bin/python3', '/tmp/scsp-fixedpoint-ihdus0ta/test.py']' returned non-zero exit status 1.
