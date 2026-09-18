@@ -1,0 +1,18 @@
+DSP_PAUSE armed
+DSP_PAUSE FAIL pause1 got=10000 want=0
+DSP_PAUSE FAIL repause1 got=10000 want=0
+DSP_PAUSE FAIL pause2 got=10000 want=0
+DSP_PAUSE FAIL repause2 got=10000 want=0
+DSP_PAUSE FAIL pause3 got=10000 want=0
+DSP_PAUSE FAIL resumed_progress3 got=0 want=1
+DSP_PAUSE FAIL pause4 got=10000 want=0
+DSP_PAUSE FAIL resumed_progress4 got=0 want=1
+DSP_PAUSE FAIL paused_dma_busy5 got=810000 want=800000
+DSP_PAUSE FAIL dma_done_still_paused5 got=40000 want=0
+DSP_PAUSE FAIL no_post_dma_instruction5 got=34 want=deadbeef
+DSP_PAUSE FAIL resumed_endi5 got=0 want=40000
+DSP_PAUSE FAIL paused_dma_busy6 got=810000 want=800000
+DSP_PAUSE FAIL dma_done_still_paused6 got=40000 want=0
+DSP_PAUSE FAIL no_post_dma_instruction6 got=34 want=deadbeef
+DSP_PAUSE FAIL resumed_endi6 got=0 want=40000
+Average speed: 231.23% (2 seconds)
