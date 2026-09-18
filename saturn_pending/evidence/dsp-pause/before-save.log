@@ -1,0 +1,9 @@
+DSP_PAUSE_SAVE armed
+DSP_PAUSE_SAVE saved
+DSP_PAUSE_SAVE mutated
+DSP_PAUSE_SAVE loaded
+DSP_PAUSE_SAVE FAIL paused_busy_before_save got=810000 want=800000
+DSP_PAUSE_SAVE FAIL resume_retains_dma_stall got=800000 want=810000
+DSP_PAUSE_SAVE FAIL paused_busy_restored got=810000 want=800000
+DSP_PAUSE_SAVE FAIL resume_retains_dma_stall got=800000 want=810000
+Average speed: 224.79% (2 seconds)
