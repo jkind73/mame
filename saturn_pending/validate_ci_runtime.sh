@@ -26,6 +26,13 @@ if [[ ! -f "$SDK_PREFIX/build-env.sh" ]]; then
     python3 regtests/saturn/bootstrap_linked_deps.py --prefix "$SDK_PREFIX" > "$LOG_DIR/dependencies.log" 2>&1
 fi
 source "$SDK_PREFIX/build-env.sh"
+# CI links the distro SDL SONAMEs; the local SDK supplies real SDL binaries
+# from the pygame wheel under auditwheel-hashed names. Add loader aliases,
+# not replacement implementations, in the external per-run directory.
+mkdir -p "$LOG_DIR/runtime-libs"
+ln -sfn "$(readlink -f "$SDK_PREFIX/deps/lib/libSDL2.so")" "$LOG_DIR/runtime-libs/libSDL2-2.0.so.0"
+ln -sfn "$(readlink -f "$SDK_PREFIX/deps/lib/libSDL2_ttf.so")" "$LOG_DIR/runtime-libs/libSDL2_ttf-2.0.so.0"
+export LD_LIBRARY_PATH="$LOG_DIR/runtime-libs:$LD_LIBRARY_PATH"
 export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
 phase=configuration
 ldd "$ARTIFACT/saturn" > "$LOG_DIR/libraries.txt"

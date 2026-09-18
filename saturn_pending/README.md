@@ -286,3 +286,18 @@ The GCC12 CI run 35287467065 has left the queue and is compiling Saturn/ST-V.
 There is still no linked completion result. Another restored local checkout was
 archived and recovered without affecting that remote build or importing the
 mixed old workspace; the new live fixtures were preserved across recovery.
+
+### CI binary runtime-library compatibility preparation
+
+The Debian sandbox has fontconfig but no system SDL2 runtime. CI binaries use
+Ubuntu's standard SDL2/SDL2_ttf SONAMEs, whereas the existing local SDK exposes
+real pygame-wheel libraries with auditwheel-hashed SONAMEs. The no-rebuild
+runtime validator now creates standard-name loader aliases in its external log
+directory and retains the SDK library search path for transitive dependencies.
+No substitute library implementation is used.
+
+Fresh SDK preparation succeeded. Loading the actual libraries through those
+standard names and calling their version APIs returned SDL **2.28.4** and
+SDL_ttf **2.20.1**; `ldd` found no missing SDL_ttf dependencies. Shell syntax
+passes. This establishes loader readiness for those libraries only, not successful
+execution of the pending MAME artifact or BIOS/software acceptance.
