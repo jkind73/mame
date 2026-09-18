@@ -301,3 +301,37 @@ standard names and calling their version APIs returned SDL **2.28.4** and
 SDL_ttf **2.20.1**; `ldd` found no missing SDL_ttf dependencies. Shell syntax
 passes. This establishes loader readiness for those libraries only, not successful
 execution of the pending MAME artifact or BIOS/software acceptance.
+
+
+## Successful native CI and current live-execution boundary
+
+Run **35287467065 succeeded** at source
+`5008a92331e4bf6698b7a9e53116c2167ddcc673`: native Saturn/ST-V build,
+configuration validation, and the ROM-free regression batch all completed.
+`ci-35287467065.json` records the GitHub API receipt and individual step outcomes.
+It is not a substitute for BIOS/software or live save-manager evidence.
+
+Artifact ID **10526830262**, name
+`saturn-linux-5008a92331e4bf6698b7a9e53116c2167ddcc673`, compressed size
+**16,305,765 bytes**, ZIP SHA-256:
+`25ac71bd57e42f29048effa4b87eb88f6f7f6b232a9d17021c16df51692d3801`.
+These values came from GitHub's API, not from an unverified local file.
+
+The sandbox's artifact-host HTTPS connection still terminates with TLS EOF.
+A temporary inbound receiver was considered and stopped when the public preview
+required a traffic-access token. No token was disclosed, no access restriction
+was bypassed, and no artifact was received. No relay workflow was published.
+
+For a ZIP attached by the user after downloading it from the successful run:
+
+```sh
+python3 saturn_pending/unpack_ci_artifact.py /path/to/attached-artifact.zip   --run-id 35287467065 --destination /home/user/saturn-ci-artifact
+bash saturn_pending/validate_ci_runtime.sh /home/user/saturn-ci-artifact 35287467065
+```
+
+The unpacker obtains the expected ZIP digest and length independently from
+GitHub, rejects traversal/symlink/duplicate/unexpected members and oversized
+expansion, requires an empty destination, then invokes the existing source/run/
+executable verifier. Seven synthetic archive acceptance/rejection tests pass.
+It starts no listener and executes no uploaded binary. **Live execution is
+BLOCKED on artifact transfer**, not on a claimed successful BIOS boot.
