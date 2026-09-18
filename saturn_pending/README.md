@@ -350,3 +350,10 @@ expansion, requires an empty destination, then invokes the existing source/run/
 executable verifier. Seven synthetic archive acceptance/rejection tests pass.
 It starts no listener and executes no uploaded binary. **Live execution is
 BLOCKED on artifact transfer**, not on a claimed successful BIOS boot.
+
+The integrated SMPC source `234c7abc` has now passed the full **54-script**
+regression batch; three optional live runners skipped their absent default
+binary and are not counted as live acceptance. The durable native rebuild is
+https://github.com/jkind73/mame/actions/runs/35291979814 and has started compiling.
+The already-verified `5008a923` binary remains separate. An additional JP DRC
+composition run is measuring that baseline, not the new SMPC source.
