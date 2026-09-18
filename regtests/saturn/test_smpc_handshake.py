@@ -39,7 +39,7 @@ struct timer {
  void adjust(int n,int p,int rate){assert(n==0&&p==0&&rate==1000000);pending=true;}
 };
 struct smpc_hle_device {
- bool m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
+ bool m_resb=false,m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
  u8 m_sr=0,m_ddr1=0,m_ddr2=0,m_pdr1_readback=0,m_pdr2_readback=0;
  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;

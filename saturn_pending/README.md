@@ -6,14 +6,14 @@
 | --- | --- | --- |
 | `5008a923` | Native CI and live CD/cart/backup-RAM/timer checks passed; four BIOS/background replay configurations and all four 1,042-case composition configurations passed. | `ci-35287467065.json`, `evidence/5008-live/` |
 | `234c7abc` | Rebuilt SMPC transport passed six live two-multitap cases and scheduled partial-report save/mutate/load. The complete CD/cart/backup/timer/BIOS/background runtime gate passed again. | `ci-35291979814.json`, `evidence/234c-live/` |
-| `2781f96b` | VBlank timeout and H/V edge-history initialization/reset/save registration integrated. Full 55-script local regression batch passed (three missing-default-binary live skips). Native rebuild/live-positive acceptance pending. | `evidence/2781-timeout/`, [CI 35299792272](https://github.com/jkind73/mame/actions/runs/35299792272) |
+| `2781f96b` | VBlank timeout and H/V edge-history initialization/reset/save registration integrated. Full 55-script local regression batch passed (three missing-default-binary live skips). Native CI and full live consumer pass, including all four timeout cases and first restored H/V edge IST=4; see `evidence/2781-live/`. | `evidence/2781-timeout/`, [CI 35299792272](https://github.com/jkind73/mame/actions/runs/35299792272) |
 
 The original transport faults, then the missing VBlank cancellation, were
 reproduced with real binaries before their respective fixes. A further linked
 negative test on 234c shows the edge-history save bug: after loading an active
 raster state from HBlank+VBlank, the first restored SCU interrupt status is **2
 (spurious VBlank-OUT), not 4 (HBlank)**. Its real save/load callbacks complete;
-there are no Lua errors. The new-source positive result is still required.
+there are no Lua errors. The rebuilt 2781 binary now passes this test with IST=4.
 
 Baseline composition totals are **4,168 cases**: JP DRC, JP interpreter, PAL DRC,
 and ST-V DRC. Background totals are 184 per four-configuration gate. These are
@@ -45,7 +45,7 @@ requalified by these fixtures.
   and save registration. Their absence was confirmed in live save metadata;
   the subsequent mapped-SCU test demonstrates the actual restoration fault.
   This is not asserted to explain Agent1's reported host crash.
-- Extended-size IDs, OPE scheduling, serial wire timing, RESB and wider
+- Extended-size IDs, OPE scheduling, serial wire timing, reset debounce and wider
   peripheral-origin event routing remain open. The parent is not DONE.
 
 Primary: Sega ST-169-R1-072694, SDK commit
@@ -140,7 +140,7 @@ configurations. Missing prerequisites cannot satisfy its positive markers.
 - `test_sync_save_runtime.py`: active-display save, natural H/V blank mutation,
   load, and first restored HBlank/SCU status; fourteen fake-process controls.
   Save items are read only. No private state is overwritten to manufacture a
-  result. Positive execution on the new revision is pending.
+  result. Positive execution on 2781 passes.
 - Transfer/archive/provenance controls: nineteen/seven/twelve synthetic cases.
   They test tooling, not native emulation.
 
@@ -151,12 +151,12 @@ and references; `pr-history.md` preserves the pre-consolidation PR description.
 Neither superseded pending/blocked statements nor old extracted totals should
 be mistaken for fresh acceptance of the latest revision.
 
-## Next prepared change: RESB (not applied)
+## Integrated WIP: RESB and sparse physical sockets
 
 `smpc-resb.patch` independently implements the hardwired reset-button status
 latch. ST-169 printed p.34/PDF p.44 explicitly says RESDISA suppresses NMI but
 RESB still shows the switch at VBlank-IN; printed p.66/PDF p.76 makes RESB valid
-outside INTBACK. The candidate binds only RESET port bit 0, samples every console
+outside INTBACK. Production now binds only RESET port bit 0, samples every console
 VBlank (including idle/NMI-disabled periods), exposes the saved latch through SR
 independently of command writes, and initializes/resets/registers it. Reading the
 port at VBlank also covers a button held across machine reset. ST-V remains on
@@ -164,12 +164,23 @@ its existing path. The three-VINT NMI/debounce behavior is **not** implemented
 by this change.
 
 The live 234c negative control confirms four missing pressed-state observations
-while verifying the actual input bit. The candidate passes 6,144 compiled latch/
+while verifying the actual input bit. The implementation passes 6,144 compiled latch/
 read/command/enable combinations, ST-V isolation, four compiled/assertion-rejected
 mutants, the existing 73,728 timeout + 5,402 transport + 1,175 handshake checks,
 and SMPC/console full-TU C++20 syntax. Twelve result-parser controls pass. These
-are not native-positive or real RESB save-manager acceptance. The patch is kept
-unapplied while the timeout/edge revision builds, preserving its exact source
-input trees. Use `test_smpc_resb.py --source-root PATCHED_COPY` and the seven-case
-`test_smpc_resb_runtime.py` when qualifying it; do not treat it like the historical
-already-integrated patches.
+are not native-positive or real RESB save-manager acceptance. The patch is now
+integrated; do not reapply it. Native rebuild is required for these new changes.
+Use `test_smpc_resb.py --source-root .` and `test_smpc_resb_runtime.py`.
+
+Physical socket selection is now separate from packed report offsets, through
+`read_ctrl_slot(index, offset)` on the interface/port and both tap adapters.
+Empty ports return status F0 and ID FF instead of 00. The legacy flattened
+API remains for existing consumers. Actual adapter/port/SMPC methods pass 9,216
+ASan/UBSan topology/mode reports, direct/empty/bounds checks and four compiled
+negative controls. A genuine sparse-socket failure on 234c is retained in
+`evidence/234c-live/sparse-before.log`. The native gate now requires sparse pads
+1:2 and 2:5 plus RESB checks; these are NOT yet native-positive.
+
+Normal live requests use the mapped SCU VBlank-IN event, not the screen boundary
+one scanline before it. This corrected fixture qualified 2781 without relaxing
+the production deadline. Source-labelled first failure is preserved as well.

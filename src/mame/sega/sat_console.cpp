@@ -1118,6 +1118,7 @@ void sat_console_state::saturn(machine_config &config) {
   SMPC_HLE(config, m_smpc_hle, XTAL(4'000'000));
   m_smpc_hle->set_screen_tag("screen");
   m_smpc_hle->set_control_port_tags("ctrl1", "ctrl2");
+  m_smpc_hle->reset_button_in_handler().set_ioport(":RESET").bit(0);
   m_smpc_hle->pdr1_in_handler().set(
       FUNC(sat_console_state::saturn_pdr1_direct_r));
   m_smpc_hle->pdr2_in_handler().set(
