@@ -230,6 +230,7 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 		{
 			case 0xc:   /* PC */
 				m_delay = m_pc;  /* address next after this command will be executed twice */
+				m_delay_pending = true;
 				m_top = m_pc;
 				m_pc = value;
 				break;
@@ -748,12 +749,14 @@ void scudsp_cpu_device::op_jump( uint32_t opcode )
 		if ( compute_condition( (opcode & 0x3f80000) >> 19 ) )
 		{
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc = opcode & 0xff;
 		}
 	}
 	else
 	{
 		m_delay = m_pc;
+		m_delay_pending = true;
 		m_pc = opcode & 0xff;
 	}
 
@@ -769,6 +772,7 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		{
 			m_lop--;
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc--;
 		}
 	}
@@ -779,6 +783,7 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		{
 			m_lop--;
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc = m_top;
 		}
 	}
@@ -878,9 +883,10 @@ void scudsp_cpu_device::execute_run()
 
 		debugger_instruction_hook(m_pc);
 
-		if ( m_delay )
+		if ( m_delay_pending )
 		{
 			opcode = scudsp_readop(m_delay);
+			m_delay_pending = false;
 			m_delay = 0;
 		}
 		else
@@ -943,6 +949,7 @@ void scudsp_cpu_device::device_start()
 	m_pc = 0;
 	m_flags = 0;
 	m_delay = 0;
+	m_delay_pending = false;
 	m_top = 0;
 	m_lop = 0;
 	memset(&m_rx, 0x00, sizeof(m_rx));
@@ -976,6 +983,7 @@ void scudsp_cpu_device::device_start()
 
 	save_item(NAME(m_flags));
 	save_item(NAME(m_delay));
+	save_item(NAME(m_delay_pending));
 
 	save_item(NAME(m_top));
 	save_item(NAME(m_lop));
@@ -1034,6 +1042,8 @@ void scudsp_cpu_device::device_start()
 
 void scudsp_cpu_device::device_reset()
 {
+	m_delay = 0;
+	m_delay_pending = false;
 	m_out_ddwt_cb(0);
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::never);
