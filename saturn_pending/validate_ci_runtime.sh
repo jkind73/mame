@@ -70,6 +70,11 @@ python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/sat
     --rompath "$ROOT/regtests" --adapter segatap --empty-pad 1:2 --empty-pad 2:3 \
     --output "$LOG_DIR/smpc-segatap-sparse" > "$LOG_DIR/smpc-segatap-sparse.log" 2>&1
 grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-segatap-sparse.log"
+phase=smpc-empty-ports
+python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --adapter none \
+    --output "$LOG_DIR/smpc-empty-ports" > "$LOG_DIR/smpc-empty-ports.log" 2>&1
+grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-empty-ports.log"
 phase=smpc-resb
 python3 saturn_pending/test_smpc_resb_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/smpc-resb" > "$LOG_DIR/smpc-resb.log" 2>&1
