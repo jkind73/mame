@@ -2,8 +2,8 @@
 # license:BSD-3-Clause
 """Scheduled file replay at a wrapped DSP branch's pending address-00 slot.
 
-Only mapped host ports are used. Public PC plus a RAM marker distinguishes the
-pending slot from its completed state. JP/interpreter timing fixture, not a
+Only mapped host ports are used. Public PC selects a candidate phase, then EP
+pauses the DSP before reading its RAM marker. No data-port access while EX=1. JP/interpreter timing fixture, not a
 hardware-prefetch timing measurement or private DSP-state injection.
 """
 import re
@@ -21,7 +21,13 @@ end)
 subscribers[2]=emu.add_machine_post_load_notifier(function()
     loaded=true;print('DSP_SLOT_SAVE loaded')
 end)
+local function freeze_dsp()
+    sp:write_u32(control,0x02010000)
+    emu.wait(emu.attotime.from_nsec(0))
+    assert((sp:read_u32(control)&0x10000)==0,'DSP did not pause')
+end
 local function marker()
+    assert((sp:read_u32(control)&0x10000)==0,'active DSP data-port access')
     sp:write_u32(addr,192);return sp:read_u32(data)
 end
 local function writecode(pc,words)
@@ -29,11 +35,11 @@ local function writecode(pc,words)
     for _,op in ipairs(words) do sp:write_u32(program,op) end
 end
 local function advance(label)
-    emu.unpause()
+    emu.unpause();sp:write_u32(control,0x04000000)
     -- More than one and less than two DSP clocks in either JP dot-clock mode.
     -- The marker cannot be cleared again for at least five instructions.
     emu.wait(emu.attotime.from_nsec(90))
-    check(label,marker(),0x12)
+    freeze_dsp();check(label,marker(),0x12)
 end
 local function finish()
     if #fails==0 then print('DSP_SLOT_SAVE PASS wrapped=1 pending=1 replay=exact')
@@ -64,7 +70,11 @@ emu.register_frame_done(function()
         for n=1,500 do
             emu.wait(emu.attotime.from_nsec(90))
             -- Current core reports post-fetch PC+1 at the public port.
-            if (sp:read_u32(control)&0x100ff)==0x10004 and marker()==0 then pending=true;break end
+            if (sp:read_u32(control)&0x100ff)==0x10004 then
+                freeze_dsp()
+                if (sp:read_u32(control)&0x100ff)==4 and marker()==0 then pending=true;break end
+                sp:write_u32(control,0x04000000)
+            end
         end
         assert(pending,'did not observe wrapped pending slot through host ports')
         m:save(state_path);emu.pause();phase='saved'
@@ -81,7 +91,7 @@ emu.register_frame_done(function()
     end)
     elseif phase=='loaded' and loaded then step(function()
         assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'load did not restore time')
-        check('restored_pc',sp:read_u32(control)&0x100ff,0x10004)
+        check('restored_paused_pc',sp:read_u32(control)&0x100ff,4)
         check('restored_marker',marker(),0)
         advance('replayed_slot');finish()
     end)

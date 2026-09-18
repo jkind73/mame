@@ -57,7 +57,12 @@ void check(unsigned op,uint64_t a,uint64_t b,bool prior_v){
  d.m_alu=0xa55a12345678;d.m_flags=0x10812345|(prior_v?V:0);
  uint32_t original=d.m_flags;
  uint64_t result;bool carry,overflow=false;
- if(op==8){result=(a/2)|(a&0x80000000);carry=a%2;}
+ if(op<=3){result=op==1?a&b:op==2?a|b:a^b;carry=false;}
+ else if(op==8){result=(a/2)|(a&0x80000000);carry=a%2;}
+ else if(op==9){result=std::rotr(uint32_t(a),1);carry=a%2;}
+ else if(op==10){result=(a<<1)&mask;carry=(a>>31)&1;}
+ else if(op==11){result=std::rotl(uint32_t(a),1);carry=(a>>31)&1;}
+ else if(op==15){result=std::rotl(uint32_t(a),8);carry=(a>>24)&1;}
  else {
   __int128 math=op==5?__int128(signed_value(a,bits))-signed_value(b,bits):__int128(signed_value(a,bits))+signed_value(b,bits);
   overflow=math<-(__int128(1)<<(bits-1))||math>((__int128(1)<<(bits-1))-1);
@@ -79,7 +84,7 @@ void check(unsigned op,uint64_t a,uint64_t b,bool prior_v){
 int main(){
 // PROBE
  unsigned cases=0;
- for(unsigned op:{4u,5u,6u,8u}){
+ for(unsigned op:{1u,2u,3u,4u,5u,6u,8u,9u,10u,11u,15u}){
   unsigned bits=op==6?48:32;uint64_t sign=1ull<<(bits-1),mask=(1ull<<bits)-1;
   uint64_t values[]={0,1,2,sign-2,sign-1,sign,sign+1,mask-1,mask,0x55555555,0xaaaaaaaa};
   for(auto a:values)for(auto b:values)for(bool sticky:{false,true}){check(op,a,b,sticky);++cases;}

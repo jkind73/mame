@@ -1,3 +1,16 @@
+# OR flag correction integrated — native WIP
+
+The primary-backed correction is now in production after ALU forwarding passed
+its native consumer. The existing ALU suites expand to222662 actual-method
+cases and438 guest programs; no new default script or parent ID is added.
+All defined flag-changing operations now receive boundary/random/sticky/read-clear
+checks. The host-flags OR preset expects S=1,Z=0, retaining every write-protection
+assertion. Targeted suites, parser controls and full-TU C++20 syntax pass.
+Full69-script/local CI and rebuilt native acceptance are pending; the native
+consumer requires1752 arithmetic/logic/rotate programs across four configurations.
+Croc/Psygnosis gameplay remains unqualified. Earlier prototype notes below are
+historical; do not reapply the patch.
+
 # DSP-01: negative-OR Z correction prototype (NOT INTEGRATED)
 
 ST-097 printed95/PDF111 explicitly specifies OR Z=1 only for a zero result,

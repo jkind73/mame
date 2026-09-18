@@ -1,3 +1,18 @@
+# Qualification correction: legal paused pending-slot observation
+
+The older scheduled-slot fixture read DSP data RAM while EX=1. That violates
+ST-097 pp.53–54; its earlier claim of legal active host-port phase observation
+is retracted. It now selects a candidate using PPAF, issues EP, verifies EX=0,
+and only then reads the marker. It saves that paused pending slot, resumes via
+PR, pauses again before observing completion, then poisons/loads/repeats.
+Every data-port observation asserts EX=0. No private DSP state is accessed.
+The corrected actual file gate PASSes on both f944ce85 and f8022878. Adjacent
+raw outputs preserve the result. The next full consumer uses this corrected
+gate. This does not retract independent guest-program branch/wrap tests; it
+supersedes the old file fixture's access legality, not hardware-prefetch timing.
+The already-completed f8022878 full consumer below its evidence tree used the
+older gate; its corrected isolated rerun is recorded here, not silently replaced.
+
 # DSP-01 / DSP-03: wrapped delayed control flow (integrated WIP)
 
 `scudsp-delay-slot.patch` is now integrated after b5caa488 passed its complete
