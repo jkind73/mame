@@ -1,7 +1,8 @@
 SCSP_MIDI_FIFO armed
+SCSP_MIDI_FIFO FAIL reset_status got=0 want=900
+SCSP_MIDI_FIFO FAIL prime_status got=0 want=900
 SCSP_MIDI_FIFO FAIL idle_status1 got=0 want=900
-SCSP_MIDI_FIFO FAIL idle_sound_pending1 got=0 want=200
-SCSP_MIDI_FIFO FAIL idle_main_pending1 got=0 want=200
+SCSP_MIDI_FIFO FAIL idle_mobuf_zero1 got=5a want=0
 SCSP_MIDI_FIFO FAIL one_status1 got=0 want=100
 SCSP_MIDI_FIFO FAIL one_drained_status1 got=0 want=900
 SCSP_MIDI_FIFO FAIL full_status1 got=0 want=1100
@@ -184,4 +185,4 @@ SCSP_MIDI_FIFO FAIL fifth_status24 got=0 want=1100
 SCSP_MIDI_FIFO FAIL fifth_mobuf_zero24 got=404 want=0
 SCSP_MIDI_FIFO FAIL four_frame_window24 got=0 want=1
 SCSP_MIDI_FIFO FAIL full_drained_status24 got=0 want=900
-Average speed: 132.91% (2 seconds)
+Average speed: 125.36% (2 seconds)

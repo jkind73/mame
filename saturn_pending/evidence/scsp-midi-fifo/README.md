@@ -137,14 +137,23 @@ drains in window [250, 500] µs and four bytes in [1150, 1500] µs. Five accepte
 bytes would drain at ~1600 µs and a frame-start pop edge at ~960 µs, so both
 wrong behaviours fall outside the window.
 
+The fixture also pins the documented reset state: both status words report empty
+buffers, MOBUF reads 0, and **no** output-empty request exists yet, because p.91
+and interrupt note 9 make that request a transition to empty rather than a reset
+condition. One priming frame establishes the request before the per-case loops.
+
 Run against the qualified **old** binary `53f73010` (SHA256
 `b1cc2e68c1325bae0a1f5c4bb9220964f118e7e16c0e35ca0efa80c6018f13d9`):
-**0 of 24 cases pass, 185 failed observations** (`before-native.log`) —
-24 `idle_status` (got 0, want 0x0900), 23 `idle_mobuf_zero` (write-back of the
+**0 of 24 cases pass, 186 failed observations** (`before-native.log`) —
+24 `idle_status` and 24 `idle_mobuf_zero` (stale status byte, write-back of the
 last written byte), 16 each of `one_status`, `one_drained_status`, `full_status`,
 `full_drained_status`, `fifth_status`, `fifth_mobuf_zero`, **16
-`four_frame_window`** (the depth/timing discriminator), 8 each of the
-non-data-lane status checks, and 2 idle pending observations.
+`four_frame_window`** (the depth/timing discriminator), 8 each of the three
+non-data-lane status checks, plus `reset_status` and `prime_status`. The old
+binary still passes every output-empty *request* observation
+(`reset_sound_request`, `reset_main_request`, `prime_completed`,
+`prime_main_request`), so the control isolates the FIFO/status change from the
+unchanged request timing.
 
 ## Pending
 
