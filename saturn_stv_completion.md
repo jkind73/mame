@@ -188,6 +188,7 @@
   - Retain the corrected SCSP clock/sample relationship; audit transfer timing separately from synthesis rate.
 - [ ] **SND-04 — Qualify SCSP DSP and final mixer. [V/R]**
   - Instruction arithmetic, saturation/rounding, packed memory formats, delay/ring addressing, external inputs, stereo routing and gain.
+  - SCSP Step now executes all128 microinstructions per sample rather than truncating at the last nonzero word (native WIP). Zero words still update MAC/input state and drain reads; live program writes beyond a cached endpoint must execute. Primary ST-077 p.11 and pinned Beetle support128 steps; Ymir instead updates its bound on every write and includes an extra zero step for side effects.6531 actual-method cases/stopped control pass; five compiled mutants fail. Native9b596f90 passes10/fails21 of31 public-register programs, with all memory/zero/full-length controls intact. The default suite adds one generic SCSP DSP script (70 total); full local/CI and124-program/four-configuration native acceptance are pending. Evidence: `saturn_pending/evidence/scsp-dsp-tail/README.md`. No waveform, game-performance or full DSP timing/save closure is claimed.
   - Check audio output against deterministic hardware captures, including CD-DA and effects-heavy playback.
 - [ ] **SND-05 — Qualify sound state continuity. [V]**
   - Current integration: Timer origins now save and restore without losing fractional phase; extracted restore checks pass, real save-manager/audio replay pending. See `regtests/saturn/handoff/integration.md`.
