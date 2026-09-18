@@ -1,3 +1,16 @@
+# Native-qualified DSP arithmetic correction
+
+Production and latest fully native-qualified source: **ea9a7a7c**.
+Build35363539017/export35364567357, full61-script local/CI batches and complete
+expanded native consumer pass. All844 arithmetic programs/four configurations,
+including true48-bit overflow boundaries, and actual full48-bit ALU/latched-V
+file replay pass with all prior gates. Source/binary checks pass before/after.
+Evidence: `evidence/ea9a7a7c-live/`. No working flags changed or parent closed.
+
+The WIP notes below are historical, superseded by this qualified result.
+
+---
+
 # DSP arithmetic correction — native WIP
 
 Production ea9a7a7c corrects ADD/SUB carry/overflow, AD2 carry/result width,

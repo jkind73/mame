@@ -1,3 +1,11 @@
+# Qualification update
+
+Source ea9a7a7c is now native-qualified: build35363539017/export35364567357,
+844 arithmetic programs/four configurations, actual48-bit ALU/latched-V file
+replay and all earlier gates pass. Both provenance checks pass. See
+../ea9a7a7c-live/ for complete raw evidence. Earlier WIP statements below are
+historical. No full-ALU/DSP closure or working-flag promotion.
+
 # DSP-01: ADD/SUB/AD2/SR arithmetic correction (NATIVE WIP)
 
 ADD/SUB now retain a wide result for carry/borrow instead of testing sign-extended
