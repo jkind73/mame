@@ -38,3 +38,12 @@ the extracted harness are not timing proof. Memory wrapping is an existing
 emulator control, not primary acceptance of out-of-range transfers. Shared-bus
 arbitration, CPU stalls, timed/in-flight DMA saves, waveforms and whole sound
 remain open. No working-driver flags change.
+
+An actual-file parameter replay is also required. After a safe non-executing
+self-target transfer, save, re-use DMEA/DRGA with only a new DEXE command,
+poison DMA addresses/RAM/coefficient/timer control, load, and repeat. Both
+restored observations and the independent transfer must match. Old2f54b074
+fails four expected observations (cached-address reuse and untouched coefficient,
+before and after load); save/restore equality and mutation controls remain
+intact.14 replay-parser controls pass. Rebuilt replay pending. This is a
+completed-transfer parameter save, not an in-flight DMA timing qualification.
