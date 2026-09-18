@@ -1,4 +1,4 @@
-# SND-01/SND-03 SCSP MIDI register access — native WIP
+# SND-01/SND-03 SCSP MIDI register access — output native-qualified; input method-qualified
 
 MIDI data is in the low byte. Propagate read masks through read/r16/UpdateRegR;
 only data-byte reads with side effects enabled may advance input and release
@@ -32,7 +32,13 @@ Qualified6aa9e3d8 (binary d16947d2e62687a2ed166b426c39f461bae7d38e7b395c67ba3c56
 passes1024/fails512 cases; each bad high-byte write fails both IRQ observations
 (1024 failure rows). Data-bearing writes and all completion controls pass.
 Full71-script local/CI and build35400396608 PASS for source2f54b074.
-Matching6144 native output cases/four profiles and preceding gates pending.
+Build35400396608/export35401015382 and the complete native consumer PASS:
+6144 output-byte/serial-completion cases across JP/interpreter, JP/DRC,
+PAL/DRC and ST-V/DRC; all previous1728 IRQ and3036 DSP cases, actual IRQ
+and effect/read/address file replay, all preceding runtime/save/BIOS and
+source/binary/BIOS provenance gates. Binary SHA256
+701c7b775cb271c68e6b5900acd8622073be0395418514fc51225a62f9d35930.
+Evidence: `../2f54b074-live/`; consumer revision recorded separately.
 
 Limits: Saturn has no wired external MIDI connector in this configuration.
 RX pin sampling and wire output bytes are NOT natively qualified here; input
