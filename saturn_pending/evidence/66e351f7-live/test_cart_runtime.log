@@ -1,0 +1,3 @@
+  dram (ram8): PASS
+  bram (bram4): PASS
+Saturn cart runtime: 2 cartridges exercised in a live machine
