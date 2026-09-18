@@ -31,7 +31,8 @@ output-empty; reads check sound/main IRQ clearing and real serial completion.
 Qualified6aa9e3d8 (binary d16947d2e62687a2ed166b426c39f461bae7d38e7b395c67ba3c560227b2032a)
 passes1024/fails512 cases; each bad high-byte write fails both IRQ observations
 (1024 failure rows). Data-bearing writes and all completion controls pass.
-Matching build,6144 native cases/four profiles and preceding gates pending.
+Full71-script local/CI and build35400396608 PASS for source2f54b074.
+Matching6144 native output cases/four profiles and preceding gates pending.
 
 Limits: Saturn has no wired external MIDI connector in this configuration.
 RX pin sampling and wire output bytes are NOT natively qualified here; input
