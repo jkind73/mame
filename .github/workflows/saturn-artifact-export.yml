@@ -1,0 +1,82 @@
+name: Saturn validation artifact export
+
+on:
+  push:
+    branches: [arena/01a09f50-mame]
+    paths: ['.github/workflows/saturn-artifact-export.yml']
+  workflow_dispatch:
+
+# Draft release storage is an alternative to the Actions/Azure download host.
+# No sandbox listener, traffic token, firmware, or executable execution is used.
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: saturn-artifact-export-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    if: github.repository == 'jkind73/mame' && github.ref == 'refs/heads/arena/01a09f50-mame'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: jkind73/mame
+      SOURCE_RUN: '35291979814'
+      SOURCE_SHA: '234c7abcfc9a222978a7545a8491e568cf1781cf'
+    steps:
+      - name: Verify successful source run and export its exact ZIP to a draft
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          repo = os.environ['GH_REPO']
+          run_id = os.environ['SOURCE_RUN']
+          source = os.environ['SOURCE_SHA']
+          assert re.fullmatch(r'[0-9]+', run_id)
+          assert re.fullmatch(r'[0-9a-f]{40}', source)
+          def gh(*args):
+              return subprocess.check_output(['gh', *args], text=True)
+          run = json.loads(gh('run', 'view', run_id, '--json',
+              'headSha,headBranch,workflowName,status,conclusion,url'))
+          assert run['headSha'] == source
+          assert run['headBranch'] == 'arena/01a09f50-mame'
+          assert run['workflowName'] == 'Saturn integration artifact'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          artifacts = json.loads(gh('api', f'repos/{repo}/actions/runs/{run_id}/artifacts'))['artifacts']
+          name = 'saturn-linux-' + source
+          matches = [a for a in artifacts if a['name'] == name and not a['expired']]
+          assert len(matches) == 1
+          artifact = matches[0]
+          assert re.fullmatch(r'sha256:[0-9a-f]{64}', artifact['digest'])
+          path = Path(name + '.zip')
+          with path.open('wb') as stream:
+              subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{artifact["id"]}/zip'],
+                             stdout=stream, check=True)
+          assert path.stat().st_size == artifact['size_in_bytes']
+          digest = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+          assert digest == artifact['digest']
+
+          tag = 'arena-saturn-validation-' + source
+          existing = subprocess.run(['gh', 'release', 'view', tag, '--json',
+              'isDraft,targetCommitish'], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          if existing.returncode == 0:
+              release = json.loads(existing.stdout)
+              assert release['isDraft'] and release['targetCommitish'] == source
+          else:
+              notes = ('Unpublished validation storage, not a MAME release or working-driver promotion.\n\n'
+                       + run['url'] + '\nSource: ' + source + '\nOriginal CI ZIP: ' + digest
+                       + '\nNo firmware or game images. Complete corresponding source is at '
+                       + f'https://github.com/{repo}/tree/{source}.\n')
+              subprocess.run(['gh', 'release', 'create', tag, '--draft', '--target', source,
+                  '--title', 'Saturn validation ' + source[:8] + ' (unreleased)', '--notes', notes], check=True)
+          subprocess.run(['gh', 'release', 'upload', tag, str(path), '--clobber'], check=True)
+          print('Verified original CI ZIP stored in draft ' + tag)
+          print(digest)
