@@ -23,6 +23,7 @@ private:
 	static const char *const SourceMemory[];
 	static const char *const SourceMemory2[];
 	static const char *const DestMemory[];
+	static const char *const DestImmediate[];
 	static const char *const DestDMAMemory[];
 	static const char *const MVI_Command[];
 	static const char *const JMP_Command[];
