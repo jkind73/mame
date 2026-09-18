@@ -1,0 +1,1 @@
+PASS: CI-artifact configuration, CD/cart/backup, three SCSP timers, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.

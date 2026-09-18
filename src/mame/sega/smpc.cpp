@@ -136,6 +136,9 @@ void smpc_hle_device::device_start() {
   save_item(NAME(m_comreg));
   save_item(NAME(m_command_in_progress));
   save_item(NAME(m_intback_buf));
+  save_item(NAME(m_peripheral_data));
+  save_item(NAME(m_peripheral_size));
+  save_item(NAME(m_peripheral_pos));
   save_item(NAME(m_intback_stage));
   save_item(NAME(m_pmode));
   save_item(NAME(m_rtc_data));
@@ -200,6 +203,7 @@ void smpc_hle_device::device_reset() {
   // long before the first INTBACK sets it, and m_pmode is echoed back into SR
   // once an INTBACK completes
   m_intback_stage = 0;
+  m_peripheral_size = m_peripheral_pos = 0;
   m_pmode = 0;
 
   m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
@@ -241,6 +245,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
         sr_ack();
         sf_ack(false);
         m_intback_stage = 0;
+        m_peripheral_size = m_peripheral_pos = 0;
       } else if ((previous ^ data) & 0x80) {
         LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
 
@@ -593,6 +598,9 @@ void smpc_hle_device::resolve_intback() {
   int i;
 
   m_command_in_progress = false;
+  m_peripheral_size = m_peripheral_pos = 0;
+  // Port modes are in IREG1, for both forms of peripheral INTBACK.
+  m_pmode = m_intback_buf[1] >> 4;
 
   if (m_intback_buf[0] != 0) {
     m_oreg[0] = ((m_smem[4] & 0x80) | ((!m_NMI_reset & 1) << 6));
@@ -630,7 +638,6 @@ void smpc_hle_device::resolve_intback() {
 
     m_intback_stage = (m_intback_buf[1] & 8) >> 3; // first peripheral
     sr_set(0x40 | (m_intback_stage << 5));
-    m_pmode = m_intback_buf[0] >> 4;
 
     irq_request();
 
@@ -656,21 +663,34 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request) {
   if (!m_intback_stage)
     return;
 
-  if (m_has_ctrl_ports == true)
-    read_saturn_ports();
+  if (m_has_ctrl_ports) {
+    bool const first = m_intback_stage == 1;
+    if (first)
+      read_saturn_ports();
 
-  if (m_intback_stage == 2) {
-    sr_set(0x80 |
-           m_pmode); // pad 2, no more data, echo back pad mode set by intback
-    m_intback_stage = 0;
+    // OREG31 may contain peripheral data (ST-169 p.41). Set the command
+    // marker before the copy, never over the final byte of a full page.
+    std::fill(std::begin(m_oreg), std::end(m_oreg), 0xff);
+    m_oreg[31] = 0x10;
+    unsigned const count = std::min<unsigned>(sizeof(m_oreg), m_peripheral_size - m_peripheral_pos);
+    std::copy_n(m_peripheral_data + m_peripheral_pos, count, m_oreg);
+    m_peripheral_pos += count;
+    bool const more = m_peripheral_pos < m_peripheral_size;
+    // PDL marks the first page; NPE describes remaining data, not port #.
+    sr_set(0x80 | (first ? 0x40 : 0) | (more ? 0x20 : 0) | m_pmode);
+    m_intback_stage = more ? 2 : 0;
   } else {
-    sr_set(0xc0 |
-           m_pmode); // pad 1, more data, echo back pad mode set by intback
-    m_intback_stage++;
+    // Keep the existing no-controller/ST-V handshake path unchanged.
+    if (m_intback_stage == 2) {
+      sr_set(0x80 | m_pmode);
+      m_intback_stage = 0;
+    } else {
+      sr_set(0xc0 | m_pmode);
+      m_intback_stage++;
+    }
+    m_oreg[31] = 0x10;
   }
   irq_request();
-
-  m_oreg[31] = 0x10; // callback for last command issued
   sf_ack(false);
 }
 
@@ -843,48 +863,29 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_rtc_increment) {
 */
 
 void smpc_hle_device::read_saturn_ports() {
-  uint8_t status1 = m_ctrl1 ? m_ctrl1->read_status() : 0xf0;
-  uint8_t status2 = m_ctrl2 ? m_ctrl2->read_status() : 0xf0;
-
-  uint8_t reg_offset = 0;
-  uint8_t ctrl1_offset =
-      0; // this is used when there is segatap or multitap connected
-  uint8_t ctrl2_offset =
-      0; // this is used when there is segatap or multitap connected
-
-  // the report has to fit in the 32 OREG bytes. A single multitap can already
-  // ask for more than that - six sub-peripherals, each an ID byte plus up to
-  // six data bytes - so stop filling when the register file is full instead of
-  // writing past it (mamedev MT06893 has two multitaps inserted at once)
-  constexpr size_t oreg_max = sizeof(m_oreg);
-
-  m_oreg[reg_offset++] = status1;
-
-  // read ctrl1
-  for (int i = 0; (i < (status1 & 0xf)) && (reg_offset < oreg_max); i++) {
-    uint8_t id = m_ctrl1->read_id(i);
-
-    m_oreg[reg_offset++] = id;
-    for (int j = 0; (j < (id & 0xf)) && (reg_offset < oreg_max); j++)
-      m_oreg[reg_offset++] = m_ctrl1->read_ctrl(j + ctrl1_offset);
-
-    ctrl1_offset += (id & 0xf);
+  m_peripheral_size = m_peripheral_pos = 0;
+  for (unsigned port = 0; port < 2; ++port) {
+    // 0-byte mode must not query the port, including its connection status.
+    if (((m_pmode >> (port * 2)) & 3) == 3)
+      continue;
+    auto &ctrl = port ? m_ctrl2 : m_ctrl1;
+    uint8_t const status = ctrl ? ctrl->read_status() : 0xf0;
+    m_peripheral_data[m_peripheral_size++] = status;
+    unsigned offset = 0;
+    for (unsigned i = 0; i < (status & 0xf); ++i) {
+      uint8_t const id = ctrl->read_id(i);
+      m_peripheral_data[m_peripheral_size++] = id;
+      // FF is an unconnected tap, not a 15-byte peripheral (ST-169 p.73).
+      unsigned const size = id == 0xff ? 0 : (id & 0xf);
+      for (unsigned j = 0; j < size; ++j)
+        m_peripheral_data[m_peripheral_size++] = ctrl->read_ctrl(offset + j);
+      offset += size;
+    }
   }
-
-  if (reg_offset < oreg_max)
-    m_oreg[reg_offset++] = status2;
-
-  // read ctrl2
-  for (int i = 0; (i < (status2 & 0xf)) && (reg_offset < oreg_max); i++) {
-    uint8_t id = m_ctrl2->read_id(i);
-
-    m_oreg[reg_offset++] = id;
-
-    for (int j = 0; (j < (id & 0xf)) && (reg_offset < oreg_max); j++)
-      m_oreg[reg_offset++] = m_ctrl2->read_ctrl(j + ctrl2_offset);
-
-    ctrl2_offset += (id & 0xf);
-  }
+  // Snapshot once: continuation must not reread relative-motion devices or
+  // replace later bytes with input from a different polling instant.
+  // Extended-size peripheral IDs need a controller-interface extension;
+  // all currently registered devices use the <=15-byte format handled here.
 }
 
 INPUT_CHANGED_MEMBER(smpc_hle_device::trigger_nmi_r) {
