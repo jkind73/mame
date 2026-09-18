@@ -90,6 +90,10 @@ for system in saturnjp saturneu stvbios; do
         fi
     done
 done
+phase=dsp-slot-save
+python3 saturn_pending/test_scudsp_slot_save_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-slot-save" > "$LOG_DIR/dsp-slot-save.log" 2>&1
+grep -q 'DSP pending slot save: wrapped slot restored and executed exactly' "$LOG_DIR/dsp-slot-save.log"
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
