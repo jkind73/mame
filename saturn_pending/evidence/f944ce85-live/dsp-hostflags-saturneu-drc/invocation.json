@@ -1,0 +1,7 @@
+{
+  "system": "saturneu",
+  "engine": "drc",
+  "binary_sha256": "1c0d88d5f123bc50bdd19563b8d704cd25242af1327fa9660b99f865dea9fb13",
+  "bios_sha256": "73ba205e9723cbd5c481edcb69f73a37145730db375a947391400d9174454b9d",
+  "lua_sha256": "b8f3c37b8bb5ba2febf41d3736a5b8328d24c0da0778bdfecc5b21e184d61f6f"
+}
