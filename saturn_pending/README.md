@@ -85,7 +85,7 @@ Direct Actions/Azure and release-asset downloads fail in this sandbox. The
 successful alternative is a temporary GitHub Git-blob API transfer. The original
 ZIP is also retained in an **unpublished draft release**, not presented as a
 finished emulator release. There is no sandbox listener or traffic-token use.
-No new binary is committed to the branch. `artifact-transfer-234c.json` records
+The export workflow never commits a binary to the branch. `artifact-transfer-234c.json` records
 the successful export, transfer blob, original ZIP and executable digests.
 
 After the native CI run succeeds:
@@ -114,7 +114,8 @@ For an attached or repository-provided original ZIP, use
 The source/run/binary verifier is not a signed software attestation. It accepts
 neither failed builds nor mismatched local input trees. Temporary and downloaded
 binaries are outside Git. Firmware is neither downloaded nor committed by these
-tools. The user-provided 5008 ZIP remains the user's existing tracked upload.
+tools. The user replaced the earlier 5008 upload with the matching 234c ZIP;
+it is preserved at the repository root, outside the regression-input tree.
 
 Runtime dependencies are genuine SDL/SDL_ttf/fontconfig libraries, provisioned
 by `regtests/saturn/bootstrap_linked_deps.py` in an external cache if necessary.
