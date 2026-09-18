@@ -51,7 +51,8 @@ emu.register_frame_done(function()
         check('active_before_save',status&0x10000,0x10000)
         -- ST-097 pp.53-54 forbids data-port access while EX=1. Observe
         -- only the control port: active execution is at the loop, not setup.
-        assert((status&0xff)==4,'not an observed in-flight loop')
+        -- Existing PPAF readback reports internal PC+1: LPS at4 reads5.
+        assert((status&0xff)==5,'not an observed in-flight loop')
         print('DSP_LOP_SAVE observed partial loop')
         m:save(state_path);emu.pause();phase='saved'
     end)
