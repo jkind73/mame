@@ -42,7 +42,8 @@ Qualified35f5d58b (binary SHA256
 passes161/fails271 of432 cases. The original prototype without MIDI seeding is
 not the archived fixture. Raw old-negative output is included.
 
-Matching build,1728 native cases/four configurations and all preceding gates
+Full71-script local/CI and build35398923424 PASS for production6aa9e3d8.
+Matching1728 native cases/four configurations and all preceding gates
 are pending. This does not close the whole sound interrupt/timing parent,
 SCU arbitration, external IRQ pins, waveform or game acceptance. No flags change.
 
