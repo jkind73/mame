@@ -1,0 +1,1258 @@
+In file included from src/emu/screen.h:17,
+                 from src/devices/bus/sat_ctrl/ctrl.h:14,
+                 from src/devices/bus/sat_ctrl/analog.h:14,
+                 from src/devices/bus/sat_ctrl/analog.cpp:32:
+src/emu/divo.h:14:2: error: #error Dont include this file directly; include emu.h instead.
+   14 | #error Dont include this file directly; include emu.h instead.
+      |  ^~~~~
+src/emu/divo.h:27:1: error: expected class-name before '{' token
+   27 | {
+      | ^
+src/emu/divo.h:31:45: error: 'machine_config' does not name a type
+   31 |         device_video_output_interface(const machine_config &mconfig, device_t &device);
+      |                                             ^~~~~~~~~~~~~~
+src/emu/divo.h:31:70: error: 'device_t' has not been declared
+   31 |         device_video_output_interface(const machine_config &mconfig, device_t &device);
+      |                                                                      ^~~~~~~~
+src/emu/divo.h:57:44: error: 'attotime' has not been declared
+   57 |         virtual void override_frame_period(attotime period) = 0;
+      |                                            ^~~~~~~~
+src/emu/divo.h:58:17: error: 'attotime' does not name a type
+   58 |         virtual attotime frame_period() const = 0;
+      |                 ^~~~~~~~
+src/emu/divo.h:65:17: error: 'rectangle' does not name a type
+   65 |         virtual rectangle visible_area() const = 0;
+      |                 ^~~~~~~~~
+src/emu/divo.h:72:9: error: 'u32' does not name a type
+   72 |         u32               m_unique_id;                // unique id for this device
+      |         ^~~
+src/emu/divo.h:81:16: error: 'u32' does not name a type
+   81 |         static u32          m_id_counter;   // incremented for each constructed video output device,
+      |                ^~~
+src/emu/divo.h:74:22: error: 'virtual void device_video_output_interface::interface_config_complete()' marked 'override', but does not override
+   74 |         virtual void interface_config_complete() override;
+      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/divo.h:75:22: error: 'virtual void device_video_output_interface::interface_pre_start()' marked 'override', but does not override
+   75 |         virtual void interface_pre_start() override;
+      |                      ^~~~~~~~~~~~~~~~~~~
+src/emu/divo.h: In member function 'render_container& device_video_output_interface::container() const':
+src/emu/divo.h:49:47: error: 'assert' was not declared in this scope
+   49 |         render_container &container() const { assert(m_container != nullptr); return *m_container; }
+      |                                               ^~~~~~
+src/emu/divo.h:1:1: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+  +++ |+#include <cassert>
+    1 | // license:BSD-3-Clause
+src/emu/divo.h: In member function 'void device_video_output_interface::set_orientation(int)':
+src/emu/divo.h:53:57: error: 'device' was not declared in this scope
+   53 |         void set_orientation(int orientation) { assert(!device().configured()); m_orientation = orientation; }
+      |                                                         ^~~~~~
+src/emu/divo.h:53:49: error: 'assert' was not declared in this scope
+   53 |         void set_orientation(int orientation) { assert(!device().configured()); m_orientation = orientation; }
+      |                                                 ^~~~~~
+src/emu/divo.h:53:49: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/divo.h: In member function 'int device_video_output_interface::orientation() const':
+src/emu/divo.h:54:42: error: 'device' was not declared in this scope
+   54 |         int orientation() const { assert(device().configured()); return m_orientation; }
+      |                                          ^~~~~~
+src/emu/divo.h:54:35: error: 'assert' was not declared in this scope
+   54 |         int orientation() const { assert(device().configured()); return m_orientation; }
+      |                                   ^~~~~~
+src/emu/divo.h:54:35: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/screen.h: At global scope:
+src/emu/screen.h:27:11: error: 'u32' does not name a type
+   27 | constexpr u32 UPDATE_HAS_NOT_CHANGED = 0x0001; // the video has not changed
+      |           ^~~
+src/emu/screen.h:56:11: error: 'u32' does not name a type
+   56 | constexpr u32 VIDEO_UPDATE_BEFORE_VBLANK    = 0x0000;
+      |           ^~~
+src/emu/screen.h:57:11: error: 'u32' does not name a type
+   57 | constexpr u32 VIDEO_UPDATE_AFTER_VBLANK     = 0x0004;
+      |           ^~~
+src/emu/screen.h:59:11: error: 'u32' does not name a type
+   59 | constexpr u32 VIDEO_SELF_RENDER             = 0x0008;
+      |           ^~~
+src/emu/screen.h:60:11: error: 'u32' does not name a type
+   60 | constexpr u32 VIDEO_ALWAYS_UPDATE           = 0x0080;
+      |           ^~~
+src/emu/screen.h:61:11: error: 'u32' does not name a type
+   61 | constexpr u32 VIDEO_UPDATE_SCANLINE         = 0x0100;
+      |           ^~~
+src/emu/screen.h:62:11: error: 'u32' does not name a type
+   62 | constexpr u32 VIDEO_VARIABLE_WIDTH          = 0x0200;
+      |           ^~~
+src/emu/screen.h:75:9: error: 'bitmap_t' does not name a type
+   75 |         bitmap_t &live() { assert(m_live != nullptr); return *m_live; }
+      |         ^~~~~~~~
+src/emu/screen.h:76:15: error: 'bitmap_t' does not name a type
+   76 |         const bitmap_t &live() const { assert(m_live != nullptr); return *m_live; }
+      |               ^~~~~~~~
+src/emu/screen.h:85:35: error: expected ')' before '&' token
+   85 |         screen_bitmap(bitmap_ind16 &orig)
+      |                      ~            ^~
+      |                                   )
+src/emu/screen.h:91:35: error: expected ')' before '&' token
+   91 |         screen_bitmap(bitmap_rgb32 &orig)
+      |                      ~            ^~
+      |                                   )
+src/emu/screen.h:102:18: error: 'bitmap_t' does not name a type
+  102 |         operator bitmap_t &() { return live(); }
+      |                  ^~~~~~~~
+src/emu/screen.h:103:9: error: 'bitmap_ind16' does not name a type
+  103 |         bitmap_ind16 &as_ind16() { assert(m_format == BITMAP_FORMAT_IND16); return m_ind16; }
+      |         ^~~~~~~~~~~~
+src/emu/screen.h:104:9: error: 'bitmap_rgb32' does not name a type
+  104 |         bitmap_rgb32 &as_rgb32() { assert(m_format == BITMAP_FORMAT_RGB32); return m_rgb32; }
+      |         ^~~~~~~~~~~~
+src/emu/screen.h:107:9: error: 's32' does not name a type
+  107 |         s32 width() const { return live().width(); }
+      |         ^~~
+src/emu/screen.h:108:9: error: 's32' does not name a type
+  108 |         s32 height() const { return live().height(); }
+      |         ^~~
+src/emu/screen.h:109:9: error: 's32' does not name a type
+  109 |         s32 rowpixels() const { return live().rowpixels(); }
+      |         ^~~
+src/emu/screen.h:110:9: error: 's32' does not name a type
+  110 |         s32 rowbytes() const { return live().rowbytes(); }
+      |         ^~~
+src/emu/screen.h:111:9: error: 'u8' does not name a type
+  111 |         u8 bpp() const { return live().bpp(); }
+      |         ^~
+src/emu/screen.h:112:9: error: 'bitmap_format' does not name a type
+  112 |         bitmap_format format() const { return m_format; }
+      |         ^~~~~~~~~~~~~
+src/emu/screen.h:115:9: error: 'palette_t' does not name a type
+  115 |         palette_t *palette() const { return live().palette(); }
+      |         ^~~~~~~~~
+src/emu/screen.h:116:15: error: 'rectangle' does not name a type
+  116 |         const rectangle &cliprect() const { return live().cliprect(); }
+      |               ^~~~~~~~~
+src/emu/screen.h:119:26: error: 'palette_t' has not been declared
+  119 |         void set_palette(palette_t *palette) { live().set_palette(palette); }
+      |                          ^~~~~~~~~
+src/emu/screen.h:120:25: error: 'bitmap_format' has not been declared
+  120 |         void set_format(bitmap_format format, texture_format texformat)
+      |                         ^~~~~~~~~~~~~
+src/emu/screen.h:136:9: error: 'bitmap_format' does not name a type
+  136 |         bitmap_format       m_format;
+      |         ^~~~~~~~~~~~~
+src/emu/screen.h:138:9: error: 'bitmap_t' does not name a type
+  138 |         bitmap_t *          m_live;
+      |         ^~~~~~~~
+src/emu/screen.h:139:9: error: 'bitmap_ind16' does not name a type
+  139 |         bitmap_ind16        m_ind16;
+      |         ^~~~~~~~~~~~
+src/emu/screen.h:140:9: error: 'bitmap_rgb32' does not name a type
+  140 |         bitmap_rgb32        m_rgb32;
+      |         ^~~~~~~~~~~~
+src/emu/screen.h: In constructor 'screen_bitmap::screen_bitmap()':
+src/emu/screen.h:81:19: error: class 'screen_bitmap' does not have any field named 'm_format'
+   81 |                 : m_format(BITMAP_FORMAT_RGB32)
+      |                   ^~~~~~~~
+src/emu/screen.h:81:28: error: 'BITMAP_FORMAT_RGB32' was not declared in this scope; did you mean 'TEXFORMAT_RGB32'?
+   81 |                 : m_format(BITMAP_FORMAT_RGB32)
+      |                            ^~~~~~~~~~~~~~~~~~~
+      |                            TEXFORMAT_RGB32
+src/emu/screen.h:83:19: error: class 'screen_bitmap' does not have any field named 'm_live'
+   83 |                 , m_live(&m_rgb32)
+      |                   ^~~~~~
+src/emu/screen.h:83:27: error: 'm_rgb32' was not declared in this scope
+   83 |                 , m_live(&m_rgb32)
+      |                           ^~~~~~~
+src/emu/screen.h: In member function 'void screen_bitmap::resize(int, int)':
+src/emu/screen.h:99:46: error: 'live' was not declared in this scope
+   99 |         void resize(int width, int height) { live().resize(width, height); }
+      |                                              ^~~~
+src/emu/screen.h: In member function 'bool screen_bitmap::valid() const':
+src/emu/screen.h:114:37: error: 'live' was not declared in this scope
+  114 |         bool valid() const { return live().valid(); }
+      |                                     ^~~~
+src/emu/screen.h: In member function 'void screen_bitmap::set_palette(int*)':
+src/emu/screen.h:119:48: error: 'live' was not declared in this scope
+  119 |         void set_palette(palette_t *palette) { live().set_palette(palette); }
+      |                                                ^~~~
+src/emu/screen.h: In member function 'void screen_bitmap::set_format(int, texture_format)':
+src/emu/screen.h:122:17: error: 'm_format' was not declared in this scope; did you mean 'format'?
+  122 |                 m_format = format;
+      |                 ^~~~~~~~
+      |                 format
+src/emu/screen.h:126:30: error: 'BITMAP_FORMAT_IND16' was not declared in this scope
+  126 |                         case BITMAP_FORMAT_IND16:   m_live = &m_ind16;  break;
+      |                              ^~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:126:53: error: 'm_live' was not declared in this scope
+  126 |                         case BITMAP_FORMAT_IND16:   m_live = &m_ind16;  break;
+      |                                                     ^~~~~~
+src/emu/screen.h:126:63: error: 'm_ind16' was not declared in this scope
+  126 |                         case BITMAP_FORMAT_IND16:   m_live = &m_ind16;  break;
+      |                                                               ^~~~~~~
+src/emu/screen.h:127:30: error: 'BITMAP_FORMAT_RGB32' was not declared in this scope; did you mean 'TEXFORMAT_RGB32'?
+  127 |                         case BITMAP_FORMAT_RGB32:   m_live = &m_rgb32;  break;
+      |                              ^~~~~~~~~~~~~~~~~~~
+      |                              TEXFORMAT_RGB32
+src/emu/screen.h:127:63: error: 'm_rgb32' was not declared in this scope
+  127 |                         case BITMAP_FORMAT_RGB32:   m_live = &m_rgb32;  break;
+      |                                                               ^~~~~~~
+src/emu/screen.h:130:17: error: 'm_ind16' was not declared in this scope
+  130 |                 m_ind16.reset();
+      |                 ^~~~~~~
+src/emu/screen.h:131:17: error: 'm_rgb32' was not declared in this scope
+  131 |                 m_rgb32.reset();
+      |                 ^~~~~~~
+src/emu/screen.h: At global scope:
+src/emu/screen.h:146:24: error: 'screen_device' was not declared in this scope
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                        ^~~~~~~~~~~~~
+src/emu/screen.h:146:45: error: expression list treated as compound expression in functional cast [-fpermissive]
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                                             ^
+src/emu/screen.h:146:24: error: 'screen_device' was not declared in this scope
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                        ^~~~~~~~~~~~~
+src/emu/screen.h:146:45: error: expression list treated as compound expression in functional cast [-fpermissive]
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                                             ^
+src/emu/screen.h:146:24: error: 'screen_device' was not declared in this scope
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                        ^~~~~~~~~~~~~
+src/emu/screen.h:146:45: error: expression list treated as compound expression in functional cast [-fpermissive]
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                                             ^
+src/emu/screen.h:146:24: error: 'screen_device' was not declared in this scope
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                        ^~~~~~~~~~~~~
+src/emu/screen.h:146:45: error: expression list treated as compound expression in functional cast [-fpermissive]
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                                             ^
+src/emu/screen.h:146:24: error: 'screen_device' was not declared in this scope
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                        ^~~~~~~~~~~~~
+src/emu/screen.h:146:45: error: expression list treated as compound expression in functional cast [-fpermissive]
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                                             ^
+src/emu/screen.h:146:24: error: 'screen_device' was not declared in this scope
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                        ^~~~~~~~~~~~~
+src/emu/screen.h:146:45: error: expression list treated as compound expression in functional cast [-fpermissive]
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |                                             ^
+src/emu/screen.h:146:9: error: 'delegate' does not name a type
+  146 | typedef delegate<void (screen_device &, bool)> vblank_state_delegate;
+      |         ^~~~~~~~
+src/emu/screen.h:148:30: error: 'screen_device' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:148:47: error: 'bitmap_ind16' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:148:25: error: 'u32' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                         ^~~
+src/emu/screen.h:148:30: error: 'screen_device' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:148:47: error: 'bitmap_ind16' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:148:25: error: 'u32' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                         ^~~
+src/emu/screen.h:148:30: error: 'screen_device' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:148:47: error: 'bitmap_ind16' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:148:25: error: 'u32' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                         ^~~
+src/emu/screen.h:148:30: error: 'screen_device' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:148:47: error: 'bitmap_ind16' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:148:25: error: 'u32' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                         ^~~
+src/emu/screen.h:148:30: error: 'screen_device' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:148:47: error: 'bitmap_ind16' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:148:25: error: 'u32' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                         ^~~
+src/emu/screen.h:148:30: error: 'screen_device' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:148:47: error: 'bitmap_ind16' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:148:25: error: 'u32' was not declared in this scope
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |                         ^~~
+src/emu/screen.h:148:9: error: 'device_delegate' does not name a type
+  148 | typedef device_delegate<u32 (screen_device &, bitmap_ind16 &, const rectangle &)> screen_update_ind16_delegate;
+      |         ^~~~~~~~~~~~~~~
+src/emu/screen.h:149:30: error: 'screen_device' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:149:47: error: 'bitmap_rgb32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:149:25: error: 'u32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                         ^~~
+src/emu/screen.h:149:30: error: 'screen_device' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:149:47: error: 'bitmap_rgb32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:149:25: error: 'u32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                         ^~~
+src/emu/screen.h:149:30: error: 'screen_device' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:149:47: error: 'bitmap_rgb32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:149:25: error: 'u32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                         ^~~
+src/emu/screen.h:149:30: error: 'screen_device' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:149:47: error: 'bitmap_rgb32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:149:25: error: 'u32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                         ^~~
+src/emu/screen.h:149:30: error: 'screen_device' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:149:47: error: 'bitmap_rgb32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:149:25: error: 'u32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                         ^~~
+src/emu/screen.h:149:30: error: 'screen_device' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                              ^~~~~~~~~~~~~
+src/emu/screen.h:149:47: error: 'bitmap_rgb32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                                               ^~~~~~~~~~~~
+src/emu/screen.h:149:25: error: 'u32' was not declared in this scope
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |                         ^~~
+src/emu/screen.h:149:9: error: 'device_delegate' does not name a type
+  149 | typedef device_delegate<u32 (screen_device &, bitmap_rgb32 &, const rectangle &)> screen_update_rgb32_delegate;
+      |         ^~~~~~~~~~~~~~~
+src/emu/screen.h:154:38: error: expected class-name before ',' token
+  154 | class screen_device : public device_t, public device_video_output_interface
+      |                                      ^
+src/emu/screen.h:160:29: error: 'machine_config' does not name a type
+  160 |         screen_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock = 0);
+      |                             ^~~~~~~~~~~~~~
+src/emu/screen.h:160:71: error: 'device_t' has not been declared
+  160 |         screen_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock = 0);
+      |                                                                       ^~~~~~~~
+src/emu/screen.h:160:88: error: 'u32' has not been declared
+  160 |         screen_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock = 0);
+      |                                                                                        ^~~
+src/emu/screen.h:168:9: error: 'rectangle' does not name a type
+  168 |         rectangle visible_area() const override { return m_visarea; }
+      |         ^~~~~~~~~
+src/emu/screen.h:169:15: error: 'rectangle' does not name a type
+  169 |         const rectangle &cliprect() const { return m_bitmap[0].cliprect(); }
+      |               ^~~~~~~~~
+src/emu/screen.h:171:9: error: 'attoseconds_t' does not name a type; did you mean 'useconds_t'?
+  171 |         attoseconds_t vblank_attoseconds() const { return m_vblank; }
+      |         ^~~~~~~~~~~~~
+      |         useconds_t
+src/emu/screen.h:172:9: error: 'bitmap_format' does not name a type
+  172 |         bitmap_format format() const { return !m_screen_update_ind16.isnull() ? BITMAP_FORMAT_IND16 : BITMAP_FORMAT_RGB32; }
+      |         ^~~~~~~~~~~~~
+src/emu/screen.h:202:32: error: 'u32' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                ^~~
+src/emu/screen.h:202:46: error: 'u16' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                              ^~~
+src/emu/screen.h:202:58: error: 'u16' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                          ^~~
+src/emu/screen.h:202:69: error: 'u16' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                     ^~~
+src/emu/screen.h:202:82: error: 'u16' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                                  ^~~
+src/emu/screen.h:202:94: error: 'u16' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                                              ^~~
+src/emu/screen.h:202:105: error: 'u16' has not been declared
+  202 |         screen_device &set_raw(u32 pixclock, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                                                         ^~~
+src/emu/screen.h:215:38: error: 'XTAL' does not name a type
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                      ^~~~
+src/emu/screen.h:215:50: error: 'u16' has not been declared
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                  ^~~
+src/emu/screen.h:215:62: error: 'u16' has not been declared
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                              ^~~
+src/emu/screen.h:215:73: error: 'u16' has not been declared
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                         ^~~
+src/emu/screen.h:215:86: error: 'u16' has not been declared
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                                      ^~~
+src/emu/screen.h:215:98: error: 'u16' has not been declared
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                                                  ^~~
+src/emu/screen.h:215:109: error: 'u16' has not been declared
+  215 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 hbend, u16 hbstart, u16 vtotal, u16 vbend, u16 vbstart)
+      |                                                                                                             ^~~
+src/emu/screen.h:220:38: error: 'XTAL' does not name a type
+  220 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 vtotal, rectangle visarea)
+      |                                      ^~~~
+src/emu/screen.h:220:50: error: 'u16' has not been declared
+  220 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 vtotal, rectangle visarea)
+      |                                                  ^~~
+src/emu/screen.h:220:62: error: 'u16' has not been declared
+  220 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 vtotal, rectangle visarea)
+      |                                                              ^~~
+src/emu/screen.h:220:74: error: 'rectangle' has not been declared
+  220 |         screen_device &set_raw(const XTAL &xtal, u16 htotal, u16 vtotal, rectangle visarea)
+      |                                                                          ^~~~~~~~~
+src/emu/screen.h:224:26: error: 'attotime' has not been declared
+  224 |         void set_refresh(attotime period) {
+      |                          ^~~~~~~~
+src/emu/screen.h:251:40: error: 'attoseconds_t' has not been declared
+  251 |         screen_device &set_vblank_time(attoseconds_t time)
+      |                                        ^~~~~~~~~~~~~
+src/emu/screen.h:270:33: error: 'u16' has not been declared
+  270 |         screen_device &set_size(u16 width, u16 height)
+      |                                 ^~~
+src/emu/screen.h:270:44: error: 'u16' has not been declared
+  270 |         screen_device &set_size(u16 width, u16 height)
+      |                                            ^~~
+src/emu/screen.h:293:36: error: 's16' has not been declared
+  293 |         screen_device &set_visarea(s16 minx, s16 maxx, s16 miny, s16 maxy)
+      |                                    ^~~
+src/emu/screen.h:293:46: error: 's16' has not been declared
+  293 |         screen_device &set_visarea(s16 minx, s16 maxx, s16 miny, s16 maxy)
+      |                                              ^~~
+src/emu/screen.h:293:56: error: 's16' has not been declared
+  293 |         screen_device &set_visarea(s16 minx, s16 maxx, s16 miny, s16 maxy)
+      |                                                        ^~~
+src/emu/screen.h:293:66: error: 's16' has not been declared
+  293 |         screen_device &set_visarea(s16 minx, s16 maxx, s16 miny, s16 maxy)
+      |                                                                  ^~~
+src/emu/screen.h:322:73: error: 'screen_update_ind16_delegate' has not been declared
+  322 |         void set_screen_update(F &&callback, const char *name) requires screen_update_ind16_delegate::supports_callback<F>::value
+      |                                                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:322:120: error: expected initializer before '<' token
+  322 |         void set_screen_update(F &&callback, const char *name) requires screen_update_ind16_delegate::supports_callback<F>::value
+      |                                                                                                                        ^
+src/emu/screen.h:328:73: error: 'screen_update_rgb32_delegate' has not been declared
+  328 |         void set_screen_update(F &&callback, const char *name) requires screen_update_rgb32_delegate::supports_callback<F>::value
+      |                                                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:328:120: error: expected initializer before '<' token
+  328 |         void set_screen_update(F &&callback, const char *name) requires screen_update_rgb32_delegate::supports_callback<F>::value
+      |                                                                                                                        ^
+src/emu/screen.h:334:85: error: 'screen_update_ind16_delegate' has not been declared
+  334 |         void set_screen_update(T &&target, F &&callback, const char *name) requires screen_update_ind16_delegate::supports_callback<F>::value
+      |                                                                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:334:132: error: expected initializer before '<' token
+  334 |         void set_screen_update(T &&target, F &&callback, const char *name) requires screen_update_ind16_delegate::supports_callback<F>::value
+      |                                                                                                                                    ^
+src/emu/screen.h:340:85: error: 'screen_update_rgb32_delegate' has not been declared
+  340 |         void set_screen_update(T &&target, F &&callback, const char *name) requires screen_update_rgb32_delegate::supports_callback<F>::value
+      |                                                                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:340:132: error: expected initializer before '<' token
+  340 |         void set_screen_update(T &&target, F &&callback, const char *name) requires screen_update_rgb32_delegate::supports_callback<F>::value
+      |                                                                                                                                    ^
+src/emu/screen.h:350:45: error: 'u32' has not been declared
+  350 |         screen_device &set_video_attributes(u32 flags) { m_video_attributes = flags; return *this; }
+      |                                             ^~~
+src/emu/screen.h:351:34: error: 'rgb_t' has not been declared
+  351 |         screen_device &set_color(rgb_t color) { m_color = color; return *this; }
+      |                                  ^~~~~
+src/emu/screen.h:354:9: error: 'bitmap_ind8' does not name a type
+  354 |         bitmap_ind8 &priority() { return m_priority; }
+      |         ^~~~~~~~~~~
+src/emu/screen.h:360:53: error: 'rectangle' does not name a type
+  360 |         void configure(int width, int height, const rectangle &visarea, attotime frame_period);
+      |                                                     ^~~~~~~~~
+src/emu/screen.h:360:73: error: 'attotime' has not been declared
+  360 |         void configure(int width, int height, const rectangle &visarea, attotime frame_period);
+      |                                                                         ^~~~~~~~
+src/emu/screen.h:363:29: error: 'u8' has not been declared
+  363 |         void set_brightness(u8 brightness) { m_brightness = brightness; }
+      |                             ^~
+src/emu/screen.h:372:9: error: 'attotime' does not name a type
+  372 |         attotime time_until_pos(int vpos, int hpos = 0) const;
+      |         ^~~~~~~~
+src/emu/screen.h:373:9: error: 'attotime' does not name a type
+  373 |         attotime time_until_vblank_start() const { return time_until_pos(m_visarea.bottom() + 1); }
+      |         ^~~~~~~~
+src/emu/screen.h:374:9: error: 'attotime' does not name a type
+  374 |         attotime time_until_vblank_end() const;
+      |         ^~~~~~~~
+src/emu/screen.h:375:9: error: 'attotime' does not name a type
+  375 |         attotime time_until_update() const { return (m_video_attributes & VIDEO_UPDATE_AFTER_VBLANK) ? time_until_vblank_end() : time_until_vblank_start(); }
+      |         ^~~~~~~~
+src/emu/screen.h:376:9: error: 'attotime' does not name a type
+  376 |         attotime scan_period() const { return attotime(0, m_scantime); }
+      |         ^~~~~~~~
+src/emu/screen.h:377:9: error: 'attotime' does not name a type
+  377 |         attotime pixel_period() const { return attotime(0, m_pixeltime); }
+      |         ^~~~~~~~
+src/emu/screen.h:378:9: error: 'attotime' does not name a type
+  378 |         attotime frame_period() const override { return attotime(0, m_frame_period); }
+      |         ^~~~~~~~
+src/emu/screen.h:379:36: error: 'attotime' has not been declared
+  379 |         void override_frame_period(attotime period) override;
+      |                                    ^~~~~~~~
+src/emu/screen.h:380:9: error: 'u64' does not name a type
+  380 |         u64 frame_number() const { return m_frame_number; }
+      |         ^~~
+src/emu/screen.h:383:9: error: 'u32' does not name a type
+  383 |         u32 pixel(s32 x, s32 y);
+      |         ^~~
+src/emu/screen.h:384:21: error: 'u32' has not been declared
+  384 |         void pixels(u32* buffer);
+      |                     ^~~
+src/emu/screen.h:395:39: error: 'vblank_state_delegate' has not been declared
+  395 |         void register_vblank_callback(vblank_state_delegate vblank_callback);
+      |                                       ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:396:37: error: 'bitmap_t' has not been declared
+  396 |         void register_screen_bitmap(bitmap_t &bitmap);
+      |                                     ^~~~~~~~
+src/emu/screen.h:404:22: error: 'attotime' does not name a type
+  404 |         static const attotime DEFAULT_FRAME_PERIOD;
+      |                      ^~~~~~~~
+src/emu/screen.h:411:44: error: 'validity_checker' has not been declared
+  411 |         virtual void device_validity_check(validity_checker &valid) const override;
+      |                                            ^~~~~~~~~~~~~~~~
+src/emu/screen.h:412:47: error: expected ';' at end of member declaration
+  412 |         virtual void device_resolve_objects() override ATTR_COLD;
+      |                                               ^~~~~~~~
+      |                                                       ;
+src/emu/screen.h:412:56: error: 'ATTR_COLD' does not name a type
+  412 |         virtual void device_resolve_objects() override ATTR_COLD;
+      |                                                        ^~~~~~~~~
+src/emu/screen.h:412:56: note: the macro 'ATTR_COLD' had not yet been defined
+In file included from src/lib/util/coretmpl.h:15,
+                 from src/emu/emucore.h:27,
+                 from src/emu/emu.h:33,
+                 from src/devices/bus/sat_ctrl/analog.cpp:33:
+src/osd/osdcomm.h:39: note: it was later defined here
+   39 | #define ATTR_COLD               __attribute__((cold))
+      | 
+src/emu/screen.h:413:37: error: expected ';' at end of member declaration
+  413 |         virtual void device_start() override ATTR_COLD;
+      |                                     ^~~~~~~~
+      |                                             ;
+src/emu/screen.h:413:46: error: 'ATTR_COLD' does not name a type
+  413 |         virtual void device_start() override ATTR_COLD;
+      |                                              ^~~~~~~~~
+src/emu/screen.h:413:46: note: the macro 'ATTR_COLD' had not yet been defined
+src/osd/osdcomm.h:39: note: it was later defined here
+   39 | #define ATTR_COLD               __attribute__((cold))
+      | 
+src/emu/screen.h:414:37: error: expected ';' at end of member declaration
+  414 |         virtual void device_reset() override ATTR_COLD;
+      |                                     ^~~~~~~~
+      |                                             ;
+src/emu/screen.h:414:46: error: 'ATTR_COLD' does not name a type
+  414 |         virtual void device_reset() override ATTR_COLD;
+      |                                              ^~~~~~~~~
+src/emu/screen.h:414:46: note: the macro 'ATTR_COLD' had not yet been defined
+src/osd/osdcomm.h:39: note: it was later defined here
+   39 | #define ATTR_COLD               __attribute__((cold))
+      | 
+src/emu/screen.h:415:36: error: expected ';' at end of member declaration
+  415 |         virtual void device_stop() override ATTR_COLD;
+      |                                    ^~~~~~~~
+      |                                            ;
+src/emu/screen.h:415:45: error: 'ATTR_COLD' does not name a type
+  415 |         virtual void device_stop() override ATTR_COLD;
+      |                                             ^~~~~~~~~
+src/emu/screen.h:415:45: note: the macro 'ATTR_COLD' had not yet been defined
+src/osd/osdcomm.h:39: note: it was later defined here
+   39 | #define ATTR_COLD               __attribute__((cold))
+      | 
+src/emu/screen.h:420:31: error: 'vblank_begin' has not been declared
+  420 |         TIMER_CALLBACK_MEMBER(vblank_begin);
+      |                               ^~~~~~~~~~~~
+src/emu/screen.h:420:9: error: ISO C++ forbids declaration of 'TIMER_CALLBACK_MEMBER' with no type [-fpermissive]
+  420 |         TIMER_CALLBACK_MEMBER(vblank_begin);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:421:31: error: 'vblank_end' has not been declared
+  421 |         TIMER_CALLBACK_MEMBER(vblank_end);
+      |                               ^~~~~~~~~~
+src/emu/screen.h:421:9: error: ISO C++ forbids declaration of 'TIMER_CALLBACK_MEMBER' with no type [-fpermissive]
+  421 |         TIMER_CALLBACK_MEMBER(vblank_end);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:421:9: error: 'int screen_device::TIMER_CALLBACK_MEMBER(int)' cannot be overloaded with 'int screen_device::TIMER_CALLBACK_MEMBER(int)'
+src/emu/screen.h:420:9: note: previous declaration 'int screen_device::TIMER_CALLBACK_MEMBER(int)'
+  420 |         TIMER_CALLBACK_MEMBER(vblank_begin);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:422:31: error: 'first_scanline_tick' has not been declared
+  422 |         TIMER_CALLBACK_MEMBER(first_scanline_tick);
+      |                               ^~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:422:9: error: ISO C++ forbids declaration of 'TIMER_CALLBACK_MEMBER' with no type [-fpermissive]
+  422 |         TIMER_CALLBACK_MEMBER(first_scanline_tick);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:422:9: error: 'int screen_device::TIMER_CALLBACK_MEMBER(int)' cannot be overloaded with 'int screen_device::TIMER_CALLBACK_MEMBER(int)'
+src/emu/screen.h:420:9: note: previous declaration 'int screen_device::TIMER_CALLBACK_MEMBER(int)'
+  420 |         TIMER_CALLBACK_MEMBER(vblank_begin);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:423:31: error: 'scanline_tick' has not been declared
+  423 |         TIMER_CALLBACK_MEMBER(scanline_tick);
+      |                               ^~~~~~~~~~~~~
+src/emu/screen.h:423:9: error: ISO C++ forbids declaration of 'TIMER_CALLBACK_MEMBER' with no type [-fpermissive]
+  423 |         TIMER_CALLBACK_MEMBER(scanline_tick);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:423:9: error: 'int screen_device::TIMER_CALLBACK_MEMBER(int)' cannot be overloaded with 'int screen_device::TIMER_CALLBACK_MEMBER(int)'
+src/emu/screen.h:420:9: note: previous declaration 'int screen_device::TIMER_CALLBACK_MEMBER(int)'
+  420 |         TIMER_CALLBACK_MEMBER(vblank_begin);
+      |         ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:436:9: error: 'attoseconds_t' does not name a type; did you mean 'useconds_t'?
+  436 |         attoseconds_t       m_vblank;                   // duration of a VBLANK
+      |         ^~~~~~~~~~~~~
+      |         useconds_t
+src/emu/screen.h:439:9: error: 'screen_update_ind16_delegate' does not name a type
+  439 |         screen_update_ind16_delegate m_screen_update_ind16; // screen update callback (16-bit palette)
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:440:9: error: 'screen_update_rgb32_delegate' does not name a type
+  440 |         screen_update_rgb32_delegate m_screen_update_rgb32; // screen update callback (32-bit RGB)
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:441:9: error: 'devcb_write_line' does not name a type
+  441 |         devcb_write_line    m_screen_vblank;            // screen vblank line callback
+      |         ^~~~~~~~~~~~~~~~
+src/emu/screen.h:442:9: error: 'devcb_write32' does not name a type
+  442 |         devcb_write32       m_scanline_cb;              // screen scanline callback
+      |         ^~~~~~~~~~~~~
+src/emu/screen.h:443:9: error: 'optional_device' does not name a type
+  443 |         optional_device<device_palette_interface> m_palette; // our palette
+      |         ^~~~~~~~~~~~~~~
+src/emu/screen.h:444:9: error: 'u32' does not name a type
+  444 |         u32                 m_video_attributes;         // flags describing the video system
+      |         ^~~
+src/emu/screen.h:451:9: error: 'rectangle' does not name a type
+  451 |         rectangle           m_visarea;                  // current visible area (HBLANK end/start, VBLANK end/start)
+      |         ^~~~~~~~~
+src/emu/screen.h:452:14: error: 'vector' in namespace 'std' does not name a template type
+  452 |         std::vector<int>    m_scan_widths;              // current width, in samples, of each individual scanline
+      |              ^~~~~~
+src/emu/screen.h:21:1: note: 'std::vector' is defined in header '<vector>'; did you forget to '#include <vector>'?
+   20 | #include <utility>
+  +++ |+#include <vector>
+   21 | 
+src/emu/screen.h:457:9: error: 'render_texture' does not name a type; did you mean 'render_texuv'?
+  457 |         render_texture *    m_texture[2];               // 2x textures for the screen bitmap
+      |         ^~~~~~~~~~~~~~
+      |         render_texuv
+src/emu/screen.h:459:14: error: 'vector' in namespace 'std' does not name a template type
+  459 |         std::vector<bitmap_t *> m_scan_bitmaps[2];      // 2x bitmaps for each individual scanline
+      |              ^~~~~~
+src/emu/screen.h:459:9: note: 'std::vector' is defined in header '<vector>'; did you forget to '#include <vector>'?
+  459 |         std::vector<bitmap_t *> m_scan_bitmaps[2];      // 2x bitmaps for each individual scanline
+      |         ^~~
+src/emu/screen.h:460:9: error: 'bitmap_ind8' does not name a type
+  460 |         bitmap_ind8         m_priority;                 // priority bitmap
+      |         ^~~~~~~~~~~
+src/emu/screen.h:461:9: error: 'bitmap_ind64' does not name a type
+  461 |         bitmap_ind64        m_burnin;                   // burn-in bitmap
+      |         ^~~~~~~~~~~~
+src/emu/screen.h:462:9: error: 'u8' does not name a type
+  462 |         u8                  m_curbitmap;                // current bitmap index
+      |         ^~
+src/emu/screen.h:463:9: error: 'u8' does not name a type
+  463 |         u8                  m_curtexture;               // current texture index
+      |         ^~
+src/emu/screen.h:465:9: error: 'attotime' does not name a type
+  465 |         attotime            m_last_partial_reset;       // last time partial updates were reset
+      |         ^~~~~~~~
+src/emu/screen.h:466:9: error: 's32' does not name a type
+  466 |         s32                 m_last_partial_scan;        // scanline of last partial update
+      |         ^~~
+src/emu/screen.h:467:9: error: 's32' does not name a type
+  467 |         s32                 m_partial_scan_hpos;        // horizontal pixel last rendered on this partial scanline
+      |         ^~~
+src/emu/screen.h:468:9: error: 'bitmap_argb32' does not name a type
+  468 |         bitmap_argb32       m_screen_overlay_bitmap;    // screen overlay bitmap
+      |         ^~~~~~~~~~~~~
+src/emu/screen.h:469:9: error: 'rgb_t' does not name a type
+  469 |         rgb_t               m_color;                    // render color
+      |         ^~~~~
+src/emu/screen.h:470:9: error: 'u8' does not name a type
+  470 |         u8                  m_brightness;               // global brightness
+      |         ^~
+src/emu/screen.h:473:9: error: 'attoseconds_t' does not name a type; did you mean 'useconds_t'?
+  473 |         attoseconds_t       m_frame_period;             // attoseconds per frame
+      |         ^~~~~~~~~~~~~
+      |         useconds_t
+src/emu/screen.h:474:9: error: 'attoseconds_t' does not name a type; did you mean 'useconds_t'?
+  474 |         attoseconds_t       m_scantime;                 // attoseconds per scanline
+      |         ^~~~~~~~~~~~~
+      |         useconds_t
+src/emu/screen.h:475:9: error: 'attoseconds_t' does not name a type; did you mean 'useconds_t'?
+  475 |         attoseconds_t       m_pixeltime;                // attoseconds per pixel
+      |         ^~~~~~~~~~~~~
+      |         useconds_t
+src/emu/screen.h:476:9: error: 'attoseconds_t' does not name a type; did you mean 'useconds_t'?
+  476 |         attoseconds_t       m_vblank_period;            // attoseconds per VBLANK period
+      |         ^~~~~~~~~~~~~
+      |         useconds_t
+src/emu/screen.h:477:9: error: 'attotime' does not name a type
+  477 |         attotime            m_vblank_start_time;        // time of last VBLANK start
+      |         ^~~~~~~~
+src/emu/screen.h:478:9: error: 'attotime' does not name a type
+  478 |         attotime            m_vblank_end_time;          // time of last VBLANK end
+      |         ^~~~~~~~
+src/emu/screen.h:479:9: error: 'emu_timer' does not name a type
+  479 |         emu_timer *         m_vblank_begin_timer;       // timer to signal VBLANK start
+      |         ^~~~~~~~~
+src/emu/screen.h:480:9: error: 'emu_timer' does not name a type
+  480 |         emu_timer *         m_vblank_end_timer;         // timer to signal VBLANK end
+      |         ^~~~~~~~~
+src/emu/screen.h:481:9: error: 'emu_timer' does not name a type
+  481 |         emu_timer *         m_scanline0_timer;          // scanline 0 timer
+      |         ^~~~~~~~~
+src/emu/screen.h:482:9: error: 'emu_timer' does not name a type
+  482 |         emu_timer *         m_scanline_timer;           // scanline timer
+      |         ^~~~~~~~~
+src/emu/screen.h:483:9: error: 'u64' does not name a type
+  483 |         u64                 m_frame_number;             // the current frame number
+      |         ^~~
+src/emu/screen.h:484:9: error: 'u32' does not name a type
+  484 |         u32                 m_partial_updates_this_frame; // partial update counter this frame
+      |         ^~~
+src/emu/screen.h:490:52: error: expected ')' before 'callback'
+  490 |                 callback_item(vblank_state_delegate callback)
+      |                              ~                     ^~~~~~~~~
+      |                                                    )
+src/emu/screen.h:493:17: error: 'vblank_state_delegate' does not name a type
+  493 |                 vblank_state_delegate       m_callback;
+      |                 ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:495:14: error: 'vector' in namespace 'std' does not name a template type
+  495 |         std::vector<std::unique_ptr<callback_item>> m_callback_list; // list of VBLANK callbacks
+      |              ^~~~~~
+src/emu/screen.h:495:9: note: 'std::vector' is defined in header '<vector>'; did you forget to '#include <vector>'?
+  495 |         std::vector<std::unique_ptr<callback_item>> m_callback_list; // list of VBLANK callbacks
+      |         ^~~
+src/emu/screen.h:501:42: error: expected ')' before '&' token
+  501 |                 auto_bitmap_item(bitmap_t &bitmap)
+      |                                 ~        ^~
+      |                                          )
+src/emu/screen.h:503:17: error: 'bitmap_t' does not name a type
+  503 |                 bitmap_t &                  m_bitmap;
+      |                 ^~~~~~~~
+src/emu/screen.h:505:14: error: 'vector' in namespace 'std' does not name a template type
+  505 |         std::vector<std::unique_ptr<auto_bitmap_item>> m_auto_bitmap_list; // list of registered bitmaps
+      |              ^~~~~~
+src/emu/screen.h:505:9: note: 'std::vector' is defined in header '<vector>'; did you forget to '#include <vector>'?
+  505 |         std::vector<std::unique_ptr<auto_bitmap_item>> m_auto_bitmap_list; // list of registered bitmaps
+      |         ^~~
+src/emu/screen.h:411:22: error: 'virtual void screen_device::device_validity_check(int&) const' marked 'override', but does not override
+  411 |         virtual void device_validity_check(validity_checker &valid) const override;
+      |                      ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:412:22: error: 'virtual void screen_device::device_resolve_objects()' marked 'override', but does not override
+  412 |         virtual void device_resolve_objects() override ATTR_COLD;
+      |                      ^~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:413:22: error: 'virtual void screen_device::device_start()' marked 'override', but does not override
+  413 |         virtual void device_start() override ATTR_COLD;
+      |                      ^~~~~~~~~~~~
+src/emu/screen.h:414:22: error: 'virtual void screen_device::device_reset()' marked 'override', but does not override
+  414 |         virtual void device_reset() override ATTR_COLD;
+      |                      ^~~~~~~~~~~~
+src/emu/screen.h:415:22: error: 'virtual void screen_device::device_stop()' marked 'override', but does not override
+  415 |         virtual void device_stop() override ATTR_COLD;
+      |                      ^~~~~~~~~~~
+src/emu/screen.h:416:22: error: 'virtual void screen_device::device_post_load()' marked 'override', but does not override
+  416 |         virtual void device_post_load() override;
+      |                      ^~~~~~~~~~~~~~~~
+src/emu/screen.h: In member function 'bool screen_device::has_screen_update() const':
+src/emu/screen.h:177:50: error: 'm_screen_update_ind16' was not declared in this scope
+  177 |         bool has_screen_update() const { return !m_screen_update_ind16.isnull() || !m_screen_update_rgb32.isnull(); }
+      |                                                  ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:177:85: error: 'm_screen_update_rgb32' was not declared in this scope
+  177 |         bool has_screen_update() const { return !m_screen_update_ind16.isnull() || !m_screen_update_rgb32.isnull(); }
+      |                                                                                     ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h: In member function 'screen_device& screen_device::set_lcd()':
+src/emu/screen.h:181:44: error: 'configured' was not declared in this scope; did you mean 'configure'?
+  181 |         screen_device &set_lcd() { assert(!configured()); m_is_lcd = true; return *this; }
+      |                                            ^~~~~~~~~~
+      |                                            configure
+src/emu/screen.h:181:36: error: 'assert' was not declared in this scope
+  181 |         screen_device &set_lcd() { assert(!configured()); m_is_lcd = true; return *this; }
+      |                                    ^~~~~~
+src/emu/screen.h:21:1: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+   20 | #include <utility>
+  +++ |+#include <cassert>
+   21 | 
+src/emu/screen.h: In member function 'screen_device& screen_device::set_raster()':
+src/emu/screen.h:182:47: error: 'configured' was not declared in this scope; did you mean 'configure'?
+  182 |         screen_device &set_raster() { assert(!configured()); m_is_lcd = false; return *this; }
+      |                                               ^~~~~~~~~~
+      |                                               configure
+src/emu/screen.h:182:39: error: 'assert' was not declared in this scope
+  182 |         screen_device &set_raster() { assert(!configured()); m_is_lcd = false; return *this; }
+      |                                       ^~~~~~
+src/emu/screen.h:182:39: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/screen.h: In member function 'void screen_device::set_physical_aspect(unsigned int, unsigned int)':
+src/emu/screen.h:183:68: error: 'configured' was not declared in this scope; did you mean 'configure'?
+  183 |         void set_physical_aspect(unsigned x, unsigned y) { assert(!configured()); m_phys_aspect = std::make_pair(x, y); }
+      |                                                                    ^~~~~~~~~~
+      |                                                                    configure
+src/emu/screen.h:183:60: error: 'assert' was not declared in this scope
+  183 |         void set_physical_aspect(unsigned x, unsigned y) { assert(!configured()); m_phys_aspect = std::make_pair(x, y); }
+      |                                                            ^~~~~~
+src/emu/screen.h:183:60: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/screen.h: In member function 'void screen_device::set_native_aspect()':
+src/emu/screen.h:184:44: error: 'configured' was not declared in this scope; did you mean 'configure'?
+  184 |         void set_native_aspect() { assert(!configured()); m_phys_aspect = std::make_pair(~0U, ~0U); }
+      |                                            ^~~~~~~~~~
+      |                                            configure
+src/emu/screen.h:184:36: error: 'assert' was not declared in this scope
+  184 |         void set_native_aspect() { assert(!configured()); m_phys_aspect = std::make_pair(~0U, ~0U); }
+      |                                    ^~~~~~
+src/emu/screen.h:184:36: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/screen.h: In member function 'screen_device& screen_device::set_raw(int, int, int, int, int, int, int)':
+src/emu/screen.h:204:17: error: 'assert' was not declared in this scope
+  204 |                 assert(pixclock != 0);
+      |                 ^~~~~~
+src/emu/screen.h:204:17: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/screen.h:206:17: error: 'set_clock' was not declared in this scope; did you mean 'set_lcd'?
+  206 |                 set_clock(pixclock);
+      |                 ^~~~~~~~~
+      |                 set_lcd
+src/emu/screen.h:207:17: error: 'm_frame_period' was not declared in this scope
+  207 |                 m_frame_period = HZ_TO_ATTOSECONDS(pixclock) * htotal * vtotal;
+      |                 ^~~~~~~~~~~~~~
+src/emu/screen.h:207:34: error: 'HZ_TO_ATTOSECONDS' was not declared in this scope
+  207 |                 m_frame_period = HZ_TO_ATTOSECONDS(pixclock) * htotal * vtotal;
+      |                                  ^~~~~~~~~~~~~~~~~
+src/emu/screen.h:208:17: error: 'm_vblank' was not declared in this scope; did you mean 'vblank'?
+  208 |                 m_vblank = m_frame_period / vtotal * (vtotal - (vbstart - vbend));
+      |                 ^~~~~~~~
+      |                 vblank
+src/emu/screen.h:212:17: error: 'm_visarea' was not declared in this scope; did you mean 'set_visarea'?
+  212 |                 m_visarea.set(hbend, hbstart ? hbstart - 1 : htotal - 1, vbend, vbstart - 1);
+      |                 ^~~~~~~~~
+      |                 set_visarea
+src/emu/screen.h: In member function 'screen_device& screen_device::set_raw(const int&, int, int, int, int, int, int)':
+src/emu/screen.h:217:22: error: request for member 'validate' in 'xtal', which is of non-class type 'const int'
+  217 |                 xtal.validate(std::string("Configuring screen ") + tag());
+      |                      ^~~~~~~~
+src/emu/screen.h:217:36: error: 'string' is not a member of 'std'
+  217 |                 xtal.validate(std::string("Configuring screen ") + tag());
+      |                                    ^~~~~~
+src/emu/screen.h:21:1: note: 'std::string' is defined in header '<string>'; did you forget to '#include <string>'?
+   20 | #include <utility>
+  +++ |+#include <string>
+   21 | 
+src/emu/screen.h:217:68: error: 'tag' was not declared in this scope
+  217 |                 xtal.validate(std::string("Configuring screen ") + tag());
+      |                                                                    ^~~
+src/emu/screen.h:218:37: error: request for member 'value' in 'xtal', which is of non-class type 'const int'
+  218 |                 return set_raw(xtal.value(), htotal, hbend, hbstart, vtotal, vbend, vbstart);
+      |                                     ^~~~~
+src/emu/screen.h: In member function 'screen_device& screen_device::set_raw(const int&, int, int, int)':
+src/emu/screen.h:222:54: error: request for member 'left' in 'visarea', which is of non-class type 'int'
+  222 |                 return set_raw(xtal, htotal, visarea.left(), visarea.right() + 1, vtotal, visarea.top(), visarea.bottom() + 1);
+      |                                                      ^~~~
+src/emu/screen.h:222:70: error: request for member 'right' in 'visarea', which is of non-class type 'int'
+  222 |                 return set_raw(xtal, htotal, visarea.left(), visarea.right() + 1, vtotal, visarea.top(), visarea.bottom() + 1);
+      |                                                                      ^~~~~
+src/emu/screen.h:222:99: error: request for member 'top' in 'visarea', which is of non-class type 'int'
+  222 |                 return set_raw(xtal, htotal, visarea.left(), visarea.right() + 1, vtotal, visarea.top(), visarea.bottom() + 1);
+      |                                                                                                   ^~~
+src/emu/screen.h:222:114: error: request for member 'bottom' in 'visarea', which is of non-class type 'int'
+  222 |                 return set_raw(xtal, htotal, visarea.left(), visarea.right() + 1, vtotal, visarea.top(), visarea.bottom() + 1);
+      |                                                                                                                  ^~~~~~
+src/emu/screen.h: In member function 'void screen_device::set_refresh(int)':
+src/emu/screen.h:226:17: error: 'm_frame_period' was not declared in this scope
+  226 |                 m_frame_period = period.as_attoseconds();
+      |                 ^~~~~~~~~~~~~~
+src/emu/screen.h:226:41: error: request for member 'as_attoseconds' in 'period', which is of non-class type 'int'
+  226 |                 m_frame_period = period.as_attoseconds();
+      |                                         ^~~~~~~~~~~~~~
+src/emu/screen.h: In member function 'screen_device& screen_device::set_refresh_hz(T&&)':
+src/emu/screen.h:239:29: error: 'attotime' has not been declared
+  239 |                 set_refresh(attotime::from_hz(std::forward<T>(hz)));
+      |                             ^~~~~~~~
+src/emu/screen.h: In member function 'screen_device& screen_device::set_vblank_time(int)':
+src/emu/screen.h:253:17: error: 'm_vblank' was not declared in this scope; did you mean 'vblank'?
+  253 |                 m_vblank = time;
+      |                 ^~~~~~~~
+      |                 vblank
+src/emu/screen.h: In member function 'screen_device& screen_device::set_visarea(int, int, int, int)':
+src/emu/screen.h:295:17: error: 'm_visarea' was not declared in this scope; did you mean 'set_visarea'?
+  295 |                 m_visarea.set(minx, maxx, miny, maxy);
+      |                 ^~~~~~~~~
+      |                 set_visarea
+src/emu/screen.h: In member function 'screen_device& screen_device::set_visarea_full()':
+src/emu/screen.h:309:17: error: 'm_visarea' was not declared in this scope; did you mean 'set_visarea'?
+  309 |                 m_visarea.set(0, m_width - 1, 0, m_height - 1);
+      |                 ^~~~~~~~~
+      |                 set_visarea
+src/emu/screen.h: In member function 'auto screen_device::screen_vblank()':
+src/emu/screen.h:346:39: error: 'm_screen_vblank' was not declared in this scope; did you mean 'screen_vblank'?
+  346 |         auto screen_vblank() { return m_screen_vblank.bind(); }
+      |                                       ^~~~~~~~~~~~~~~
+      |                                       screen_vblank
+src/emu/screen.h: In member function 'auto screen_device::scanline()':
+src/emu/screen.h:347:27: error: 'm_video_attributes' was not declared in this scope; did you mean 'set_video_attributes'?
+  347 |         auto scanline() { m_video_attributes |= VIDEO_UPDATE_SCANLINE; return m_scanline_cb.bind(); }
+      |                           ^~~~~~~~~~~~~~~~~~
+      |                           set_video_attributes
+src/emu/screen.h:347:49: error: 'VIDEO_UPDATE_SCANLINE' was not declared in this scope
+  347 |         auto scanline() { m_video_attributes |= VIDEO_UPDATE_SCANLINE; return m_scanline_cb.bind(); }
+      |                                                 ^~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h:347:79: error: 'm_scanline_cb' was not declared in this scope; did you mean 'scanline'?
+  347 |         auto scanline() { m_video_attributes |= VIDEO_UPDATE_SCANLINE; return m_scanline_cb.bind(); }
+      |                                                                               ^~~~~~~~~~~~~
+      |                                                                               scanline
+src/emu/screen.h: In member function 'screen_device& screen_device::set_palette(T&&)':
+src/emu/screen.h:348:69: error: 'm_palette' was not declared in this scope; did you mean 'palette'?
+  348 |         template <typename T> screen_device &set_palette(T &&tag) { m_palette.set_tag(std::forward<T>(tag)); return *this; }
+      |                                                                     ^~~~~~~~~
+      |                                                                     palette
+src/emu/screen.h: In member function 'screen_device& screen_device::set_no_palette()':
+src/emu/screen.h:349:43: error: 'm_palette' was not declared in this scope; did you mean 'palette'?
+  349 |         screen_device &set_no_palette() { m_palette.set_tag(finder_base::DUMMY_TAG); return *this; }
+      |                                           ^~~~~~~~~
+      |                                           palette
+src/emu/screen.h:349:61: error: 'finder_base' has not been declared
+  349 |         screen_device &set_no_palette() { m_palette.set_tag(finder_base::DUMMY_TAG); return *this; }
+      |                                                             ^~~~~~~~~~~
+src/emu/screen.h: In member function 'screen_device& screen_device::set_video_attributes(int)':
+src/emu/screen.h:350:58: error: 'm_video_attributes' was not declared in this scope; did you mean 'set_video_attributes'?
+  350 |         screen_device &set_video_attributes(u32 flags) { m_video_attributes = flags; return *this; }
+      |                                                          ^~~~~~~~~~~~~~~~~~
+      |                                                          set_video_attributes
+src/emu/screen.h: In member function 'screen_device& screen_device::set_color(int)':
+src/emu/screen.h:351:49: error: 'm_color' was not declared in this scope; did you mean 'color'?
+  351 |         screen_device &set_color(rgb_t color) { m_color = color; return *this; }
+      |                                                 ^~~~~~~
+      |                                                 color
+src/emu/screen.h: In member function 'virtual device_palette_interface& screen_device::palette() const':
+src/emu/screen.h:355:69: error: 'm_palette' was not declared in this scope; did you mean 'palette'?
+  355 |         device_palette_interface &palette() const override { assert(m_palette != nullptr); return *m_palette; }
+      |                                                                     ^~~~~~~~~
+      |                                                                     palette
+src/emu/screen.h:355:62: error: 'assert' was not declared in this scope
+  355 |         device_palette_interface &palette() const override { assert(m_palette != nullptr); return *m_palette; }
+      |                                                              ^~~~~~
+src/emu/screen.h:355:62: note: 'assert' is defined in header '<cassert>'; did you forget to '#include <cassert>'?
+src/emu/screen.h: In member function 'virtual bool screen_device::has_palette() const':
+src/emu/screen.h:356:52: error: 'm_palette' was not declared in this scope; did you mean 'palette'?
+  356 |         bool has_palette() const override { return m_palette != nullptr; }
+      |                                                    ^~~~~~~~~
+      |                                                    palette
+src/emu/screen.h: In member function 'screen_bitmap& screen_device::curbitmap()':
+src/emu/screen.h:357:54: error: 'm_curtexture' was not declared in this scope
+  357 |         screen_bitmap &curbitmap() { return m_bitmap[m_curtexture]; }
+      |                                                      ^~~~~~~~~~~~
+src/emu/screen.h: In member function 'void screen_device::set_brightness(int)':
+src/emu/screen.h:363:46: error: 'm_brightness' was not declared in this scope; did you mean 'brightness'?
+  363 |         void set_brightness(u8 brightness) { m_brightness = brightness; }
+      |                                              ^~~~~~~~~~~~
+      |                                              brightness
+src/emu/screen.h: In member function 'int screen_device::vblank() const':
+src/emu/screen.h:368:38: error: 'machine' was not declared in this scope
+  368 |         int vblank() const { return (machine().time() < m_vblank_end_time) ? 1 : 0; }
+      |                                      ^~~~~~~
+src/emu/screen.h:368:57: error: 'm_vblank_end_time' was not declared in this scope
+  368 |         int vblank() const { return (machine().time() < m_vblank_end_time) ? 1 : 0; }
+      |                                                         ^~~~~~~~~~~~~~~~~
+src/emu/screen.h: In member function 'int screen_device::hblank() const':
+src/emu/screen.h:369:74: error: 'm_visarea' was not declared in this scope; did you mean 'set_visarea'?
+  369 |         int hblank() const { int const curpos = hpos(); return (curpos < m_visarea.left() || curpos > m_visarea.right()) ? 1 : 0; }
+      |                                                                          ^~~~~~~~~
+      |                                                                          set_visarea
+src/emu/screen.h: In member function 'int screen_device::partial_updates() const':
+src/emu/screen.h:387:46: error: 'm_partial_updates_this_frame' was not declared in this scope
+  387 |         int partial_updates() const { return m_partial_updates_this_frame; }
+      |                                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/emu/screen.h: In member function 'int screen_device::partial_scan_hpos() const':
+src/emu/screen.h:388:48: error: 'm_partial_scan_hpos' was not declared in this scope; did you mean 'partial_scan_hpos'?
+  388 |         int partial_scan_hpos() const { return m_partial_scan_hpos; }
+      |                                                ^~~~~~~~~~~~~~~~~~~
+      |                                                partial_scan_hpos
+src/emu/screen.h: At global scope:
+src/emu/screen.h:509:20: error: expected constructor, destructor, or type conversion before '(' token
+  509 | DECLARE_DEVICE_TYPE(SCREEN, screen_device)
+      |                    ^
+src/devices/bus/sat_ctrl/ctrl.h:24:70: error: expected class-name before '{' token
+   24 | class device_saturn_control_port_interface : public device_interface {
+      |                                                                      ^
+src/devices/bus/sat_ctrl/ctrl.h:29:11: error: 'uint16_t' does not name a type
+   29 |   virtual uint16_t read_direct() { return 0; }
+      |           ^~~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:15:1: note: 'uint16_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+   14 | #include "screen.h"
+  +++ |+#include <cstdint>
+   15 | 
+src/devices/bus/sat_ctrl/ctrl.h:30:11: error: 'uint8_t' does not name a type
+   30 |   virtual uint8_t read_ctrl(uint8_t offset) { return 0; }
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:30:11: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/ctrl.h:32:11: error: 'uint8_t' does not name a type
+   32 |   virtual uint8_t read_ctrl_slot(unsigned index, uint8_t offset) {
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:32:11: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/ctrl.h:35:11: error: 'uint8_t' does not name a type
+   35 |   virtual uint8_t read_status() { return 0xf0; }
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:35:11: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/ctrl.h:36:11: error: 'uint8_t' does not name a type
+   36 |   virtual uint8_t read_id(int idx) { return 0xff; }
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:36:11: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/ctrl.h:41:25: error: 'uint8_t' has not been declared
+   41 |   virtual bool read_pdr(uint8_t ddr, uint8_t data, uint8_t &res) {
+      |                         ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:41:38: error: 'uint8_t' has not been declared
+   41 |   virtual bool read_pdr(uint8_t ddr, uint8_t data, uint8_t &res) {
+      |                                      ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:41:52: error: 'uint8_t' has not been declared
+   41 |   virtual bool read_pdr(uint8_t ddr, uint8_t data, uint8_t &res) {
+      |                                                    ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:46:46: error: 'machine_config' does not name a type
+   46 |   device_saturn_control_port_interface(const machine_config &mconfig,
+      |                                              ^~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:47:40: error: 'device_t' has not been declared
+   47 |                                        device_t &device);
+      |                                        ^~~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:49:3: error: 'uint8_t' does not name a type
+   49 |   uint8_t m_ctrl_id;
+      |   ^~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:49:3: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/ctrl.h:55:51: error: expected class-name before ',' token
+   55 | class saturn_control_port_device : public device_t,
+      |                                                   ^
+src/devices/bus/sat_ctrl/ctrl.h:56:76: error: expected template-name before '<' token
+   56 |                                    public device_single_card_slot_interface<
+      |                                                                            ^
+src/devices/bus/sat_ctrl/ctrl.h:56:76: error: expected '{' before '<' token
+src/devices/bus/sat_ctrl/ctrl.h:56:76: error: expected unqualified-id before '<' token
+src/devices/bus/sat_ctrl/ctrl.h:101:20: error: expected constructor, destructor, or type conversion before '(' token
+  101 | DECLARE_DEVICE_TYPE(SATURN_CONTROL_PORT, saturn_control_port_device)
+      |                    ^
+src/devices/bus/sat_ctrl/ctrl.h:104:6: error: variable or field 'saturn_joys' declared void
+  104 | void saturn_joys(device_slot_interface &device);
+      |      ^~~~~~~~~~~
+src/devices/bus/sat_ctrl/ctrl.h:104:18: error: 'device_slot_interface' was not declared in this scope; did you mean 'device_palette_interface'?
+  104 | void saturn_joys(device_slot_interface &device);
+      |                  ^~~~~~~~~~~~~~~~~~~~~
+      |                  device_palette_interface
+src/devices/bus/sat_ctrl/ctrl.h:104:41: error: 'device' was not declared in this scope
+  104 | void saturn_joys(device_slot_interface &device);
+      |                                         ^~~~~~
+src/devices/bus/sat_ctrl/analog.h:22:45: error: expected class-name before ',' token
+   22 | class saturn_analog_device : public device_t,
+      |                                             ^
+src/devices/bus/sat_ctrl/analog.h:26:30: error: 'machine_config' does not name a type
+   26 |   saturn_analog_device(const machine_config &mconfig, const char *tag,
+      |                              ^~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:27:24: error: 'device_t' has not been declared
+   27 |                        device_t *owner, uint32_t clock);
+      |                        ^~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:27:41: error: 'uint32_t' has not been declared
+   27 |                        device_t *owner, uint32_t clock);
+      |                                         ^~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:30:11: error: 'ioport_constructor' does not name a type
+   30 |   virtual ioport_constructor device_input_ports() const override ATTR_COLD;
+      |           ^~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:34:31: error: expected ';' at end of member declaration
+   34 |   virtual void device_start() override ATTR_COLD;
+      |                               ^~~~~~~~
+      |                                       ;
+src/devices/bus/sat_ctrl/analog.h:34:40: error: 'ATTR_COLD' does not name a type
+   34 |   virtual void device_start() override ATTR_COLD;
+      |                                        ^~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:34:40: note: the macro 'ATTR_COLD' had not yet been defined
+src/osd/osdcomm.h:39: note: it was later defined here
+   39 | #define ATTR_COLD               __attribute__((cold))
+      | 
+src/devices/bus/sat_ctrl/analog.h:35:31: error: expected ';' at end of member declaration
+   35 |   virtual void device_reset() override ATTR_COLD;
+      |                               ^~~~~~~~
+      |                                       ;
+src/devices/bus/sat_ctrl/analog.h:35:40: error: 'ATTR_COLD' does not name a type
+   35 |   virtual void device_reset() override ATTR_COLD;
+      |                                        ^~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:35:40: note: the macro 'ATTR_COLD' had not yet been defined
+src/osd/osdcomm.h:39: note: it was later defined here
+   39 | #define ATTR_COLD               __attribute__((cold))
+      | 
+src/devices/bus/sat_ctrl/analog.h:38:11: error: 'uint8_t' does not name a type
+   38 |   virtual uint8_t read_ctrl(uint8_t offset) override;
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/analog.h:15:1: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+   14 | #include "ctrl.h"
+  +++ |+#include <cstdint>
+   15 | 
+src/devices/bus/sat_ctrl/analog.h:39:11: error: 'uint8_t' does not name a type
+   39 |   virtual uint8_t read_status() override { return 0xf1; }
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/analog.h:39:11: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/analog.h:40:11: error: 'uint8_t' does not name a type
+   40 |   virtual uint8_t read_id(int idx) override;
+      |           ^~~~~~~
+src/devices/bus/sat_ctrl/analog.h:40:11: note: 'uint8_t' is defined in header '<cstdint>'; did you forget to '#include <cstdint>'?
+src/devices/bus/sat_ctrl/analog.h:44:3: error: 'u16' does not name a type
+   44 |   u16 digital_buttons();
+      |   ^~~
+src/devices/bus/sat_ctrl/analog.h:46:3: error: 'required_ioport' does not name a type
+   46 |   required_ioport m_joy;
+      |   ^~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:47:3: error: 'required_ioport' does not name a type
+   47 |   required_ioport m_anx;
+      |   ^~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:48:3: error: 'required_ioport' does not name a type
+   48 |   required_ioport m_any;
+      |   ^~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:49:3: error: 'required_ioport' does not name a type
+   49 |   required_ioport m_anr;
+      |   ^~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:50:3: error: 'required_ioport' does not name a type
+   50 |   required_ioport m_anl;
+      |   ^~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:51:3: error: 'required_ioport' does not name a type
+   51 |   required_ioport m_mode;
+      |   ^~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:34:16: error: 'virtual void saturn_analog_device::device_start()' marked 'override', but does not override
+   34 |   virtual void device_start() override ATTR_COLD;
+      |                ^~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:35:16: error: 'virtual void saturn_analog_device::device_reset()' marked 'override', but does not override
+   35 |   virtual void device_reset() override ATTR_COLD;
+      |                ^~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h: In member function 'bool saturn_analog_device::analog_mode() const':
+src/devices/bus/sat_ctrl/analog.h:43:37: error: 'm_mode' was not declared in this scope
+   43 |   bool analog_mode() const { return m_mode->read() & 1; }
+      |                                     ^~~~~~
+src/devices/bus/sat_ctrl/analog.h: At global scope:
+src/devices/bus/sat_ctrl/analog.h:58:20: error: expected constructor, destructor, or type conversion before '(' token
+   58 | DECLARE_DEVICE_TYPE(SATURN_ANALOG, saturn_analog_device)
+      |                    ^
+src/devices/bus/sat_ctrl/analog.cpp:99:24: error: no declaration matches 'void (* saturn_analog_device::device_input_ports() const)(device_t&, ioport_list&, std::ostream&)'
+   99 |     ioport_constructor saturn_analog_device::device_input_ports() const {
+      |                        ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:99:24: note: no functions named 'void (* saturn_analog_device::device_input_ports() const)(device_t&, ioport_list&, std::ostream&)'
+src/devices/bus/sat_ctrl/analog.h:22:7: note: 'class saturn_analog_device' defined here
+   22 | class saturn_analog_device : public device_t,
+      |       ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:111:1: error: no declaration matches 'saturn_analog_device::saturn_analog_device(const machine_config&, const char*, device_t*, uint32_t)'
+  111 | saturn_analog_device::saturn_analog_device(const machine_config &mconfig,
+      | ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:22:7: note: candidates are: 'constexpr saturn_analog_device::saturn_analog_device(saturn_analog_device&&)'
+   22 | class saturn_analog_device : public device_t,
+      |       ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:22:7: note:                 'constexpr saturn_analog_device::saturn_analog_device(const saturn_analog_device&)'
+src/devices/bus/sat_ctrl/analog.h:26:3: note:                 'saturn_analog_device::saturn_analog_device(const int&, const char*, int*, int)'
+   26 |   saturn_analog_device(const machine_config &mconfig, const char *tag,
+      |   ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.h:22:7: note: 'class saturn_analog_device' defined here
+   22 | class saturn_analog_device : public device_t,
+      |       ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp: In member function 'virtual void saturn_analog_device::device_start()':
+src/devices/bus/sat_ctrl/analog.cpp:125:3: error: 'save_item' was not declared in this scope
+  125 |   save_item(NAME(m_r_pressed));
+      |   ^~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp: At global scope:
+src/devices/bus/sat_ctrl/analog.cpp:139:5: error: no declaration matches 'u16 saturn_analog_device::digital_buttons()'
+  139 | u16 saturn_analog_device::digital_buttons() {
+      |     ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:139:5: note: no functions named 'u16 saturn_analog_device::digital_buttons()'
+src/devices/bus/sat_ctrl/analog.h:22:7: note: 'class saturn_analog_device' defined here
+   22 | class saturn_analog_device : public device_t,
+      |       ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:172:9: error: no declaration matches 'uint8_t saturn_analog_device::read_id(int)'
+  172 | uint8_t saturn_analog_device::read_id(int idx) {
+      |         ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:172:9: note: no functions named 'uint8_t saturn_analog_device::read_id(int)'
+src/devices/bus/sat_ctrl/analog.h:22:7: note: 'class saturn_analog_device' defined here
+   22 | class saturn_analog_device : public device_t,
+      |       ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:181:9: error: no declaration matches 'uint8_t saturn_analog_device::read_ctrl(uint8_t)'
+  181 | uint8_t saturn_analog_device::read_ctrl(uint8_t offset) {
+      |         ^~~~~~~~~~~~~~~~~~~~
+src/devices/bus/sat_ctrl/analog.cpp:181:9: note: no functions named 'uint8_t saturn_analog_device::read_ctrl(uint8_t)'
+src/devices/bus/sat_ctrl/analog.h:22:7: note: 'class saturn_analog_device' defined here
+   22 | class saturn_analog_device : public device_t,
+      |       ^~~~~~~~~~~~~~~~~~~~
+In file included from src/emu/emu.h:61:
+src/emu/device.h: In instantiation of 'emu::detail::device_type_impl_base::device_type_impl_base(emu::detail::device_tag_struct<DeviceClass, Traits>) [with DeviceClass = saturn_analog_device; Traits = {anonymous}::SATURN_ANALOG_device_traits]':
+src/emu/device.h:301:31:   required from here
+src/emu/device.h:252:65: error: 'emulation_flags' is not a member of 'saturn_analog_device'
+  252 |                 , m_emulation_flags(DeviceClass::emulation_flags())
+      |                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+src/emu/device.h:253:73: error: 'unemulated_features' is not a member of 'saturn_analog_device'
+  253 |                 , m_unemulated_features(DeviceClass::unemulated_features())
+      |                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+src/emu/device.h:254:71: error: 'imperfect_features' is not a member of 'saturn_analog_device'
+  254 |                 , m_imperfect_features(DeviceClass::imperfect_features())
+      |                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+src/emu/device.h:255:67: error: 'parent_rom_device_type' is not a member of 'saturn_analog_device'
+  255 |                 , m_parent_rom(DeviceClass::parent_rom_device_type())
+      |                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+In file included from src/emu/emu.h:62:
+src/emu/devfind.h: In instantiation of 'void device_finder<DeviceClass, Required>::set_tag(DeviceClass&) [with DeviceClass = saturn_analog_device; bool Required = false]':
+src/devices/bus/sat_ctrl/analog.cpp:40:1:   required from here
+src/emu/devfind.h:608:52: error: no matching function for call to 'device_finder<saturn_analog_device, false>::set_tag(saturn_analog_device&, const char [1])'
+  608 |         void set_tag(DeviceClass &object) { set_tag(object, DEVICE_SELF); }
+      |                                             ~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+src/emu/devfind.h:334:14: note: candidate: 'void finder_base::set_tag(const finder_base&)'
+  334 |         void set_tag(finder_base const &finder)
+      |              ^~~~~~~
+src/emu/devfind.h:334:14: note:   candidate expects 1 argument, 2 provided
+src/emu/devfind.h:326:14: note: candidate: 'void finder_base::set_tag(const char*)'
+  326 |         void set_tag(char const *tag);
+      |              ^~~~~~~
+src/emu/devfind.h:326:14: note:   candidate expects 1 argument, 2 provided
+src/emu/devfind.h:309:14: note: candidate: 'void finder_base::set_tag(device_t&, const char*)'
+  309 |         void set_tag(device_t &base, char const *tag)
+      |              ^~~~~~~
+src/emu/devfind.h:309:32: note:   no known conversion for argument 1 from 'saturn_analog_device' to 'device_t&'
+  309 |         void set_tag(device_t &base, char const *tag)
+      |                      ~~~~~~~~~~^~~~
+src/emu/devfind.h:608:14: note: candidate: 'void device_finder<DeviceClass, Required>::set_tag(DeviceClass&) [with DeviceClass = saturn_analog_device; bool Required = false]'
+  608 |         void set_tag(DeviceClass &object) { set_tag(object, DEVICE_SELF); }
+      |              ^~~~~~~
+src/emu/devfind.h:608:14: note:   candidate expects 1 argument, 2 provided
+src/emu/devfind.h: In instantiation of 'void device_finder<DeviceClass, Required>::set_tag(DeviceClass&) [with DeviceClass = saturn_analog_device; bool Required = true]':
+src/devices/bus/sat_ctrl/analog.cpp:40:1:   required from here
+src/emu/devfind.h:608:52: error: no matching function for call to 'device_finder<saturn_analog_device, true>::set_tag(saturn_analog_device&, const char [1])'
+  608 |         void set_tag(DeviceClass &object) { set_tag(object, DEVICE_SELF); }
+      |                                             ~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+src/emu/devfind.h:334:14: note: candidate: 'void finder_base::set_tag(const finder_base&)'
+  334 |         void set_tag(finder_base const &finder)
+      |              ^~~~~~~
+src/emu/devfind.h:334:14: note:   candidate expects 1 argument, 2 provided
+src/emu/devfind.h:326:14: note: candidate: 'void finder_base::set_tag(const char*)'
+  326 |         void set_tag(char const *tag);
+      |              ^~~~~~~
+src/emu/devfind.h:326:14: note:   candidate expects 1 argument, 2 provided
+src/emu/devfind.h:309:14: note: candidate: 'void finder_base::set_tag(device_t&, const char*)'
+  309 |         void set_tag(device_t &base, char const *tag)
+      |              ^~~~~~~
+src/emu/devfind.h:309:32: note:   no known conversion for argument 1 from 'saturn_analog_device' to 'device_t&'
+  309 |         void set_tag(device_t &base, char const *tag)
+      |                      ~~~~~~~~~~^~~~
+src/emu/devfind.h:608:14: note: candidate: 'void device_finder<DeviceClass, Required>::set_tag(DeviceClass&) [with DeviceClass = saturn_analog_device; bool Required = true]'
+  608 |         void set_tag(DeviceClass &object) { set_tag(object, DEVICE_SELF); }
+      |              ^~~~~~~
+src/emu/devfind.h:608:14: note:   candidate expects 1 argument, 2 provided
