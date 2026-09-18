@@ -365,7 +365,8 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 	newval = oldval;
 	COMBINE_DATA(&newval);
 
-	m_flags = (newval & 0x0063'0000) | (m_flags & ~0x0063'0000);
+	// ST-097 p.51: arithmetic status flags, including S/Z, are read-only.
+	m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
 
 	if (BIT(m_flags, EPF))
 		popmessage("scudsp.cpp: single step enabled");

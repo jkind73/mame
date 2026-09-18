@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 src=Path(os.environ.get('SCUDSP_HOSTFLAGS_SOURCE',ROOT/'src/devices/cpu/scudsp/scudsp.cpp')).read_text()
 start=src.index('void scudsp_cpu_device::program_control_w(')
 end=src.index('void scudsp_cpu_device::program_w(',start)
