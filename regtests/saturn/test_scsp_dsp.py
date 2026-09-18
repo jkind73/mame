@@ -8,6 +8,12 @@ import tempfile
 ROOT=Path(os.environ.get('MAME_ROOT',Path(__file__).resolve().parents[2]))
 src=Path(os.environ.get('SCSP_DSP_SOURCE',ROOT/'src/devices/sound/scspdsp.cpp')).read_text().replace('#include "emu.h"','')
 mutant=os.environ.get('SCSP_DSP_MUTANT','')
+if mutant=='addr-unsigned':src=src.replace('util::sext(ADRS_REG, 12)', '(ADRS_REG & 0xfff)')
+if mutant=='addr-width':src=src.replace('util::sext(ADRS_REG, 12)', 'util::sext(ADRS_REG, 13)')
+if mutant=='addr-unconditional':src=src.replace('if (ADREB)', 'if (true)')
+if mutant=='addr-late-latch':
+ a=src.index('    if (ADRL) {');b=src.index('    // EFREG',a);block=src[a:b]
+ src=src[:a]+src[b:];src=src.replace('    {\n      u32 ADDR',block+'    {\n      u32 ADDR')
 if mutant=='trimmed':src=src.replace('step < 128;', 'step < LastStep;')
 if mutant=='padded-trim':src=src.replace('step < 128;', 'step < std::min(LastStep + 2, 128);')
 if mutant=='missing-final':src=src.replace('step < 128;', 'step < 127;')
@@ -19,14 +25,15 @@ cpp=r'''
 #include <cstdint>
 #include <iostream>
 #include <iterator>
+#include <vector>
 using u8=uint8_t;using u16=uint16_t;using u32=uint32_t;
 using s16=int16_t;using s32=int32_t;using s64=int64_t;
 #define BIT(v,b) ((uint32_t(v)>>(b))&1)
 namespace util {template<class T>s32 sext(T v,unsigned bits){u32 mask=(1u<<bits)-1,sign=1u<<(bits-1);return s32((u32(v)&mask)^sign)-s32(sign);}}
 struct address_space {
- u16 data=0;unsigned reads=0;
- u16 read_word(u32 a){assert(a==0x8000);++reads;return data;}
- void write_word(u32,u16){assert(false);}
+ u16 data=0;unsigned reads=0;bool recording=false;std::vector<u32> addresses;
+ u16 read_word(u32 a){if(recording)addresses.push_back(a);else assert(a==0x8000);++reads;return data;}
+ void write_word(u32 a,u16){assert(recording);addresses.push_back(a);}
 };
 // SOURCE
 s32 signed_bits(u32 v,unsigned n){s64 x=v&((1ull<<n)-1);return s32(x-(x&(1ull<<(n-1))?(1ll<<n):0));}
@@ -65,6 +72,29 @@ int main(){
   // Program writes beyond the remembered nonzero tail take effect without Start.
   if(last<127){d.MPRO[127*4+2]=0x1100;d.Step();assert(d.EFREG[1]==effect(tail_acc(t,d.FRC_REG)));++cases;}
  }
+
+ unsigned address_cases=0;
+ for(unsigned form=0;form<2;++form)for(unsigned raw=0;raw<(form?4096u:256u);++raw)
+ for(unsigned rb=0;rb<4;++rb)for(unsigned table=0;table<2;++table)
+ for(unsigned add=0;add<2;++add){
+  unsigned nx=raw&1,wr=(raw>>1)&1;
+  SCSPDSP d;d.Init();address_space mem;mem.recording=true;d.space=&mem;
+  unsigned bases[]={0,1,0xfff,0x1fff,0x7fff,0xffff};
+  d.MADRS[0]=bases[raw%6];d.RBL=8192u<<rb;d.RBP=(raw>>4)&63;
+  d.DEC=raw*0x10203u;d.ADRS_REG=0xa55;
+  d.MEMS[0]=form?u32(-s64(signed_bits(raw<<12,24))):raw<<16;
+  d.COEF[0]=-32768;d.MPRO[1]=0xa000;d.MPRO[2]=2;
+  d.MPRO[6]=0x80|(form?0x30:0)|(table?0x8000:0)|(wr?0x4000:0x2000);
+  d.MPRO[7]=0x100|(add?2:0)|nx;
+  d.MPRO[14]=(table?0x8000:0)|(wr?0x4000:0x2000);d.MPRO[15]=d.MPRO[7];
+  s64 offset=signed_bits(raw,form?12:8);
+  s64 logical=s64(d.MADRS[0])+(table?0:d.DEC)+(add?offset:0)+nx;
+  u32 expected=(((u32(logical)&(table?0xffff:d.RBL-1))+(d.RBP<<12))*2);
+  s64 old_logical=s64(d.MADRS[0])+(table?0:d.DEC)+(add?signed_bits(0xa55,12):0)+nx;
+  u32 first=((u32(old_logical)&(table?0xffff:d.RBL-1))+(d.RBP<<12))*2;
+  d.Start();d.Step();assert((mem.addresses==std::vector<u32>{first,expected}));++address_cases;
+ }
+ std::cout<<address_cases<<" actual signed-displacement/latch/ring/table/read-write cases passed\n";
  SCSPDSP stopped;stopped.Init();stopped.ACC=123;stopped.MIXS[0]=99;stopped.Step();
  assert(stopped.ACC==123&&!stopped.MIXS[0]);
  std::cout<<cases<<" actual SCSP zero-tail/MAC/read/live-program cases plus stopped control passed\n";
