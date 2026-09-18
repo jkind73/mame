@@ -47,6 +47,10 @@ done
 grep -q 'CD block HIRQ: CMOK command handshake' "$LOG_DIR/test_cd_hirq.log"
 grep -q 'Saturn cart runtime: 2 cartridges exercised' "$LOG_DIR/test_cart_runtime.log"
 grep -q 'fresh-directory provenance and save/mutate/load all verified' "$LOG_DIR/test_backup_ram.log"
+phase=dsp-pipeline
+python3 saturn_pending/test_scudsp_pipeline_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pipeline" > "$LOG_DIR/dsp-pipeline.log" 2>&1
+grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/dsp-pipeline.log"
 phase=dsp-dma
 python3 saturn_pending/test_scudsp_dma_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-dma" > "$LOG_DIR/dsp-dma.log" 2>&1
@@ -117,4 +121,4 @@ phase=final-provenance
 python3 saturn_pending/verify_ci_artifact.py "$ARTIFACT" --run-id "$RUN_ID" > "$LOG_DIR/final-artifact.json"
 cmp "$LOG_DIR/artifact.json" "$LOG_DIR/final-artifact.json"
 sha256sum -c "$LOG_DIR/bios.sha256"
-echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP DMA B-bus addressing and in-flight save replay, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
+echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP wrapped control flow, DSP DMA B-bus addressing and in-flight save replay, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"

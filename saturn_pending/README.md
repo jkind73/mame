@@ -1,3 +1,21 @@
+# Latest native qualification and execution fix
+
+**b5caa488 passes the entire native consumer**, including all 32 DSP B-bus DMA
+addressing cases and exact replay of a saved busy 60,000-word transfer. Source,
+ZIP and binary provenance were verified; no build inputs changed during the gate.
+CI 35306849889, binary SHA256
+`5d5f978c7938a0553c21009885f5a995f0fbd5e73604d3d594c7d5205d88b8f2`.
+Evidence: `evidence/b5caa488-live/`. This supersedes older pending-DMA statements.
+
+**New production WIP:** explicit DSP pending-delay validity preserves address 00
+across PC wrap, state restore and reset. Five real before-fix programs fail on
+both 234c and b5caa488; 393,216 extracted PC/target/control cases, three rejected
+mutants, the existing DMA suite and full-TU syntax pass. Native-positive for this
+new revision is pending. `scudsp-delay-slot.patch` is integrated; do not reapply.
+See `evidence/dsp-pipeline/`. Full prefetch timing and program-RAM DMA remain open.
+
+---
+
 # Latest integration update
 
 **79f36021 now passes the complete expanded native gate**: both full/sparse tap

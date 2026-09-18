@@ -121,7 +121,8 @@ private:
 	uint32_t  m_flags;  /* flags */
 	uint8_t   m_ra;
 	uint8_t   m_ct0,m_ct1,m_ct2,m_ct3;
-	uint8_t   m_delay;                                   /* Delay */
+	uint8_t   m_delay;                                   /* Delay-slot address */
+	bool      m_delay_pending;                           /* Address zero is valid */
 	uint8_t   m_top;                                     /*Jump Command memory*/
 	uint16_t  m_lop;                                    /*Counter Register*/   /*12-bits*/
 	SCUDSPREG32 m_rx;                                /*X-Bus register*/
