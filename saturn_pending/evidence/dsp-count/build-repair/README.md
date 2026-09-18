@@ -24,8 +24,11 @@ dependencies have been restored outside Git. CI35352902888 remains in progress.
 
 Repair35352902888 passed the controller compilation but failed at scspdsp.cpp,
 which likewise included scspdsp.h before emu.h. The broader comment-stripped
-source audit found no other local quoted header preceding emu.h anywhere under
-src after this repair. Standard-library includes before emu.h are not changed.
+source audit found no other local quoted header preceding emu.h in the device,
+emulation, driver and front-end trees after this repair. OSD modules do have
+earlier local headers; their separate interfaces were left unchanged, and this
+audit is not a no-PCH compilation result for them. Standard-library includes
+before emu.h are not changed.
 The regression now compiles all six controller/sound-DSP units without PCH; all
 six pass. This failure still does not qualify the counter binary. Further rebuild
 and native qualification are required; no emulator arithmetic behavior changed.
