@@ -36,3 +36,11 @@ with pixel/save-replay checks, on the same 5008 baseline. Its log is preserved.
 The partial-report negative save run now freezes emulated time during scheduled
 file I/O and checks restored time before resuming; it still reaches all three
 notifications and fails the expected old transport assertions.
+
+ST-V DRC and JP interpreter composition also completed successfully, each with
+1,042 pixel/save-replay cases. Together with JP DRC and PAL DRC, this baseline
+now has **4,168 composition cases across all four configurations**. This is
+synthetic rendering/state acceptance, not four game boots or full hardware
+qualification. `sync-save-items.lua`/`.log` separately demonstrate live root
+save-registry enumeration: the known system-halt item exists, but both H/V
+edge-history items are missing. No private field was modified by that probe.

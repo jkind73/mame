@@ -425,3 +425,35 @@ avoids accidentally holding a report across a VBlank deadline just to wait for
 host disk I/O. The old-binary negative run was repeated: actual save/load
 notifications complete without Lua errors or clock failures, with only the
 expected transport assertions failing. Fourteen fake protocol controls pass.
+
+## Repeatable API transfer and next native run
+
+The API route succeeded: `artifact-transfer-234c.json` records export run
+35299254687, the temporary blob and independently verified ZIP/binary digests.
+Direct Azure and release-asset downloads still fail, but no manual ZIP upload is
+needed when the export workflow has created its draft/transfer blob.
+
+After a successful native run, set `SOURCE_RUN`/`SOURCE_SHA` in
+`.github/workflows/saturn-artifact-export.yml` to that run and push on this
+session branch. The path-filtered export job verifies the successful run and
+copies only its original ZIP. It creates no binary commit or alternate branch;
+its draft release is deliberately unpublished. The temporary unreferenced Git
+blob may be garbage-collected; the draft asset remains available to its owner.
+Then, from matching source inputs:
+
+```
+python3 saturn_pending/fetch_ci_artifact.py --run-id RUN_ID --destination /home/user/saturn-ci-RUN_ID
+bash saturn_pending/validate_ci_runtime.sh /home/user/saturn-ci-RUN_ID RUN_ID
+```
+
+The helper has 19 synthetic identity/encoding/size/content controls, in addition
+to seven archive and twelve provenance controls. A genuine retrieval of the
+234c ZIP was deliberately attempted after integrating the newer source: the
+local input-tree mismatch was correctly rejected. Transfer alone never grants
+permission to attribute old executable results to new code.
+
+The integrated timeout/edge-history native build is
+https://github.com/jkind73/mame/actions/runs/35299792272 at
+`2781f96bc19a433c36dc34d8ce560254cf08301a`. It is queued at this checkpoint.
+The full local 55-script ROM-free regression batch is also running. The prior
+234c live pass remains distinct from these pending new-source results.
