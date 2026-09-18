@@ -74,7 +74,7 @@ void check(unsigned mode,uint32_t a,uint32_t b){
  }
  std::vector<uint32_t> code={0x1c00,0x1d00,0x1e00,0x1f00,0x2100000,0x8c000,0,
   0x20000,mode==5?0x1501u:0x1500u,3u<<26,0x1000000,op,
-  6u<<26,0x3209,0x320a,0,0x1000000,6u<<26,0x3209,0x320a};
+  (6u<<26)|0x40000,0x3209,0x320a,0x20000,0x1000000,(6u<<26)|0x40000,0x3209,0x320a};
  for(unsigned i=0;i<code.size();++i)d.code[i]=code[i];
  for(unsigned i=0;i<code.size();++i){d.m_icount=1;d.execute_run();assert(d.m_icount==0);}
  unsigned address=128;

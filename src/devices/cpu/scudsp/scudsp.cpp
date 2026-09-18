@@ -439,6 +439,10 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 	unsigned ram_reads = 0;
 
 
+	// The ALU starts from entry-state A. NOP bypasses A, and 32-bit
+	// operations preserve its upper sixteen bits, not a prior ALU result.
+	m_alu = concat_64(m_ach.ui, m_acl.ui);
+
 	/* ALU */
 	// NOTE: anything but AD2 doesn't update upper 16-bit ALU part
 	switch( (opcode & 0x3c000000) >> 26 )

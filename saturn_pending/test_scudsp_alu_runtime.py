@@ -34,7 +34,7 @@ local function test()
             code[#code+1]=0x60000 -- next M0 is zero, no flag change
             a=0
         end
-        code[#code+1]=op<<26
+        code[#code+1]=(op<<26)|0x40000 -- latch result in A before later observations
         code[#code+1]=0x3209;code[#code+1]=0x320a;code[#code+1]=0xf0000000
         sp:write_u32(control,0x8000)
         for _,word in ipairs(code) do sp:write_u32(program,word) end
