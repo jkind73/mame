@@ -1,3 +1,18 @@
+# Prepared next feature: DSP program-RAM loading
+
+`scudsp-program-ram.patch` implements the documented MVI-PC serialized loader
+path as a **candidate, not applied**. The current decoder aliases PRG to data RAM;
+all 32 actual before-fix loader programs fail. The candidate passes 4,096 extracted
+program-address/count/hold cases with five replay cuts, five rejected compiled
+mutants, existing DSP suites and full-TU syntax. Exact scope, reference pins and
+remaining serialization/timing gaps: `evidence/dsp-pram/README.md`.
+
+Production remains **ca63041f** (read-bus classification); native read positives
+must be qualified before this next core change. No program-RAM native positive
+or full program-DMA completion is claimed.
+
+---
+
 # Current native baseline and read-DMA work
 
 **89764c08 passes the complete native gate**, including all 48 wrapped-control
@@ -11,7 +26,8 @@ historical and superseded by this result.
 **New production WIP:** DSP read-DMA physical bus classification now preserves
 C-bus behavior across all high-RAM mirrors and excludes A-bus/CS2 from B-bus
 advancement. Real 89764c08 fails 372/1,024 mirror/mode programs; expanded extracted
-checks and full-TU syntax pass. Native-positive for this new source is pending.
+checks and full-TU syntax pass. The full 58-script local batch passed (three
+optional live skips excluded). Native-positive is pending in CI 35341486010.
 Exact reference basis and limitations: `evidence/dsp-read/README.md`.
 
 ---
