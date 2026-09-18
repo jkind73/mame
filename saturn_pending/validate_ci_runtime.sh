@@ -59,6 +59,10 @@ phase=dsp-count_operand
 python3 saturn_pending/test_scudsp_count_operand_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-count_operand" > "$LOG_DIR/dsp-count_operand.log" 2>&1
 grep -q 'DSP count operand: 32 source-alias/increment/wrap programs passed live' "$LOG_DIR/dsp-count_operand.log"
+phase=dsp-parallel
+python3 saturn_pending/test_scudsp_parallel_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-parallel" > "$LOG_DIR/dsp-parallel.log" 2>&1
+grep -q 'DSP parallel buses: 144 RAM/register/counter programs passed live' "$LOG_DIR/dsp-parallel.log"
 phase=dsp-lop
 python3 saturn_pending/test_scudsp_lop_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-lop" > "$LOG_DIR/dsp-lop.log" 2>&1
@@ -102,7 +106,7 @@ grep -q 'DSP save: busy transfer restored and 256-word replay verified' "$LOG_DI
 # Default DSP fixtures above use JP/interpreter; exercise the other shared-core
 # configurations explicitly rather than inferring DSP acceptance from BIOS boot.
 for system in saturnjp saturneu stvbios; do
-    for fixture in dma pipeline read pram count count_operand alu multiplier lop; do
+    for fixture in dma pipeline read pram count count_operand alu multiplier lop parallel; do
         phase="dsp-$fixture-$system-drc"
         python3 "saturn_pending/test_scudsp_${fixture}_runtime.py" \
             --executable "$ARTIFACT/saturn" --rompath "$ROOT/regtests" \
@@ -117,6 +121,8 @@ for system in saturnjp saturneu stvbios; do
             grep -q 'DSP DMA count: 24 zero/width/direction/hold programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == count_operand ]]; then
             grep -q 'DSP count operand: 32 source-alias/increment/wrap programs passed live' "$LOG_DIR/$phase.log"
+        elif [[ "$fixture" == parallel ]]; then
+            grep -q 'DSP parallel buses: 144 RAM/register/counter programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == lop ]]; then
             grep -q 'DSP loop counter: 80 write-path/BTM/LPS programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == multiplier ]]; then

@@ -27,6 +27,7 @@ cpp=r'''
 using u16=uint16_t;using u32=uint32_t;using s64=int64_t;
 union R32{uint32_t ui=0;int32_t si;};union R16{uint16_t ui=0;int16_t si;};
 constexpr uint64_t concat_64(uint32_t hi,uint32_t lo){return (uint64_t(hi)<<32)|lo;}
+#define scudsp_writemem(a,b,v) assert(false)
 // MACROS
 struct scudsp_cpu_device {
  enum{VF=19,EF=18};
