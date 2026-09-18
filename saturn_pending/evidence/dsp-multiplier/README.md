@@ -41,7 +41,7 @@ UBSan. Non-exercised opcodes/device APIs are stubs, not native acceptance.
 Full SCUDSP translation-unit syntax, existing80,968 ALU cases, shell syntax and
 12 parser controls pass. New native consumer requires256 multiplier programs
 across four configurations plus all accepted arithmetic and earlier gates.
-New-source native positive and full batch/build remain pending. No parent closed.
+CI35365374912 and the full62-script local batch passed; new-source native positive remains pending. No parent closed.
 
 
 Reference caveat: simultaneous X-bus and D1 writes to RX have different priority
