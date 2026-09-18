@@ -1,31 +1,24 @@
-# Integrated DSP program-RAM loader — native WIP
+# Integrated DSP count correction — native WIP
 
-The documented MVI-PC serialized loader is now implemented: PRG selector,
-saved wrapping program cursor, following-MVI serialization, TOP resume and
-pending-slot flush. All 32 old-binary overlays and the 192-word wrapped actual
-save replay reproduce the missing feature. Extracted suites, five mutants and
-full-TU syntax pass. Native positives remain pending; exact scope and remaining
-serialization/timing gaps: `evidence/dsp-pram/README.md`.
+The eight-bit counter and zero-as-256 behavior are now implemented after the
+program-loader baseline qualified. Both data and program save fixtures now use
+legal zero-encoded 256-word transfers. Extracted 20,480 count cases, 5,120 program
+loads, prior suites, parser controls and full-TU syntax pass. Native positives
+remain pending. See `evidence/dsp-count/README.md` for reference limitations.
+The portable candidate patch is retained in Git history, not for reapplication.
 
-**Latest fully native-qualified source: ca63041f.** Build 35341486010 and export
-35343850525 passed. The expanded consumer passed all 4,096 read-mirror programs
-across JP/interpreter, JP/DRC, PAL/DRC and ST-V/DRC, plus 48 control-flow programs,
-128 DMA programs, actual 60,000-word save replay and all earlier integration
+**Latest fully native-qualified source: cd074b71.** Build35344168780 and
+export35346630133 passed. The expanded consumer passed128 program overlays
+across four configurations, actual192-word wrapped program save replay, actual
+pending address-00 slot save replay,4096 read programs and all prior integration
 gates. Binary SHA256:
-`642af2f549c682ec391aa78109cfa732a727bd06b93fddb5a6d52b4d44162312`.
-Evidence: `evidence/ca63041f-live/`. No whole-hardware or gameplay completion.
+`a8f105fc369a36b137aed4f4bb3c1e02b9030fcdf345ddfab8408103b63e9685`.
+Evidence: `evidence/cd074b71-live/`. Its60,000-word data save is historical stress
+coverage, not a valid single hardware transfer under the new counter semantics.
 
-
-A separate actual ca63041f file save/reset/mutate/load now restores the pending
-address-00 branch slot (JP/interpreter); the next consumer requires this gate.
-Evidence: `evidence/dsp-pipeline/live-slot-save/`.
-
-The next counter correction is prepared, **not applied**:
-`scudsp-count.patch`, with 16/24 actual before-fix failures and 20,480 extracted
-count cases. This also replaces the out-of-range 60,000-word save stress with
-legal zero-encoded 256-word save replay. Reference/acceptance distinctions:
-`evidence/dsp-count/README.md`. Current loader build 35344168780 is running; its
-58-script local batch passed (three optional live skips excluded).
+Supported PRECOMPILE=0 plus compiler-cache diagnostics is now enabled as a build
+experiment. No relaxed macro settings and no measured speedup claim. Full DSP
+serialization, exact timing, shared grants and gameplay acceptance remain open.
 
 ---
 

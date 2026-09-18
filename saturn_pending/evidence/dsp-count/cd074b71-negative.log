@@ -1,0 +1,25 @@
+DSP_COUNT case=9 PASS
+DSP_COUNT case=10 PASS
+DSP_COUNT case=11 PASS
+DSP_COUNT case=12 PASS
+DSP_COUNT case=21 PASS
+DSP_COUNT case=22 PASS
+DSP_COUNT case=23 PASS
+DSP_COUNT case=24 PASS
+DSP_COUNT FAIL count_case1 got=40 want=0
+DSP_COUNT FAIL count_case2 got=40 want=0
+DSP_COUNT FAIL count_case3 got=ff want=0
+DSP_COUNT FAIL count_case4 got=ff want=0
+DSP_COUNT FAIL count_case5 got=40 want=0
+DSP_COUNT FAIL count_case6 got=40 want=0
+DSP_COUNT FAIL count_case7 got=ff want=0
+DSP_COUNT FAIL count_case8 got=ff want=0
+DSP_COUNT FAIL count_case13 got=40 want=0
+DSP_COUNT FAIL count_case14 got=40 want=0
+DSP_COUNT FAIL count_case15 got=100 want=0
+DSP_COUNT FAIL count_case16 got=100 want=0
+DSP_COUNT FAIL count_case17 got=40 want=0
+DSP_COUNT FAIL count_case18 got=40 want=0
+DSP_COUNT FAIL count_case19 got=100 want=0
+DSP_COUNT FAIL count_case20 got=100 want=0
+Average speed: 129.99% (2 seconds)

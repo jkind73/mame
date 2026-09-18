@@ -1,4 +1,4 @@
-# DSP-02 / DSP-03: program-RAM DMA loader implementation (NATIVE WIP)
+# DSP-02 / DSP-03: program-RAM DMA loader implementation (NATIVE QUALIFIED for MVI-PC path)
 
 The previous op_dma masks the destination to two bits: PRG selector 4 becomes
 MD0, so the nominal program-RAM branch is unreachable. That branch also contains
@@ -54,3 +54,11 @@ runner's seventeen file/output controls pass separately.
 Integrated cd074b71 full local batch: 58 scripts passed, excluding the three
 optional missing-default-binary live skips. Log: `local/regressions.log`.
 Native build 35344168780 is still running; candidate acceptance is not inferred.
+
+
+Superseding native result: cd074b71 passed build35344168780/export35346630133
+and the complete expanded consumer, including128 overlay programs across four
+configurations and real192-word wrapped program-RAM save replay. Source/binary
+checks passed before and after execution. See `../cd074b71-live/`. Earlier
+pending-positive statements above are historical; alternate serializers and
+exact timing remain open. The subsequent counter correction is separate WIP.

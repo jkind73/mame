@@ -1,6 +1,6 @@
-# DSP-02 / DSP-03: eight-bit transfer counter candidate (NOT APPLIED)
+# DSP-02 / DSP-03: eight-bit transfer counter implementation (NATIVE WIP)
 
-Production cd074b71 retains the older 16-bit memory-sourced length and performs
+Previous cd074b71 retains the older 16-bit memory-sourced length and performs
 one transfer for zero. The candidate masks the fetched count to eight bits and
 normalizes zero to 256, without changing the saved progress-field widths.
 No reference implementation source is copied.
@@ -41,10 +41,9 @@ word; both negative file replays complete all notifications and fail the require
 busy/image checks. The program-save negative also encounters missing program-RAM
 support on ca63041f and is not an isolated counter negative.
 
-`../../scudsp-count.patch` is portable against cd074b71 and includes the core,
-extracted tests, adapted real-save fixtures and expanded consumer gate. Apply
-only after the current loader baseline is qualified. There is no candidate
-native positive yet. Shared grants, exact timing, remaining address rules and
+Integrated after cd074b71 passed its complete expanded native consumer. The
+portable patch is retained in Git history; do not reapply. There is no new
+count-source native positive yet. Shared grants, exact timing, remaining address rules and
 alternate program-DMA serializers remain open; no parent closure.
 
 The candidate also uses MAME's supported PRECOMPILE=0 build option and records
@@ -54,4 +53,11 @@ PCH-related rejection is a suspected bottleneck, not proven by existing logs
 (which have no ccache statistics). No sloppy time-macro/PCH settings are enabled.
 The first no-PCH build is cold; any claimed speed improvement requires observed
 later cache hits and successful native acceptance. This is a build experiment,
-not emulation performance evidence, and is not applied yet.
+not emulation performance evidence, and is now applied as a build experiment.
+
+
+New isolated cd074b71 negatives repeat8 passes/16 count failures. With program
+loading now implemented and qualified, zero-encoded program save copies its first
+word correctly but finishes before save; exactly255 words are wrong after both
+original completion and replay. This isolates the remaining counter defect from
+the older ca63041f program-loader failure.
