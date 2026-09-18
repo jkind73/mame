@@ -21,3 +21,11 @@ counter/save qualification are still required. Latest accepted binary: cd074b71.
 The complete repaired local batch passed59 scripts (exit0), including the five
 no-PCH translation units; three optional live skips are excluded. The SDK/runtime
 dependencies have been restored outside Git. CI35352902888 remains in progress.
+
+Repair35352902888 passed the controller compilation but failed at scspdsp.cpp,
+which likewise included scspdsp.h before emu.h. The broader comment-stripped
+source audit found no other local quoted header preceding emu.h anywhere under
+src after this repair. Standard-library includes before emu.h are not changed.
+The regression now compiles all six controller/sound-DSP units without PCH; all
+six pass. This failure still does not qualify the counter binary. Further rebuild
+and native qualification are required; no emulator arithmetic behavior changed.
