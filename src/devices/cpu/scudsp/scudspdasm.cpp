@@ -27,18 +27,18 @@ const char *const scudsp_disassembler::X_Commands[] =
 {
 	"",             /* 000 */
 	"",             /* 001 */   /* NOP? check instruction @ 0x0B */
-	"MOV MUL,P",    /* 010 */
-	"MOV %s,P",     /* 011 */
-	"MOV %s,X",     /* 100 */
+	"MOV MUL,P ",    /* 010 */
+	"MOV %s,P ",     /* 011 */
+	"MOV %s,X ",     /* 100 */
 };
 
 const char *const scudsp_disassembler::Y_Commands[] =
 {
 	"",             /* 000 */
-	"CLR A",        /* 001 */
-	"MOV ALU,A",    /* 010 */
-	"MOV %s,A",     /* 011 */
-	"MOV %s,Y",     /* 100 */
+	"CLR A ",        /* 001 */
+	"MOV ALU,A ",    /* 010 */
+	"MOV %s,A ",     /* 011 */
+	"MOV %s,Y ",     /* 100 */
 };
 
 const char *const scudsp_disassembler::D1_Commands[] =
@@ -101,6 +101,14 @@ const char *const scudsp_disassembler::DestMemory[] =
 	"CT3",          /* 1111 */
 };
 
+// MVI has a different destination encoding from D1: PC replaces CT0,
+// while TOP and CT1-3 are not immediate destinations (ST-097 pp.121-131).
+const char *const scudsp_disassembler::DestImmediate[] =
+{
+	"MC0", "MC1", "MC2", "MC3", "RX", "PL", "RA0", "WA0",
+	"???", "???", "LOP", "???", "PC", "???", "???", "???"
+};
+
 const char *const scudsp_disassembler::DestDMAMemory[] =
 {
 	"M0",           /* 000 */
@@ -115,8 +123,8 @@ const char *const scudsp_disassembler::DestDMAMemory[] =
 
 const char *const scudsp_disassembler::MVI_Command[] =
 {
-	"MVI %I,%d",    /* 0 */
-	"MVI %I,%d,%f", /* 1 */
+	"MVI %I,%D",    /* 0 */
+	"MVI %I,%D,%f", /* 1 */
 };
 
 const char *const scudsp_disassembler::JMP_Command[] =
@@ -158,6 +166,9 @@ std::string scudsp_disassembler::scudsp_dasm_prefix( const char* format, uint32_
 					break;
 				case 'd':
 					result += DestMemory[ *data & 0xf ];
+					break;
+				case 'D':
+					result += DestImmediate[ *data & 0xf ];
 					break;
 				case 'S':
 					result += SourceMemory2[ *data & 0xf ];
@@ -269,13 +280,13 @@ offs_t scudsp_disassembler::disassemble(std::ostream &stream, offs_t pc, const d
 				data[0] = op & 0x7FFFF;
 				data[1] = (op & 0x3C000000) >> 26;
 				data[2] = (op & 0x3F80000 ) >> 19;
-				stream << scudsp_dasm_prefix( MVI_Command[1], data); /* TODO: bad mem*/
+				stream << scudsp_dasm_prefix( MVI_Command[1], data);
 			}
 			else
 			{
 				data[0] = op & 0x1FFFFFF;
 				data[1] = (op & 0x3C000000) >> 26;
-				stream << scudsp_dasm_prefix( MVI_Command[0], data ); /* TODO: bad mem*/
+				stream << scudsp_dasm_prefix( MVI_Command[0], data );
 			}
 			break;
 		case 3:

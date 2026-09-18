@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 DIR=Path(os.environ.get('SCUDSP_DASM_DIR',ROOT/'src/devices/cpu/scudsp'))
 cpp=r'''
 #include "emu.h"

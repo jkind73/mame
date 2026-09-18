@@ -1,3 +1,13 @@
+# Disassembler correction integrated — native WIP
+
+Separate MVI destinations and separated X/Y mnemonics are now in production.
+The complete real-class337-case UBSan test is in the default suite as
+regtests/saturn/test_scudsp_disassembler.py;13 debugger dump parser controls pass.
+Native consumer adds a241-row real MAME debugger dump (JP/interpreter with the
+headless debugger), not a replacement disassembler or CPU-state mutation.
+Full65-script local batch/build and candidate native positive remain pending.
+Earlier external-candidate notes below are historical.
+
 # DSP-01 disassembler candidate (not integrated yet)
 
 ST-097 printed121/PDF137 explicitly lists MVI destinations MC0-3,RX,PL,RA0,
