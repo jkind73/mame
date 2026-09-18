@@ -90,7 +90,8 @@ DEFINE_DEVICE_TYPE(SCUDSP, scudsp_cpu_device, "scudsp", "Sega SCUDSP")
 #define SET_C(_val) (m_flags = ((m_flags & ~0x00100000) | ((_val) ? 0x00100000 : 0)))
 #define SET_S(_val) (m_flags = ((m_flags & ~0x00400000) | ((_val) ? 0x00400000 : 0)))
 #define SET_Z(_val) (m_flags = ((m_flags & ~0x00200000) | ((_val) ? 0x00200000 : 0)))
-#define SET_V(_val) (m_flags = ((m_flags & ~0x00080000) | ((_val) ? 0x00080000 : 0)))
+// Overflow is latched until the host reads the program control port.
+#define SET_V(_val) (m_flags |= ((_val) ? 0x00080000 : 0))
 
 
 #define FLAGS_MASK 0x06ff8000
@@ -454,31 +455,34 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			break;
 
 		case 0x4:   /* ADD */
-			i3 = m_acl.si + m_pl.si;
+			i1 = uint64_t(m_acl.ui) + m_pl.ui;
+			i3 = uint32_t(i1);
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z( (i3 & s64(0xffff'ffff'ffffU)) == 0 );
-			SET_S( i3 & s64(0x1'0000'0000'0000U));
-			SET_C(i3 & s64(0x1'0000'0000U));
+			SET_Z(i3 == 0);
+			SET_S(i3 < 0);
+			SET_C(i1 & s64(0x1'0000'0000U));
 			SET_V((i3 ^ m_acl.si) & (i3 ^ m_pl.si) & 0x8000'0000);
 			break;
 
 		case 0x5:   /* SUB */
-			i3 = m_acl.si - m_pl.si;
+			i1 = int64_t(m_acl.ui) - int64_t(m_pl.ui);
+			i3 = uint32_t(i1);
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
 			SET_Z(i3 == 0);
-			SET_C(i3 & s64(0x1'0000'0000U));
+			SET_C(i1 & s64(0x1'0000'0000U));
 			SET_S(i3 < 0);
-			SET_V(((m_pl.si) ^ (m_acl.si)) & ((m_pl.si) ^ (i3)) & 0x8000'0000);
+			SET_V(((m_pl.si) ^ (m_acl.si)) & ((m_acl.si) ^ (i3)) & 0x8000'0000);
 			break;
 
 		case 0x6:   /* AD2 */
-			i1 = concat_64(int32_t(m_ph.si), m_pl.si);
-			i2 = concat_64(int32_t(m_ach.si), m_acl.si);
+			i1 = concat_64(m_ph.ui, m_pl.ui);
+			i2 = concat_64(m_ach.ui, m_acl.si);
 			m_alu = i1 + i2;
 			SET_Z((m_alu & s64(0xffff'ffff'ffffU)) == 0);
 			SET_S((m_alu & s64(0x8000'0000'0000U)) > 0);
 			SET_C(m_alu & s64(0x1'0000'0000'0000U));
 			SET_V((m_alu ^ i1) & (m_alu ^ i2) & s64(0x8000'0000'0000U));
+			m_alu &= s64(0xffff'ffff'ffffU);
 			break;
 
 		case 0x7:   /* ??? */
@@ -491,7 +495,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
 			SET_Z(i3 == 0);
 			SET_S(i3 < 0);
-			SET_C(m_acl.ui & 0x8000'0000);
+			SET_C(m_acl.ui & 0x1);
 			break;
 
 		case 0x9:   /* RR */
