@@ -138,7 +138,7 @@
   - Implement remaining A/C-bus address-add/boundary rules and reconcile DSP transfer timing with SCU DMA.
 - [ ] **DSP-03 — Qualify execution timing and integration. [P/V]**
   - Instruction/DMA overlap, end interrupts, host access while running, debugger/DRC synchronization and save/load of pipeline state.
-  - Registered the missing DMA stride/mode/direction/progress/state fields; reset now clears the private DMA HALT and T0 busy state. Extracted replay at WAIT/MOVE/completion and reset checks pass; b5caa488 now passes real mid-transfer save/mutate/load with exact 60,000-word replay. Broader instruction/DMA overlap and bus arbitration remain open.
+  - Registered the missing DMA stride/mode/direction/progress/state fields; reset now clears the private DMA HALT and T0 busy state. Extracted replay at WAIT/MOVE/completion and reset checks pass; b5caa488 now passes real mid-transfer save/mutate/load with exact 60,000-word replay. Actual ca63041f scheduled save/reset/mutate/load also restores and executes a pending wrapped address-00 branch slot through public-port phase observation (JP/interpreter). Broader instruction/DMA overlap and bus arbitration remain open.
   - Reproduce geometry corruption reports with current source before treating a title as evidence of a specific DSP defect.
 
 ## 6. SMPC: system management, RTC and controller transport

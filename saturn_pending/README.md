@@ -16,6 +16,10 @@ gates. Binary SHA256:
 Evidence: `evidence/ca63041f-live/`. No whole-hardware or gameplay completion.
 
 
+A separate actual ca63041f file save/reset/mutate/load now restores the pending
+address-00 branch slot (JP/interpreter); the next consumer requires this gate.
+Evidence: `evidence/dsp-pipeline/live-slot-save/`.
+
 The next counter correction is prepared, **not applied**:
 `scudsp-count.patch`, with 16/24 actual before-fix failures and 20,480 extracted
 count cases. This also replaces the out-of-range 60,000-word save stress with
