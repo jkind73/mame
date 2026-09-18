@@ -1,4 +1,4 @@
-# OR flag correction integrated — native WIP
+# OR flag correction — NATIVE QUALIFIED
 
 The primary-backed correction is now in production after ALU forwarding passed
 its native consumer. The existing ALU suites expand to222662 actual-method
@@ -6,8 +6,11 @@ cases and438 guest programs; no new default script or parent ID is added.
 All defined flag-changing operations now receive boundary/random/sticky/read-clear
 checks. The host-flags OR preset expects S=1,Z=0, retaining every write-protection
 assertion. Targeted suites, parser controls and full-TU C++20 syntax pass.
-Full69-script local/CI and build35379801144 pass; rebuilt native acceptance is pending; the native
-consumer requires1752 arithmetic/logic/rotate programs across four configurations.
+Source c33fe0da passes full69-script local/CI, build35379801144/export35380818303
+and the complete rebuilt native consumer:1752 arithmetic/logic/rotate programs
+across four configurations,448 corrected host-flag programs, the corrected legal
+paused pending-slot file gate and every previous gate/provenance/BIOS check.
+Native evidence: ../c33fe0da-live/.
 Croc/Psygnosis gameplay remains unqualified. Earlier prototype notes below are
 historical; do not reapply the patch.
 
@@ -35,8 +38,8 @@ including sticky-V and debugger/host-read controls. The preceding production sou
 The expanded438-program native fixture on qualified f944ce85 passes390 and
 fails48 negative-OR programs. Those produce96 flag/read-clear mismatches; ALL
 result observations and the other arithmetic/logic/rotate controls pass.
-Same-cycle result latching corrections are retained. Candidate native positive
-has NOT run; no gameplay or full hardware completion claim.
+Same-cycle result latching corrections are retained. Candidate native positive had not run at prototype capture; it is qualified above.
+No gameplay or full hardware completion claim.
 
 Promotion updated parser/consumer counts and the host-flags fixture:
 its old negative-OR preset deliberately expected the legacy impossible S=Z=1

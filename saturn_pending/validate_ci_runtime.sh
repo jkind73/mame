@@ -54,7 +54,7 @@ grep -q 'DSP disassembler: 241 real debugger destination/parallel-command rows p
 phase=dsp-pause
 python3 saturn_pending/test_scudsp_pause_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pause" > "$LOG_DIR/dsp-pause.log" 2>&1
-grep -q 'DSP pause: six loop/command-width/active-DMA cases passed live' "$LOG_DIR/dsp-pause.log"
+grep -q 'DSP pause: 20 pause/DMA/stopped-load/pending-slot cases passed live' "$LOG_DIR/dsp-pause.log"
 phase=dsp-pause-save
 python3 saturn_pending/test_scudsp_pause_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pause-save" > "$LOG_DIR/dsp-pause-save.log" 2>&1
@@ -156,7 +156,7 @@ for system in saturnjp saturneu stvbios; do
         elif [[ "$fixture" == alu_flow ]]; then
             grep -q 'DSP ALU dataflow: 192 entry-A/bypass/high-half programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == pause ]]; then
-            grep -q 'DSP pause: six loop/command-width/active-DMA cases passed live' "$LOG_DIR/$phase.log"
+            grep -q 'DSP pause: 20 pause/DMA/stopped-load/pending-slot cases passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == hostflags ]]; then
             grep -q 'DSP host flags: 112 guest-ALU/read-only/masked-write cases passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == cbus ]]; then
