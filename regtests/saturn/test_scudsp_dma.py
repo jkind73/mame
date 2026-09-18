@@ -57,7 +57,7 @@ if mutant == 'read-low-bits':
 if mutant == 'read-cs2':
     methods = methods.replace('else if (physical >= 0x05900000', 'else if (physical >= 0x05800000')
 if mutant == 'beat':
-    methods = methods.replace('m_dma.dst + m_dma.write_stride', 'm_dma.dst + 2')
+    methods = methods.replace('address + m_dma.write_stride', 'address + 2')
 if mutant == 'count-source':
     methods = methods.replace('m_dma.add = 2 * m_dma.write_stride;', 'if (!(opcode & 0x2000)) m_dma.add = 2 * m_dma.write_stride;')
 if mutant == 'save-state':
