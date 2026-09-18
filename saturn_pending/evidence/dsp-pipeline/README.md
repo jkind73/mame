@@ -39,3 +39,8 @@ The same five control-flow failures were also reproduced on ST-V/DRC with the
 verified b5caa488 binary; `b5caa488-stv-drc-negative.log`. The next native gate
 requires both DMA and pipeline programs in JP/interpreter, JP/DRC, PAL/DRC and
 ST-V/DRC. Production 89764c08 is building in CI 35308649438.
+
+Integrated 89764c08 full local regression batch: **58 scripts, exit zero**.
+Three optional missing-default-binary live skips are explicitly excluded from
+acceptance. Full output: `local/regressions.log`. Native 35308649438 remains
+building; there is no new-source pipeline native-positive claim yet.
