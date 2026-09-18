@@ -32,7 +32,8 @@ h=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) 
 h=h[:h.index('int main(){')]
 h=h.replace('T0F=23','T0F=23,EXF=16,LEF=15,EPF=25,PRF=26,VF=19,EF=18')
 h=h.replace('count=0;} m_dma;', 'count=0;bool stalled=false;} m_dma;')
-h=h.replace('int clock(){return 1;}', '''bool m_paused=false;int reset=0;
+if 'm_paused' not in h: h=h.replace('int clock(){return 1;}', 'bool m_paused=false;int clock(){return 1;}')
+h=h.replace('int clock(){return 1;}', '''int reset=0;
  struct machine_type {bool side_effects_disabled(){return false;}} machine_state;
  machine_type &machine(){return machine_state;}void m_out_irq_cb(int){}void popmessage(const char*){}
  uint32_t program_control_r();void program_control_w(offs_t,uint32_t,uint32_t);
