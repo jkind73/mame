@@ -3,7 +3,7 @@
 @@ -594,6 +594,33 @@
    m_sndres(0);
  }
- 
+
 +// ST-169-R1 p.50: peripheral INTBACK terminates at VBlank-IN if it
 +// has not finished. Pending command completion and CONTINUE are distinct
 +// timers. Do not cancel an unrelated system command sharing the SF register.
@@ -33,23 +33,23 @@
 +
  void smpc_hle_device::resolve_intback() {
    int i;
- 
+
 --- a/src/mame/sega/smpc.h
 +++ b/src/mame/sega/smpc.h
 @@ -31,6 +31,8 @@
- 
+
    void m68k_reset_trigger();
- 
+
 +  void vblank_in();
 +
    bool get_iosel(bool which);
- 
+
    uint8_t get_ddr(bool which);
 --- a/src/mame/sega/saturn.cpp
 +++ b/src/mame/sega/saturn.cpp
 @@ -185,6 +185,8 @@
  } // anonymous namespace
- 
+
  void saturn_state::machine_start() {
 +  save_item(NAME(m_prev_hint));
 +  save_item(NAME(m_prev_vint));
@@ -58,7 +58,7 @@
    save_item(NAME(m_sound_dma_halt));
 @@ -198,6 +200,7 @@
  }
- 
+
  void saturn_state::machine_reset() {
 +  m_prev_hint = m_prev_vint = 0;
    vdp2_reset_rotation_latches();
@@ -80,6 +80,6 @@
    void hint_callback(int state);
 -  int m_prev_hint, m_prev_vint;
 +  int m_prev_hint = 0, m_prev_vint = 0;
- 
+
    TIMER_CALLBACK_MEMBER(vdp1_draw_end);
    void soundram_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
