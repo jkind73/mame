@@ -31,7 +31,8 @@ passes all32 ordinary transfer cases and fails8 cached-parameter reuse cases.
 The old recursive behavior is tested ONLY under the extracted depth guard.
 SCSP_DMA_SELF_EXECUTE=1 adds executable payloads for48 cases; the full consumer
 opts in only after verifying the fixed artifact against current production.
-Matching build,192 native cases/four profiles and preceding gates pending.
+Full71-script local/CI and build35402288912 PASS for source53f73010.
+Matching192 native cases/four profiles and preceding gates pending.
 
 The self-target cases qualify host robustness only. Timer/serial stand-ins in
 the extracted harness are not timing proof. Memory wrapping is an existing
