@@ -44,13 +44,14 @@ emu.register_frame_done(function()
     end
     if frames<180 then return end
     if phase=='setup' then step(function()
-        park();fill()
+        park();sp:write_u32(control,0x8000);fill()
         -- LOP=ffff must retainfff; LPS emits4096 increments to a64-word ring.
         upload({0x1e00,0x1501,0x20000,0xa800ffff,0xe8000000,0x10043209,0xf0000000})
-        check('active_before_save',sp:read_u32(control)&0x10000,0x10000)
-        sp:write_u32(addr,128);local progress=0
-        for i=1,64 do local v=sp:read_u32(data);if v~=0xdeadbeef then progress=math.max(progress,v) end end
-        assert(progress>0 and progress<4096,'not an observed in-flight loop')
+        local status=sp:read_u32(control)
+        check('active_before_save',status&0x10000,0x10000)
+        -- ST-097 pp.53-54 forbids data-port access while EX=1. Observe
+        -- only the control port: active execution is at the loop, not setup.
+        assert((status&0xff)==4,'not an observed in-flight loop')
         print('DSP_LOP_SAVE observed partial loop')
         m:save(state_path);emu.pause();phase='saved'
     end)
@@ -78,7 +79,7 @@ print('DSP_LOP_SAVE armed')
 '''
 def validate_output(text,returncode):
     if (returncode or 'DSP_LOP_SAVE FAIL' in text or 'LUA ERROR' in text or
-            re.findall(r'^DSP_LOP_SAVE (saved|mutated|loaded)$',text,re.M)!=['saved','mutated','loaded'] or
+            re.findall(r'^DSP_LOP_SAVE (observed partial loop|saved|mutated|loaded)$',text,re.M)!=['observed partial loop','saved','mutated','loaded'] or
             len(re.findall(r'^DSP_LOP_SAVE observed partial loop$',text,re.M))!=1 or
             len(re.findall(r'^DSP_LOP_SAVE PASS iterations=4096 replay=exact$',text,re.M))!=1):
         raise RuntimeError('DSP loop save fixture failed:\n'+text[-16000:])

@@ -52,7 +52,7 @@ emu.register_frame_done(function()
     end
     if frames<180 then return end
     if phase=='setup' then step(function()
-        park();sp:read_u32(control)
+        park();sp:write_u32(control,0x8000);sp:read_u32(control)
         put(0,0x10000);put(64,0x7fffffff);put(192,0x10000)
         -- (7fffffff * 10000) + 10000 = 800000000000: signed48 overflow.
         upload({0x1c00,0x1d00,0x1e00,0x1f00,0x60000,0x2100000,0x8c000,0,
