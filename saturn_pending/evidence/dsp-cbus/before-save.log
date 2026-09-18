@@ -1,0 +1,9 @@
+DSP_CBUS_SAVE armed
+DSP_CBUS_SAVE saved
+DSP_CBUS_SAVE mutated
+DSP_CBUS_SAVE loaded
+DSP_CBUS_SAVE FAIL original_completion got=fe want=0
+DSP_CBUS_SAVE FAIL original_completion_wa0_probe got=ff want=0
+DSP_CBUS_SAVE FAIL replayed_completion got=fe want=0
+DSP_CBUS_SAVE FAIL replayed_completion_wa0_probe got=ff want=0
+Average speed: 263.26% (2 seconds)
