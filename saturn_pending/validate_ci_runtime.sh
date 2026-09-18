@@ -181,13 +181,13 @@ grep -q 'DSP pending slot save: wrapped slot restored and executed exactly' "$LO
 phase=scsp-dsp
 python3 saturn_pending/test_scsp_dsp_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
-grep -q 'SCSP DSP: 247 zero-tail/live-program/signed-address cases passed live' "$LOG_DIR/$phase.log"
+grep -q 'SCSP DSP: 759 zero-tail/live-program/signed-address/input-order cases passed live' "$LOG_DIR/$phase.log"
 for system in saturnjp saturneu stvbios; do
     phase="scsp-dsp-$system-drc"
     python3 saturn_pending/test_scsp_dsp_runtime.py --executable "$ARTIFACT/saturn" \
         --rompath "$ROOT/regtests" --system "$system" --drc \
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
-    grep -q 'SCSP DSP: 247 zero-tail/live-program/signed-address cases passed live' "$LOG_DIR/$phase.log"
+    grep -q 'SCSP DSP: 759 zero-tail/live-program/signed-address/input-order cases passed live' "$LOG_DIR/$phase.log"
 done
 phase=scsp-dsp-save
 python3 saturn_pending/test_scsp_dsp_save_runtime.py --executable "$ARTIFACT/saturn" \
