@@ -34,7 +34,7 @@ SH-2s and sound CPU are parked only to exclude BIOS interference. Output is
 checked via MEMS/EFREG, not claimed as audible/hardware-capture qualification.
 
 The default suite grows69→70 with one generic SCSP DSP method suite, not a new
-parent ID.14 parser controls pass. Full70-script local/CI and rebuilt native
+parent ID.14 parser controls pass. Full70-script local/CI and build35388269809 pass; rebuilt native
 acceptance (124 programs/four configurations, all preceding gates retained)
 are pending. Full DSP file replay/audio continuity, hardware phase/arbitration
 and game-performance qualification remain open; no SND parent is closed.
