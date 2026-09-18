@@ -383,3 +383,41 @@ it on the original 5008 binary reaches real saved/mutated/loaded notifications
 without Lua errors and fails the expected transport assertions. Positive
 partial-report save-manager acceptance is still blocked on the rebuilt binary.
 The runtime consumer now requires this test as well as the six transport cases.
+
+## Next SMPC candidate: VBlank timeout (NOT applied)
+
+`smpc-vblank-timeout.patch` applies on the integrated transport source without
+reapplying the historical transport patches. It terminates unfinished console
+peripheral requests at the existing VDP2 rising VBlank callback, cancels both
+an initial pending command and a pending CONTINUE, clears PDL/NPE and the
+snapshot cursor/length, and suppresses a new report/IRQ. It does not cancel an
+unrelated system command or its SF and leaves legacy ST-V/no-controller behavior
+unchanged. OPE scheduling and serial wire timing are still not implemented.
+
+Primary rechecked: Sega ST-169-R1, printed p.50/PDF p.60, SDK PDF blob
+`943930551f755c68431847d23dfb6a6fad60e0c6`. Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+`INTBACKBreak`/`TriggerVBlankIN`, corroborates timeout and clearing PDL/NPE while
+retaining other SR bits. This is an independent implementation, not imported
+code. Existing BREAK's broader SR clearing is not changed by this candidate.
+
+The hook audit found that the driver's `m_prev_hint` and `m_prev_vint` have no
+explicit initialization, reset assignment, or save registration in current
+production. The candidate supplies all three, so edge detection is deterministic
+and can be restored. This is not claimed as the cause of Agent1's reported crash.
+
+`test_smpc_timeout.py --source-root PATCHED_COPY` compiled the actual candidate
+helper and driver callback with recording endpoints: **73,728 state combinations
+and four edge/order checks passed**, with eight compiled/assertion-rejected
+mutants. The candidate SMPC and Saturn translation units pass C++20 syntax
+checking. The field init/reset/registration assertions are source checks, not
+live save-manager evidence. Neither timeout nor edge-state restoration has
+native acceptance yet. The patch remains separate to preserve the exact input
+trees of the successful 234c native build while its artifact is transferred.
+
+The partial-report save fixture now pauses after scheduling save/load (those
+APIs resume internally), pumps host UI callbacks while paused, and asserts that
+emulated time remains frozen/restores exactly. It resumes before CONTINUE. This
+avoids accidentally holding a report across a VBlank deadline just to wait for
+host disk I/O. The old-binary negative run was repeated: actual save/load
+notifications complete without Lua errors or clock failures, with only the
+expected transport assertions failing. Fourteen fake protocol controls pass.
