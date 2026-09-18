@@ -1,0 +1,5 @@
+BIOS_RUNTIME starting unmodified BIOS boot/replay smoke
+BIOS_RUNTIME PASS system=stvbios time=15.543578728 pc=060154a8 full-image replay identical
+Average speed: 263.49% (15 seconds)
+
+Linked BIOS_RUNTIME fixture passed; results: /home/user/saturn-ci-runtime-35388269809/stvbios-drc-bios
