@@ -80,6 +80,34 @@
    assert(s.m_dma.dst==4&&!s.halt);
    // Model the post-fetch PC of the required following MVI-to-PC instruction.
    s.m_pc=3;s.set_dest_mem_reg_2(12,target);
+--- a/.github/workflows/saturn-integration.yml
++++ b/.github/workflows/saturn-integration.yml
+@@ -60,7 +60,11 @@
+       - name: Build Saturn and ST-V
+         run: |
+           export PATH="/usr/lib/ccache:$PATH"
+-          make -j2 OVERRIDE_CC=gcc-12 OVERRIDE_CXX=g++-12 SUBTARGET=saturn REGENIE=1 SYMBOLS=0 OPTIMIZE=1 \
++          command -v gcc-12 g++-12 > validation-artifact/compiler-paths.txt
++          ccache --zero-stats
++          # Avoid PCH-related cache rejection without relaxing macro correctness.
++          # The first no-PCH build is cold; later runs must show actual cache hits.
++          make -j2 OVERRIDE_CC=gcc-12 OVERRIDE_CXX=g++-12 SUBTARGET=saturn REGENIE=1 PRECOMPILE=0 SYMBOLS=0 OPTIMIZE=1 \
+             SOURCES=src/mame/sega/saturn.cpp,src/mame/sega/sat_console.cpp,src/mame/sega/stv.cpp \
+             USE_QTDEBUG=0 NO_X11=1 NO_USE_XINPUT=1 NO_OPENGL=1 NO_USE_MIDI=1 \
+             NO_USE_PORTAUDIO=1 NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 \
+@@ -68,6 +72,12 @@
+           cp saturn validation-artifact/saturn
+           (cd validation-artifact && sha256sum saturn > binary.sha256)
+           ldd saturn > validation-artifact/libraries.txt
++      - name: Record compiler-cache diagnostics
++        if: always()
++        run: |
++          mkdir -p validation-artifact
++          ccache --show-stats > validation-artifact/ccache-stats.txt
++          ccache --show-config > validation-artifact/ccache-config.txt
+       - name: Configuration and ROM-free regressions
+         run: |
+           ./saturn -validate 2>&1 | tee validation-artifact/validate.log
 --- a/saturn_pending/test_scudsp_save_runtime.py
 +++ b/saturn_pending/test_scudsp_save_runtime.py
 @@ -2,7 +2,7 @@
