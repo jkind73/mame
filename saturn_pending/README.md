@@ -1,3 +1,13 @@
+# DSP disassembler correction — native WIP
+
+MVI uses its own destination table (PC, not CT0; no TOP/CT1-3 destinations), and
+parallel X/Y mnemonics are separated.337 complete real-class UBSan cases and13
+parser controls pass. The old real debugger passes57/fails184 of241 rows.
+New source build/full65-script batch/native debugger positive pending; latest
+fully native-qualified source remains2e14f275. Contract: `evidence/dsp-disassembler/README.md`.
+
+---
+
 # Native-qualified DSP parallel-bus coordination
 
 Production/latest native-qualified source: **2e14f275**. Build35369703506,

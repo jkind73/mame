@@ -47,6 +47,10 @@ done
 grep -q 'CD block HIRQ: CMOK command handshake' "$LOG_DIR/test_cd_hirq.log"
 grep -q 'Saturn cart runtime: 2 cartridges exercised' "$LOG_DIR/test_cart_runtime.log"
 grep -q 'fresh-directory provenance and save/mutate/load all verified' "$LOG_DIR/test_backup_ram.log"
+phase=dsp-disassembler
+python3 saturn_pending/test_scudsp_disassembler_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-disassembler" > "$LOG_DIR/dsp-disassembler.log" 2>&1
+grep -q 'DSP disassembler: 241 real debugger destination/parallel-command rows passed' "$LOG_DIR/dsp-disassembler.log"
 phase=dsp-pipeline
 python3 saturn_pending/test_scudsp_pipeline_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pipeline" > "$LOG_DIR/dsp-pipeline.log" 2>&1
