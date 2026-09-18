@@ -24,9 +24,14 @@ methods='\n'.join(extract(sig) for sig in (
     'void scudsp_cpu_device::op_loop(', 'void scudsp_cpu_device::op_move_immediate(',
     'void scudsp_cpu_device::set_dest_mem_reg_2(',
     'uint32_t scudsp_cpu_device::compute_condition(', 'void scudsp_cpu_device::device_reset()'))
-fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_pending|m_top|m_lop)\)\)',src)
+fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_opcode|m_delay_pending|m_top|m_lop)\)\)',src)
 restore='\n'.join(f'd.{f}=s.{f};' for f in fields)
 mutation=os.environ.get('MUTATE_DSP_PIPELINE','')
+if mutation=='wrong-fetch':methods=methods.replace('m_delay_opcode = scudsp_readop(m_delay);', 'm_delay_opcode = scudsp_readop(m_pc);')
+if mutation=='missing-capture':methods=methods.replace('m_delay_opcode = scudsp_readop(m_delay);', 'm_delay_opcode = 0;')
+if mutation=='reread-slot':methods=methods.replace('opcode = m_delay_opcode;', 'opcode = scudsp_readop(m_delay);')
+if mutation=='missing-opcode-save':restore=restore.replace('d.m_delay_opcode=s.m_delay_opcode;','')
+if mutation=='wrong-hook':methods=methods.replace('debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);', 'debugger_instruction_hook(m_pc);')
 if mutation=='zero-sentinel':methods=methods.replace('if ( m_delay_pending )','if ( m_delay )')
 if mutation=='missing-save':restore=restore.replace('d.m_delay_pending=s.m_delay_pending;','')
 if mutation=='missing-reset':
@@ -49,15 +54,15 @@ struct timer {void adjust(int){}};
 struct scudsp_cpu_device {
  enum {CF=20,SF=22,ZF=21,T0F=23,DMA_STATE_IDLE=0};
  uint8_t m_pc=0,m_delay=0,m_top=0,m_update_mul=0,m_dma_state=0;
- bool m_delay_pending=false;uint16_t m_lop=0;uint32_t m_flags=0;
+ bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint16_t m_lop=0;uint32_t m_flags=0;
  int m_icount=0;int64_t m_mul=0;struct{int32_t si=0;}m_rx,m_ry;
  bool m_paused=false;struct{unsigned ex=0,count=0,dir=0,dst=0;bool stalled=false;}m_dma;
  timer t;timer *m_dma_timer=&t;
- std::array<uint32_t,256> code{};std::vector<unsigned> fetch;
+ std::array<uint32_t,256> code{};std::vector<unsigned> fetch,executed;std::vector<uint32_t> retired;
  uint32_t readop(uint8_t a){fetch.push_back(a);return code[a];}
- void debugger_instruction_hook(uint8_t){}
+ void debugger_instruction_hook(uint8_t pc){executed.push_back(pc);}
  void set_dest_mem_reg(uint32_t,uint32_t){assert(false);}
- void op_alu(uint32_t){--m_icount;}
+ void op_alu(uint32_t op){retired.push_back(op);--m_icount;}
  void op_illegal(uint32_t){assert(false);}void op_dma(uint32_t){assert(false);}
  void op_end(uint32_t){--m_icount;}
  void m_out_ddwt_cb(int){}void m_out_ddmv_cb(int){}void set_input_line(int,int){}
@@ -84,22 +89,41 @@ int main(){
    case 4:op=0xe0000000;break; // BTM
    case 5:op=0xe8000000;destination=pc;break; // LPS
   }
-  s.code[pc]=op;s.step();
   unsigned next=(pc+1)&255;
+  s.code[next]=0x1001;s.code[pc]=op;s.step();
   // Save at the control-instruction boundary, poison pending-state validity,
   // and restore ONLY the fields actually registered by the implementation.
   scudsp_cpu_device replay=s;replay.m_dma_timer=&replay.t;
-  replay.m_delay_pending=false;replay.m_delay=117;restore(replay,s);
+  replay.m_delay_pending=false;replay.m_delay=117;replay.m_delay_opcode=0x1002;restore(replay,s);
   s.step();replay.step();
-  assert(s.fetch.back()==next&&replay.fetch==s.fetch);
+  assert(!s.retired.empty()&&!replay.retired.empty());
+  assert(s.retired.back()==0x1001&&replay.retired.back()==0x1001);
+  assert(s.executed.back()==next&&replay.executed==s.executed);
   assert(s.m_pc==(taken?destination:((pc+2)&255)));
   // Consume the slot exactly once. Avoid a branch in the slot in this test.
   s.code[next]=0;replay.code[next]=0;
   s.step();replay.step();
-  assert(s.fetch.back()==(taken?destination:((pc+2)&255)));
+  assert(s.executed.back()==(taken?destination:((pc+2)&255)));
   assert(replay.fetch==s.fetch);
   ++cases;
  }
+ unsigned captures=0;
+ for(unsigned pc=0;pc<256;++pc)for(unsigned kind=0;kind<5;++kind){
+  scudsp_cpu_device s;s.m_pc=pc;s.m_top=(pc+1)&255;s.m_lop=1;s.m_flags=1<<s.ZF;
+  unsigned slot=(pc+1)&255;
+  uint32_t ops[]={0xd0000000|slot,0xd1080000|slot,0xb0000000|slot,0xe0000000,0xe8000000};
+  s.code[pc]=ops[kind];s.code[slot]=0x1001;s.step();
+  assert(s.m_delay_pending);
+  // Adversarial RAM change between instruction clocks: the fetched word is stable.
+  s.code[slot]=0x1002;
+  scudsp_cpu_device replay=s;replay.m_dma_timer=&replay.t;
+  replay.m_delay_opcode=0x1002;restore(replay,s);
+  s.step();replay.step();
+  assert(s.retired.back()==0x1001&&replay.retired.back()==0x1001);
+  assert(s.executed.back()==slot&&replay.executed==s.executed);
+  ++captures;
+ }
+ std::cout<<captures<<" fetched-slot/RAM-mutation/registered-opcode replay cases passed\n";
  scudsp_cpu_device reset;reset.m_delay_pending=true;reset.m_delay=0;
  reset.device_reset();assert(!reset.m_delay_pending);
  std::cout<<cases<<" DSP PC/target/control-flow wrap and registered-state replay cases passed\n";

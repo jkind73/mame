@@ -1,6 +1,26 @@
+# Fetched control-flow slot integrated — native WIP
+
+Reconstructed from the pushed prototype after reconnecting GitHub re-created the
+workspace and lost local commit79ec1210. The old source snapshot was backed up
+outside Git; pushed9ac6830e was restored without force-pushing.1ee15ef8's entire
+native consumer was repeated successfully before integration. The previously
+running slot69-script batch did not survive; its result is UNKNOWN, not PASS.
+
+The existing pipeline suite now also asserts the retired slot word across all
+393216 flow cases;1280 mutation/replay cases and eight compiled mutants cover the
+cache, save registration, wrong fetch/capture/hook and legacy validity/reset defects.
+The existing real-debugger fixture retains241 dump rows and requires FF→00→10.
+Qualified1ee15ef8 reproduces FF→10→10 instead;13 dump/eight trace parser controls
+are retained. Native pipeline counts expand12→27 (108 across four configurations),
+with actual cached-word file replay. Source is integrated; rebuilt native acceptance
+is pending. Same-build snapshots only; this adds a registered field. Ordinary
+prefetch/ES/loop timing/PC readback/full debugger sync remain open.
+
+Historical prototype evidence follows; do not reapply the patch.
+
 # Fetched control-flow slot prototype — NOT INTEGRATED
 
-Primary ST-097 p.90 describes executing the prefetched instruction on a jump;
+Primary ST-097 pp.85/90 describes executing the prefetched instruction on a jump;
 p.53 permits program-port writes only while EX=0 and advances the address.
 Pinned Ymir6d779960127ced72087a418c1daefc637d0aaa80 Run fetches nextInstr before
 executing the previous instruction. Beetle1382b85dcad2e98ef9a67426a775ba548eaf0c68

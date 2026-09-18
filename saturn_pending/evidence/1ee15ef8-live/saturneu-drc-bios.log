@@ -1,0 +1,5 @@
+BIOS_RUNTIME starting unmodified BIOS boot/replay smoke
+BIOS_RUNTIME PASS system=saturneu time=18.439710253 pc=060402e6 full-image replay identical
+Average speed: 304.85% (18 seconds)
+
+Linked BIOS_RUNTIME fixture passed; results: /home/user/saturn-ci-runtime-35381311374/saturneu-drc-bios

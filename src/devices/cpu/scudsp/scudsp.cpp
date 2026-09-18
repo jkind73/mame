@@ -986,11 +986,11 @@ void scudsp_cpu_device::execute_run()
 	{
 		m_update_mul = 0;
 
-		debugger_instruction_hook(m_pc);
+		debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);
 
 		if ( m_delay_pending )
 		{
-			opcode = scudsp_readop(m_delay);
+			opcode = m_delay_opcode;
 			m_delay_pending = false;
 			m_delay = 0;
 		}
@@ -1030,6 +1030,11 @@ void scudsp_cpu_device::execute_run()
 				break;
 		}
 
+		// Preserve the fetched slot word, not just its address. Program RAM can
+		// change while paused without replacing this already-fetched instruction.
+		if (m_delay_pending)
+			m_delay_opcode = scudsp_readop(m_delay);
+
 		if ( m_update_mul == 1 )
 		{
 			m_mul = (int64_t)m_rx.si * (int64_t)m_ry.si;
@@ -1055,6 +1060,7 @@ void scudsp_cpu_device::device_start()
 	m_flags = 0;
 	m_paused = false;
 	m_delay = 0;
+	m_delay_opcode = 0;
 	m_delay_pending = false;
 	m_top = 0;
 	m_lop = 0;
@@ -1090,6 +1096,7 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_flags));
 	save_item(NAME(m_paused));
 	save_item(NAME(m_delay));
+	save_item(NAME(m_delay_opcode));
 	save_item(NAME(m_delay_pending));
 
 	save_item(NAME(m_top));
@@ -1152,6 +1159,7 @@ void scudsp_cpu_device::device_start()
 void scudsp_cpu_device::device_reset()
 {
 	m_delay = 0;
+	m_delay_opcode = 0;
 	m_delay_pending = false;
 	m_out_ddwt_cb(0);
 	m_out_ddmv_cb(0);

@@ -89,7 +89,7 @@ struct scudsp_cpu_device {
  enum {DMA_STATE_IDLE,DMA_STATE_WAIT,DMA_STATE_MOVE,T0F=23};
  struct {uint32_t src=0,dst=0;uint8_t program_address=0;uint16_t add=0,write_stride=0,size=0,update=0,ex=0,dir=0,count=0;bool stalled=false;} m_dma;
  uint8_t m_pc=0,m_top=0;
- bool m_delay_pending=false;uint8_t m_delay=0;
+ bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint8_t m_delay=0;
  uint8_t m_dma_state=0,m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0;
  uint32_t m_ra0=0,m_wa0=0,m_flags=0,count_source=1;
  bool m_paused=false;int m_icount=0;bool halt=false;int ddwt=0,ddmv=0;

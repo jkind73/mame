@@ -45,7 +45,7 @@ struct scudsp_cpu_device {
  R32 m_acl,m_pl,m_rx,m_ry;R16 m_ach,m_ph;
  int64_t m_alu=0,m_mul=0;uint32_t m_flags=0,m_ra0=0,m_wa0=0;
  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0,m_delay=0,m_top=0;
- uint16_t m_lop=0;bool m_delay_pending=false;
+ uint16_t m_lop=0;bool m_delay_pending=false;uint32_t m_delay_opcode=0;
  int m_update_mul=0,m_icount=0;
  struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
  std::array<uint32_t,256> code{},ram{};
