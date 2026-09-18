@@ -150,7 +150,7 @@
   - RTC counting and leap-year behavior, SETTIME/INTBACK, cold versus warm reset and battery persistence.
   - RTC support already exists; determine ST-V-specific battery/settings behavior rather than assuming console semantics.
 - [ ] **SMPC-04 — Complete peripheral protocol and event routing. [P/V]**
-  - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; new native acceptance pending. Extended-size IDs, OPE and wire timing remain open.
+  - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; native 2781 timeout/edge-save positives pass. Physical slot addressing/FF-empty ports and VBlank-sampled RESB are now integrated WIP with extracted/syntax passes; rebuilt live positives pending. Extended-size IDs, OPE and wire timing remain open.
   - Direct-port modes, peripheral identification, multitap discovery, packet lengths and handshake timing.
   - Integrate peripheral-origin PAD/beam latch signals with SCU/VDP2; resolve exceptional mode/read responses and NetLink delegation.
 

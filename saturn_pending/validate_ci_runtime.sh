@@ -55,6 +55,15 @@ phase=smpc-multitap
 python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/smpc-multitap" > "$LOG_DIR/smpc-multitap.log" 2>&1
 grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-multitap.log"
+phase=smpc-sparse
+python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --empty-pad 1:2 --empty-pad 2:5 \
+    --output "$LOG_DIR/smpc-sparse" > "$LOG_DIR/smpc-sparse.log" 2>&1
+grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-sparse.log"
+phase=smpc-resb
+python3 saturn_pending/test_smpc_resb_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/smpc-resb" > "$LOG_DIR/smpc-resb.log" 2>&1
+grep -q 'SMPC_RESB PASS cases=7' "$LOG_DIR/smpc-resb/runtime.log"
 phase=smpc-save
 python3 saturn_pending/test_smpc_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/smpc-save" > "$LOG_DIR/smpc-save.log" 2>&1

@@ -33,6 +33,8 @@ public:
 
   void vblank_in();
 
+  auto reset_button_in_handler() { return m_reset_button_read.bind(); }
+
   bool get_iosel(bool which);
 
   uint8_t get_ddr(bool which);
@@ -146,6 +148,7 @@ private:
   };
   bool m_command_in_progress;
   bool m_NMI_reset;
+  bool m_resb = false;
   bool m_cur_dotsel;
 
   void master_sh2_nmi();
@@ -182,6 +185,7 @@ private:
   devcb_write8 m_pdr1_write;
   devcb_write8 m_pdr2_write;
   devcb_write_line m_irq_line;
+  devcb_read_line m_reset_button_read;
   optional_device<saturn_control_port_device> m_ctrl1;
   optional_device<saturn_control_port_device> m_ctrl2;
 

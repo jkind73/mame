@@ -63,11 +63,12 @@ struct timer {
  void reset(){pending=false;++resets;}
 };
 struct smpc_hle_device {
- bool m_has_ctrl_ports=true,m_command_in_progress=false,m_sf=false,m_cd_sf=false;
+ bool m_resb=false,m_has_ctrl_ports=true,m_command_in_progress=false,m_sf=false,m_cd_sf=false;
  uint8_t m_comreg=0,m_intback_buf[3]{},m_sr=0;
  unsigned m_intback_stage=0,m_peripheral_size=38,m_peripheral_pos=32,irqs=0;
  timer command,continuation;
  timer *m_cmd_timer=&command,*m_intback_timer=&continuation;
+ int m_reset_button_read(){return 0;}
  void sf_ack(bool);void vblank_in();void irq_request(){++irqs;}
 };
 struct scu {

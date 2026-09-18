@@ -95,7 +95,7 @@ smpc_hle_device::smpc_hle_device(const machine_config &mconfig, const char *tag,
       m_mshres(*this), m_mshnmi(*this), m_sshres(*this), m_sndres(*this),
       m_sysres(*this), m_syshalt(*this), m_dotsel(*this),
       m_pdr1_read(*this, 0xff), m_pdr2_read(*this, 0xff), m_pdr1_write(*this),
-      m_pdr2_write(*this), m_irq_line(*this),
+      m_pdr2_write(*this), m_irq_line(*this), m_reset_button_read(*this, 0),
       m_ctrl1(*this, finder_base::DUMMY_TAG),
       m_ctrl2(*this, finder_base::DUMMY_TAG),
       m_screen(*this, finder_base::DUMMY_TAG) {
@@ -152,6 +152,7 @@ void smpc_hle_device::device_start() {
   save_item(NAME(m_cd_sf));
   save_item(NAME(m_cur_dotsel));
   save_item(NAME(m_NMI_reset));
+  save_item(NAME(m_resb));
 
   m_cmd_timer = timer_alloc(FUNC(smpc_hle_device::handle_command), this);
   m_rtc_timer = timer_alloc(FUNC(smpc_hle_device::handle_rtc_increment), this);
@@ -194,6 +195,7 @@ void smpc_hle_device::device_reset() {
   m_comreg = 0xff;
   m_command_in_progress = false;
   m_NMI_reset = false;
+  m_resb = false;
   m_cur_dotsel = false;
   m_ckchg_tick = 0;
   m_prev_sndoff = m_prev_sshoff = 0xff;
@@ -267,7 +269,11 @@ uint8_t smpc_hle_device::oreg_r(offs_t offset) {
   return m_oreg[offset >> 1];
 }
 
-uint8_t smpc_hle_device::status_register_r() { return m_sr; }
+uint8_t smpc_hle_device::status_register_r() {
+  // ST-169 pp.34/66: RESB is valid independently of INTBACK and NMI enable.
+  // Command/status writes must not erase the VBlank-sampled button state.
+  return (m_sr & ~0x10) | (m_resb ? 0x10 : 0);
+}
 
 uint8_t smpc_hle_device::status_flag_r() {
   // bit 3: CD enable related?
@@ -602,6 +608,11 @@ void smpc_hle_device::vblank_in() {
   if (!m_has_ctrl_ports)
     return;
 
+  // Sample the hardwired switch every VBlank-IN, including idle/RESDISA.
+  // Read the physical port rather than relying on a change callback, so a
+  // button held across machine reset is sampled again on the next edge.
+  m_resb = bool(m_reset_button_read());
+
   bool const pending = m_command_in_progress && m_comreg == 0x10 &&
                        (m_intback_buf[1] & 8);
   if (!pending && !m_intback_stage)
@@ -898,15 +909,13 @@ void smpc_hle_device::read_saturn_ports() {
     auto &ctrl = port ? m_ctrl2 : m_ctrl1;
     uint8_t const status = ctrl ? ctrl->read_status() : 0xf0;
     m_peripheral_data[m_peripheral_size++] = status;
-    unsigned offset = 0;
     for (unsigned i = 0; i < (status & 0xf); ++i) {
       uint8_t const id = ctrl->read_id(i);
       m_peripheral_data[m_peripheral_size++] = id;
       // FF is an unconnected tap, not a 15-byte peripheral (ST-169 p.73).
       unsigned const size = id == 0xff ? 0 : (id & 0xf);
       for (unsigned j = 0; j < size; ++j)
-        m_peripheral_data[m_peripheral_size++] = ctrl->read_ctrl(offset + j);
-      offset += size;
+        m_peripheral_data[m_peripheral_size++] = ctrl->read_ctrl_slot(i, j);
     }
   }
   // Snapshot once: continuation must not reread relative-motion devices or

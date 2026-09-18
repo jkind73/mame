@@ -1,3 +1,23 @@
+# Current integration qualification — 2026-09-17
+
+GitHub access is restored. Source 2781f96b built in CI 35299792272 and passes the
+full device-aligned native consumer, including timeout and actual H/V edge save
+restoration (IST=4), on the verified binary SHA256
+`4a151988ca60d0c16d9f3c3fc4505cf2d72b7e54a869b9b7fca7d60bfddf9ac5`.
+
+New production WIP: VBlank-sampled, saved RESB independent of NMI enable;
+explicit physical-slot payload addressing through SMPC/controller/tap endpoints;
+empty ports return F0 status/FF ID. Five full TUs pass C++20 syntax. Focused
+RESB 6,144, physical-topology/mode 9,216, transport 5,402, handshake 1,175 and
+timeout 73,728 + four edge checks pass. Native positives for this new source
+are pending. Three-VINT NMI debounce, wire timing, extended IDs and wider
+software/game/concurrent-transfer acceptance remain open. No working flags changed.
+
+The earlier sections below are historical implementation checkpoints; current
+acceptance is maintained in `saturn_pending/README.md` and the parent checklist.
+
+---
+
 # Single-agent integration status
 
 ## Reviewed cartridge/CD changes — WIP, 2026-09-17

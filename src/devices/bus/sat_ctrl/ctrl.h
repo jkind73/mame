@@ -28,6 +28,10 @@ public:
 
   virtual uint16_t read_direct() { return 0; }
   virtual uint8_t read_ctrl(uint8_t offset) { return 0; }
+  // Address a physical peripheral, independently of packed report length.
+  virtual uint8_t read_ctrl_slot(unsigned index, uint8_t offset) {
+    return index == 0 ? read_ctrl(offset) : 0xff;
+  }
   virtual uint8_t read_status() { return 0xf0; }
   virtual uint8_t read_id(int idx) { return 0xff; }
 
@@ -75,6 +79,7 @@ public:
 
   uint16_t read_direct();
   uint8_t read_ctrl(uint8_t offset);
+  uint8_t read_ctrl_slot(unsigned index, uint8_t offset);
   uint8_t read_status();
   uint8_t read_id(int idx);
   bool read_pdr(uint8_t ddr, uint8_t data, uint8_t &res);

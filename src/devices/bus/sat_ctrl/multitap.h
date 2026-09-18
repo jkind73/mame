@@ -32,6 +32,7 @@ protected:
 
 	// device_saturn_control_port_interface overrides
 	virtual uint8_t read_ctrl(uint8_t offset) override;
+	virtual uint8_t read_ctrl_slot(unsigned index, uint8_t offset) override;
 	virtual uint8_t read_status() override { return 0x16; }
 	virtual uint8_t read_id(int idx) override;
 
