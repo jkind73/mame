@@ -1,0 +1,7 @@
+test: /tmp/scudsp-parallel-3fex3o6e/test.cpp:578: void check(unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, bool, unsigned int, unsigned int): Assertion `*c[bank]==final[bank]' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scudsp_parallel.py", line 118, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-parallel-3fex3o6e/test']' died with <Signals.SIGABRT: 6>.
