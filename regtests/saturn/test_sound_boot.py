@@ -58,7 +58,7 @@ struct saturn_state {
 };
 struct scsp_device {
  struct {std::array<u16,64> data{};} m_udata;
- u32 m_MidiW=0,m_MidiR=0,m_current_level=0;std::array<u32,3> levels{};
+ u32 m_MidiW=0,m_MidiR=0,m_MidiCount=0,m_current_level=0;std::array<u32,3> levels{};
  u32 SCILV0(){return levels[0];}u32 SCILV1(){return levels[1];}u32 SCILV2(){return levels[2];}
  struct callback {saturn_state *owner;void operator()(offs_t n,uint8_t v){owner->scsp_irq(n,v);}} m_irq_cb;
  void CheckPendingIRQ();

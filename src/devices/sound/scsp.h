@@ -122,10 +122,18 @@ private:
 
   u8 m_latched_MSLC;
   u16 m_latched_MSLC_data;
-  u8 m_MidiOutStack[32];
+  u8 m_MidiOutStack[4];
   u8 m_MidiOutW, m_MidiOutR;
-  u8 m_MidiStack[32];
+  u8 m_MidiStack[4];
   u8 m_MidiW, m_MidiR;
+  // ST-077-R2-052594 pp.89-92 and Figure 4.3 (p.28): both MIDI buffers hold
+  // exactly 4 bytes, and register 0x04[12:8] reports MOFULL/MOEMP/MIOVF/
+  // MIFULL/MIEMP. Depth is tracked separately from the pointers so a full
+  // FIFO cannot wrap and masquerade as empty. A byte handed to the serial
+  // shifter stays queued until its frame has been sent out.
+  u8 m_MidiCount = 0;
+  u8 m_MidiOutCount = 0;
+  bool m_MidiOverflow = false;
 
   s32 m_EG_TABLE[0x400];
 
@@ -182,6 +190,7 @@ private:
   u32 m_lfsr;
 
   void exec_dma(); /*state DMA transfer function*/
+  void reset_midi();
   void reset_irq_timers();
   void CheckPendingIRQ();
   void MainCheckPendingIRQ(u16 irq_type);
