@@ -1,3 +1,9 @@
+# Historical planning note — superseded
+
+The ADD/SUB/AD2/SR fixes described below are implemented and native-qualified in
+ea9a7a7c, retained by25f13c07. See ../dsp-alu/README.md and ../ea9a7a7c-live/.
+The original preimplementation findings below are retained as history only.
+
 # DSP-01 follow-up identified during the counter rebuild (NOT IMPLEMENTED)
 
 Do not infer ALU correctness from the DMA/control-flow gates. Inspection found

@@ -33,3 +33,16 @@ full-countdown checks under UBSan on that candidate; old source fails. Harness
 is pending-only so it does not contaminate the current artifact input trees.
 Move it into the default suite with the production fix after qualification.
 No native candidate positive, exact loop timing or full loop semantics claimed.
+
+
+Three targeted mutants fail:11-bit truncation,13-bit truncation and bypassing
+the mask on MVI writes. Full63-script local batch and CI35366921336 are running.
+
+Important remaining loop semantics: Ymir's IncrementPC/Cmd_Special_Loop wraps
+LOP from0 tofff when completing a loop; current MAME leaves it at0. The manual
+printed83 says BTM does nothing at0. The extracted final-zero check preserves
+current MAME behavior, not proof resolving this primary/reference disagreement.
+Ymir also has an explicit looping latch rather than refetching LPS for each body
+execution. This width fix does not resolve that execution/timing model or
+Beetle's special LOP-write behavior inside looped instructions. No full loop
+parent acceptance should be inferred from corrected iteration totals.

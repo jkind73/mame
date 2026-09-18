@@ -1,4 +1,4 @@
-#12-bit DSP loop counter — native WIP
+# 12-bit DSP loop counter — native WIP
 
 LOP writes now retain12 bits rather than16, as documented and corroborated by
 both pinned emulators.991,232 actual-method UBSan cases pass. Qualified25f13c07
