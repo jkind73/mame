@@ -1,0 +1,6 @@
+SYNC_SAVE armed
+SYNC_SAVE saved
+SYNC_SAVE mutated
+SYNC_SAVE loaded
+SYNC_SAVE PASS restored_HV=0 first_edge_IST=4
+Average speed: 127.51% (2 seconds)
