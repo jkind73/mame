@@ -12,7 +12,8 @@ all runtime phases. This is not full game acceptance.
 DMA state registration, reset cancellation/private-stall release. See
 `evidence/dsp-dma/README.md` for primary references, extracted cases, compiled
 mutants and a genuine before-fix native failure. The gate now requires 32 actual
-DSP programs to pass. A/C quirks, program-RAM DMA and bus arbitration remain open.
+DSP programs and real 60,000-word in-flight save replay to pass. The full local
+57-script batch passed, excluding three optional live skips. A/C quirks, program-RAM DMA and bus arbitration remain open.
 
 The dated acceptance records below describe earlier checkpoints; this update
 supersedes their pending-79f36021 statements.
