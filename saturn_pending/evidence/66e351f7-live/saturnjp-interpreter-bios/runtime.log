@@ -1,0 +1,3 @@
+BIOS_RUNTIME starting unmodified BIOS boot/replay smoke
+BIOS_RUNTIME PASS system=saturnjp time=15.560998664 pc=06040226 full-image replay identical
+Average speed: 139.26% (15 seconds)
