@@ -233,6 +233,11 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 				m_delay_pending = true;
 				m_top = m_pc;
 				m_pc = value;
+				// Program-RAM DMA is serialized by the following MVI to PC
+				// (ST-097 p.89). Its first write uses this new PC; completion
+				// resumes at TOP and discards the old prefetched slot.
+				if (m_dma.ex && !m_dma.dir && m_dma.dst == 4)
+					set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
 				break;
 		}
 	}
@@ -299,9 +304,9 @@ void scudsp_cpu_device::set_dest_dma_mem( uint32_t memcode, uint32_t value )
 	}
 	else if ( memcode == 4 )
 	{
-		throw emu_fatalerror("scudsp.cpp: set_dest_dma_mem == 4");
-		/* caused a stack overflow for sure ... */
-		//dsp_reg.internal_prg[ counter & 0x100 ] = value;
+		if (m_dma.count == 0)
+			m_dma.program_address = m_pc;
+		scudsp_writeop(m_dma.program_address++, value);
 	}
 }
 
@@ -650,7 +655,7 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	uint8_t hold = (opcode &  0x4000) >> 14;
 	uint32_t add = (opcode & 0x38000) >> 15;
 	uint32_t dir_from_D0 = (opcode & 0x1000 ) >> 12;
-	uint32_t dsp_mem = (opcode & 0x300) >> 8;
+	uint32_t dsp_mem = (opcode & (dir_from_D0 ? 0x300 : 0x700)) >> 8;
 
 	if ( opcode & 0x2000 )
 	{
@@ -741,7 +746,10 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	// this is duct tape to make stv:vfremix not overrun atomic execution in the SH-2s,
 	// with its small DMA transfers and no T0F checked.
 	// Test scenario: attract mode, Sarah hitting the air rather than Kage.
-	set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+	// A program load must allow the next MVI-to-PC to supply its destination
+	// before stalling. Data-RAM transfers retain the existing stall policy.
+	if (m_dma.dir || m_dma.dst != 4)
+		set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
 	m_icount -= 1;
 }
 
@@ -823,6 +831,12 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 			m_out_ddmv_cb(0);
 			m_dma.ex = 0;
 			m_flags &= ~(1 << T0F);
+			if (!m_dma.dir && m_dma.dst == 4)
+			{
+				m_pc = m_top;
+				m_delay = 0;
+				m_delay_pending = false;
+			}
 			set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
 
 			break;
@@ -1009,6 +1023,7 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_dma.size));
 	save_item(NAME(m_dma.add));
 	save_item(NAME(m_dma.write_stride));
+	save_item(NAME(m_dma.program_address));
 	save_item(NAME(m_dma.update));
 	save_item(NAME(m_dma.ex));
 	save_item(NAME(m_dma.dir));

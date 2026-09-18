@@ -1,5 +1,6 @@
 # Saturn / ST-V full-emulation completion report
 
+- **Current DSP integration:** ca63041f is native-qualified with 4,096 read-mirror programs across four configurations and the complete prior consumer. The MVI-PC serialized program-RAM loader is now integrated as native WIP; 128 overlay programs and actual wrapped program-DMA save replay are required before acceptance. Other serializers, exact timing and shared grants remain open; no parent closed.
 - **Audit date:** 2026-09-16.
 - **Implementation baseline:** `812ec7a8`, branch `arena/01a09f50-mame`. This is an audit of this checkout, not a claim about current upstream MAME.
 - **Purpose:** a dependency-ordered, component-by-component checklist of the work remaining for full Saturn and ST-V emulation. Update these items in place; do not add a new milestone for every test run.
