@@ -1,6 +1,5 @@
 # Saturn / ST-V full-emulation completion report
 
-- **Current DSP integration:** ca63041f is native-qualified with 4,096 read-mirror programs across four configurations and the complete prior consumer. The MVI-PC serialized program-RAM loader is now integrated as native WIP; 128 overlay programs and actual wrapped program-DMA save replay are required before acceptance. Other serializers, exact timing and shared grants remain open; no parent closed.
 - **Audit date:** 2026-09-16.
 - **Implementation baseline:** `812ec7a8`, branch `arena/01a09f50-mame`. This is an audit of this checkout, not a claim about current upstream MAME.
 - **Purpose:** a dependency-ordered, component-by-component checklist of the work remaining for full Saturn and ST-V emulation. Update these items in place; do not add a new milestone for every test run.
@@ -134,8 +133,8 @@
 - [ ] **DSP-02 — Complete DSP DMA and bus interaction. [M/P/R]**
   - Replace the source-noted burst-versus-cycle-steal approximation and DSP-stall substitution with correct bus/CPU acknowledgement behavior.
   - B-bus per-halfword write increments implemented for all eight modes and both count forms (ST-097 pp.134/136/138/140). A real 79f36021 binary passes only the four stride-one cases out of 32; other modes corrupt the mapped destination. Rebuilt b5caa488 now passes all 32 real DSP addressing programs and the complete native integration gate. A/C-bus quirks, program-RAM DMA and shared-bus acknowledgement remain open.
-  - Read-side bus classification now matches the existing complete C-bus mirror aperture and separates B-bus from A-bus/CS2. On native 89764c08, 372/1,024 read-DMA mirror/mode programs fail despite identical CPU-visible RAM. New extracted mirror/isolation checks pass; rebuilt native positive pending.
-  - Program-RAM DMA's dropped selector/fatal stub has a prepared MVI-PC loader candidate, not applied pending read-DMA qualification. All 32 old-binary loader tests fail; 4,096 extracted candidate cases plus replay and five compiled mutants pass. Alternate RA0/WA0/END serialization, real save-manager replay and native positive remain open.
+  - Read-side bus classification now matches the existing complete C-bus mirror aperture and separates B-bus from A-bus/CS2. On native 89764c08, 372/1,024 read-DMA mirror/mode programs fail despite identical CPU-visible RAM. New extracted mirror/isolation checks and 4,096 rebuilt ca63041f native cases across four configurations pass, together with the full integration consumer.
+  - Program-RAM DMA's dropped selector/fatal stub is replaced by the MVI-PC serialized loader in cd074b71, integrated after read-DMA native qualification. All 32 old-binary loader tests and actual wrapped 192-word save replay reproduce the missing feature; 4,096 extracted cases plus replay, five compiled mutants and full-TU syntax pass. Build 35344168780 is pending; the native gate requires 128 overlays across four configurations and real wrapped save replay. Alternate RA0/WA0/END serialization and exact timing remain open.
   - Implement remaining A/C-bus address-add/boundary rules and reconcile DSP transfer timing with SCU DMA.
 - [ ] **DSP-03 — Qualify execution timing and integration. [P/V]**
   - Instruction/DMA overlap, end interrupts, host access while running, debugger/DRC synchronization and save/load of pipeline state.
