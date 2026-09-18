@@ -23,3 +23,10 @@ completed successfully, including its pixel checks and real save/mutate/load
 replay. See `saturnjp-drc-composition.log`. This used the same verified 5008a923
 executable, not the new SMPC source. Other composition configurations and real
 software/gameplay are not inferred from this result.
+
+The scheduled partial-report save/load fixture was also run against a freshly
+recovered, checksum-verified copy of this baseline executable. Its real pre-save
+and post-load notifications were observed in order around packet mutation. It
+completed without Lua errors and **failed the expected transport assertions**;
+see `smpc-save-before.log`. This is a negative control, not positive acceptance
+of the new snapshot fields. The old binary predates those fields.

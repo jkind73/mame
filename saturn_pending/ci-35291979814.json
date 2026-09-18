@@ -1,0 +1,68 @@
+{
+  "conclusion": "success",
+  "databaseId": 35291979814,
+  "headBranch": "arena/01a09f50-mame",
+  "headSha": "234c7abcfc9a222978a7545a8491e568cf1781cf",
+  "status": "completed",
+  "url": "https://github.com/jkind73/mame/actions/runs/35291979814",
+  "workflowName": "Saturn integration artifact",
+  "steps": [
+    {
+      "name": "Set up job",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+      "conclusion": "success"
+    },
+    {
+      "name": "Install real build dependencies",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain provenance",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Saturn and ST-V",
+      "conclusion": "success"
+    },
+    {
+      "name": "Configuration and ROM-free regressions",
+      "conclusion": "success"
+    },
+    {
+      "name": "Preserve partial compiler cache",
+      "conclusion": "success"
+    },
+    {
+      "name": "Expose compiler failure tail through check annotations",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Preserve binary and diagnostic evidence",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "conclusion": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 10527228938,
+      "name": "saturn-linux-234c7abcfc9a222978a7545a8491e568cf1781cf",
+      "size_in_bytes": 16305741,
+      "expired": false,
+      "digest": "sha256:7129a6434f59db271254f515c3f1a9fef7d00d862c9347f8f44f563c76c966f8"
+    }
+  ]
+}

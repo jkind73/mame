@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = [(38, 2), (38, 2), (19, 1), (19, 1), (19, 1), (19, 1)]
-LUA = r'''
+COMMON_LUA = r'''
 local m = manager.machine
 local sp = m.devices[":maincpu"].spaces["program"]
 local screen = m.screens[":screen"]
@@ -53,6 +53,8 @@ local function set_pad(index, pattern)
     end
     return word
 end
+'''
+LUA = COMMON_LUA + r'''
 local function test()
     park()
     for port=1,2 do for sub=1,6 do
