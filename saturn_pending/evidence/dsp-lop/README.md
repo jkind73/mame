@@ -46,3 +46,12 @@ Ymir also has an explicit looping latch rather than refetching LPS for each body
 execution. This width fix does not resolve that execution/timing model or
 Beetle's special LOP-write behavior inside looped instructions. No full loop
 parent acceptance should be inferred from corrected iteration totals.
+
+
+First280c40e1 native consumer passed all320 loop programs and all older gates,
+but subsequent primary review caught a fixture restriction: ST-097 printed53–54
+prohibits data-port access while EX=1. Replaced the active-loop RAM probe with
+control-port EX/PC observation and explicitly stopped DSP before setup RAM writes
+(including the ALU save fixture). Runtime execution semantics did not change.
+The stronger fixture is rerun through the entire consumer before acceptance;
+its14 parser controls also enforce observation/save/mutation/load ordering.
