@@ -134,6 +134,7 @@
   - Replace the source-noted burst-versus-cycle-steal approximation and DSP-stall substitution with correct bus/CPU acknowledgement behavior.
   - B-bus per-halfword write increments implemented for all eight modes and both count forms (ST-097 pp.134/136/138/140). A real 79f36021 binary passes only the four stride-one cases out of 32; other modes corrupt the mapped destination. Rebuilt b5caa488 now passes all 32 real DSP addressing programs and the complete native integration gate. A/C-bus quirks, program-RAM DMA and shared-bus acknowledgement remain open.
   - Read-side bus classification now matches the existing complete C-bus mirror aperture and separates B-bus from A-bus/CS2. On native 89764c08, 372/1,024 read-DMA mirror/mode programs fail despite identical CPU-visible RAM. New extracted mirror/isolation checks pass; rebuilt native positive pending.
+  - Program-RAM DMA's dropped selector/fatal stub has a prepared MVI-PC loader candidate, not applied pending read-DMA qualification. All 32 old-binary loader tests fail; 4,096 extracted candidate cases plus replay and five compiled mutants pass. Alternate RA0/WA0/END serialization, real save-manager replay and native positive remain open.
   - Implement remaining A/C-bus address-add/boundary rules and reconcile DSP transfer timing with SCU DMA.
 - [ ] **DSP-03 — Qualify execution timing and integration. [P/V]**
   - Instruction/DMA overlap, end interrupts, host access while running, debugger/DRC synchronization and save/load of pipeline state.
