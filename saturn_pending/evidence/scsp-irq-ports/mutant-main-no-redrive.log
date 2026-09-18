@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-9mj9ipai/test.cpp:41: void scsp_device::verify(u16, u16): Assertion `m_main_irq_cb.line==bool(main)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 97, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-9mj9ipai/test']' died with <Signals.SIGABRT: 6>.
