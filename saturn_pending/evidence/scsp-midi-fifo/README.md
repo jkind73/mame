@@ -148,8 +148,8 @@ non-data-lane status checks, and 2 idle pending observations.
 
 ## Pending
 
-Full 71-script local/CI regression, build `35405593717`, artifact export and the
-complete native consumer — including 24 new FIFO cases × 4 profiles and the
+Full 71-script local regression PASS and build `35405593717` succeeded. Artifact
+export and the complete native consumer — including 24 new FIFO cases × 4 profiles and the
 existing 1536 × 4 MIDI output cases — have not yet been run against this source.
 Nothing here claims waveform, gameplay, whole-SND-parent or working-driver
 acceptance, and no save-state compatibility with pre-`ea928158` states is
