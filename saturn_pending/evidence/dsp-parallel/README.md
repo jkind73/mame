@@ -60,4 +60,4 @@ observations disagree both before and after load (130 failures). It uses legal
 PPAF-only phase observation, stopped RAM access, and poisons source/destination
 RAM, counters, LOP, input/product registers and program before restoring.
 The expanded consumer requires this scheduled replay too;14 save-parser controls
-pass separately. Full64-script local batch and CI35369703506 are running.
+pass separately. Full64-script local batch and CI35369703506 passed; native acceptance pending.

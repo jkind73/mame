@@ -4,7 +4,7 @@ Instruction-entry CT values now serve X/Y/D1 together; increments merge once,
 explicit CT writes win, and RAM read/write collisions suppress D1 writes.
 729,000 actual-method UBSan transitions and prior DSP suites pass. Qualified
 280c40e1 passes36 controls/fails108 native programs; candidate native positive
-and full build/batch pending. Consumer adds576 programs/four configurations.
+pending; full64-script local batch and CI35369703506 passed. Consumer adds576 programs/four configurations.
 Contract and unresolved reference disagreements: `evidence/dsp-parallel/README.md`.
 Latest fully native-qualified source below remains280c40e1.
 
