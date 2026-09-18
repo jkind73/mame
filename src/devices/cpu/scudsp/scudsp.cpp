@@ -659,7 +659,7 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 
 	if ( opcode & 0x2000 )
 	{
-		m_dma.size = get_source_mem_value( opcode & 0xf ) & 0xff;
+		m_dma.size = get_source_mem_value( opcode & 0x7 ) & 0xff;
 		switch ( add & 0x7 )
 		{
 			case 0: m_dma.add = 0; break;
