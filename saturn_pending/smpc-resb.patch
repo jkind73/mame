@@ -1,0 +1,127 @@
+--- a/src/mame/sega/smpc.cpp
++++ b/src/mame/sega/smpc.cpp
+@@ -95,7 +95,7 @@
+       m_mshres(*this), m_mshnmi(*this), m_sshres(*this), m_sndres(*this),
+       m_sysres(*this), m_syshalt(*this), m_dotsel(*this),
+       m_pdr1_read(*this, 0xff), m_pdr2_read(*this, 0xff), m_pdr1_write(*this),
+-      m_pdr2_write(*this), m_irq_line(*this),
++      m_pdr2_write(*this), m_irq_line(*this), m_reset_button_read(*this, 0),
+       m_ctrl1(*this, finder_base::DUMMY_TAG),
+       m_ctrl2(*this, finder_base::DUMMY_TAG),
+       m_screen(*this, finder_base::DUMMY_TAG) {
+@@ -152,6 +152,7 @@
+   save_item(NAME(m_cd_sf));
+   save_item(NAME(m_cur_dotsel));
+   save_item(NAME(m_NMI_reset));
++  save_item(NAME(m_resb));
+
+   m_cmd_timer = timer_alloc(FUNC(smpc_hle_device::handle_command), this);
+   m_rtc_timer = timer_alloc(FUNC(smpc_hle_device::handle_rtc_increment), this);
+@@ -194,6 +195,7 @@
+   m_comreg = 0xff;
+   m_command_in_progress = false;
+   m_NMI_reset = false;
++  m_resb = false;
+   m_cur_dotsel = false;
+   m_ckchg_tick = 0;
+   m_prev_sndoff = m_prev_sshoff = 0xff;
+@@ -267,7 +269,11 @@
+   return m_oreg[offset >> 1];
+ }
+
+-uint8_t smpc_hle_device::status_register_r() { return m_sr; }
++uint8_t smpc_hle_device::status_register_r() {
++  // ST-169 pp.34/66: RESB is valid independently of INTBACK and NMI enable.
++  // Command/status writes must not erase the VBlank-sampled button state.
++  return (m_sr & ~0x10) | (m_resb ? 0x10 : 0);
++}
+
+ uint8_t smpc_hle_device::status_flag_r() {
+   // bit 3: CD enable related?
+@@ -602,6 +608,11 @@
+   if (!m_has_ctrl_ports)
+     return;
+
++  // Sample the hardwired switch every VBlank-IN, including idle/RESDISA.
++  // Read the physical port rather than relying on a change callback, so a
++  // button held across machine reset is sampled again on the next edge.
++  m_resb = bool(m_reset_button_read());
++
+   bool const pending = m_command_in_progress && m_comreg == 0x10 &&
+                        (m_intback_buf[1] & 8);
+   if (!pending && !m_intback_stage)
+--- a/src/mame/sega/smpc.h
++++ b/src/mame/sega/smpc.h
+@@ -33,6 +33,8 @@
+
+   void vblank_in();
+
++  auto reset_button_in_handler() { return m_reset_button_read.bind(); }
++
+   bool get_iosel(bool which);
+
+   uint8_t get_ddr(bool which);
+@@ -146,6 +148,7 @@
+   };
+   bool m_command_in_progress;
+   bool m_NMI_reset;
++  bool m_resb = false;
+   bool m_cur_dotsel;
+
+   void master_sh2_nmi();
+@@ -182,6 +185,7 @@
+   devcb_write8 m_pdr1_write;
+   devcb_write8 m_pdr2_write;
+   devcb_write_line m_irq_line;
++  devcb_read_line m_reset_button_read;
+   optional_device<saturn_control_port_device> m_ctrl1;
+   optional_device<saturn_control_port_device> m_ctrl2;
+
+--- a/src/mame/sega/sat_console.cpp
++++ b/src/mame/sega/sat_console.cpp
+@@ -1118,6 +1118,7 @@
+   SMPC_HLE(config, m_smpc_hle, XTAL(4'000'000));
+   m_smpc_hle->set_screen_tag("screen");
+   m_smpc_hle->set_control_port_tags("ctrl1", "ctrl2");
++  m_smpc_hle->reset_button_in_handler().set_ioport(":RESET").bit(0);
+   m_smpc_hle->pdr1_in_handler().set(
+       FUNC(sat_console_state::saturn_pdr1_direct_r));
+   m_smpc_hle->pdr2_in_handler().set(
+--- a/regtests/saturn/test_smpc_timeout.py
++++ b/regtests/saturn/test_smpc_timeout.py
+@@ -63,11 +63,12 @@
+  void reset(){pending=false;++resets;}
+ };
+ struct smpc_hle_device {
+- bool m_has_ctrl_ports=true,m_command_in_progress=false,m_sf=false,m_cd_sf=false;
++ bool m_resb=false,m_has_ctrl_ports=true,m_command_in_progress=false,m_sf=false,m_cd_sf=false;
+  uint8_t m_comreg=0,m_intback_buf[3]{},m_sr=0;
+  unsigned m_intback_stage=0,m_peripheral_size=38,m_peripheral_pos=32,irqs=0;
+  timer command,continuation;
+  timer *m_cmd_timer=&command,*m_intback_timer=&continuation;
++ int m_reset_button_read(){return 0;}
+  void sf_ack(bool);void vblank_in();void irq_request(){++irqs;}
+ };
+ struct scu {
+--- a/regtests/saturn/test_smpc_handshake.py
++++ b/regtests/saturn/test_smpc_handshake.py
+@@ -39,7 +39,7 @@
+  void adjust(int n,int p,int rate){assert(n==0&&p==0&&rate==1000000);pending=true;}
+ };
+ struct smpc_hle_device {
+- bool m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
++ bool m_resb=false,m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
+  u8 m_sr=0,m_ddr1=0,m_ddr2=0,m_pdr1_readback=0,m_pdr2_readback=0;
+  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
+  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;
+--- a/regtests/saturn/test_smpc_transport.py
++++ b/regtests/saturn/test_smpc_transport.py
+@@ -61,7 +61,7 @@
+  u8 read_ctrl(unsigned i){++data_reads;return data.at(i);}
+ };
+ struct smpc_hle_device {
+- bool m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
++ bool m_resb=false,m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
+  u8 m_sr=0,m_ddr1=0,m_ddr2=0,m_pdr1_readback=0,m_pdr2_readback=0;
+  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
+  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;

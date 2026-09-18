@@ -29,3 +29,10 @@ complete without Lua errors or time-restore failures. The fixture only reads
 save items and uses mapped registers for its interrupt oracle; it never
 manually overwrites the missing fields. This supports the 2781 source fix but
 is not that fix's positive native acceptance.
+
+The reset-button status negative control (`smpc-resb-before.log`) disables NMI
+with mapped RESDISA, changes the genuine RESET input field, and confirms that
+its physical input bit is visible. SR.RESB nevertheless stays zero while held,
+including after VBlank and both INTBACK report types. There are no Lua/input/
+SF-timeout failures. The separate RESB candidate is not in this binary or in
+production yet; this is its linked negative baseline only.
