@@ -1,3 +1,21 @@
+# Current native baseline and read-DMA work
+
+**89764c08 passes the complete native gate**, including all 48 wrapped-control
+programs across four machine/engine configurations, 128 DMA addressing cases
+and real 60,000-word save replay. Source/binary provenance checks passed before
+and after execution. CI 35308649438, binary SHA256
+`f13ae2266ff6cf254198e1a3c725768fa3cd3c9aa37dd180771144d1c3bbf7de`.
+Evidence: `evidence/89764c08-live/`. Older pending-pipeline statements below are
+historical and superseded by this result.
+
+**New production WIP:** DSP read-DMA physical bus classification now preserves
+C-bus behavior across all high-RAM mirrors and excludes A-bus/CS2 from B-bus
+advancement. Real 89764c08 fails 372/1,024 mirror/mode programs; expanded extracted
+checks and full-TU syntax pass. Native-positive for this new source is pending.
+Exact reference basis and limitations: `evidence/dsp-read/README.md`.
+
+---
+
 # Latest native qualification and execution fix
 
 **b5caa488 passes the entire native consumer**, including all 32 DSP B-bus DMA

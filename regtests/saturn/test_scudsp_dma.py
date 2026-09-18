@@ -33,6 +33,12 @@ methods = '\n'.join(extract(s) for s in (
 fields = re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state)\)\)', src)
 restore = '\n'.join(f' d.{field}=s.{field};' for field in fields)
 mutant = os.environ.get('MUTATE_DSP_DMA', '')
+if mutant == 'read-upper':
+    methods = methods.replace('physical < 0x08000000', 'physical < 0x07000000')
+if mutant == 'read-low-bits':
+    methods = methods.replace('else if (physical >= 0x05900000 && physical < 0x06000000)', 'if ((m_dma.src & 0x00e00000) >= 0x00a00000)')
+if mutant == 'read-cs2':
+    methods = methods.replace('else if (physical >= 0x05900000', 'else if (physical >= 0x05800000')
 if mutant == 'beat':
     methods = methods.replace('m_dma.dst + m_dma.write_stride', 'm_dma.dst + 2')
 if mutant == 'count-source':
@@ -146,6 +152,34 @@ int main(){
   assert(s.reads.size()==130&&s.writes.empty());
   for(unsigned i=0;i<130;++i)assert(s.reads[i]==0x06000000+i*2);
  }
+ unsigned read_cases=0;
+ for(uint32_t alias:{0u,0x20000000u})for(unsigned mirror=0;mirror<32;++mirror)
+ for(unsigned mode=0;mode<8;++mode)for(unsigned hold=0;hold<2;++hold)
+ for(unsigned indirect=0;indirect<2;++indirect){
+  scudsp_cpu_device s;uint32_t addr=alias+0x06010000+mirror*0x100000;
+  s.m_ra0=addr/4;s.count_source=3;
+  s.op_dma(0xc0000000|(mode<<15)|(hold<<14)|(indirect<<13)|(indirect?0:3));
+  unsigned stride=(mode&2)?4:0;
+  assert(s.m_dma.add==stride);s.finish();
+  assert(s.reads.size()==6&&s.writes.empty());
+  for(unsigned i=0;i<3;++i){
+   assert(s.reads[i*2]==addr+i*stride&&s.reads[i*2+1]==addr+i*stride+2);
+  }
+  assert(s.m_ra0==addr/4+(hold?0:3*stride/4));
+  ++read_cases;
+ }
+ // A-bus fixed-source reads must not inherit B-bus advancement from either
+ // the 05 prefix (CS2) or low bits shared with sound/video addresses.
+ for(uint32_t addr:{0x02010000u,0x02a10000u,0x02f10000u,0x05810000u}){
+  scudsp_cpu_device s;s.m_ra0=addr/4;s.op_dma(0xc0000003);s.finish();
+  for(unsigned i=0;i<3;++i)assert(s.reads[i*2]==addr&&s.reads[i*2+1]==addr+2);
+ }
+ for(uint32_t addr:{0x05910000u,0x05a10000u,0x05c10000u,0x05e10000u})
+ for(unsigned mode=0;mode<8;++mode){
+  scudsp_cpu_device s;s.m_ra0=addr/4;s.op_dma(0xc0000003|(mode<<15));s.finish();
+  for(unsigned i=0;i<6;++i)assert(s.reads[i]==addr+i*2);
+ }
+ std::cout<<read_cases<<" DSP read DMA mirror/mode/hold/count cases plus A/B isolation passed\n";
  std::cout<<cases<<" DSP DMA B-bus mode/count/hold/bank cases, five replay cuts, reset and bus isolation passed\n";
 }
 '''

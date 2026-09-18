@@ -128,11 +128,12 @@
 - **Source:** `src/devices/cpu/scudsp/scudsp.cpp`.
 - [ ] **DSP-01 — Resolve instruction/flag/control semantics. [P/V/R]**
   - Pipeline/prefetch, branches, arithmetic widths, flags and missing control flags; source comments identify guessed MVI/JMP behavior and ALU flag disagreements.
-  - Integrated an explicit saved/reset delay-slot-valid flag: PC wrap FF→00 no longer treats address 00 as no pending slot. All 393,216 extracted PC/target/control combinations pass. Both historical234c and rebuilt b5caa488 reproduce five real wrapped-program failures, with seven controls passing. New-source native positive is pending; full opcode-prefetch timing is not claimed.
+  - Integrated an explicit saved/reset delay-slot-valid flag: PC wrap FF→00 no longer treats address 00 as no pending slot. All 393,216 extracted PC/target/control combinations pass. Both historical234c and rebuilt b5caa488 reproduce five real wrapped-program failures, with seven controls passing. 89764c08 now passes all 48 real control-flow programs across JP/interpreter, JP/DRC, PAL/DRC and ST-V/DRC, plus the complete native gate; full opcode-prefetch timing is not claimed.
   - Distinguish actual CPU behavior from disassembler defects when debugging geometry programs.
 - [ ] **DSP-02 — Complete DSP DMA and bus interaction. [M/P/R]**
   - Replace the source-noted burst-versus-cycle-steal approximation and DSP-stall substitution with correct bus/CPU acknowledgement behavior.
   - B-bus per-halfword write increments implemented for all eight modes and both count forms (ST-097 pp.134/136/138/140). A real 79f36021 binary passes only the four stride-one cases out of 32; other modes corrupt the mapped destination. Rebuilt b5caa488 now passes all 32 real DSP addressing programs and the complete native integration gate. A/C-bus quirks, program-RAM DMA and shared-bus acknowledgement remain open.
+  - Read-side bus classification now matches the existing complete C-bus mirror aperture and separates B-bus from A-bus/CS2. On native 89764c08, 372/1,024 read-DMA mirror/mode programs fail despite identical CPU-visible RAM. New extracted mirror/isolation checks pass; rebuilt native positive pending.
   - Implement remaining A/C-bus address-add/boundary rules and reconcile DSP transfer timing with SCU DMA.
 - [ ] **DSP-03 — Qualify execution timing and integration. [P/V]**
   - Instruction/DMA overlap, end interrupts, host access while running, debugger/DRC synchronization and save/load of pipeline state.
