@@ -261,7 +261,8 @@ void SCSPDSP::Step() {
       if (!TABLE)
         ADDR += DEC;
       if (ADREB)
-        ADDR += ADRS_REG & 0x0FFF;
+        // ADREB adds a signed twelve-bit displacement before ring/table wrapping.
+        ADDR += util::sext(ADRS_REG, 12);
       if (NXADR)
         ADDR++;
       if (!TABLE)
