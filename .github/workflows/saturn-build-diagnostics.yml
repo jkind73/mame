@@ -1,0 +1,46 @@
+name: Saturn failed-build diagnostics
+on:
+  push:
+    branches: [arena/01a09f50-mame]
+    paths: ['.github/workflows/saturn-build-diagnostics.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+jobs:
+  diagnose:
+    if: github.repository == 'jkind73/mame' && github.ref == 'refs/heads/arena/01a09f50-mame'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: jkind73/mame
+    steps:
+      - name: Read verified failed-build compiler diagnostics only
+        shell: python
+        run: |
+          import hashlib, io, json, re, subprocess, zipfile
+          run_id = '35347062472'
+          source = '5d88f97572207fafac34900115be324f5bae24fa'
+          def gh(*args):
+              return subprocess.check_output(['gh', *args])
+          run = json.loads(gh('run', 'view', run_id, '--json', 'headSha,headBranch,status,conclusion'))
+          assert run == dict(headSha=source, headBranch='arena/01a09f50-mame', status='completed', conclusion='failure')
+          artifacts = json.loads(gh('api', f'repos/jkind73/mame/actions/runs/{run_id}/artifacts'))['artifacts']
+          matches = [a for a in artifacts if a['name'] == 'saturn-linux-' + source and not a['expired']]
+          assert len(matches) == 1
+          artifact = matches[0]
+          data = gh('api', f'repos/jkind73/mame/actions/artifacts/{artifact["id"]}/zip')
+          assert len(data) == artifact['size_in_bytes']
+          assert 'sha256:' + hashlib.sha256(data).hexdigest() == artifact['digest']
+          def annotate(message):
+              text = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::warning title=Verified compiler diagnostic::' + text)
+          with zipfile.ZipFile(io.BytesIO(data)) as archive:
+              assert archive.read('source-commit.txt').decode().strip() == source
+              lines = archive.read('build.log').decode(errors='replace').splitlines()
+              errors = [i for i, line in enumerate(lines) if re.search(r'fatal error:|error:|make.*Error', line)]
+              annotate(f'Failed build {run_id}, source {source}, compiler error lines: {len(errors)}; not binary acceptance')
+              for i in errors[:6]:
+                  annotate('\n'.join(lines[max(0, i-2):i+4]))
+              if 'ccache-stats.txt' in archive.namelist():
+                  annotate(archive.read('ccache-stats.txt').decode(errors='replace'))
