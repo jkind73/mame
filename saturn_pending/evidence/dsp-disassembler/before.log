@@ -1,0 +1,7 @@
+test: /tmp/scudsp-dasm-h9j3waum/test.cpp:28: int main(): Assertion `decode(op)==util::string_format("MVI #$%X,%s%s",imm,mvi[dest],cond?",Z":"")' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_disassembler_model.py", line 67, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-dasm-h9j3waum/test']' died with <Signals.SIGABRT: 6>.
