@@ -67,8 +67,8 @@ end
 LUA = COMMON_LUA + r'''
 local empty={}
 local adapter=os.getenv('SMPC_ADAPTER') or 'multitap'
-local slots=adapter=='segatap' and 4 or 6
-local tap_status=adapter=='segatap' and 0x04 or 0x16
+local slots=adapter=='none' and 0 or (adapter=='segatap' and 4 or 6)
+local tap_status=adapter=='none' and 0xf0 or (adapter=='segatap' and 0x04 or 0x16)
 for port,slot in (os.getenv('SMPC_EMPTY_PADS') or ''):gmatch('([12]):([1-6])') do
     empty[(tonumber(port)-1)*slots+tonumber(slot)]=true
 end
@@ -176,7 +176,7 @@ def validate_output(text, returncode, specification=EXPECTED):
         r'^SMPC_MULTITAP case=(\d+) bytes=(\d+) pages=(\d+) PASS$', text, re.M)]
     expected = [(i, length, pages) for i, (length, pages) in enumerate(specification, 1)]
     if (returncode or 'SMPC_MULTITAP FAIL' in text or 'LUA ERROR' in text or
-            records != expected or not re.search(r'^SMPC_MULTITAP PASS cases=6$', text, re.M)):
+            records != expected or len(re.findall(r'^SMPC_MULTITAP PASS cases=6$', text, re.M)) != 1):
         raise RuntimeError('SMPC multitap fixture failed:\n' + text[-8000:])
 
 
@@ -186,10 +186,10 @@ def main():
     p.add_argument('--rompath', type=Path, default=ROOT/'regtests')
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--empty-pad', type=empty_pad, action='append', default=[])
-    p.add_argument('--adapter', choices=('multitap', 'segatap'), default='multitap')
+    p.add_argument('--adapter', choices=('multitap', 'segatap', 'none'), default='multitap')
     a = p.parse_args()
     empty=set(a.empty_pad)
-    slots=4 if a.adapter=='segatap' else 6
+    slots={'none':0,'segatap':4,'multitap':6}[a.adapter]
     if any(slot>slots for _,slot in empty):
         p.error(f'{a.adapter} only has {slots} sockets')
     a.executable=a.executable.resolve();a.rompath=a.rompath.resolve();a.output=a.output.resolve()
@@ -202,7 +202,7 @@ def main():
         env=os.environ.copy();env.update(SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',
             SMPC_ADAPTER=a.adapter, SMPC_EMPTY_PADS=','.join(f'{p}:{s}' for p,s in sorted(empty)))
         command=[str(a.executable),'saturnjp','-rompath',str(a.rompath),
-            '-ctrl1',a.adapter,'-ctrl2',a.adapter,'-noreadconfig','-skip_gameinfo','-nodrc',
+            '-ctrl1',('' if a.adapter=='none' else a.adapter),'-ctrl2',('' if a.adapter=='none' else a.adapter),'-noreadconfig','-skip_gameinfo','-nodrc',
             '-video','none','-sound','none','-nothrottle','-seconds_to_run','30',
             '-autoboot_delay','0','-autoboot_script',str(script),
             '-nvram_directory',str(d/'nvram'),'-cfg_directory',str(d/'cfg'),

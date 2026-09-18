@@ -1,0 +1,10 @@
+SMPC_MULTITAP armed
+SMPC_MULTITAP FAIL case1_byte1 got=0 want=f0
+SMPC_MULTITAP FAIL case1_byte2 got=0 want=f0
+SMPC_MULTITAP FAIL case2_byte1 got=0 want=f0
+SMPC_MULTITAP FAIL case2_byte2 got=0 want=f0
+SMPC_MULTITAP FAIL case3_byte1 got=0 want=f0
+SMPC_MULTITAP FAIL case4_byte1 got=0 want=f0
+SMPC_MULTITAP FAIL case5_byte1 got=0 want=f0
+SMPC_MULTITAP FAIL case6_byte1 got=0 want=f0
+Average speed: 137.50% (2 seconds)
