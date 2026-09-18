@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:MAMEdev Team
-"""Compile timeout candidate bodies with recording timers/IRQs, not live MAME.
+"""Compile production timeout bodies with recording timers/IRQs, not live MAME.
 
-Pass --source-root pointing to a copy with smpc-vblank-timeout.patch applied.
-The production tree remains unchanged until the transport baseline is accepted.
+An optional --source-root can point to a separate candidate copy.
+Save registration assertions are source checks, not live save-manager evidence.
 """
 import argparse
 import os
@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('--source-root', type=Path, required=True)
+p.add_argument('--source-root', type=Path, default=Path(__file__).resolve().parents[2])
 p.add_argument('--mutant', choices=('pending', 'continue', 'sf', 'status', 'stv', 'hook', 'edge', 'irq'))
 a = p.parse_args()
 

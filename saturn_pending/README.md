@@ -1,17 +1,21 @@
 ## Current integration status
 
-The user-provided CI ZIP has been retrieved and verified. Live validation of
-source `5008a923` **passed**; text evidence is in `evidence/5008-live/`. This
-supersedes the historical transfer-blocked notes below. ST-V's no-cartridge
-BIOS screen is not game acceptance.
-
-The combined SMPC transport patch is now **applied to production** after its
-live negative baseline reproduced the faults. Its 5,402 transport cases, 1,175
-handshake cases, six compiled mutation controls and C++ syntax checks were rerun
-successfully on production paths. The patch files below are historical review
-artifacts; **do not apply them again**. A rebuilt binary must pass the six-case
-live multitap test and the existing integration suite before this fix is
-considered live-validated. Full hardware/driver completion remains open.
+- **Artifact transfer solved:** the export workflow retains the exact CI ZIP in
+  a draft release and provides a temporary GitHub API blob for clients whose
+  binary download hosts fail. No binary is committed to the branch, no sandbox
+  access token is used, and the source/run/ZIP/executable checks are unchanged.
+- **234c7abc live PASS:** all six multitap transport cases and scheduled partial
+  report save/mutate/load passed in the rebuilt executable, along with CD/cart/
+  backup-RAM, SCSP timers, four BIOS/background replay configurations. Evidence:
+  `evidence/234c-live/`. This is not whole-hardware or gameplay acceptance.
+- **5008a923 baseline:** all four configurations now pass the 1,042-case
+  composition suite (4,168 total), besides the previous 184 background cases.
+  Live save-item enumeration also confirms the missing H/V edge-history entries.
+- The VBlank timeout and edge-history fix is now **integrated** after its four
+  live negative cases were reproduced on 234c. 73,728 extracted state cases,
+  four edge/order cases, eight mutation controls and full-TU syntax checks pass.
+  Its own new native build/live expiry and replay gates are still pending.
+- Historical patch files are review artifacts; **do not reapply them**.
 
 # Integrated follow-up patches
 
@@ -384,7 +388,7 @@ without Lua errors and fails the expected transport assertions. Positive
 partial-report save-manager acceptance is still blocked on the rebuilt binary.
 The runtime consumer now requires this test as well as the six transport cases.
 
-## Next SMPC candidate: VBlank timeout (NOT applied)
+## VBlank timeout development record (now integrated; new native acceptance pending)
 
 `smpc-vblank-timeout.patch` applies on the integrated transport source without
 reapplying the historical transport patches. It terminates unfinished console
@@ -405,14 +409,14 @@ explicit initialization, reset assignment, or save registration in current
 production. The candidate supplies all three, so edge detection is deterministic
 and can be restored. This is not claimed as the cause of Agent1's reported crash.
 
-`test_smpc_timeout.py --source-root PATCHED_COPY` compiled the actual candidate
+`regtests/saturn/test_smpc_timeout.py --source-root PATCHED_COPY` compiled the actual candidate
 helper and driver callback with recording endpoints: **73,728 state combinations
 and four edge/order checks passed**, with eight compiled/assertion-rejected
 mutants. The candidate SMPC and Saturn translation units pass C++20 syntax
 checking. The field init/reset/registration assertions are source checks, not
 live save-manager evidence. Neither timeout nor edge-state restoration has
-native acceptance yet. The patch remains separate to preserve the exact input
-trees of the successful 234c native build while its artifact is transferred.
+native acceptance yet. The patch was subsequently integrated after the 234c transport/save gates
+passed and its missing timeout was reproduced live. It now needs a new binary.
 
 The partial-report save fixture now pauses after scheduling save/load (those
 APIs resume internally), pumps host UI callbacks while paused, and asserts that

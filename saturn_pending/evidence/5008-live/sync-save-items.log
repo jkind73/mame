@@ -1,0 +1,3 @@
+SYNC_STATE registered m_system_halt
+SYNC_STATE m_prev_hint MISSING
+SYNC_STATE m_prev_vint MISSING
