@@ -6,11 +6,14 @@ Old8881caa1 passes85/fails118 of203 real arithmetic programs, with correct resul
 words but incorrect flags. Old ADD also triggers UBSan signed overflow. Corrected
 actual methods pass80,968 boundary/random/sticky/read-clear checks under UBSan,
 seven mutants, full-TU syntax and existing DSP suites. Native build35363539017
-and the full61-script local batch are running. No ALU native positive yet.
+and the full61-script local batch passed. Export35364567357 is queued. No ALU native positive yet.
+The expanded211-case old-source run passes90/fails121, including eight
+multiplier-built48-bit boundary cases; all result words match. A real file
+save/load control restores full48-bit ALU and latched/read-cleared V.
 Contract and reference caveats: `evidence/dsp-alu/README.md`.
 
 The accepted baseline below remains8881caa1 for its prior scope. The new consumer
-requires812 ALU programs across four configurations in addition to those gates.
+requires844 ALU programs across four configurations in addition to those gates.
 
 ---
 
