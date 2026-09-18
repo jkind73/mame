@@ -3,12 +3,12 @@
 """DSP save result-parser controls; actual file handling uses the shared runner."""
 from test_scudsp_save_runtime import validate_output
 stages=['DSP_SAVE saved\n','DSP_SAVE mutated\n','DSP_SAVE loaded\n']
-final='DSP_SAVE PASS words=60000 busy=1 replay=exact\n'
+final='DSP_SAVE PASS words=256 busy=1 replay=exact\n'
 good=''.join(stages)+final
 validate_output(good,0)
 for bad in [final, ''.join(stages[:-1])+final, ''.join(stages[::-1])+final,
             good+stages[0],good+final,''.join(stages),good.replace('busy=1','busy=0'),
-            good.replace('words=60000','words=1'),good+'DSP_SAVE FAIL deliberate\n',
+            good.replace('words=256','words=1'),good+'DSP_SAVE FAIL deliberate\n',
             good+'LUA ERROR deliberate\n',good.replace('replay=exact\n','replay=exact extra\n')]:
     try:validate_output(bad,0)
     except RuntimeError:pass

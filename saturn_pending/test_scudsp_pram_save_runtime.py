@@ -14,7 +14,7 @@ local subscribers={}
 local state_path=assert(os.getenv('SMPC_SAVE_FILE'))
 local save_clock=0
 local control,program,addr,data=0x05fe0080,0x05fe0084,0x05fe0088,0x05fe008c
-local base,target,count=0x06010000,200,192
+local base,target,count=0x06010000,200,256
 local prg,expected,captured
 subscribers[1]=emu.add_machine_pre_save_notifier(function()
     saved=true;save_clock=emu.time();print('DSP_PRAM_SAVE saved')
@@ -44,7 +44,7 @@ local function compare(label,want)
     check(label,n,0)
 end
 local function finish()
-    if #fails==0 then print('DSP_PRAM_SAVE PASS words=192 wrap=1 busy=1 replay=exact')
+    if #fails==0 then print('DSP_PRAM_SAVE PASS words=256 wrap=1 busy=1 replay=exact')
     else for _,f in ipairs(fails) do print('DSP_PRAM_SAVE FAIL '..f) end end
     phase='done';emu.unpause();m:exit()
 end
@@ -69,7 +69,7 @@ emu.register_frame_done(function()
         for i=0,255 do sp:write_u32(program,0) end
         writecode(32,{0x1c00,0x1d00,0xf0000000})
         sp:write_u32(control,0x18020);complete()
-        sp:write_u32(addr,64);sp:write_u32(data,count)
+        sp:write_u32(addr,64);sp:write_u32(data,count&255)
         -- Unique END instructions make completion safe even where the overlay
         -- replaces the TOP return address; low bits identify every copied word.
         for i=0,count-1 do sp:write_u32(base+i*4,0xf0000001+i) end
@@ -112,7 +112,7 @@ print('DSP_PRAM_SAVE armed')
 def validate_output(text,returncode):
     if (returncode or 'DSP_PRAM_SAVE FAIL' in text or 'LUA ERROR' in text or
             re.findall(r'^DSP_PRAM_SAVE (saved|mutated|loaded)$',text,re.M)!=['saved','mutated','loaded'] or
-            len(re.findall(r'^DSP_PRAM_SAVE PASS words=192 wrap=1 busy=1 replay=exact$',text,re.M))!=1):
+            len(re.findall(r'^DSP_PRAM_SAVE PASS words=256 wrap=1 busy=1 replay=exact$',text,re.M))!=1):
         raise RuntimeError('DSP program-RAM save fixture failed:\n'+text[-10000:])
 runner.validate_output=validate_output
 if __name__=='__main__':
