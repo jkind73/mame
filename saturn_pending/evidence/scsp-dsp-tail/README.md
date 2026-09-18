@@ -1,4 +1,4 @@
-# SND-04: full SCSP microprogram execution — integrated, native WIP
+# SND-04: full SCSP microprogram execution — NATIVE QUALIFIED
 
 ST-077-R2-052594, technical data (printed11/PDF23), specifies128 DSP steps per
 sample. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73, PDF blob
@@ -34,9 +34,12 @@ SH-2s and sound CPU are parked only to exclude BIOS interference. Output is
 checked via MEMS/EFREG, not claimed as audible/hardware-capture qualification.
 
 The default suite grows69→70 with one generic SCSP DSP method suite, not a new
-parent ID.14 parser controls pass. Full70-script local/CI and build35388269809 pass; rebuilt native
-acceptance (124 programs/four configurations, all preceding gates retained)
-are pending. Full DSP file replay/audio continuity, hardware phase/arbitration
+parent ID.14 parser controls pass. Source9baba980 passes full70-script local/CI, build35388269809/export35389080640
+and the complete rebuilt native consumer:124 programs/four configurations,
+actual effect/late-read file replay, all preceding gates and both provenance/BIOS
+checks. Evidence: ../9baba980-live/. Binary SHA256
+45f44dfc487b4ed005f2e3aca523f2b37d1cd83e5b7fb8724d532f74f31f5500.
+The consumer revision is recorded separately from the compiled source revision. Full DSP file replay/audio continuity, hardware phase/arbitration
 and game-performance qualification remain open; no SND parent is closed.
 
 ## Existing-state native file replay control
@@ -47,6 +50,9 @@ hardware phase: RAM, both EFREG outputs and both MEMS inputs must reproduce the
 same one-step decay and late-read diagnostic. It poisons COEF, MPRO, RAM, output
 state and removes the late read before load. TEMP initialization uses guest DSP
 instructions. Qualified9b596f90 passes this full-length-program control before
-the zero-tail correction; raw output is preserved. The candidate must also pass.
+the zero-tail correction; raw output is preserved. The rebuilt9baba980 candidate also passes this gate.
 This adds native read-pipeline/effect replay coverage, not analog waveform/audio
 buffer continuity, pending-write arbitration or full SND-05 closure.
+
+The fix is in the shared SCSP core. Saturn/ST-V configurations above are qualified;
+other SCSP platforms and game-level performance have not been qualified here.
