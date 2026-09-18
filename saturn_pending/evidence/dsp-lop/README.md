@@ -36,7 +36,7 @@ No native candidate positive, exact loop timing or full loop semantics claimed.
 
 
 Three targeted mutants fail:11-bit truncation,13-bit truncation and bypassing
-the mask on MVI writes. Full63-script local batch and CI35366921336 are running.
+the mask on MVI writes. Full63-script local batch and CI35366921336 passed; native candidate acceptance remains pending.
 
 Important remaining loop semantics: Ymir's IncrementPC/Cmd_Special_Loop wraps
 LOP from0 tofff when completing a loop; current MAME leaves it at0. The manual
