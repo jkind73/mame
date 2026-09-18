@@ -6,8 +6,13 @@ DMA-resume compositions. Existing harnesses expose the new saved fields; the
 host-flag oracle retains its full flag assertions and now accounts for EP/PR
 command priority. Actual paused state is reflected in debugger flag text.
 The complete consumer now requires24 native pause programs/four configurations
-and an actual paused/odd-phase DMA file replay. Candidate native acceptance is
-pending. ES single-step and exact prefetch/timing remain open. Two saved fields
+and an actual paused/odd-phase DMA file replay. The complete68-script local batch PASSes (binary-dependent local checks
+remain separate from native acceptance). Production source7241b41a is committed
+locally but its push/build/native gate is BLOCKED by GitHub authentication;
+two push attempts failed with the credential prompt disabled. The user was
+asked to reconnect GitHub in Arena. Latest successful remote checkpoint66b23d12
+already preserves the external prototype; latest native-qualified source is
+dacd1f99. Candidate native acceptance has NOT run. ES single-step and exact prefetch/timing remain open. Two saved fields
 are added; cross-version save-file compatibility is not promised.
 Earlier prototype notes below are historical; do not reapply the patch.
 
