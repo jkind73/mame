@@ -39,3 +39,8 @@ state/progress was not restored. No private DSP fields are edited. The new
 source must pass this gate as well; extracted state-copy tests are insufficient.
 Thirteen DSP save parser controls and the shared runner's seventeen file/output
 controls pass. The native-save negative is `79f36021-save-negative.log`.
+
+Full integrated local batch: **57 scripts, exit zero**, with three optional
+missing-default-binary live skips excluded from acceptance. Output is retained
+in `local/regressions.log`. Native rebuild 35306849889 remains in progress;
+no new-source native positive or gameplay result is claimed.
