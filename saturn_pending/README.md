@@ -7,7 +7,8 @@ loads, prior suites, parser controls and full-TU syntax pass. Native positives
 remain pending in repair build35352902888. Build35347062472 failed because
 five controller translation units relied on a PCH to supply emu.h before their
 device headers. Their include ordering is fixed in fc6664a6; full-TU no-PCH
-checks pass. Failed-artifact diagnostics and partial cache statistics are in
+checks and the full59-script local batch pass (three optional live skips
+excluded). Failed-artifact diagnostics and partial cache statistics are in
 `evidence/dsp-count/build-repair/`. The full58-script local batch passed,
 excluding three optional live skips. See `evidence/dsp-count/README.md` for
 reference limitations.
