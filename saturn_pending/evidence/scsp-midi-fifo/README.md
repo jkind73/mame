@@ -1,8 +1,8 @@
-# SND-03 SCSP MIDI FIFO depth, status flags and reset — method-qualified, native pending
+# SND-03 SCSP MIDI FIFO depth, status flags and reset — NATIVE-QUALIFIED
 
 ## What changed
 
-`src/devices/sound/scsp.{h,cpp}` at WIP `ea928158`:
+`src/devices/sound/scsp.{h,cpp}` at `ea928158`:
 
 1. Both MIDI buffers are **4 bytes**, not a 32-slot ring. Occupancy
    (`m_MidiCount`, `m_MidiOutCount`) is tracked separately from the read/write
@@ -155,11 +155,25 @@ binary still passes every output-empty *request* observation
 `prime_main_request`), so the control isolates the FIFO/status change from the
 unchanged request timing.
 
-## Pending
+## Native qualification (complete)
 
-Full 71-script local regression PASS and build `35405593717` succeeded. Artifact
-export and the complete native consumer — including 24 new FIFO cases × 4 profiles and the
-existing 1536 × 4 MIDI output cases — have not yet been run against this source.
+Full 71-script local regression PASS; build `35405593717` and export
+`35406170623` succeeded; the complete consumer PASSes against binary SHA256
+`b52c27a1b6d4d70fba7b2548bfb8d6184d638797bfe6e2eb0f96e3baf3672776`:
+
+- **96 new FIFO cases** = 24 × {JP/interpreter, JP/DRC, PAL/DRC, ST-V/DRC},
+  each with the reset-state, priming, per-byte-lane, depth, fifth-byte
+  rejection, MOBUF-reads-zero and drain-window observations.
+- Prior gates all still pass: 6144 MIDI output cases (1536 × 4), 192 DMA
+  transfer/self-target cases (48 × 4), 1728 mapped IRQ cases, DSP program/
+  operand/address pipelines and first-sample file replay, SCSP timer and
+  DSP/IRQ/DMA save-and-replay fixtures, CD/cart/backup, multitap transport,
+  RESB/timeout/sync-save, and four BIOS/background replay configurations with
+  ZIP and final-provenance checks.
+
+Evidence: `../ea928158-live/` (consumer revision recorded separately).
+
 Nothing here claims waveform, gameplay, whole-SND-parent or working-driver
-acceptance, and no save-state compatibility with pre-`ea928158` states is
-implied (the MIDI arrays changed size).
+acceptance. Save states from before `ea928158` are not loadable (the MIDI
+arrays changed size); MAME reports the size mismatch rather than silently
+mis-restoring.
