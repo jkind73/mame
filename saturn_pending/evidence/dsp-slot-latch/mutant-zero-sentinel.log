@@ -1,0 +1,7 @@
+test: /tmp/dsp-pipeline-yi96456p/test.cpp:269: int main(): Assertion `s.m_pc==(taken?destination:((pc+2)&255))' failed.
+Traceback (most recent call last):
+  File "/home/user/slot-latch-probe/regtests/saturn/test_scudsp_pipeline.py", line 133, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/dsp-pipeline-yi96456p/test']' died with <Signals.SIGABRT: 6>.

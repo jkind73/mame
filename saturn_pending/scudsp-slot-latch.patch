@@ -1,0 +1,311 @@
+diff --git a/src/devices/cpu/scudsp/scudsp.cpp b/src/devices/cpu/scudsp/scudsp.cpp
+index 8c9ba668..c7c8fc85 100644
+--- a/src/devices/cpu/scudsp/scudsp.cpp
++++ b/src/devices/cpu/scudsp/scudsp.cpp
+@@ -986,11 +986,11 @@ void scudsp_cpu_device::execute_run()
+ 	{
+ 		m_update_mul = 0;
+ 
+-		debugger_instruction_hook(m_pc);
++		debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);
+ 
+ 		if ( m_delay_pending )
+ 		{
+-			opcode = scudsp_readop(m_delay);
++			opcode = m_delay_opcode;
+ 			m_delay_pending = false;
+ 			m_delay = 0;
+ 		}
+@@ -1030,6 +1030,11 @@ void scudsp_cpu_device::execute_run()
+ 				break;
+ 		}
+ 
++		// Preserve the fetched slot word, not just its address. Program RAM can
++		// change while paused without replacing this already-fetched instruction.
++		if (m_delay_pending)
++			m_delay_opcode = scudsp_readop(m_delay);
++
+ 		if ( m_update_mul == 1 )
+ 		{
+ 			m_mul = (int64_t)m_rx.si * (int64_t)m_ry.si;
+@@ -1055,6 +1060,7 @@ void scudsp_cpu_device::device_start()
+ 	m_flags = 0;
+ 	m_paused = false;
+ 	m_delay = 0;
++	m_delay_opcode = 0;
+ 	m_delay_pending = false;
+ 	m_top = 0;
+ 	m_lop = 0;
+@@ -1090,6 +1096,7 @@ void scudsp_cpu_device::device_start()
+ 	save_item(NAME(m_flags));
+ 	save_item(NAME(m_paused));
+ 	save_item(NAME(m_delay));
++	save_item(NAME(m_delay_opcode));
+ 	save_item(NAME(m_delay_pending));
+ 
+ 	save_item(NAME(m_top));
+@@ -1152,6 +1159,7 @@ void scudsp_cpu_device::device_start()
+ void scudsp_cpu_device::device_reset()
+ {
+ 	m_delay = 0;
++	m_delay_opcode = 0;
+ 	m_delay_pending = false;
+ 	m_out_ddwt_cb(0);
+ 	m_out_ddmv_cb(0);
+diff --git a/src/devices/cpu/scudsp/scudsp.h b/src/devices/cpu/scudsp/scudsp.h
+index 57e84913..b1f81cfc 100644
+--- a/src/devices/cpu/scudsp/scudsp.h
++++ b/src/devices/cpu/scudsp/scudsp.h
+@@ -123,6 +123,7 @@ private:
+ 	uint8_t   m_ra;
+ 	uint8_t   m_ct0,m_ct1,m_ct2,m_ct3;
+ 	uint8_t   m_delay;                                   /* Delay-slot address */
++	uint32_t  m_delay_opcode;                            /* Fetched slot word */
+ 	bool      m_delay_pending;                           /* Address zero is valid */
+ 	uint8_t   m_top;                                     /*Jump Command memory*/
+ 	uint16_t  m_lop;                                    /*Counter Register*/   /*12-bits*/
+diff --git a/regtests/saturn/test_scudsp_dma.py b/regtests/saturn/test_scudsp_dma.py
+index 6ff56a9e..e51a9662 100644
+--- a/regtests/saturn/test_scudsp_dma.py
++++ b/regtests/saturn/test_scudsp_dma.py
+@@ -89,7 +89,7 @@ struct scudsp_cpu_device {
+  enum {DMA_STATE_IDLE,DMA_STATE_WAIT,DMA_STATE_MOVE,T0F=23};
+  struct {uint32_t src=0,dst=0;uint8_t program_address=0;uint16_t add=0,write_stride=0,size=0,update=0,ex=0,dir=0,count=0;bool stalled=false;} m_dma;
+  uint8_t m_pc=0,m_top=0;
+- bool m_delay_pending=false;uint8_t m_delay=0;
++ bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint8_t m_delay=0;
+  uint8_t m_dma_state=0,m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0;
+  uint32_t m_ra0=0,m_wa0=0,m_flags=0,count_source=1;
+  bool m_paused=false;int m_icount=0;bool halt=false;int ddwt=0,ddmv=0;
+diff --git a/regtests/saturn/test_scudsp_lop.py b/regtests/saturn/test_scudsp_lop.py
+index cbad29bb..610f5886 100644
+--- a/regtests/saturn/test_scudsp_lop.py
++++ b/regtests/saturn/test_scudsp_lop.py
+@@ -45,7 +45,7 @@ struct scudsp_cpu_device {
+  R32 m_acl,m_pl,m_rx,m_ry;R16 m_ach,m_ph;
+  int64_t m_alu=0,m_mul=0;uint32_t m_flags=0,m_ra0=0,m_wa0=0;
+  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0,m_delay=0,m_top=0;
+- uint16_t m_lop=0;bool m_delay_pending=false;
++ uint16_t m_lop=0;bool m_delay_pending=false;uint32_t m_delay_opcode=0;
+  int m_update_mul=0,m_icount=0;
+  struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
+  std::array<uint32_t,256> code{},ram{};
+diff --git a/regtests/saturn/test_scudsp_multiplier.py b/regtests/saturn/test_scudsp_multiplier.py
+index eb4d922d..5407666a 100644
+--- a/regtests/saturn/test_scudsp_multiplier.py
++++ b/regtests/saturn/test_scudsp_multiplier.py
+@@ -45,7 +45,7 @@ struct scudsp_cpu_device {
+  R32 m_acl,m_pl,m_rx,m_ry;R16 m_ach,m_ph;
+  int64_t m_alu=0,m_mul=0;uint32_t m_flags=0,m_ra0=0,m_wa0=0;
+  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0,m_delay=0,m_top=0;
+- uint16_t m_lop=0;bool m_delay_pending=false;
++ uint16_t m_lop=0;bool m_delay_pending=false;uint32_t m_delay_opcode=0;
+  int m_update_mul=0,m_icount=0;
+  struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
+  std::array<uint32_t,256> code{},ram{};
+diff --git a/regtests/saturn/test_scudsp_parallel.py b/regtests/saturn/test_scudsp_parallel.py
+index 557469ad..d9c6ced6 100644
+--- a/regtests/saturn/test_scudsp_parallel.py
++++ b/regtests/saturn/test_scudsp_parallel.py
+@@ -45,7 +45,7 @@ struct scudsp_cpu_device {
+  R32 m_acl,m_pl,m_rx,m_ry;R16 m_ach,m_ph;
+  int64_t m_alu=0,m_mul=0;uint32_t m_flags=0,m_ra0=0,m_wa0=0;
+  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0,m_delay=0,m_top=0;
+- uint16_t m_lop=0;bool m_delay_pending=false;
++ uint16_t m_lop=0;bool m_delay_pending=false;uint32_t m_delay_opcode=0;
+  int m_update_mul=0,m_icount=0;
+  struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
+  std::array<uint32_t,256> code{},ram{};
+diff --git a/regtests/saturn/test_scudsp_pipeline.py b/regtests/saturn/test_scudsp_pipeline.py
+index 7b0c07c8..74aee1cd 100644
+--- a/regtests/saturn/test_scudsp_pipeline.py
++++ b/regtests/saturn/test_scudsp_pipeline.py
+@@ -24,9 +24,12 @@ methods='\n'.join(extract(sig) for sig in (
+     'void scudsp_cpu_device::op_loop(', 'void scudsp_cpu_device::op_move_immediate(',
+     'void scudsp_cpu_device::set_dest_mem_reg_2(',
+     'uint32_t scudsp_cpu_device::compute_condition(', 'void scudsp_cpu_device::device_reset()'))
+-fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_pending|m_top|m_lop)\)\)',src)
++fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_opcode|m_delay_pending|m_top|m_lop)\)\)',src)
+ restore='\n'.join(f'd.{f}=s.{f};' for f in fields)
+ mutation=os.environ.get('MUTATE_DSP_PIPELINE','')
++if mutation=='reread-slot':methods=methods.replace('opcode = m_delay_opcode;', 'opcode = scudsp_readop(m_delay);')
++if mutation=='missing-opcode-save':restore=restore.replace('d.m_delay_opcode=s.m_delay_opcode;','')
++if mutation=='wrong-hook':methods=methods.replace('debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);', 'debugger_instruction_hook(m_pc);')
+ if mutation=='zero-sentinel':methods=methods.replace('if ( m_delay_pending )','if ( m_delay )')
+ if mutation=='missing-save':restore=restore.replace('d.m_delay_pending=s.m_delay_pending;','')
+ if mutation=='missing-reset':
+@@ -49,15 +52,15 @@ struct timer {void adjust(int){}};
+ struct scudsp_cpu_device {
+  enum {CF=20,SF=22,ZF=21,T0F=23,DMA_STATE_IDLE=0};
+  uint8_t m_pc=0,m_delay=0,m_top=0,m_update_mul=0,m_dma_state=0;
+- bool m_delay_pending=false;uint16_t m_lop=0;uint32_t m_flags=0;
++ bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint16_t m_lop=0;uint32_t m_flags=0;
+  int m_icount=0;int64_t m_mul=0;struct{int32_t si=0;}m_rx,m_ry;
+  bool m_paused=false;struct{unsigned ex=0,count=0,dir=0,dst=0;bool stalled=false;}m_dma;
+  timer t;timer *m_dma_timer=&t;
+- std::array<uint32_t,256> code{};std::vector<unsigned> fetch;
++ std::array<uint32_t,256> code{};std::vector<unsigned> fetch,executed;std::vector<uint32_t> retired;
+  uint32_t readop(uint8_t a){fetch.push_back(a);return code[a];}
+- void debugger_instruction_hook(uint8_t){}
++ void debugger_instruction_hook(uint8_t pc){executed.push_back(pc);}
+  void set_dest_mem_reg(uint32_t,uint32_t){assert(false);}
+- void op_alu(uint32_t){--m_icount;}
++ void op_alu(uint32_t op){retired.push_back(op);--m_icount;}
+  void op_illegal(uint32_t){assert(false);}void op_dma(uint32_t){assert(false);}
+  void op_end(uint32_t){--m_icount;}
+  void m_out_ddwt_cb(int){}void m_out_ddmv_cb(int){}void set_input_line(int,int){}
+@@ -89,17 +92,34 @@ int main(){
+   // Save at the control-instruction boundary, poison pending-state validity,
+   // and restore ONLY the fields actually registered by the implementation.
+   scudsp_cpu_device replay=s;replay.m_dma_timer=&replay.t;
+-  replay.m_delay_pending=false;replay.m_delay=117;restore(replay,s);
++  replay.m_delay_pending=false;replay.m_delay=117;replay.m_delay_opcode=0x1002;restore(replay,s);
+   s.step();replay.step();
+-  assert(s.fetch.back()==next&&replay.fetch==s.fetch);
++  assert(s.executed.back()==next&&replay.executed==s.executed);
+   assert(s.m_pc==(taken?destination:((pc+2)&255)));
+   // Consume the slot exactly once. Avoid a branch in the slot in this test.
+   s.code[next]=0;replay.code[next]=0;
+   s.step();replay.step();
+-  assert(s.fetch.back()==(taken?destination:((pc+2)&255)));
++  assert(s.executed.back()==(taken?destination:((pc+2)&255)));
+   assert(replay.fetch==s.fetch);
+   ++cases;
+  }
++ unsigned captures=0;
++ for(unsigned pc=0;pc<256;++pc)for(unsigned kind=0;kind<5;++kind){
++  scudsp_cpu_device s;s.m_pc=pc;s.m_top=(pc+1)&255;s.m_lop=1;s.m_flags=1<<s.ZF;
++  unsigned slot=(pc+1)&255;
++  uint32_t ops[]={0xd0000000|slot,0xd1080000|slot,0xb0000000|slot,0xe0000000,0xe8000000};
++  s.code[pc]=ops[kind];s.code[slot]=0x1001;s.step();
++  assert(s.m_delay_pending);
++  // Adversarial RAM change between instruction clocks: the fetched word is stable.
++  s.code[slot]=0x1002;
++  scudsp_cpu_device replay=s;replay.m_dma_timer=&replay.t;
++  replay.m_delay_opcode=0x1002;restore(replay,s);
++  s.step();replay.step();
++  assert(s.retired.back()==0x1001&&replay.retired.back()==0x1001);
++  assert(s.executed.back()==slot&&replay.executed==s.executed);
++  ++captures;
++ }
++ std::cout<<captures<<" fetched-slot/RAM-mutation/registered-opcode replay cases passed\n";
+  scudsp_cpu_device reset;reset.m_delay_pending=true;reset.m_delay=0;
+  reset.device_reset();assert(!reset.m_delay_pending);
+  std::cout<<cases<<" DSP PC/target/control-flow wrap and registered-state replay cases passed\n";
+diff --git a/saturn_pending/test_scudsp_pipeline_runtime.py b/saturn_pending/test_scudsp_pipeline_runtime.py
+index 09cd1f41..e8bb3937 100644
+--- a/saturn_pending/test_scudsp_pipeline_runtime.py
++++ b/saturn_pending/test_scudsp_pipeline_runtime.py
+@@ -52,7 +52,36 @@ local function test()
+             if #fails==before then print('DSP_PIPELINE case='..case..' PASS') end
+         end
+     end
+-    if #fails==0 then print('DSP_PIPELINE PASS cases=12')
++    for _,pc in ipairs({0x20,0xfe,0xff}) do for kind=1,5 do
++        case=case+1;local before=#fails;local slot=(pc+1)&255
++        sp:write_u32(addr,192);sp:write_u32(data,0xdeadbeef);sp:write_u32(data,0xdeadbeef)
++        writecode(128,{0x1f00,0x20000,0x94000000|(kind==3 and 1 or 0),0x0c000000,
++            0x1a01,0x1b00|slot,0xd0000000|pc,0})
++        local ops={0xd0000000|slot,0xd1080000|slot,0xd0080000|slot,0xb0000000|slot,0xe0000000}
++        writecode(pc,{ops[kind]});writecode(slot,{0x8c000012,0xf0000000})
++        sp:write_u32(control,0x18080)
++        local pending=false
++        for n=1,100 do
++            emu.wait(emu.attotime.from_nsec(20))
++            -- Current core's PC+1 is a phase selector, not a hardware timing assertion.
++            if (sp:read_u32(control)&0x100ff)==(0x10000|((slot+1)&255)) then
++                sp:write_u32(control,0x02010000);emu.wait(emu.attotime.from_nsec(0))
++                assert((sp:read_u32(control)&0x10000)==0,'slot latch pause failed')
++                sp:write_u32(addr,192);pending=sp:read_u32(data)==0xdeadbeef;break
++            end
++        end
++        assert(pending,'did not capture pending slot for program-RAM replacement')
++        -- No LE: it would intentionally invalidate the slot. PC is already at slot.
++        -- This legal paused program-port write changes RAM and increments PC.
++        sp:write_u32(program,0x8c000034)
++        sp:write_u32(control,0x04000000);emu.wait(emu.attotime.from_usec(2))
++        assert((sp:read_u32(control)&0x10000)==0,'replaced-slot program did not end')
++        sp:write_u32(addr,192)
++        check('latched_slot'..case,sp:read_u32(data),0x12)
++        check('latched_slot_guard'..case,sp:read_u32(data),0xdeadbeef)
++        if #fails==before then print('DSP_PIPELINE case='..case..' PASS') end
++    end end
++    if #fails==0 then print('DSP_PIPELINE PASS cases=27')
+     else for _,f in ipairs(fails) do print('DSP_PIPELINE FAIL '..f) end end
+ end
+ local frames,started=0,false
+@@ -71,10 +100,10 @@ print('DSP_PIPELINE armed')
+ 
+ def validate_output(text,returncode):
+     if (returncode or 'DSP_PIPELINE FAIL' in text or 'LUA ERROR' in text or
+-            [int(n) for n in re.findall(r'^DSP_PIPELINE case=(\d+) PASS$',text,re.M)]!=list(range(1,13)) or
+-            len(re.findall(r'^DSP_PIPELINE PASS cases=12$',text,re.M))!=1):
++            [int(n) for n in re.findall(r'^DSP_PIPELINE case=(\d+) PASS$',text,re.M)]!=list(range(1,28)) or
++            len(re.findall(r'^DSP_PIPELINE PASS cases=27$',text,re.M))!=1):
+         raise RuntimeError('DSP pipeline fixture failed:\n'+text[-10000:])
+ 
+ runner.validate_output=validate_output
+ if __name__=='__main__':
+-    runner.main('DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live')
++    runner.main('DSP pipeline: 27 wrapped/control-flow/fetched-slot programs passed live')
+diff --git a/saturn_pending/test_scudsp_slot_save_runtime.py b/saturn_pending/test_scudsp_slot_save_runtime.py
+index 8f806a88..6da58fdd 100644
+--- a/saturn_pending/test_scudsp_slot_save_runtime.py
++++ b/saturn_pending/test_scudsp_slot_save_runtime.py
+@@ -37,7 +37,7 @@ end
+ local function advance(label)
+     emu.unpause();sp:write_u32(control,0x04000000)
+     -- More than one and less than two DSP clocks in either JP dot-clock mode.
+-    -- The marker cannot be cleared again for at least five instructions.
++    -- Only the fetched marker and END can run; pause before observing RAM.
+     emu.wait(emu.attotime.from_nsec(90))
+     freeze_dsp();check(label,marker(),0x12)
+ end
+@@ -62,21 +62,23 @@ emu.register_frame_done(function()
+     if frames<180 then return end
+     if phase=='setup' then step(function()
+         park()
+-        writecode(0xfc,{0x1f00,0x8c000000,0x1f00,0xd0000003})
++        writecode(0xfc,{0x1f00,0x8c000000,0x1f00,0xd0000000})
+         writecode(0,{0x8c000012})
+-        writecode(3,{0xd00000fc,0})
++        writecode(1,{0xf0000000})
+         sp:write_u32(control,0x180fc)
+         local pending=false
+         for n=1,500 do
+-            emu.wait(emu.attotime.from_nsec(90))
++            emu.wait(emu.attotime.from_nsec(20))
+             -- Current core reports post-fetch PC+1 at the public port.
+-            if (sp:read_u32(control)&0x100ff)==0x10004 then
++            if (sp:read_u32(control)&0x100ff)==0x10001 then
+                 freeze_dsp()
+-                if (sp:read_u32(control)&0x100ff)==4 and marker()==0 then pending=true;break end
++                if (sp:read_u32(control)&0x100ff)==1 and marker()==0 then pending=true;break end
+                 sp:write_u32(control,0x04000000)
+             end
+         end
+         assert(pending,'did not observe wrapped pending slot through host ports')
++        -- Change RAM at the slot without LE; the fetched opcode must remain 0x12.
++        sp:write_u32(program,0x8c000034)
+         m:save(state_path);emu.pause();phase='saved'
+     end)
+     elseif phase=='saved' and saved then step(function()
+@@ -85,13 +87,17 @@ emu.register_frame_done(function()
+         -- Reset clears the pending flag and changes PC; poison the marker too.
+         sp:write_u32(control,0x8040)
+         emu.wait(emu.attotime.from_usec(1))
++        -- Execute a different fetched slot, so a missing saved opcode cannot pass.
++        writecode(0x40,{0xd0000043,0x8c000077,0,0xf0000000})
++        sp:write_u32(control,0x18040);emu.wait(emu.attotime.from_usec(2))
++        assert((sp:read_u32(control)&0x10000)==0,'cache poison did not stop')
+         sp:write_u32(addr,192);sp:write_u32(data,0x777)
+         print('DSP_SLOT_SAVE mutated')
+         m:load(state_path);emu.pause();phase='loaded'
+     end)
+     elseif phase=='loaded' and loaded then step(function()
+         assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'load did not restore time')
+-        check('restored_paused_pc',sp:read_u32(control)&0x100ff,4)
++        check('restored_paused_pc',sp:read_u32(control)&0x100ff,2)
+         check('restored_marker',marker(),0)
+         advance('replayed_slot');finish()
+     end)
