@@ -150,3 +150,26 @@ apply these patches again. `history.md` preserves earlier checkpoint narratives
 and references; `pr-history.md` preserves the pre-consolidation PR description.
 Neither superseded pending/blocked statements nor old extracted totals should
 be mistaken for fresh acceptance of the latest revision.
+
+## Next prepared change: RESB (not applied)
+
+`smpc-resb.patch` independently implements the hardwired reset-button status
+latch. ST-169 printed p.34/PDF p.44 explicitly says RESDISA suppresses NMI but
+RESB still shows the switch at VBlank-IN; printed p.66/PDF p.76 makes RESB valid
+outside INTBACK. The candidate binds only RESET port bit 0, samples every console
+VBlank (including idle/NMI-disabled periods), exposes the saved latch through SR
+independently of command writes, and initializes/resets/registers it. Reading the
+port at VBlank also covers a button held across machine reset. ST-V remains on
+its existing path. The three-VINT NMI/debounce behavior is **not** implemented
+by this change.
+
+The live 234c negative control confirms four missing pressed-state observations
+while verifying the actual input bit. The candidate passes 6,144 compiled latch/
+read/command/enable combinations, ST-V isolation, four compiled/assertion-rejected
+mutants, the existing 73,728 timeout + 5,402 transport + 1,175 handshake checks,
+and SMPC/console full-TU C++20 syntax. Twelve result-parser controls pass. These
+are not native-positive or real RESB save-manager acceptance. The patch is kept
+unapplied while the timeout/edge revision builds, preserving its exact source
+input trees. Use `test_smpc_resb.py --source-root PATCHED_COPY` and the seven-case
+`test_smpc_resb_runtime.py` when qualifying it; do not treat it like the historical
+already-integrated patches.
