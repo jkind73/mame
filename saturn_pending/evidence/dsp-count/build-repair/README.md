@@ -32,3 +32,8 @@ before emu.h are not changed.
 The regression now compiles all six controller/sound-DSP units without PCH; all
 six pass. This failure still does not qualify the counter binary. Further rebuild
 and native qualification are required; no emulator arithmetic behavior changed.
+
+
+Successful recovery: f1a65715 passed build35354598861 and its59-script CI batch.
+The fresh full local59-script batch also exited0 (three optional live skips
+excluded); see `complete-regressions.log`. Native consumption is pending.
