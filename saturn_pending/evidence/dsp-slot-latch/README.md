@@ -1,4 +1,4 @@
-# Fetched control-flow slot integrated — native WIP
+# Fetched control-flow slot — NATIVE QUALIFIED
 
 Reconstructed from the pushed prototype after reconnecting GitHub re-created the
 workspace and lost local commit79ec1210. The old source snapshot was backed up
@@ -12,7 +12,7 @@ cache, save registration, wrong fetch/capture/hook and legacy validity/reset def
 The existing real-debugger fixture retains241 dump rows and requires FF→00→10.
 Qualified1ee15ef8 reproduces FF→10→10 instead;13 dump/eight trace parser controls
 are retained. Native pipeline counts expand12→27 (108 across four configurations),
-with actual cached-word file replay. Source9b596f90 passes the fresh69-script local/CI batches and build35385651294; rebuilt native acceptance is pending. Same-build snapshots only; this adds a registered field. Ordinary
+with actual cached-word file replay. Source9b596f90 passes fresh69-script local/CI, build35385651294/export35386786221 and the complete native consumer:108 pipeline programs/four configurations, actual cached-word file replay,241 debugger dump rows and the correct FF→00→10 live trace, plus every prior gate and provenance/BIOS check. Evidence: ../9b596f90-live/. Same-build snapshots only; this adds a registered field. Ordinary
 prefetch/ES/loop timing/PC readback/full debugger sync remain open.
 
 Historical prototype evidence follows; do not reapply the patch.
