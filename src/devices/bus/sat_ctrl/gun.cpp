@@ -27,8 +27,8 @@
 
 **********************************************************************/
 
-#include "gun.h"
 #include "emu.h"
+#include "gun.h"
 
 
 #include "screen.h"

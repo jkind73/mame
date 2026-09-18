@@ -6,8 +6,8 @@
 
 **********************************************************************/
 
-#include "ctrl.h"
 #include "emu.h"
+#include "ctrl.h"
 
 // slot devices
 #include "analog.h"

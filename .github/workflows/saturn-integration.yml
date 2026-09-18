@@ -97,7 +97,13 @@ jobs:
           from pathlib import Path
           path = Path('validation-artifact/build.log')
           if path.exists():
-              for line in path.read_text(errors='replace').splitlines()[-25:]:
+              import re
+              lines = path.read_text(errors='replace').splitlines()
+              errors = [i for i, line in enumerate(lines) if re.search(r'fatal error:|error:|make.*Error', line)]
+              messages = ['\n'.join(lines[max(0, i-2):i+4]) for i in errors[:6]]
+              if not messages:
+                  messages = ['\n'.join(lines[-20:])]
+              for line in messages:
                   line = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                   print('::error title=Build diagnostic::' + line)
       - name: Preserve binary and diagnostic evidence
