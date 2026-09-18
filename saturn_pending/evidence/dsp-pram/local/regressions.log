@@ -1,0 +1,238 @@
+
+=== test_backup_ram.py ===
+SKIP: no binary at /home/user/mame/saturn (build a driver-filtered subtarget first)
+
+=== test_cart_runtime.py ===
+SKIP: no binary at /home/user/mame/saturn (build a driver-filtered subtarget first)
+
+=== test_cd_hirq.py ===
+SKIP: no binary at /home/user/mame/saturn (build a driver-filtered subtarget first)
+
+=== test_cd_transfer.py ===
+CD HIRQ: 262144 status-overlay/read/ack cases passed
+CD boot trace: opt-in, debugger, register, rate-limit and observational checks passed
+CD transfer: 336 cases passed
+
+=== test_cell_scroll.py ===
+85248 vertical cell-scroll configurations passed
+
+=== test_controller_slots.py ===
+9216 physical tap topology/mode reports plus direct/empty/bounds checks passed
+
+=== test_dma_bus.py ===
+768 C-Bus classifications and 2304 mirrored DMA scenarios passed
+
+=== test_dma_indirect.py ===
+54 indirect DMA chains passed through completion; 64 two-channel arbitration scenarios passed; 924 held-trigger scenarios passed; 2321 forced-stop scenarios passed
+
+=== test_dma_regs.py ===
+15360 DMA address and 7680 direct count register writes/readbacks passed; cache aliases normalized; 13824 control-register scenarios passed
+
+=== test_dma_source.py ===
+1152 buffered DMA source/word-transfer scenarios passed, including snapshot continuation
+
+=== test_exten.py ===
+64 EXTEN write/reset/latch scenarios passed
+
+=== test_halt.py ===
+Shared HALT: 1296 event sequences passed
+
+=== test_ioga_legacy.py ===
+5124 legacy IOGA counter/peek/alias/input cases passed
+
+=== test_mosaic.py ===
+16384 mosaic configurations passed
+
+=== test_runtime_runner.py ===
+44 fake-executable runner protocol cases passed (not linked MAME execution)
+18 fake-executable CD/cart/backup failure-protocol cases passed (not hardware evidence)
+
+=== test_sat_cart.py ===
+Saturn carts: 24 access cases passed
+
+=== test_scsp_phase.py ===
+SCSP timer phase: 49152 rearm/restore/IRQ deadline cases passed
+Ideal oscillator clocks
+SCSP timer phase: 49152 rearm/restore/IRQ deadline cases passed
+Real MAME attotime
+
+=== test_scsp_reset.py ===
+SCSP reset: 24 dirty-state, deadline, IRQ delivery and re-enable cases passed
+
+=== test_scu_abus.py ===
+32 A-Bus resets, 32768 refresh writes, 288 set-register writes and 24576 static wait decodes passed
+
+=== test_scu_irqs.py ===
+1920 interrupt arbitrations, 16 acknowledgement sequences and 512 masked register writes passed
+
+=== test_scudsp_dma.py ===
+4096 program-RAM DMA target/wrap/count/hold cases and five replay cuts passed
+2048 DSP read DMA mirror/mode/hold/count cases plus A/B isolation passed
+768 DSP DMA B-bus mode/count/hold/bank cases, five replay cuts, reset and bus isolation passed
+
+=== test_scudsp_pipeline.py ===
+393216 DSP PC/target/control-flow wrap and registered-state replay cases passed
+
+=== test_sh_delay_irq.py ===
+72 SH delay-slot compiler-state cases passed
+
+=== test_smpc_handshake.py ===
+1175 SMPC handshake/cancel/reset scenarios passed
+
+=== test_smpc_timeout.py ===
+73728 timeout state combinations and four VBlank edge/order checks passed
+
+=== test_smpc_transport.py ===
+5402 SMPC page/snapshot/mode/OREG31/cancel cases passed
+
+=== test_sound_boot.py ===
+Sound boot: 64 SCSP/reset IRQ transitions and RAM/trace checks passed
+
+=== test_sound_map.py ===
+Sound map: 13 boundary/clear-loop cases passed for Saturn and ST-V
+
+=== test_sprite_scanout.py ===
+1376256 sprite-window displayed-framebuffer pixels passed
+32256 all-sprite-type shadow/SDCTL/CC/MSB/window images passed
+307200 sprite ratio/selector/eligibility images passed
+3040 production sprite scanout/compositor images passed
+
+=== test_sync.py ===
+72 sync configurations passed; edge gating passed
+
+=== test_timer0.py ===
+8192 timer-0 two-frame scenarios passed; gating/masks passed
+
+=== test_timer1.py ===
+1024 timer-1 reload scenarios passed; gating/masks passed
+
+=== test_tvmd.py ===
+3072 TVMD startup/write/reset scenarios passed
+
+=== test_vcounter.py ===
+47016 V-counter checks passed
+
+=== test_vdp1.py ===
+/tmp/saturn-vdp1-0gzbtuhf/test.cpp: In function ‘int main()’:
+/tmp/saturn-vdp1-0gzbtuhf/test.cpp:2421:5: note: variable tracking size limit exceeded with ‘-fvar-tracking-assignments’, retrying without
+ 2421 | int main(){
+      |     ^~~~
+92420 color/shading and 2689 normal-sprite END scenarios passed
+974 rotated readout/parameter/precision scenarios passed
+262144 RGB END/transparency gate cases passed
+593920 texture-step/scaled HSS/EOS pixel cases passed
+4 HSS LUT-black marker/cutoff regressions passed
+2500 integer line coverage/shading/mesh images passed
+10568 queued Pclp-disabled normal sprite images passed
+113 Pclp-disabled scaled/native image and queue-bound cases passed
+3 reversed legacy Gouraud origin probes passed
+2640 independent queued rectangle Gouraud images passed
+3840 native quad coverage/texture/color images passed
+1040 queued rectangle image/texture/shading/lifecycle cases passed
+4362 queued quad image/coverage/texture/lifecycle cases passed
+160 line/polyline Gouraud endpoint cases passed
+2924 scaled source-END/span cases passed
+12000 scaled endpoint/anchor/direction cases passed
+748 interruptible line/polyline image/lifecycle cases passed
+2 framebuffer-control field sequences passed
+180 active-display erase bounds/progress/restore cases passed
+24 manual display erase presentation/restore cases passed
+552 progressive VBlank erase slice/restore/callback cases passed
+154 bounded VBlank erase/lifecycle cases passed
+2 interlace field lifecycle sequences passed
+32832 VDP1 command/completion, 532 framebuffer and 24500 pixel-clipping scenarios passed
+
+=== test_vdp2_bitmap.py ===
+184320 bitmap/palette/window/partial-clip images passed
+
+=== test_vdp2_bitmap_vramsize.py ===
+17280 all-format bitmap size/bank/wrap/coverage/blend/split images passed
+
+=== test_vdp2_cell_map_size.py ===
+24576 legacy map-base/watch configurations and 3442688 name-fetch probes passed
+
+=== test_vdp2_composition.py ===
+6144 gradation capture/halo/source-rank/ratio/line-exclusion/split-clip scenes passed
+786432 extended format/CRAM/enable/ratio/mode cases, 28672 post-calculation signed-offset cases, 896 layer-selective shadow cases passed
+524288 raw-second-image/ratio/line/shadow/split-clip scenes passed
+
+=== test_vdp2_cycle_patterns.py ===
+16384 VCSC addressed-bank/early-slot/order decisions passed
+1048576 partition/slot/rotation-owner cycle-presence cases passed
+
+=== test_vdp2_direct_cell_size.py ===
+2816 direct-color character boundary/zoom/flip/blend/window/split images passed
+
+=== test_vdp2_linescroll.py ===
+33600 line-scroll scheduling/partial-clip scenarios passed
+
+=== test_vdp2_map_offset_regs.py ===
+393216 map-offset register-field/bank/address cases passed
+
+=== test_vdp2_palette.py ===
+4096 stateful CRAM writes passed (234 mirror-only changes, 790 redundant writes)
+40960 partitioned coefficient-bank/CRAM fetch cases passed
+9216 CRAM lane/address/palette cases and mode-transition checks passed
+
+=== test_vdp2_palette_cell_size.py ===
+262144 palette-cell capacity/alias/dot/decode-routing configurations passed
+
+=== test_vdp2_postload.py ===
+4 poisoned-startup and 64 full-VRAM postload/cache/rotation-history scenarios passed
+
+=== test_vdp2_priority_dispatch.py ===
+131072 priority-pass scheduling/tie-order images passed
+
+=== test_vdp2_raster_writes.py ===
+2592 production write/beam/mask/blank/erase/coalescing scenarios passed
+
+=== test_vdp2_reduction.py ===
+13824 reduction register/layer restriction scenarios passed
+18432 color-depth/reduction layer restriction scenarios passed
+256 RBG1 shared-register setup cases passed
+
+=== test_vdp2_rotation_cache.py ===
+15200 character-tail/wrapped VRAM invalidation writes passed
+5120 bitmap source-range/rotation-parameter invalidation probes passed
+
+=== test_vdp2_rotation_clip.py ===
+2560 screen-over character decoding configurations and 2880 screen-over rotation images passed
+144 A/B selection-before-composition images passed
+648 short/long signed-coefficient and screen-over boundary images passed
+1536 signed-limit wrapping-coordinate images passed
+5760 horizontal rotation mosaic images and split clips passed
+34560 coefficient line-color source/insertion/ratio images passed
+33024 production rotation/window composition images passed
+107520 rotation/map/screen-over special-calculation images passed
+16 active raw-second-image rotation integration cases passed
+360 bitmap-to-rotation opaque-black/transparent coverage images passed
+9216 rotation coefficient/window/split-clip images passed
+
+=== test_vdp2_rotation_dispatch.py ===
+8448 rotation dispatch/window/cache configuration cases passed
+20 cell/bitmap A/B cache size-transition and reuse cases passed
+Latched-row dispatch reuses the untransformed cache across clips
+
+=== test_vdp2_rotation_latches.py ===
+512 one-shot reload/accumulation/snapshot replay sequences passed
+
+=== test_vdp2_rotation_parameters.py ===
+1920 rotation parameter unpacking configurations passed
+
+=== test_vdp2_rotation_windows.py ===
+16384 W0/W1/sprite-window A/B selection pixels passed
+4194304 RBG0/RBG1 window-control selection pixels passed
+
+=== test_vdp2_scroll_pixels.py ===
+12 real VCSC fetch-gated scroll images passed
+192 real PN/CP addressed-bank and normal-route images passed
+98304 all-layer priority/code metadata cases passed
+294912 fractional tile/bitmap and combined scroll/mosaic images passed
+
+=== test_vdp2_table_wrap.py ===
+1310720 W0/W1/back/legacy-line size/alias/boundary/interlace/partial-row cases passed
+
+=== test_vdp2_vram_access.py ===
+1296 CPU VRAM alias/masked-write/decode/watch/old-state-order cases passed
+
+All Saturn regression scripts passed.

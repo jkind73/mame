@@ -15,6 +15,14 @@ gates. Binary SHA256:
 `642af2f549c682ec391aa78109cfa732a727bd06b93fddb5a6d52b4d44162312`.
 Evidence: `evidence/ca63041f-live/`. No whole-hardware or gameplay completion.
 
+
+The next counter correction is prepared, **not applied**:
+`scudsp-count.patch`, with 16/24 actual before-fix failures and 20,480 extracted
+count cases. This also replaces the out-of-range 60,000-word save stress with
+legal zero-encoded 256-word save replay. Reference/acceptance distinctions:
+`evidence/dsp-count/README.md`. Current loader build 35344168780 is running; its
+58-script local batch passed (three optional live skips excluded).
+
 ---
 
 # Current native baseline and read-DMA work

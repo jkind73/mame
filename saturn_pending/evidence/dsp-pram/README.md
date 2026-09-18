@@ -50,3 +50,7 @@ but the first program word is never written and all 192 transferred words are
 wrong after both original completion and replay. This is a missing-feature
 negative, not new-source acceptance. Thirteen save-parser controls and the shared
 runner's seventeen file/output controls pass separately.
+
+Integrated cd074b71 full local batch: 58 scripts passed, excluding the three
+optional missing-default-binary live skips. Log: `local/regressions.log`.
+Native build 35344168780 is still running; candidate acceptance is not inferred.
