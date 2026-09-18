@@ -255,4 +255,4 @@ phase=final-provenance
 python3 saturn_pending/verify_ci_artifact.py "$ARTIFACT" --run-id "$RUN_ID" > "$LOG_DIR/final-artifact.json"
 cmp "$LOG_DIR/artifact.json" "$LOG_DIR/final-artifact.json"
 sha256sum -c "$LOG_DIR/bios.sha256"
-echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP wrapped control flow and read mirrors, DSP DMA B-bus addressing, program loaders and in-flight data/program save replay, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
+echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP wrapped control flow and read mirrors, DSP DMA B-bus addressing, program loaders and in-flight data/program save replay, three SCSP timers, SCSP DSP operand/address pipelines and first-sample file replay, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
