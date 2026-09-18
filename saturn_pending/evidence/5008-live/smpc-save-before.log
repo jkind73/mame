@@ -65,4 +65,4 @@ SMPC_SAVE FAIL restored_tail_padding28 got=fe want=ff
 SMPC_SAVE FAIL restored_tail_padding29 got=bf want=ff
 SMPC_SAVE FAIL restored_tail_padding30 got=2 want=ff
 SMPC_SAVE FAIL restored_tail_padding31 got=fb want=ff
-Average speed: 125.75% (2 seconds)
+Average speed: 134.99% (2 seconds)

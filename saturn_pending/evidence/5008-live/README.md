@@ -30,3 +30,9 @@ and post-load notifications were observed in order around packet mutation. It
 completed without Lua errors and **failed the expected transport assertions**;
 see `smpc-save-before.log`. This is a negative control, not positive acceptance
 of the new snapshot fields. The old binary predates those fields.
+
+The full PAL DRC composition run also completed successfully: **1,042 cases**
+with pixel/save-replay checks, on the same 5008 baseline. Its log is preserved.
+The partial-report negative save run now freezes emulated time during scheduled
+file I/O and checks restored time before resuming; it still reaches all three
+notifications and fails the expected old transport assertions.

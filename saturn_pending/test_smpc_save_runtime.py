@@ -22,9 +22,10 @@ from test_smpc_multitap_runtime import COMMON_LUA, ROOT
 LUA = COMMON_LUA + r'''
 local phase,frames,saved,loaded='setup',0,false,false
 local state_path=assert(os.getenv('SMPC_SAVE_FILE'))
+local save_clock=0
 local subscribers={}
 subscribers[1]=emu.add_machine_pre_save_notifier(function()
-    saved=true;print('SMPC_SAVE saved')
+    saved=true;save_clock=emu.time();print('SMPC_SAVE saved')
 end)
 subscribers[2]=emu.add_machine_post_load_notifier(function()
     loaded=true;print('SMPC_SAVE loaded')
@@ -64,20 +65,20 @@ end
 local function finish()
     if #fails==0 then print('SMPC_SAVE PASS bytes=38 cursor=32 tail=6')
     else for _,f in ipairs(fails) do print('SMPC_SAVE FAIL '..f) end end
-    phase='done';m:exit()
+    phase='done';emu.unpause();m:exit()
 end
 local function step(fn)
     phase='busy'
     coroutine.wrap(function()
         local ok,err=pcall(fn)
-        if not ok then print('SMPC_SAVE FAIL '..tostring(err));phase='done';m:exit() end
+        if not ok then print('SMPC_SAVE FAIL '..tostring(err));phase='done';emu.unpause();m:exit() end
     end)()
 end
 emu.register_frame_done(function()
     frames=frames+1
     assert(subscribers[1] and subscribers[2])
     if frames>600 and phase~='done' then
-        print('SMPC_SAVE FAIL bounded save/load wait expired');phase='done';m:exit();return
+        print('SMPC_SAVE FAIL bounded save/load wait expired');phase='done';emu.unpause();m:exit();return
     end
     if frames<180 then return end
     if phase=='setup' then step(function()
@@ -90,9 +91,14 @@ emu.register_frame_done(function()
         end end
         original=packet(false);request(0)
         page('before_save',original,1,32,0xe0)
-        m:save(state_path);phase='saved'
+        -- Pause only after scheduling: schedule_save itself resumes the machine.
+        -- UI frame callbacks still run while paused; no emulated VBlank can
+        -- expire the packet while the host waits for disk I/O.
+        m:save(state_path);emu.pause();phase='saved'
     end)
     elseif phase=='saved' and saved then step(function()
+        assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'save wait advanced emulated time')
+        emu.unpause()
         tail('drained')
         sp:write_u8(I0,0xc0)
         changed=packet(true);request(0)
@@ -102,9 +108,11 @@ emu.register_frame_done(function()
         sp:write_u8(I0,0x40);request(0xf0)
         check('zero_byte_SR',sp:read_u8(SR)&0xef,0xcf)
         print('SMPC_SAVE mutated')
-        m:load(state_path);phase='loaded'
+        m:load(state_path);emu.pause();phase='loaded'
     end)
     elseif phase=='loaded' and loaded then step(function()
+        assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'load did not restore frozen time')
+        emu.unpause()
         page('restored_first',original,1,32,0xe0)
         tail('restored_tail')
         finish()
