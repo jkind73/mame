@@ -1,11 +1,11 @@
-# Stopped PC-load correction integrated — native WIP
+# Stopped PC-load correction — NATIVE QUALIFIED
 
 Integrated after c33fe0da passed its complete native consumer. The existing
 host-control model now executes262144 masked flag/PC/slot/state cases. The
 existing pause native fixture now has20 programs (80/four configurations),
 retaining all six earlier pause/DMA programs. Parser/consumer counts are updated;
 the default suite remains69 scripts. Targeted suites and full-TU syntax pass.
-Full local/CI and rebuilt native qualification are pending. Historical prototype
+Source1ee15ef8 passes full69-script local/CI, build35381311374/export35382269649 and the complete native consumer:80 expanded programs/four configurations and all prior runtime/save/provenance gates. This full consumer was repeated after workspace recovery with the identical binary SHA256511e756c0f44c08a2c6371d1e75ba05a4b40cb1614e15afe260c5ccf4788e4c9. Evidence: ../1ee15ef8-live/. Historical prototype
 notes follow; do not reapply the patch. Full ES/prefetch/timing remains open.
 
 # Stopped PC-load correction prototype — NOT INTEGRATED

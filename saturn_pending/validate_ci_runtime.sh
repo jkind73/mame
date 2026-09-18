@@ -50,7 +50,7 @@ grep -q 'fresh-directory provenance and save/mutate/load all verified' "$LOG_DIR
 phase=dsp-disassembler
 python3 saturn_pending/test_scudsp_disassembler_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-disassembler" > "$LOG_DIR/dsp-disassembler.log" 2>&1
-grep -q 'DSP disassembler: 241 real debugger destination/parallel-command rows passed' "$LOG_DIR/dsp-disassembler.log"
+grep -q 'DSP disassembler: 241 real debugger destination/parallel-command rows and three slot trace rows passed' "$LOG_DIR/dsp-disassembler.log"
 phase=dsp-pause
 python3 saturn_pending/test_scudsp_pause_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pause" > "$LOG_DIR/dsp-pause.log" 2>&1
@@ -66,7 +66,7 @@ grep -q 'DSP host flags: 112 guest-ALU/read-only/masked-write cases passed live'
 phase=dsp-pipeline
 python3 saturn_pending/test_scudsp_pipeline_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pipeline" > "$LOG_DIR/dsp-pipeline.log" 2>&1
-grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/dsp-pipeline.log"
+grep -q 'DSP pipeline: 27 wrapped/control-flow/fetched-slot programs passed live' "$LOG_DIR/dsp-pipeline.log"
 phase=dsp-count
 python3 saturn_pending/test_scudsp_count_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-count" > "$LOG_DIR/dsp-count.log" 2>&1
@@ -146,7 +146,7 @@ for system in saturnjp saturneu stvbios; do
         if [[ "$fixture" == dma ]]; then
             grep -q 'DSP DMA: 32 mapped-program B-bus addressing cases passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == pipeline ]]; then
-            grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/$phase.log"
+            grep -q 'DSP pipeline: 27 wrapped/control-flow/fetched-slot programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == pram ]]; then
             grep -q 'DSP program RAM: 32 mapped loader/overlay programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == count ]]; then

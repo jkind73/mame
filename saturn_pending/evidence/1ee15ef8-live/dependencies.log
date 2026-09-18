@@ -1,0 +1,225 @@
++ /usr/bin/python3 -m pip install --upgrade --target /home/user/.cache/saturn/linked-sdk/tools pygame==2.6.1 pkgconf==3.0.1.post0 meson==1.12.0 ninja==1.13.2 mako==1.4.1
+Collecting pygame==2.6.1
+  Downloading pygame-2.6.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (14.0 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.0/14.0 MB 100.9 MB/s eta 0:00:00
+Collecting pkgconf==3.0.1.post0
+  Downloading pkgconf-3.0.1.post0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (77 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 77.3/77.3 kB 32.0 MB/s eta 0:00:00
+Collecting meson==1.12.0
+  Downloading meson-1.12.0-py3-none-any.whl (1.1 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.1/1.1 MB 123.3 MB/s eta 0:00:00
+Collecting ninja==1.13.2
+  Downloading ninja-1.13.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (183 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 183.4/183.4 kB 70.6 MB/s eta 0:00:00
+Collecting mako==1.4.1
+  Downloading mako-1.4.1-py3-none-any.whl (80 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 80.0/80.0 kB 33.9 MB/s eta 0:00:00
+Collecting MarkupSafe>=2.0
+  Downloading markupsafe-3.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (22 kB)
+Installing collected packages: pygame, pkgconf, ninja, meson, MarkupSafe, mako
+Successfully installed MarkupSafe-3.0.3 mako-1.4.1 meson-1.12.0 ninja-1.13.2 pkgconf-3.0.1.post0 pygame-2.6.1
++ gh api repos/libsdl-org/SDL/tarball/release-2.28.4
++ gh api repos/mirror/libX11/tarball/libX11-1.8.4
++ gh api repos/freedesktop-unofficial-mirror/xorg__proto__xproto/tarball/70cf8acf06705097b009a488994b526832b0ef66
++ gh api repos/NVIDIA/libglvnd/tarball/faa23f21fc677af5792825dc30cb1ccef4bf33a6
++ /usr/bin/python3 -m mesonbuild.mesonmain setup /home/user/.cache/saturn/linked-sdk/deps/glvnd-build /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2 --prefix=/home/user/.cache/saturn/linked-sdk/deps --libdir=lib -Dx11=disabled -Dglx=disabled -Degl=true -Dgles1=false -Dgles2=false
+The Meson build system
+Version: 1.12.0
+Source dir: /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2
+Build dir: /home/user/.cache/saturn/linked-sdk/deps/glvnd-build
+Build type: native build
+Project name: glvnd
+Project version: 1.7.0
+C compiler for the host machine: cc (gcc 12.2.0 "cc (Debian 12.2.0-14+deb12u1) 12.2.0")
+C linker for the host machine: cc ld.bfd 2.40
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Program python3 found: YES (/usr/bin/python3)
+Program nm found: YES (/usr/bin/nm)
+Message: Host CPU family: x86_64
+Message: Host CPU: x86_64
+Library dl found: YES
+Library m found: YES
+Run-time dependency threads found: YES
+Dependency x11 for host machine skipped: feature x11 disabled
+Checking if "typeof" compiles: YES 
+Checking if "__thread" compiles: YES 
+Message: Using TLS variable for dispatch table: true
+Header "features.h" has symbol "__GLIBC__" : YES 
+Message: Using dispatch stub type: x86_64_tls
+Compiler for C supports function attribute constructor: YES 
+Checking if "pthread rwlock" compiles: YES 
+Checking if "sync intrinsics" compiles: YES 
+Checking for function "mincore" : YES 
+Header "dlfcn.h" has symbol "RTLD_NOLOAD" : YES 
+Checking whether type "struct dirent" has member "d_type" : YES 
+Found pkg-config: YES (/home/user/.cache/saturn/linked-sdk/tools/bin/pkg-config) 3.0.1
+Program cp found: YES (/usr/bin/cp)
+Build targets in project: 37
+NOTICE: Future-deprecated features used:
+ * 0.55.0: {'Program.path'}
+
+glvnd 1.7.0
+
+  User defined options
+    egl   : true
+    gles1 : false
+    gles2 : false
+    glx   : disabled
+    libdir: lib
+    prefix: /home/user/.cache/saturn/linked-sdk/deps
+    x11   : disabled
+
+Found ninja-1.13.2.git.kitware.jobserver-pipe-1 at /home/user/.cache/saturn/linked-sdk/tools/bin/ninja
++ /home/user/.cache/saturn/linked-sdk/tools/bin/ninja -j1 -C /home/user/.cache/saturn/linked-sdk/deps/glvnd-build install
+ninja: Entering directory `/home/user/.cache/saturn/linked-sdk/deps/glvnd-build'
+[1/98] Generating src/generate/glapi_mapi_tmp.h with a custom command (wrapped by meson to capture output)
+[2/98] Compiling C object src/util/libglvnd_pthread.a.p/glvnd_pthread.c.o
+[3/98] Compiling C object src/util/libapp_error_check.a.p/app_error_check.c.o
+[4/98] Compiling C object src/util/libutils_misc.a.p/utils_misc.c.o
+[5/98] Compiling C object src/util/libtrace.a.p/trace.c.o
+[6/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/mapi_glapi.c.o
+[7/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/stub.c.o
+[8/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/table.c.o
+In file included from ../src/NVIDIA-libglvnd-faa23f2/src/GLdispatch/vnd-glapi/mapi_tmp.h:34,
+                 from ../src/NVIDIA-libglvnd-faa23f2/src/GLdispatch/vnd-glapi/table.c:50:
+/home/user/.cache/saturn/linked-sdk/deps/glvnd-build/src/generate/glapi_mapi_tmp.h:1558:60: warning: argument 1 of type ‘const GLdouble *’ {aka ‘const double *’} declared as a pointer [-Warray-parameter=]
+ 1558 | GLAPI void APIENTRY glLoadTransposeMatrixd(const GLdouble *m);
+      |                                            ~~~~~~~~~~~~~~~~^
+In file included from ../src/NVIDIA-libglvnd-faa23f2/src/GLdispatch/vnd-glapi/glapi.h:48,
+                 from ../src/NVIDIA-libglvnd-faa23f2/src/GLdispatch/vnd-glapi/table.h:33,
+                 from ../src/NVIDIA-libglvnd-faa23f2/src/GLdispatch/vnd-glapi/table.c:31:
+../src/NVIDIA-libglvnd-faa23f2/include/GL/gl.h:1901:62: note: previously declared as an array ‘const GLdouble[16]’ {aka ‘const double[16]’}
+ 1901 | GLAPI void GLAPIENTRY glLoadTransposeMatrixd( const GLdouble m[16] );
+      |                                               ~~~~~~~~~~~~~~~^~~~~
+/home/user/.cache/saturn/linked-sdk/deps/glvnd-build/src/generate/glapi_mapi_tmp.h:1560:59: warning: argument 1 of type ‘const GLfloat *’ {aka ‘const float *’} declared as a pointer [-Warray-parameter=]
+ 1560 | GLAPI void APIENTRY glLoadTransposeMatrixf(const GLfloat *m);
+      |                                            ~~~~~~~~~~~~~~~^
+../src/NVIDIA-libglvnd-faa23f2/include/GL/gl.h:1903:61: note: previously declared as an array ‘const GLfloat[16]’ {aka ‘const float[16]’}
+ 1903 | GLAPI void GLAPIENTRY glLoadTransposeMatrixf( const GLfloat m[16] );
+      |                                               ~~~~~~~~~~~~~~^~~~~
+/home/user/.cache/saturn/linked-sdk/deps/glvnd-build/src/generate/glapi_mapi_tmp.h:1662:60: warning: argument 1 of type ‘const GLdouble *’ {aka ‘const double *’} declared as a pointer [-Warray-parameter=]
+ 1662 | GLAPI void APIENTRY glMultTransposeMatrixd(const GLdouble *m);
+      |                                            ~~~~~~~~~~~~~~~~^
+../src/NVIDIA-libglvnd-faa23f2/include/GL/gl.h:1905:62: note: previously declared as an array ‘const GLdouble[16]’ {aka ‘const double[16]’}
+ 1905 | GLAPI void GLAPIENTRY glMultTransposeMatrixd( const GLdouble m[16] );
+      |                                               ~~~~~~~~~~~~~~~^~~~~
+/home/user/.cache/saturn/linked-sdk/deps/glvnd-build/src/generate/glapi_mapi_tmp.h:1664:59: warning: argument 1 of type ‘const GLfloat *’ {aka ‘const float *’} declared as a pointer [-Warray-parameter=]
+ 1664 | GLAPI void APIENTRY glMultTransposeMatrixf(const GLfloat *m);
+      |                                            ~~~~~~~~~~~~~~~^
+../src/NVIDIA-libglvnd-faa23f2/include/GL/gl.h:1907:61: note: previously declared as an array ‘const GLfloat[16]’ {aka ‘const float[16]’}
+ 1907 | GLAPI void GLAPIENTRY glMultTransposeMatrixf( const GLfloat m[16] );
+      |                                               ~~~~~~~~~~~~~~^~~~~
+[9/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/u_current_tls.c.o
+[10/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/entry_common.c.o
+[11/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/entry_simple_asm.c.o
+[12/98] Compiling C object src/GLdispatch/vnd-glapi/liblibglapi.a.p/entry_x86_64_tls.c.o
+[13/98] Linking static target src/util/libglvnd_pthread.a
+[14/98] Linking static target src/util/libapp_error_check.a
+[15/98] Linking static target src/util/libutils_misc.a
+[16/98] Linking static target src/util/libtrace.a
+[17/98] Generating src/generate/g_glapi_mapi_opengl_tmp.h with a custom command (wrapped by meson to capture output)
+[18/98] Generating src/generate/g_egldispatchstubs.h with a custom command (wrapped by meson to capture output)
+[19/98] Generating src/generate/g_egldispatchstubs.c with a custom command (wrapped by meson to capture output)
+[20/98] Linking static target src/GLdispatch/vnd-glapi/liblibglapi.a
+[21/98] Compiling C object src/GLdispatch/libGLdispatch.so.0.0.0.p/GLdispatch.c.o
+[22/98] Compiling C object src/util/libwinsys_dispatch.a.p/winsys_dispatch.c.o
+[23/98] Compiling C object src/util/libcJSON.a.p/cJSON.c.o
+[24/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_opengl.a.p/stub.c.o
+[25/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_opengl.a.p/entry_common.c.o
+[26/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_opengl.a.p/entry_simple_asm.c.o
+[27/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_opengl.a.p/entry_x86_64_tls.c.o
+[28/98] Linking target src/GLdispatch/libGLdispatch.so.0.0.0
+[29/98] Compiling C object src/OpenGL/libopengl_main.a.p/libopengl.c.o
+[30/98] Compiling C object src/EGL/libegl_dispatch_stubs.a.p/meson-generated_.._.._generate_g_egldispatchstubs.c.o
+[31/98] Compiling C object src/EGL/libegl_dispatch_stubs.a.p/egldispatchstubs.c.o
+[32/98] Linking static target src/util/libwinsys_dispatch.a
+[33/98] Linking static target src/util/libcJSON.a
+[34/98] Linking static target src/GLdispatch/vnd-glapi/libglapi_opengl.a
+[35/98] Generating symbol file src/GLdispatch/libGLdispatch.so.0.0.0.p/libGLdispatch.so.0.0.0.symbols
+[36/98] Linking static target src/OpenGL/libopengl_main.a
+[37/98] Linking static target src/EGL/libegl_dispatch_stubs.a
+[38/98] Compiling C object src/EGL/libEGL.so.1.1.0.p/libegl.c.o
+[39/98] Compiling C object src/EGL/libEGL.so.1.1.0.p/libeglcurrent.c.o
+[40/98] Compiling C object src/EGL/libEGL.so.1.1.0.p/libeglmapping.c.o
+[41/98] Compiling C object src/EGL/libEGL.so.1.1.0.p/libeglvendor.c.o
+[42/98] Compiling C object src/EGL/libEGL.so.1.1.0.p/libeglerror.c.o
+[43/98] Generating src/generate/g_glapi_mapi_glesv1_tmp.h with a custom command (wrapped by meson to capture output)
+[44/98] Generating src/generate/g_glapi_mapi_glesv2_tmp.h with a custom command (wrapped by meson to capture output)
+[45/98] Generating src/generate/g_glapi_mapi_gl_tmp.h with a custom command (wrapped by meson to capture output)
+[46/98] Linking target src/OpenGL/libOpenGL.so.0.0.0
+[47/98] Linking target src/EGL/libEGL.so.1.1.0
+[48/98] Compiling C object tests/dummy/libpatchentrypoints.a.p/patchentrypoints.c.o
+[49/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_gl.a.p/stub.c.o
+[50/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_gl.a.p/entry_common.c.o
+[51/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_gl.a.p/entry_simple_asm.c.o
+[52/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_gl.a.p/entry_x86_64_tls.c.o
+[53/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv1.a.p/stub.c.o
+[54/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv1.a.p/entry_common.c.o
+[55/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv1.a.p/entry_simple_asm.c.o
+[56/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv1.a.p/entry_x86_64_tls.c.o
+[57/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv2.a.p/stub.c.o
+[58/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv2.a.p/entry_common.c.o
+[59/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv2.a.p/entry_simple_asm.c.o
+[60/98] Compiling C object src/GLdispatch/vnd-glapi/libglapi_glesv2.a.p/entry_x86_64_tls.c.o
+[61/98] Generating symbol file src/OpenGL/libOpenGL.so.0.0.0.p/libOpenGL.so.0.0.0.symbols
+[62/98] Generating symbol file src/EGL/libEGL.so.1.1.0.p/libEGL.so.1.1.0.symbols
+[63/98] Linking static target tests/dummy/libpatchentrypoints.a
+[64/98] Compiling C object tests/dummy/libEGL_dummy0.so.0.p/EGL_dummy.c.o
+[65/98] Compiling C object tests/dummy/libEGL_dummy1.so.0.p/EGL_dummy.c.o
+[66/98] Compiling C object tests/testgldispatch.p/testgldispatch.c.o
+[67/98] Compiling C object tests/testgldispatchthread.p/testgldispatchthread.c.o
+[68/98] Compiling C object tests/egldisplay.p/testegldisplay.c.o
+[69/98] Compiling C object tests/egldisplay.p/egl_test_utils.c.o
+[70/98] Compiling C object tests/egldevice.p/testegldevice.c.o
+[71/98] Compiling C object tests/egldevice.p/egl_test_utils.c.o
+[72/98] Compiling C object tests/eglgetprocaddress.p/testeglgetprocaddress.c.o
+[73/98] Compiling C object tests/eglgetprocaddress.p/egl_test_utils.c.o
+[74/98] Compiling C object tests/eglmakecurrent.p/testeglmakecurrent.c.o
+[75/98] Compiling C object tests/eglmakecurrent.p/egl_test_utils.c.o
+[76/98] Compiling C object tests/eglerror.p/testeglerror.c.o
+[77/98] Compiling C object tests/eglerror.p/egl_test_utils.c.o
+[78/98] Compiling C object tests/egldebug.p/testegldebug.c.o
+[79/98] Compiling C object tests/egldebug.p/egl_test_utils.c.o
+[80/98] Compiling C object tests/egldeviceadd.p/testegldeviceadd.c.o
+[81/98] Compiling C object tests/egldeviceadd.p/egl_test_utils.c.o
+[82/98] Compiling C object tests/eglcurrentcleanup.p/testeglcurrentcleanup.c.o
+[83/98] Linking static target src/GLdispatch/vnd-glapi/libglapi_gl.a
+[84/98] Linking static target src/GLdispatch/vnd-glapi/libglapi_glesv1.a
+[85/98] Linking static target src/GLdispatch/vnd-glapi/libglapi_glesv2.a
+[86/98] Linking target tests/dummy/libEGL_dummy0.so.0
+[87/98] Linking target tests/dummy/libEGL_dummy1.so.0
+[88/98] Linking target tests/testgldispatch
+[89/98] Linking target tests/testgldispatchthread
+[90/98] Linking target tests/egldisplay
+[91/98] Linking target tests/egldevice
+[92/98] Linking target tests/eglgetprocaddress
+[93/98] Linking target tests/eglmakecurrent
+[94/98] Linking target tests/eglerror
+[95/98] Linking target tests/egldebug
+[96/98] Linking target tests/egldeviceadd
+[97/98] Linking target tests/eglcurrentcleanup
+[97/98] Installing files
+Installing src/GLdispatch/libGLdispatch.so.0.0.0 to /home/user/.cache/saturn/linked-sdk/deps/lib
+Installing src/OpenGL/libOpenGL.so.0.0.0 to /home/user/.cache/saturn/linked-sdk/deps/lib
+Installing src/EGL/libEGL.so.1.1.0 to /home/user/.cache/saturn/linked-sdk/deps/lib
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/glvnd/GLdispatchABI.h to /home/user/.cache/saturn/linked-sdk/deps/include/glvnd
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/glvnd/libglxabi.h to /home/user/.cache/saturn/linked-sdk/deps/include/glvnd
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/glvnd/libeglabi.h to /home/user/.cache/saturn/linked-sdk/deps/include/glvnd
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/GL/gl.h to /home/user/.cache/saturn/linked-sdk/deps/include/GL
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/GL/glcorearb.h to /home/user/.cache/saturn/linked-sdk/deps/include/GL
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/GL/glext.h to /home/user/.cache/saturn/linked-sdk/deps/include/GL
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/KHR/khrplatform.h to /home/user/.cache/saturn/linked-sdk/deps/include/KHR
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/EGL/egl.h to /home/user/.cache/saturn/linked-sdk/deps/include/EGL
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/EGL/eglext.h to /home/user/.cache/saturn/linked-sdk/deps/include/EGL
+Installing /home/user/.cache/saturn/linked-sdk/deps/src/NVIDIA-libglvnd-faa23f2/include/EGL/eglplatform.h to /home/user/.cache/saturn/linked-sdk/deps/include/EGL
+Installing /home/user/.cache/saturn/linked-sdk/deps/glvnd-build/meson-private/opengl.pc to /home/user/.cache/saturn/linked-sdk/deps/lib/pkgconfig
+Installing /home/user/.cache/saturn/linked-sdk/deps/glvnd-build/meson-private/egl.pc to /home/user/.cache/saturn/linked-sdk/deps/lib/pkgconfig
+Installing /home/user/.cache/saturn/linked-sdk/deps/glvnd-build/meson-private/libglvnd.pc to /home/user/.cache/saturn/linked-sdk/deps/lib/pkgconfig
+Installing symlink pointing to libGLdispatch.so.0.0.0 to /home/user/.cache/saturn/linked-sdk/deps/lib/libGLdispatch.so.0
+Installing symlink pointing to libGLdispatch.so.0 to /home/user/.cache/saturn/linked-sdk/deps/lib/libGLdispatch.so
+Installing symlink pointing to libOpenGL.so.0.0.0 to /home/user/.cache/saturn/linked-sdk/deps/lib/libOpenGL.so.0
+Installing symlink pointing to libOpenGL.so.0 to /home/user/.cache/saturn/linked-sdk/deps/lib/libOpenGL.so
+Installing symlink pointing to libEGL.so.1.1.0 to /home/user/.cache/saturn/linked-sdk/deps/lib/libEGL.so.1
+Installing symlink pointing to libEGL.so.1 to /home/user/.cache/saturn/linked-sdk/deps/lib/libEGL.so
+Source /home/user/.cache/saturn/linked-sdk/build-env.sh before validate_build.py --full --jobs 1.

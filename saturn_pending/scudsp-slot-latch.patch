@@ -1,5 +1,5 @@
 diff --git a/src/devices/cpu/scudsp/scudsp.cpp b/src/devices/cpu/scudsp/scudsp.cpp
-index 8c9ba668..c7c8fc85 100644
+index 8c9ba6689dd..c7c8fc850a3 100644
 --- a/src/devices/cpu/scudsp/scudsp.cpp
 +++ b/src/devices/cpu/scudsp/scudsp.cpp
 @@ -986,11 +986,11 @@ void scudsp_cpu_device::execute_run()
@@ -53,7 +53,7 @@ index 8c9ba668..c7c8fc85 100644
  	m_out_ddwt_cb(0);
  	m_out_ddmv_cb(0);
 diff --git a/src/devices/cpu/scudsp/scudsp.h b/src/devices/cpu/scudsp/scudsp.h
-index 57e84913..b1f81cfc 100644
+index 57e8491394c..b1f81cfc524 100644
 --- a/src/devices/cpu/scudsp/scudsp.h
 +++ b/src/devices/cpu/scudsp/scudsp.h
 @@ -123,6 +123,7 @@ private:
@@ -65,7 +65,7 @@ index 57e84913..b1f81cfc 100644
  	uint8_t   m_top;                                     /*Jump Command memory*/
  	uint16_t  m_lop;                                    /*Counter Register*/   /*12-bits*/
 diff --git a/regtests/saturn/test_scudsp_dma.py b/regtests/saturn/test_scudsp_dma.py
-index 6ff56a9e..e51a9662 100644
+index 6ff56a9ebad..e51a9662fc4 100644
 --- a/regtests/saturn/test_scudsp_dma.py
 +++ b/regtests/saturn/test_scudsp_dma.py
 @@ -89,7 +89,7 @@ struct scudsp_cpu_device {
@@ -78,7 +78,7 @@ index 6ff56a9e..e51a9662 100644
   uint32_t m_ra0=0,m_wa0=0,m_flags=0,count_source=1;
   bool m_paused=false;int m_icount=0;bool halt=false;int ddwt=0,ddmv=0;
 diff --git a/regtests/saturn/test_scudsp_lop.py b/regtests/saturn/test_scudsp_lop.py
-index cbad29bb..610f5886 100644
+index cbad29bbe25..610f58864fd 100644
 --- a/regtests/saturn/test_scudsp_lop.py
 +++ b/regtests/saturn/test_scudsp_lop.py
 @@ -45,7 +45,7 @@ struct scudsp_cpu_device {
@@ -91,7 +91,7 @@ index cbad29bb..610f5886 100644
   struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
   std::array<uint32_t,256> code{},ram{};
 diff --git a/regtests/saturn/test_scudsp_multiplier.py b/regtests/saturn/test_scudsp_multiplier.py
-index eb4d922d..5407666a 100644
+index eb4d922daba..5407666ae49 100644
 --- a/regtests/saturn/test_scudsp_multiplier.py
 +++ b/regtests/saturn/test_scudsp_multiplier.py
 @@ -45,7 +45,7 @@ struct scudsp_cpu_device {
@@ -104,7 +104,7 @@ index eb4d922d..5407666a 100644
   struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
   std::array<uint32_t,256> code{},ram{};
 diff --git a/regtests/saturn/test_scudsp_parallel.py b/regtests/saturn/test_scudsp_parallel.py
-index 557469ad..d9c6ced6 100644
+index 557469ad188..d9c6ced6d42 100644
 --- a/regtests/saturn/test_scudsp_parallel.py
 +++ b/regtests/saturn/test_scudsp_parallel.py
 @@ -45,7 +45,7 @@ struct scudsp_cpu_device {
@@ -117,10 +117,10 @@ index 557469ad..d9c6ced6 100644
   struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
   std::array<uint32_t,256> code{},ram{};
 diff --git a/regtests/saturn/test_scudsp_pipeline.py b/regtests/saturn/test_scudsp_pipeline.py
-index 7b0c07c8..74aee1cd 100644
+index 7b0c07c84eb..dab03d58cfa 100644
 --- a/regtests/saturn/test_scudsp_pipeline.py
 +++ b/regtests/saturn/test_scudsp_pipeline.py
-@@ -24,9 +24,12 @@ methods='\n'.join(extract(sig) for sig in (
+@@ -24,9 +24,14 @@ methods='\n'.join(extract(sig) for sig in (
      'void scudsp_cpu_device::op_loop(', 'void scudsp_cpu_device::op_move_immediate(',
      'void scudsp_cpu_device::set_dest_mem_reg_2(',
      'uint32_t scudsp_cpu_device::compute_condition(', 'void scudsp_cpu_device::device_reset()'))
@@ -128,13 +128,15 @@ index 7b0c07c8..74aee1cd 100644
 +fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_opcode|m_delay_pending|m_top|m_lop)\)\)',src)
  restore='\n'.join(f'd.{f}=s.{f};' for f in fields)
  mutation=os.environ.get('MUTATE_DSP_PIPELINE','')
++if mutation=='wrong-fetch':methods=methods.replace('m_delay_opcode = scudsp_readop(m_delay);', 'm_delay_opcode = scudsp_readop(m_pc);')
++if mutation=='missing-capture':methods=methods.replace('m_delay_opcode = scudsp_readop(m_delay);', 'm_delay_opcode = 0;')
 +if mutation=='reread-slot':methods=methods.replace('opcode = m_delay_opcode;', 'opcode = scudsp_readop(m_delay);')
 +if mutation=='missing-opcode-save':restore=restore.replace('d.m_delay_opcode=s.m_delay_opcode;','')
 +if mutation=='wrong-hook':methods=methods.replace('debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);', 'debugger_instruction_hook(m_pc);')
  if mutation=='zero-sentinel':methods=methods.replace('if ( m_delay_pending )','if ( m_delay )')
  if mutation=='missing-save':restore=restore.replace('d.m_delay_pending=s.m_delay_pending;','')
  if mutation=='missing-reset':
-@@ -49,15 +52,15 @@ struct timer {void adjust(int){}};
+@@ -49,15 +54,15 @@ struct timer {void adjust(int){}};
  struct scudsp_cpu_device {
   enum {CF=20,SF=22,ZF=21,T0F=23,DMA_STATE_IDLE=0};
   uint8_t m_pc=0,m_delay=0,m_top=0,m_update_mul=0,m_dma_state=0;
@@ -154,7 +156,13 @@ index 7b0c07c8..74aee1cd 100644
   void op_illegal(uint32_t){assert(false);}void op_dma(uint32_t){assert(false);}
   void op_end(uint32_t){--m_icount;}
   void m_out_ddwt_cb(int){}void m_out_ddmv_cb(int){}void set_input_line(int,int){}
-@@ -89,17 +92,34 @@ int main(){
+@@ -84,22 +89,41 @@ int main(){
+    case 4:op=0xe0000000;break; // BTM
+    case 5:op=0xe8000000;destination=pc;break; // LPS
+   }
+-  s.code[pc]=op;s.step();
+   unsigned next=(pc+1)&255;
++  s.code[next]=0x1001;s.code[pc]=op;s.step();
    // Save at the control-instruction boundary, poison pending-state validity,
    // and restore ONLY the fields actually registered by the implementation.
    scudsp_cpu_device replay=s;replay.m_dma_timer=&replay.t;
@@ -162,6 +170,8 @@ index 7b0c07c8..74aee1cd 100644
 +  replay.m_delay_pending=false;replay.m_delay=117;replay.m_delay_opcode=0x1002;restore(replay,s);
    s.step();replay.step();
 -  assert(s.fetch.back()==next&&replay.fetch==s.fetch);
++  assert(!s.retired.empty()&&!replay.retired.empty());
++  assert(s.retired.back()==0x1001&&replay.retired.back()==0x1001);
 +  assert(s.executed.back()==next&&replay.executed==s.executed);
    assert(s.m_pc==(taken?destination:((pc+2)&255)));
    // Consume the slot exactly once. Avoid a branch in the slot in this test.
@@ -192,8 +202,92 @@ index 7b0c07c8..74aee1cd 100644
   scudsp_cpu_device reset;reset.m_delay_pending=true;reset.m_delay=0;
   reset.device_reset();assert(!reset.m_delay_pending);
   std::cout<<cases<<" DSP PC/target/control-flow wrap and registered-state replay cases passed\n";
+diff --git a/saturn_pending/test_scudsp_disassembler_runner.py b/saturn_pending/test_scudsp_disassembler_runner.py
+index ce31dc21a91..3b936b6e05c 100644
+--- a/saturn_pending/test_scudsp_disassembler_runner.py
++++ b/saturn_pending/test_scudsp_disassembler_runner.py
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env python3
+ # license:BSD-3-Clause
+ """Validate complete debugger dumps; no emulator execution."""
+-from test_scudsp_disassembler_runtime import validate_output,VECTORS
++from test_scudsp_disassembler_runtime import validate_output,validate_trace,VECTORS
+ log='DSP_DASM dumped words=241\n'
+ rows=[f'{i:02X}: {expected}\n' for i,(_,expected) in enumerate(VECTORS)]
+ good=''.join(rows)
+@@ -18,3 +18,13 @@ for text,dump,rc in [
+     else:raise AssertionError('invalid debugger output accepted')
+     cases+=1
+ print(f'{cases} debugger dump parser controls passed (no emulator execution)')
++
++trace='FF: JMP $10\n00: MVI #$12,MC3\n10: END\n'
++validate_trace(trace);trace_cases=1
++for bad in ('',trace.splitlines()[0]+'\n',trace.replace('00:','10:'),trace+trace,
++            '\n'.join(reversed(trace.splitlines())),trace+'unexpected\n',trace.replace('#$12','#$34')):
++    try:validate_trace(bad)
++    except RuntimeError:pass
++    else:raise AssertionError('invalid debugger trace accepted')
++    trace_cases+=1
++print(f'{trace_cases} debugger slot-trace parser controls passed (no emulator execution)')
+diff --git a/saturn_pending/test_scudsp_disassembler_runtime.py b/saturn_pending/test_scudsp_disassembler_runtime.py
+index 3cc971fb940..3bb464954fa 100644
+--- a/saturn_pending/test_scudsp_disassembler_runtime.py
++++ b/saturn_pending/test_scudsp_disassembler_runtime.py
+@@ -40,15 +40,24 @@ LUA=COMMON_LUA+'\nlocal code={'+','.join(hex(op) for op,_ in VECTORS)+r'''}
+ local frames,done=0,false
+ emu.register_frame_done(function()
+     frames=frames+1;if done or frames<180 then return end;done=true
++    coroutine.wrap(function()
+     local ok,err=pcall(function()
+         park();sp:write_u32(0x05fe0080,0x8000)
+         for _,op in ipairs(code) do sp:write_u32(0x05fe0084,op) end
+         assert(m.debugger,'debugger not enabled')
+         m.debugger:command('dasm "'..assert(os.getenv('DSP_DASM_FILE'))..'",0,f1,0,:scu:scudsp')
+         print('DSP_DASM dumped words=241')
++        sp:write_u32(0x05fe0080,0x8000);sp:write_u32(0x05fe0084,0x8c000012)
++        sp:write_u32(0x05fe0080,0x8010);sp:write_u32(0x05fe0084,0xf0000000)
++        sp:write_u32(0x05fe0080,0x80ff);sp:write_u32(0x05fe0084,0xd0000010)
++        m.debugger:command('trace "'..assert(os.getenv('DSP_TRACE_FILE'))..'",:scu:scudsp,noloop')
++        sp:write_u32(0x05fe0080,0x180ff);emu.wait(emu.attotime.from_usec(2))
++        assert((sp:read_u32(0x05fe0080)&0x10000)==0,'trace program did not end')
++        m.debugger:command('trace off,:scu:scudsp')
+     end)
+     if not ok then print('DSP_DASM FAIL '..tostring(err)) end
+     m:exit()
++    end)()
+ end)
+ print('DSP_DASM armed')
+ '''
+@@ -62,6 +71,12 @@ def validate_output(log,dump,returncode):
+         if int(address,16)!=i or ' '.join(text.split())!=expected:
+             errors.append(f'row{i}: {text!r} != {expected!r}')
+     if errors:raise RuntimeError(f'{len(errors)} disassembly mismatches:\n'+'\n'.join(errors))
++def validate_trace(trace):
++    rows=re.findall(r'^([0-9a-fA-F]+):\s*(.*?)\s*$',trace,re.M)
++    actual=[(int(pc,16),' '.join(text.split())) for pc,text in rows]
++    expected=[(255,'JMP $10'),(0,'MVI #$12,MC3'),(16,'END')]
++    if actual!=expected or len(rows)!=len([line for line in trace.splitlines() if line.strip()]):
++        raise RuntimeError(f'Debugger slot trace mismatch: {actual!r} != {expected!r}')
+ def main():
+     p=argparse.ArgumentParser(description=__doc__)
+     p.add_argument('--executable',type=Path,required=True);p.add_argument('--rompath',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
+@@ -72,10 +87,12 @@ def main():
+         d=Path(tmp);(d/'test.lua').write_text(LUA)
+         command=[str(exe),'saturnjp','-rompath',str(rom),'-noreadconfig','-skip_gameinfo','-nodrc','-debug','-debugger','none','-video','none','-sound','none','-nothrottle','-seconds_to_run','30','-autoboot_delay','0','-autoboot_script',str(d/'test.lua')]
+         for option in ('nvram','cfg','state','snapshot'):command+=['-'+option+'_directory',str(d/option)]
+-        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy','DSP_DASM_FILE':str(d/'dasm.txt')}
++        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy','DSP_DASM_FILE':str(d/'dasm.txt'),'DSP_TRACE_FILE':str(d/'trace.txt')}
+         with (output/'runtime.log').open('w') as log:run=subprocess.run(command,cwd=d,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180)
+         dump=(d/'dasm.txt').read_text() if (d/'dasm.txt').is_file() else ''
+         (output/'disassembly.txt').write_text(dump)
+         validate_output((output/'runtime.log').read_text(),dump,run.returncode)
+-    print('DSP disassembler: 241 real debugger destination/parallel-command rows passed')
++        trace=(d/'trace.txt').read_text() if (d/'trace.txt').is_file() else ''
++        (output/'trace.txt').write_text(trace);validate_trace(trace)
++    print('DSP disassembler: 241 real debugger destination/parallel-command rows and three slot trace rows passed')
+ if __name__=='__main__':main()
 diff --git a/saturn_pending/test_scudsp_pipeline_runtime.py b/saturn_pending/test_scudsp_pipeline_runtime.py
-index 09cd1f41..e8bb3937 100644
+index 09cd1f4178b..e8bb39376ab 100644
 --- a/saturn_pending/test_scudsp_pipeline_runtime.py
 +++ b/saturn_pending/test_scudsp_pipeline_runtime.py
 @@ -52,7 +52,36 @@ local function test()
@@ -249,7 +343,7 @@ index 09cd1f41..e8bb3937 100644
 -    runner.main('DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live')
 +    runner.main('DSP pipeline: 27 wrapped/control-flow/fetched-slot programs passed live')
 diff --git a/saturn_pending/test_scudsp_slot_save_runtime.py b/saturn_pending/test_scudsp_slot_save_runtime.py
-index 8f806a88..6da58fdd 100644
+index 8f806a883d7..6da58fdd6ee 100644
 --- a/saturn_pending/test_scudsp_slot_save_runtime.py
 +++ b/saturn_pending/test_scudsp_slot_save_runtime.py
 @@ -37,7 +37,7 @@ end

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/user/slot-rebuild/saturn_pending/test_scudsp_disassembler_runtime.py", line 98, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/home/user/slot-rebuild/saturn_pending/test_scudsp_disassembler_runtime.py", line 96, in main
+    (output/'trace.txt').write_text(trace);validate_trace(trace)
+                                           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/slot-rebuild/saturn_pending/test_scudsp_disassembler_runtime.py", line 79, in validate_trace
+    raise RuntimeError(f'Debugger slot trace mismatch: {actual!r} != {expected!r}')
+RuntimeError: Debugger slot trace mismatch: [(255, 'JMP $10'), (16, 'END'), (16, 'END')] != [(255, 'JMP $10'), (0, 'MVI #$12,MC3'), (16, 'END')]
