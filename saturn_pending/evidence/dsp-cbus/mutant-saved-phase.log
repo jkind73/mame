@@ -1,0 +1,7 @@
+test: /tmp/scudsp-cbus-fnnvaeou/test.cpp:363: int main(): Assertion `a.writes==b.writes&&a.m_wa0==b.m_wa0&&a.m_dma.dst==b.m_dma.dst' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_cbus_model.py", line 68, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-cbus-fnnvaeou/test']' died with <Signals.SIGABRT: 6>.

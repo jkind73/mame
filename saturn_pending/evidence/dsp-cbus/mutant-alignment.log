@@ -1,0 +1,7 @@
+test: /tmp/scudsp-cbus-qw66ijvf/test.cpp:369: int main(): Assertion `s.writes[2*i]==std::make_pair(address,uint16_t(value>>16))' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_cbus_model.py", line 68, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-cbus-qw66ijvf/test']' died with <Signals.SIGABRT: 6>.
