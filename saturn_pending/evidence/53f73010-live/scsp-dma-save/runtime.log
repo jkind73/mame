@@ -1,0 +1,6 @@
+SCSP_DMA_SAVE armed
+SCSP_DMA_SAVE saved
+SCSP_DMA_SAVE mutated
+SCSP_DMA_SAVE loaded
+SCSP_DMA_SAVE PASS parameters=restored transfer=independent replay=exact
+Average speed: 127.18% (2 seconds)
