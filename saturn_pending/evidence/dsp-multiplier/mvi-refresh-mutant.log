@@ -1,0 +1,7 @@
+test: /tmp/scudsp-mul-jhogvgn0/test.cpp:530: void check(unsigned int, uint32_t, uint32_t): Assertion `d.ram[address++]==uint32_t(expected)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scudsp_multiplier.py", line 107, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-mul-jhogvgn0/test']' died with <Signals.SIGABRT: 6>.
