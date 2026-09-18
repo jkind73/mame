@@ -184,6 +184,7 @@
   - Investigate historical stuck-envelope/pitch reports against current recordings and configurations before declaring an engine defect.
 - [ ] **SND-03 — Complete timing, DMA and interrupt qualification. [P/V]**
   - Current integration: Integrated timer phase-preserving rearm and attotime-boundary fix; extracted deadline/reset checks and the live24 timer/divisor plus three clear/reassert paths pass in the complete native consumer. Fractional hardware phase and broader sound acceptance remain open. See `regtests/saturn/handoff/integration.md`.
+  - Interrupt command-port correction is native-WIP: distinguish MCIPD42c from MCIRE42e and acknowledge only active bus lanes, without replaying stale clear commands.851968 extracted acknowledgement plus114688 pending-port cases, seven compiled mutants and14 parser controls pass. Old35f5d58b native passes161/fails271 of432 SH-2/68000 mapped cases seeded by actual timers/DMA/MIDI-output/CPU/sample events. Matching1728-case/four-profile and full preceding acceptance pending; evidence `saturn_pending/evidence/scsp-irq-ports/README.md`.
   - SCSP DMA transfer behavior, timer rates, sound/main IRQ interfaces, MIDI paths and sound-memory arbitration under streaming load.
   - Retain the corrected SCSP clock/sample relationship; audit transfer timing separately from synthesis rate.
 - [ ] **SND-04 — Qualify SCSP DSP and final mixer. [V/R]**
