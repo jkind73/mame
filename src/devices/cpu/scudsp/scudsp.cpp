@@ -777,7 +777,11 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 			m_dma.add = 2 * m_dma.write_stride;
 		}
 
-		// TODO: C-Bus uses the same add rule as B, except it's buggy for add mode = 1 and crossing 1KiB boundaries
+		// Work RAM-H consumes one aligned longword per transfer, not two
+		// independently advanced B-bus halfwords. Mode1 advances only two
+		// bytes, so consecutive transfers can replace the same longword.
+		if (physical >= 0x06000000 && physical < 0x08000000)
+			m_dma.add = (1U << add) & ~1U;
 	}
 
 	m_dma.update = ( hold == 0 );
@@ -927,14 +931,23 @@ void scudsp_cpu_device::exec_dma()
 	{
 		data = get_mem_source_dma( m_dma.src );
 
-		m_out_dma_cb(m_dma.dst, data >> 16 );
-		m_out_dma_cb(m_dma.dst + m_dma.write_stride, data & 0xffff );
+		uint32_t const cursor = m_dma.dst;
+		uint32_t const physical = cursor & 0x07ffffff;
+		bool const c_bus = physical >= 0x06000000 && physical < 0x08000000;
+		uint32_t const address = c_bus ? (cursor & ~3U) : cursor;
+		m_out_dma_cb(address, data >> 16);
+		m_out_dma_cb(address + m_dma.write_stride, data & 0xffff);
 
 		m_dma.dst += m_dma.add;
 
 		if ( m_dma.update )
 		{
-			m_wa0 += ((1 * m_dma.add) >> 2);
+			// Keep the halfword phase in the saved byte cursor. Rounding each
+			// transfer independently would lose every mode1 address update.
+			if (c_bus)
+				m_wa0 += ((m_dma.dst + 2) >> 2) - ((cursor + 2) >> 2);
+			else
+				m_wa0 += (m_dma.add >> 2);
 		}
 	}
 }

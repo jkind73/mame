@@ -1,3 +1,13 @@
+# C-bus correction integrated — native WIP
+
+The preserved prototype patch has now been applied to production. The6912-case
+actual-method test is promoted to regtests/saturn/test_scudsp_cbus.py. Full-TU
+C++20 syntax, existing DMA suites and the B-bus beat mutant pass/reject correctly.
+The full consumer now requires2048 C-bus programs across four configurations
+and an actual odd-phase scheduled save/load. Candidate native acceptance is
+pending. Latest fully native-qualified source is ff717b2e (disassembler).
+Earlier prototype notes below are historical; do not reapply the patch.
+
 # DSP-02 / DSP-03: C-bus write address prototype (NOT INTEGRATED)
 
 Production ff717b2e retains legacy C-bus write strides. The external candidate

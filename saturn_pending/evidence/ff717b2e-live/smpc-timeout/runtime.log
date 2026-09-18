@@ -1,0 +1,7 @@
+SMPC_TIMEOUT armed
+SMPC_TIMEOUT case=status-wait PASS
+SMPC_TIMEOUT case=report-wait PASS
+SMPC_TIMEOUT case=continue-pending PASS
+SMPC_TIMEOUT case=command-pending PASS
+SMPC_TIMEOUT PASS cases=4
+Average speed: 267.29% (2 seconds)
