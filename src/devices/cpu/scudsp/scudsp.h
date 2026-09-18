@@ -119,6 +119,7 @@ private:
 
 	uint8_t   m_pc;   /* registers */
 	uint32_t  m_flags;  /* flags */
+	bool      m_paused;
 	uint8_t   m_ra;
 	uint8_t   m_ct0,m_ct1,m_ct2,m_ct3;
 	uint8_t   m_delay;                                   /* Delay-slot address */
@@ -139,6 +140,7 @@ private:
 		uint16_t add, write_stride;
 		uint8_t program_address;
 		uint16_t size, update, ex, dir, count;
+		bool stalled;
 	}m_dma;
 	address_space *m_program;
 	address_space *m_data;
