@@ -1,4 +1,4 @@
-# SND-03 SCSP interrupt command ports — native WIP
+# SND-03 SCSP interrupt command ports — NATIVE QUALIFIED
 
 The write decoder applied MCIPD's bit5-only pending-register rule to MCIRE
 (address42e rather than42c). Consequently main-CPU DMA/timer/output/sample
@@ -25,7 +25,7 @@ under UBSan:851968 acknowledgement cases and114688 pending-port cases PASS.
 All2048 pending combinations, all11 single-bit/zero/all clear commands, four
 masks (including no lanes), four stale command patterns and both domains are
 covered. Pending writes preserve every non-CPU source. The actual IRQ methods
-check both physical callback states after each command. Timer/stream/serial
+check both asserted/deasserted callback states after each command. Timer/stream/serial
 engines are stand-ins here; expired-timer reassertion stays in existing tests.
 Seven compiled mutants fail behavioral assertions: wrong decode, stale lanes,
 sticky commands, clear-zero, pending clobber/unmasked writes and missing main
@@ -43,8 +43,12 @@ passes161/fails271 of432 cases. The original prototype without MIDI seeding is
 not the archived fixture. Raw old-negative output is included.
 
 Full71-script local/CI and build35398923424 PASS for production6aa9e3d8.
-Matching1728 native cases/four configurations and all preceding gates
-are pending. This does not close the whole sound interrupt/timing parent,
+Build35398923424/export35399526933 and the complete native consumer PASS:
+1728 IRQ cases across JP/interpreter, JP/DRC, PAL/DRC and ST-V/DRC; actual
+pending-IRQ file replay; all previous3036 SCSP DSP programs and effect/address
+file replay; all preceding runtime/save/BIOS and provenance gates. Binary SHA256
+d16947d2e62687a2ed166b426c39f461bae7d38e7b395c67ba3c560227b2032a.
+Evidence: `../6aa9e3d8-live/`; consumer revision recorded separately. This does not close the whole sound interrupt/timing parent,
 SCU arbitration, external IRQ pins, waveform or game acceptance. No flags change.
 
 Actual file replay is now required too: save pending DMA/CPU/sample requests
@@ -53,5 +57,5 @@ pending state, load, and repeat the command at exactly the restored timestamp.
 Both pending banks must restore exactly and both commands must leave unrelated
 requests intact. Old35f5d58b preserves/restores its bad result but fails five
 expected observations (two original acknowledgements, main DMA poisoning and
-two replayed acknowledgements).14 save-parser controls pass. Native rebuilt
-replay is pending. This is not sound waveform continuity or a timed DMA save.
+two replayed acknowledgements).14 save-parser controls pass. Rebuilt native
+replay PASS, including both pending banks and both independent commands. This is not sound waveform continuity or a timed DMA save.
