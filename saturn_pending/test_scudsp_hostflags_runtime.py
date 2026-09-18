@@ -17,10 +17,10 @@ local function test()
         for _,op in ipairs(code) do sp:write_u32(program,op) end
         sp:write_u32(control,0x18000);emu.wait(emu.attotime.from_usec(10))
         assert((sp:read_u32(control)&0x10000)==0,'DSP did not stop')
-        -- Preset3 uses the existing negative-OR Z workaround as a control,
-        -- not an assertion that that workaround is hardware-correct.
+        -- Preset3 checks negative OR: S is set but Z must remain clear.
+        -- S=Z=1 is not a valid arithmetic result.
         local flags=sp:read_u32(control)&0x600000
-        local expected=({0,0x200000,0x400000,0x600000})[preset+1]
+        local expected=({0,0x200000,0x400000,0x400000})[preset+1]
         check('guest_flags'..case,flags,expected)
         local value=attempt<<21
         if width==0 then sp:write_u32(control,value)

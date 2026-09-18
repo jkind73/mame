@@ -1,11 +1,15 @@
-# ALU entry-A forwarding integrated — native WIP
+# ALU entry-A forwarding — NATIVE QUALIFIED
 
 The preserved prototype has been applied after complete pause qualification.
 The147456-case actual-method test is in the default suite. Existing ALU,
 parallel and multiplier oracles now use explicit entry A and result latching;
-all targeted DSP suites and full-TU C++20 syntax pass. The full69-script batch,
-CI and candidate native acceptance (768 dataflow programs/four configurations
-plus every prior gate) are pending.
+all targeted DSP suites and full-TU C++20 syntax pass. Source f8022878 passes full69-script local/CI batches, build35378445239/
+export35379200969 and the complete expanded native consumer:768 dataflow
+programs/four configurations, revised accumulator/V file replay, preceding gates
+and before/after provenance/BIOS checks. Evidence: ../f8022878-live/.
+The older pending-slot fixture's active data-port reads were subsequently
+corrected using EP/PR; its isolated rerun passes on this same binary. The full
+consumer's old raw output is preserved; see ../dsp-pipeline/README.md.
 
 Corrected fixtures on qualified f944ce85:211 ALU,64 multiplier,144 parallel
 programs and actual active parallel-copy replay PASS. The revised ALU save

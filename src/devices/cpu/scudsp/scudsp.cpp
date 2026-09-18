@@ -463,10 +463,6 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
 			SET_C(0);
 			SET_S(i3 < 0);
-			/* TODO: Croc and some early Psygnosis games wants Z to be 1 when the result of this one is negative.
-			         Needs HW tests ... */
-			if(i3 < 0)
-				i3 = 0;
 			SET_Z(i3 == 0);
 			break;
 
