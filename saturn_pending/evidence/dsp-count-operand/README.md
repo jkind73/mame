@@ -1,4 +1,4 @@
-# DSP-02 / DSP-03: count-source selector implementation (NATIVE WIP)
+# DSP-02 / DSP-03: count-source selector implementation (NATIVE QUALIFIED)
 
 ST-097-R5-072694 pp.135–136 describes the count source as bits0–2: two
 RAM-bank bits and MCx post-increment. Bit3 is not part of that selector. Source:
@@ -52,3 +52,12 @@ expanded native consumer requires128 operand programs across four configurations
 Integrated8881caa1 full local60-script batch passed (exit0), excluding three
 optional live skips; log: `local/regressions.log`. Build35356222037 also passed
 its native build and60-script CI batch. Expanded native consumption is next.
+
+
+Superseding native acceptance:8881caa1 passed build35356222037/export35357197920
+and the complete expanded native consumer, with provenance checks before/after.
+All128 count-source programs pass across JP/interpreter,JP/DRC,PAL/DRC,ST-V/DRC,
+as do the prior96 count programs, loaders, actual256-word data/program save,
+pending-slot save and other integration gates. See `../8881caa1-live/`.
+Earlier pending-positive statements above are historical, not current blockers.
+No full DSP parent closure, hardware-timing claim or commercial-gameplay claim.
