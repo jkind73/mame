@@ -29,3 +29,13 @@ The real 79f36021 binary is the before-fix negative: all 32 mapped DSP programs
 execute and complete; only four add-one cases pass. Others write wrong B-bus
 halfwords. The fixture uses SCU host ports and VDP1 RAM, not private DSP state.
 Native positive for the new source is pending. Twelve parser controls pass.
+
+A second genuine native negative now covers actual scheduled save/load during a
+60,000-word DSP DMA: before save, T0/EX are busy and the unwritten tail is checked;
+after completing, a read-direction HOLD transfer poisons the descriptor, then
+file load restores the busy snapshot. All save/mutate/load notifications occur,
+but 59,979 destination words remain wrong on 79f36021 because the pending DMA
+state/progress was not restored. No private DSP fields are edited. The new
+source must pass this gate as well; extracted state-copy tests are insufficient.
+Thirteen DSP save parser controls and the shared runner's seventeen file/output
+controls pass. The native-save negative is `79f36021-save-negative.log`.

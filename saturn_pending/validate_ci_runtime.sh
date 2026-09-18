@@ -51,6 +51,10 @@ phase=dsp-dma
 python3 saturn_pending/test_scudsp_dma_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-dma" > "$LOG_DIR/dsp-dma.log" 2>&1
 grep -q 'DSP DMA: 32 mapped-program B-bus addressing cases passed live' "$LOG_DIR/dsp-dma.log"
+phase=dsp-save
+python3 saturn_pending/test_scudsp_save_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-save" > "$LOG_DIR/dsp-save.log" 2>&1
+grep -q 'DSP save: busy transfer restored and 60000-word replay verified' "$LOG_DIR/dsp-save.log"
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
@@ -113,4 +117,4 @@ phase=final-provenance
 python3 saturn_pending/verify_ci_artifact.py "$ARTIFACT" --run-id "$RUN_ID" > "$LOG_DIR/final-artifact.json"
 cmp "$LOG_DIR/artifact.json" "$LOG_DIR/final-artifact.json"
 sha256sum -c "$LOG_DIR/bios.sha256"
-echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP DMA B-bus addressing, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
+echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP DMA B-bus addressing and in-flight save replay, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
