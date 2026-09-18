@@ -1,0 +1,7 @@
+test: /tmp/scudsp-mul-84munkmk/test.cpp:543: void check_write(unsigned int, uint32_t): Assertion `d.m_lop==expected' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_lop_model.py", line 95, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-mul-84munkmk/test']' died with <Signals.SIGABRT: 6>.
