@@ -7,11 +7,11 @@ CI 35306849889, binary SHA256
 `5d5f978c7938a0553c21009885f5a995f0fbd5e73604d3d594c7d5205d88b8f2`.
 Evidence: `evidence/b5caa488-live/`. This supersedes older pending-DMA statements.
 
-**New production WIP:** explicit DSP pending-delay validity preserves address 00
+**New production WIP (89764c08):** explicit DSP pending-delay validity preserves address 00
 across PC wrap, state restore and reset. Five real before-fix programs fail on
 both 234c and b5caa488; 393,216 extracted PC/target/control cases, three rejected
-mutants, the existing DMA suite and full-TU syntax pass. Native-positive for this
-new revision is pending. `scudsp-delay-slot.patch` is integrated; do not reapply.
+mutants, the existing DMA suite and full-TU syntax pass. The complete local 58-script batch passed, with three optional live skips
+excluded. Native-positive for this revision is pending in CI 35308649438. `scudsp-delay-slot.patch` is integrated; do not reapply.
 See `evidence/dsp-pipeline/`. Full prefetch timing and program-RAM DMA remain open.
 
 ---
