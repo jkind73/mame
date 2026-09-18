@@ -63,6 +63,10 @@ phase=dsp-parallel
 python3 saturn_pending/test_scudsp_parallel_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-parallel" > "$LOG_DIR/dsp-parallel.log" 2>&1
 grep -q 'DSP parallel buses: 144 RAM/register/counter programs passed live' "$LOG_DIR/dsp-parallel.log"
+phase=dsp-parallel-save
+python3 saturn_pending/test_scudsp_parallel_save_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-parallel-save" > "$LOG_DIR/dsp-parallel-save.log" 2>&1
+grep -q 'DSP parallel save: active copy loop, RAM, counters and multiplier replay restored' "$LOG_DIR/dsp-parallel-save.log"
 phase=dsp-lop
 python3 saturn_pending/test_scudsp_lop_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-lop" > "$LOG_DIR/dsp-lop.log" 2>&1
