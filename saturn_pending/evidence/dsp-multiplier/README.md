@@ -1,3 +1,10 @@
+# Qualification update
+
+25f13c07 is native-qualified: build35365374912/export35366355244, all256
+multiplier programs/four configurations and the complete preceding native gate
+pass. Full62-script local/CI batches pass. Both provenance checks pass. Complete
+evidence: ../25f13c07-live/. WIP notes below are historical, not current status.
+
 # DSP-01 multiplier input refresh — native WIP
 
 The shared RX destination helper now marks the cached multiplier result dirty,
