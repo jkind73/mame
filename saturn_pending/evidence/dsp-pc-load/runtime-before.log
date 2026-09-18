@@ -1,0 +1,28 @@
+DSP_PAUSE armed
+DSP_PAUSE case=1 PASS
+DSP_PAUSE case=2 PASS
+DSP_PAUSE case=3 PASS
+DSP_PAUSE case=4 PASS
+DSP_PAUSE case=5 PASS
+DSP_PAUSE case=6 PASS
+DSP_PAUSE case=9 PASS
+DSP_PAUSE case=10 PASS
+DSP_PAUSE case=16 PASS
+DSP_PAUSE case=17 PASS
+DSP_PAUSE FAIL active_load_ignored7 got=10041 want=10001
+DSP_PAUSE FAIL active_load_ignored8 got=10041 want=10001
+DSP_PAUSE FAIL loaded_entry_no_old_slot11 got=12 want=56
+DSP_PAUSE FAIL loaded_entry_guard11 got=56 want=deadbeef
+DSP_PAUSE FAIL loaded_entry_no_old_slot12 got=12 want=56
+DSP_PAUSE FAIL loaded_entry_guard12 got=56 want=deadbeef
+DSP_PAUSE FAIL loaded_entry_no_old_slot13 got=12 want=34
+DSP_PAUSE FAIL loaded_entry_guard13 got=34 want=deadbeef
+DSP_PAUSE FAIL active_load_ignored14 got=10041 want=100fd
+DSP_PAUSE FAIL active_load_ignored15 got=10041 want=100fd
+DSP_PAUSE FAIL loaded_entry_no_old_slot18 got=12 want=56
+DSP_PAUSE FAIL loaded_entry_guard18 got=56 want=deadbeef
+DSP_PAUSE FAIL loaded_entry_no_old_slot19 got=12 want=56
+DSP_PAUSE FAIL loaded_entry_guard19 got=56 want=deadbeef
+DSP_PAUSE FAIL loaded_entry_no_old_slot20 got=12 want=34
+DSP_PAUSE FAIL loaded_entry_guard20 got=34 want=deadbeef
+Average speed: 267.34% (2 seconds)
