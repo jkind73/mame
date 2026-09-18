@@ -1,3 +1,16 @@
+# Pause/resume integrated — native WIP
+
+The preserved prototype is now in production, after dacd1f99 passed its complete
+native acceptance. The default suite includes4480 actual-method cases plus four
+DMA-resume compositions. Existing harnesses expose the new saved fields; the
+host-flag oracle retains its full flag assertions and now accounts for EP/PR
+command priority. Actual paused state is reflected in debugger flag text.
+The complete consumer now requires24 native pause programs/four configurations
+and an actual paused/odd-phase DMA file replay. Candidate native acceptance is
+pending. ES single-step and exact prefetch/timing remain open. Two saved fields
+are added; cross-version save-file compatibility is not promised.
+Earlier prototype notes below are historical; do not reapply the patch.
+
 # DSP-01 / DSP-03: pause/resume prototype (NOT INTEGRATED)
 
 Production ignores EP/PR. The external candidate ../../scudsp-pause.patch adds

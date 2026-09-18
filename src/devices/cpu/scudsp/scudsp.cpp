@@ -239,7 +239,10 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 				// (ST-097 p.89). Its first write uses this new PC; completion
 				// resumes at TOP and discards the old prefetched slot.
 				if (m_dma.ex && !m_dma.dir && m_dma.dst == 4)
+				{
+					m_dma.stalled = true;
 					set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+				}
 				break;
 		}
 	}
@@ -344,7 +347,7 @@ uint32_t scudsp_cpu_device::get_mem_source_dma( uint32_t memcode )
 
 uint32_t scudsp_cpu_device::program_control_r()
 {
-	const u32 flags = m_flags & FLAGS_MASK;
+	const u32 flags = (m_flags & FLAGS_MASK) & (m_paused ? ~(1U << EXF) : ~0U);
 
 	if (!machine().side_effects_disabled())
 	{
@@ -365,11 +368,23 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 	newval = oldval;
 	COMBINE_DATA(&newval);
 
-	// ST-097 p.51: arithmetic status flags, including S/Z, are read-only.
-	m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
-
-	if (BIT(m_flags, EPF))
-		popmessage("scudsp.cpp: single step enabled");
+	// Pause/resume are write strobes, not replacements for the execute latch.
+	uint32_t const commands = data & mem_mask;
+	if (BIT(commands, EPF))
+	{
+		if (BIT(m_flags, EXF))
+			m_paused = true;
+	}
+	else if (BIT(commands, PRF))
+	{
+		if (BIT(m_flags, EXF))
+			m_paused = false;
+	}
+	else
+	{
+		// ST-097 p.51: arithmetic status flags, including S/Z, are read-only.
+		m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
+	}
 
 	// set new PC if transfer enable is set
 	// NOTE: doesn't get transfered in flags
@@ -379,6 +394,7 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 	//printf("%08x PRG CTRL\n",data);
 	// run DSP if EXF is on
 	set_input_line(INPUT_LINE_RESET, (BIT(m_flags, EXF)) ? CLEAR_LINE : ASSERT_LINE);
+	set_input_line(INPUT_LINE_HALT, (m_paused || m_dma.stalled) ? ASSERT_LINE : CLEAR_LINE);
 }
 
 void scudsp_cpu_device::program_w(uint32_t data)
@@ -804,7 +820,10 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	// A program load must allow the next MVI-to-PC to supply its destination
 	// before stalling. Data-RAM transfers retain the existing stall policy.
 	if (m_dma.dir || m_dma.dst != 4)
+	{
+		m_dma.stalled = true;
 		set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+	}
 	m_icount -= 1;
 }
 
@@ -892,7 +911,8 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 				m_delay = 0;
 				m_delay_pending = false;
 			}
-			set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
+			m_dma.stalled = false;
+			set_input_line(INPUT_LINE_HALT, m_paused ? ASSERT_LINE : CLEAR_LINE);
 
 			break;
 		case DMA_STATE_WAIT:
@@ -1029,6 +1049,7 @@ void scudsp_cpu_device::device_start()
 
 	m_pc = 0;
 	m_flags = 0;
+	m_paused = false;
 	m_delay = 0;
 	m_delay_pending = false;
 	m_top = 0;
@@ -1063,6 +1084,7 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_ct3));
 
 	save_item(NAME(m_flags));
+	save_item(NAME(m_paused));
 	save_item(NAME(m_delay));
 	save_item(NAME(m_delay_pending));
 
@@ -1090,6 +1112,7 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_dma.program_address));
 	save_item(NAME(m_dma.update));
 	save_item(NAME(m_dma.ex));
+	save_item(NAME(m_dma.stalled));
 	save_item(NAME(m_dma.dir));
 	save_item(NAME(m_dma.count));
 	save_item(NAME(m_dma_state));
@@ -1131,6 +1154,8 @@ void scudsp_cpu_device::device_reset()
 	m_dma_timer->adjust(attotime::never);
 	m_dma_state = DMA_STATE_IDLE;
 	m_dma.ex = 0;
+	m_dma.stalled = false;
+	m_paused = false;
 	m_dma.count = 0;
 	m_flags &= ~(1 << T0F);
 	// A reset during DMA must also release its private execution stall.
@@ -1178,7 +1203,7 @@ void scudsp_cpu_device::state_string_export(const device_state_entry &entry, std
 		case STATE_GENFLAGS:
 			str = string_format("%s%s%s%c%c%c%c%c%s%s%s",
 				m_flags & 0x4000000 ? "PR":"..",
-				m_flags & 0x2000000 ? "EP":"..",
+				m_paused ? "EP":"..",
 				m_flags & 0x800000 ? "T0":"..",
 				m_flags & 0x400000 ? 'S':'.',
 				m_flags & 0x200000 ? 'Z':'.',

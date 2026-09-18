@@ -47,7 +47,7 @@ struct scudsp_cpu_device {
  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0,m_delay=0,m_top=0;
  uint16_t m_lop=0;bool m_delay_pending=false;
  int m_update_mul=0,m_icount=0;
- struct{unsigned ex=0,dir=0,dst=0;}m_dma;
+ struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
  std::array<uint32_t,256> code{},ram{};
  void debugger_instruction_hook(uint8_t){}
  void set_input_line(int,int){assert(false);}

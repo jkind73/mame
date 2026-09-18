@@ -19,12 +19,13 @@ using offs_t=uint32_t;
 #define COMBINE_DATA(p) (*(p)=(*(p)&~mem_mask)|(data&mem_mask))
 #define ACCESSING_BITS_0_15 (mem_mask&0xffff)
 #define INPUT_LINE_RESET 1
+#define INPUT_LINE_HALT 2
 #define ASSERT_LINE 1
 #define CLEAR_LINE 0
 struct scudsp_cpu_device {
- enum {EXF=16,LEF=15,EPF=25};
- uint32_t m_flags=0;uint8_t m_pc=0;int reset=0;
- void set_input_line(int,int value){reset=value;}
+ enum {EXF=16,LEF=15,EPF=25,PRF=26};
+ uint32_t m_flags=0;uint8_t m_pc=0;int reset=0,halt=0;bool m_paused=false;struct{bool stalled=false;}m_dma;
+ void set_input_line(int line,int value){if(line==INPUT_LINE_RESET)reset=value;else {assert(line==INPUT_LINE_HALT);halt=value;}}
  void popmessage(const char*){}
  void program_control_w(offs_t,uint32_t,uint32_t);
 };
@@ -37,10 +38,12 @@ int main(){
   random=random*1664525u+1013904223u;
   uint32_t value=pattern==0?0:pattern==1?0xffffffffu:random;
   scudsp_cpu_device s;s.m_flags=flags<<16;s.m_pc=flags;
-  uint32_t writable=mask&0x00030000;
+  uint32_t writable=(value&mask&0x06000000)?0:mask&0x00030000;
   uint32_t expected=(s.m_flags&~writable)|(value&writable);
   s.program_control_w(0,value,mask);
-  assert(s.m_flags==expected);assert(s.reset==!BIT(expected,16));++cases;
+  assert(s.m_flags==expected);assert(s.reset==!BIT(expected,16));
+  assert(s.m_paused==bool((flags&1)&&(value&mask&0x02000000)));
+  assert(s.halt==s.m_paused);++cases;
  }
  std::cout<<cases<<" actual masked control-port read-only flag cases passed\n";
 }

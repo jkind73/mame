@@ -1,10 +1,13 @@
-# Read-only S/Z correction integrated — native WIP
+# Read-only S/Z correction — NATIVE QUALIFIED
 
 The mask correction is now in production, following complete C-bus native
 qualification of f1fe8e09. The default suite includes28672 actual-method UBSan
 cases in regtests/saturn/test_scudsp_hostflags.py. Full-TU C++20 syntax passes.
 The expanded native consumer requires448 host-flag programs/four configurations,
-plus every earlier gate. Build/full67-script/native acceptance are pending.
+plus every earlier gate. Source dacd1f99 passes build35373461692/export35374507751, full67-script
+local/CI batches and the COMPLETE expanded native consumer:448 host-flag
+programs/four configurations, every preceding runtime/save gate, and both
+source/binary/BIOS provenance checks. Evidence: ../dacd1f99-live/.
 Earlier external-prototype notes below are historical; do not reapply the patch.
 
 # DSP-01 / DSP-03: read-only S/Z prototype; legal conditional-branch setup
