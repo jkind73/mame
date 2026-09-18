@@ -30,9 +30,9 @@ constexpr uint64_t concat_64(uint32_t hi,uint32_t lo){return (uint64_t(hi)<<32)|
 #define scudsp_writemem(a,b,v) assert(false)
 // MACROS
 struct scudsp_cpu_device {
- enum{VF=19,EF=18};
+ enum{VF=19,EF=18,EXF=16};
  R32 m_acl,m_pl,m_rx,m_ry;R16 m_ach,m_ph;
- int64_t m_alu=0,m_mul=0;uint32_t m_flags=0;
+ int64_t m_alu=0,m_mul=0;uint32_t m_flags=0;bool m_paused=false;
  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0;
  int m_update_mul=0,m_icount=0,irq=1;
  struct Machine {bool disabled=false;bool side_effects_disabled(){return disabled;}} mach;
