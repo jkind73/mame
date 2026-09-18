@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:MAMEdev Team
-"""Live CPU-mapped SMPC transport with two six-pad multitaps.
+"""Live CPU-mapped SMPC transport with two six-pad or four-pad adapters.
 
 Six requests cover peripheral-only/status-first and each single-port omission.
-Input patterns distinguish all 12 pads. Inputs are changed after page one to
+Input patterns distinguish all configured pads. Inputs are changed after page one to
 check snapshot retention. A coroutine polls SF in 50us increments rather than
 stretching CONTINUE across frames. This is not wire timing, extended-ID support,
 VBlank timeout or live save-manager qualification. No binary/BIOS is a SKIP.
@@ -66,8 +66,11 @@ end
 '''
 LUA = COMMON_LUA + r'''
 local empty={}
+local adapter=os.getenv('SMPC_ADAPTER') or 'multitap'
+local slots=adapter=='segatap' and 4 or 6
+local tap_status=adapter=='segatap' and 0x04 or 0x16
 for port,slot in (os.getenv('SMPC_EMPTY_PADS') or ''):gmatch('([12]):([1-6])') do
-    empty[(tonumber(port)-1)*6+tonumber(slot)]=true
+    empty[(tonumber(port)-1)*slots+tonumber(slot)]=true
 end
 local set_connected_pad=set_pad
 local function set_pad(index,pattern)
@@ -76,10 +79,10 @@ local function set_pad(index,pattern)
 end
 local function test()
     park()
-    for port=1,2 do for sub=1,6 do
-        local tag=string.format(":ctrl%d:multitap:ctrl%d:joypad:JOY",port,sub)
+    for port=1,2 do for sub=1,slots do
+        local tag=string.format(":ctrl%d:%s:ctrl%d:joypad:JOY",port,adapter,sub)
         local p=m.ioport.ports[tag]
-        local index=(port-1)*6+sub
+        local index=(port-1)*slots+sub
         if empty[index] then assert(not p,"expected empty pad "..tag)
         else
             assert(p,"missing pad "..tag)
@@ -94,9 +97,9 @@ local function test()
             local before=#fails
             local want={}
             for port=1,2 do
-                if modes[port]~=3 then want[#want+1]=0x16 end
-                for sub=1,6 do
-                    local index=(port-1)*6+sub
+                if modes[port]~=3 then want[#want+1]=tap_status end
+                for sub=1,slots do
+                    local index=(port-1)*slots+sub
                     local word=set_pad(index,index)
                     if modes[port]~=3 then
                         if empty[index] then want[#want+1]=0xff
@@ -127,7 +130,7 @@ local function test()
                     check("case"..case.."_byte"..((page-1)*32+j),sp:read_u8(OREG+(j-1)*2),want[(page-1)*32+j])
                 end
                 if more then
-                    for index=1,12 do set_pad(index,15-index) end
+                    for index=1,2*slots do set_pad(index,15-index) end
                     cont=cont~0x80;sp:write_u8(I0,cont);ready()
                 end
             end
@@ -163,8 +166,8 @@ def empty_pad(value):
     return tuple(map(int, value.split(':')))
 
 
-def expected_packets(empty):
-    lengths = [19-2*sum(p == port for p, slot in empty) for port in (1, 2)]
+def expected_packets(empty, slots=6):
+    lengths = [1+3*slots-2*sum(p == port for p, slot in empty) for port in (1, 2)]
     return [(n, (n+31)//32) for n in (sum(lengths),)*2+(lengths[1],)*2+(lengths[0],)*2]
 
 
@@ -183,8 +186,12 @@ def main():
     p.add_argument('--rompath', type=Path, default=ROOT/'regtests')
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--empty-pad', type=empty_pad, action='append', default=[])
+    p.add_argument('--adapter', choices=('multitap', 'segatap'), default='multitap')
     a = p.parse_args()
     empty=set(a.empty_pad)
+    slots=4 if a.adapter=='segatap' else 6
+    if any(slot>slots for _,slot in empty):
+        p.error(f'{a.adapter} only has {slots} sockets')
     a.executable=a.executable.resolve();a.rompath=a.rompath.resolve();a.output=a.output.resolve()
     if not a.executable.is_file() or not (a.rompath/'saturnjp.zip').is_file():
         print('SKIP: need native executable and saturnjp BIOS')
@@ -193,19 +200,19 @@ def main():
     with tempfile.TemporaryDirectory(prefix='smpc-multitap-') as tmp:
         d=Path(tmp);script=d/'test.lua';script.write_text(LUA)
         env=os.environ.copy();env.update(SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',
-            SMPC_EMPTY_PADS=','.join(f'{p}:{s}' for p,s in sorted(empty)))
+            SMPC_ADAPTER=a.adapter, SMPC_EMPTY_PADS=','.join(f'{p}:{s}' for p,s in sorted(empty)))
         command=[str(a.executable),'saturnjp','-rompath',str(a.rompath),
-            '-ctrl1','multitap','-ctrl2','multitap','-noreadconfig','-skip_gameinfo','-nodrc',
+            '-ctrl1',a.adapter,'-ctrl2',a.adapter,'-noreadconfig','-skip_gameinfo','-nodrc',
             '-video','none','-sound','none','-nothrottle','-seconds_to_run','30',
             '-autoboot_delay','0','-autoboot_script',str(script),
             '-nvram_directory',str(d/'nvram'),'-cfg_directory',str(d/'cfg'),
             '-state_directory',str(d/'sta'),'-snapshot_directory',str(d/'snap')]
         for port,slot in sorted(empty):
-            command += [f'-ctrl{port}:multitap:ctrl{slot}', '']
+            command += [f'-ctrl{port}:{a.adapter}:ctrl{slot}', '']
         with (a.output/'runtime.log').open('w') as log:
             result=subprocess.run(command,cwd=d,env=env,text=True,
                 stdout=log,stderr=subprocess.STDOUT,timeout=180)
-        validate_output((a.output/'runtime.log').read_text(errors='replace'),result.returncode,expected_packets(empty))
+        validate_output((a.output/'runtime.log').read_text(errors='replace'),result.returncode,expected_packets(empty,slots))
     print('SMPC multitap: six live transport cases passed; not wire-timing/save-manager acceptance')
 
 

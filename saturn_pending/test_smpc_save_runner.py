@@ -26,6 +26,10 @@ if mode=='missing':rows.pop()
 if mode=='duplicate':rows.insert(1,'saved')
 if mode=='order':rows.reverse()
 for stage in rows:print('SMPC_SAVE '+stage)
+resb='SMPC_SAVE RESB restored=10 input=0 next_edge=0'
+if mode=='wrong-resb':resb=resb.replace('restored=10','restored=0')
+if mode!='missing-resb':print(resb)
+if mode=='duplicate-resb':print(resb)
 marker='SMPC_SAVE PASS bytes=38 cursor=32 tail=6'
 if mode=='cursor':marker=marker.replace('cursor=32','cursor=0')
 if mode=='substring':marker+=' extra'
@@ -43,7 +47,7 @@ with tempfile.TemporaryDirectory(prefix='smpc-save-protocol-') as tmp:
     (d/'saturnjp.zip').touch()
     modes = ('good', 'bare', 'missing', 'duplicate', 'order', 'cursor',
              'substring', 'no-final', 'duplicate-final', 'fail', 'lua',
-             'nonzero', 'missing-file', 'bad-file')
+             'nonzero', 'missing-file', 'bad-file', 'missing-resb', 'duplicate-resb', 'wrong-resb')
     for mode in modes:
         env = os.environ.copy()
         env['SMPC_FAKE_MODE'] = mode
@@ -57,4 +61,4 @@ with tempfile.TemporaryDirectory(prefix='smpc-save-protocol-') as tmp:
             raise RuntimeError((mode, result.stdout))
         if not (output/'runtime.log').is_file():
             raise RuntimeError('Missing diagnostic log')
-print('14 SMPC save-runner failure-protocol cases passed (fake executable only)')
+print('17 SMPC save-runner failure-protocol cases passed (fake executable only)')

@@ -132,8 +132,9 @@ configurations. Missing prerequisites cannot satisfy its positive markers.
 
 - `test_smpc_multitap_runtime.py`: six live transport cases; ten fake-process
   failure controls in `test_smpc_multitap_runner.py`.
-- `test_smpc_save_runtime.py`: partial report file save/mutate/load; fourteen
-  fake-process controls. It pauses after scheduling and verifies frozen/restored
+- `test_smpc_save_runtime.py`: partial report file save/mutate/load; seventeen
+  fake-process controls. The current fixture additionally restores sampled RESB=1
+  against a released live button and checks its next-VBlank clearing. It pauses after scheduling and verifies frozen/restored
   time, avoiding a VBlank deadline while waiting on host disk I/O.
 - `test_smpc_timeout_runtime.py`: four waiting/in-flight expiry cases; twelve
   parser controls. It uses guarded raster positions, not a wire-timing oracle.
@@ -178,9 +179,15 @@ Empty ports return status F0 and ID FF instead of 00. The legacy flattened
 API remains for existing consumers. Actual adapter/port/SMPC methods pass 9,216
 ASan/UBSan topology/mode reports, direct/empty/bounds checks and four compiled
 negative controls. A genuine sparse-socket failure on 234c is retained in
-`evidence/234c-live/sparse-before.log`. The native gate now requires sparse pads
-1:2 and 2:5 plus RESB checks; these are NOT yet native-positive.
+`evidence/234c-live/sparse-before.log`. The native gate now requires full/sparse six-pad and four-pad adapters,
+RESB status checks and real RESB latch save/load; these are NOT yet native-positive.
 
 Normal live requests use the mapped SCU VBlank-IN event, not the screen boundary
 one scanline before it. This corrected fixture qualified 2781 without relaxing
 the production deadline. Source-labelled first failure is preserved as well.
+
+Additional native 2781 controls: fully populated SegaTap passes all six cases;
+sparse SegaTap slots 1:2/2:3 fail with shifted/zero bytes. The extended scheduled
+save/load test completes all three notifications but fails the expected missing
+RESB latch before save and after load. Logs are retained under
+`evidence/2781-live/additional-controls/`. No new-source positive is inferred.
