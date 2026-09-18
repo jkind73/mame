@@ -1,0 +1,7 @@
+SMPC_SAVE armed
+SMPC_SAVE saved
+SMPC_SAVE mutated
+SMPC_SAVE loaded
+SMPC_SAVE FAIL RESB_before_save got=0 want=10
+SMPC_SAVE FAIL RESB_restored_latch got=0 want=10
+Average speed: 132.97% (2 seconds)

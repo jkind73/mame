@@ -6,7 +6,8 @@
 Save after byte 32 of a 38-byte two-multitap report. Drain it, overwrite the
 snapshot with changed inputs, then use zero-byte modes to clear its size/cursor
 and change its mode/state. Load through MAME's scheduled file save manager and
-verify the original first page and remaining six bytes. Retained notifiers and
+verify the original first page and remaining six bytes. Also restore sampled
+RESB=1 against a released live input, then check clearing on the next VBlank. Retained notifiers and
 strict ordered markers reject missing saves/loads. No buffer_save shortcut,
 private device-field mutation, or claims about wire timing/extended IDs.
 """
@@ -31,6 +32,7 @@ subscribers[2]=emu.add_machine_post_load_notifier(function()
     loaded=true;print('SMPC_SAVE loaded')
 end)
 local original,changed={},{}
+local reset,button
 local function packet(invert)
     local bytes={}
     for port=1,2 do
@@ -83,6 +85,10 @@ emu.register_frame_done(function()
     if frames<180 then return end
     if phase=='setup' then step(function()
         park()
+        wait_vblank();ready()
+        sp:write_u8(SF,1);sp:write_u8(COM,0x1a);ready()
+        reset=assert(m.ioport.ports[':RESET']);button=assert(reset.fields['Reset Button'])
+        button:set_value(1)
         for port=1,2 do for sub=1,6 do
             local tag=string.format(':ctrl%d:multitap:ctrl%d:joypad:JOY',port,sub)
             local p=m.ioport.ports[tag];assert(p,'missing pad '..tag)
@@ -91,6 +97,7 @@ emu.register_frame_done(function()
         end end
         original=packet(false);request(0)
         page('before_save',original,1,32,0xe0)
+        check('RESB_before_save',sp:read_u8(SR)&0x10,0x10)
         -- Pause only after scheduling: schedule_save itself resumes the machine.
         -- UI frame callbacks still run while paused; no emulated VBlank can
         -- expire the packet while the host waits for disk I/O.
@@ -101,7 +108,9 @@ emu.register_frame_done(function()
         emu.unpause()
         tail('drained')
         sp:write_u8(I0,0xc0)
+        button:set_value(0)
         changed=packet(true);request(0)
+        check('RESB_mutated',sp:read_u8(SR)&0x10,0)
         page('changed_snapshot',changed,1,32,0xe0)
         -- BREAK cancels that packet; a zero-byte packet poisons modes, SR,
         -- size, cursor and stage while retaining the changed buffer bytes.
@@ -113,8 +122,12 @@ emu.register_frame_done(function()
     elseif phase=='loaded' and loaded then step(function()
         assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'load did not restore frozen time')
         emu.unpause()
+        check('RESB_live_input',reset:read()&1,0)
+        check('RESB_restored_latch',sp:read_u8(SR)&0x10,0x10)
         page('restored_first',original,1,32,0xe0)
         tail('restored_tail')
+        wait_vblank();check('RESB_next_edge',sp:read_u8(SR)&0x10,0)
+        if #fails==0 then print('SMPC_SAVE RESB restored=10 input=0 next_edge=0') end
         finish()
     end)
     end
@@ -127,6 +140,7 @@ def validate_output(text, returncode):
     stages = re.findall(r'^SMPC_SAVE (saved|mutated|loaded)$', text, re.M)
     if (returncode or 'SMPC_SAVE FAIL' in text or 'LUA ERROR' in text or
             stages != ['saved', 'mutated', 'loaded'] or
+            len(re.findall(r'^SMPC_SAVE RESB restored=10 input=0 next_edge=0$', text, re.M)) != 1 or
             len(re.findall(r'^SMPC_SAVE PASS bytes=38 cursor=32 tail=6$', text, re.M)) != 1):
         raise RuntimeError('SMPC save fixture failed:\n' + text[-10000:])
 
