@@ -4,7 +4,11 @@ The eight-bit counter and zero-as-256 behavior are now implemented after the
 program-loader baseline qualified. Both data and program save fixtures now use
 legal zero-encoded 256-word transfers. Extracted 20,480 count cases, 5,120 program
 loads, prior suites, parser controls and full-TU syntax pass. Native positives
-remain pending in build35347062472. The full58-script local batch passed,
+remain pending in repair build35352902888. Build35347062472 failed because
+five controller translation units relied on a PCH to supply emu.h before their
+device headers. Their include ordering is fixed in fc6664a6; full-TU no-PCH
+checks pass. Failed-artifact diagnostics and partial cache statistics are in
+`evidence/dsp-count/build-repair/`. The full58-script local batch passed,
 excluding three optional live skips. See `evidence/dsp-count/README.md` for
 reference limitations.
 The portable candidate patch is retained in Git history, not for reapplication.
@@ -21,6 +25,13 @@ coverage, not a valid single hardware transfer under the new counter semantics.
 Supported PRECOMPILE=0 plus compiler-cache diagnostics is now enabled as a build
 experiment. No relaxed macro settings and no measured speedup claim. Full DSP
 serialization, exact timing, shared grants and gameplay acceptance remain open.
+
+
+Next isolated correction, not applied: `scudsp-count-operand.patch`. Real cd074b71
+passes16 canonical count-source programs and fails16 bit3 aliases, including
+lost MC1 post-increment. Candidate actual-method checks pass131,072 operand/
+wrap/overlap cases, three targeted mutants and syntax. Contract:
+`evidence/dsp-count-operand/README.md`. No candidate native positive yet.
 
 ---
 
