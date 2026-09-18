@@ -1,3 +1,14 @@
+# Native-qualified DSP parallel-bus coordination
+
+Production/latest native-qualified source: **2e14f275**. Build35369703506,
+export35370407444, full64-script local/CI and complete native consumer pass.
+All576 parallel programs/four configurations, active parallel-copy file replay,
+all earlier gates and both provenance checks pass. Evidence `evidence/2e14f275-live/`.
+Undocumented priority/counter disagreements remain open; no working flags changed
+or full DSP parent closed. Earlier WIP notes below are historical.
+
+---
+
 # Parallel DSP buses — native WIP
 
 Instruction-entry CT values now serve X/Y/D1 together; increments merge once,
