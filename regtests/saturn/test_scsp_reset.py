@@ -23,9 +23,12 @@ functions='\n'.join(extract(source, s) for s in (
     'void scsp_device::CheckPendingIRQ()', 'void scsp_device::update_main_irq()',
     'void scsp_device::MainCheckPendingIRQ(', 'void scsp_device::timer_sync(',
     'void scsp_device::timer_arm(', 'void scsp_device::timer_write(',
-    'TIMER_CALLBACK_MEMBER(scsp_device::timer_cb)'))
+    'TIMER_CALLBACK_MEMBER(scsp_device::timer_cb)', 'void scsp_device::reset_midi()'))
 if os.environ.get('MUTATE_PARTIAL_SCSP_RESET') == '1':
     functions=functions.replace('  reset_irq_timers();', '  m_current_level = 0;')
+# The pre-FIFO source never cleared the MIDI interface on reset.
+if os.environ.get('MUTATE_SCSP_MIDI_RESET') == '1':
+    functions=functions.replace('  reset_midi();\n', '')
 harness=r'''
 #include <algorithm>
 #include <array>
@@ -54,7 +57,10 @@ struct scsp_device {
  // TIMER
  std::array<SCSP_TIMER,3> m_timers{};
  std::array<emu_timer,3> events{};
- attotime now{1000};u32 m_current_level=0,m_MidiW=0,m_MidiR=0,m_lfsr=0;
+ attotime now{1000};u32 m_current_level=0,m_MidiW=0,m_MidiR=0,m_MidiCount=0,m_lfsr=0;
+ u32 m_MidiOutW=0,m_MidiOutR=0,m_MidiOutCount=0;bool m_MidiOverflow=false;
+ u8 m_MidiStack[4]{},m_MidiOutStack[4]{};bool tx_empty=true;
+ void receive_register_reset(){}void transmit_register_reset(){tx_empty=true;}
  u16 m_mcieb=0,m_mcipd=0;
  struct {std::array<bool,8> lines{};void operator()(offs_t n,int v){assert(n<8);lines[n]=v;}} m_irq_cb;
  struct {bool asserted=false;void operator()(int v){asserted=v;}} m_main_irq_cb;
@@ -62,7 +68,7 @@ struct scsp_device {
  void set_data_frame(int a,int b,int c,int d){assert(a==1&&b==8&&c==PARITY_NONE&&d==STOP_BITS_1);}
  void set_rate(int r){assert(r==31250);}
  u32 SCILV0(){return m_udata.data[0x24/2];}u32 SCILV1(){return m_udata.data[0x26/2];}u32 SCILV2(){return m_udata.data[0x28/2];}
- void device_reset();void reset_irq_timers();void CheckPendingIRQ();void update_main_irq();void MainCheckPendingIRQ(u16);
+ void reset_midi();void device_reset();void reset_irq_timers();void CheckPendingIRQ();void update_main_irq();void MainCheckPendingIRQ(u16);
  void timer_sync(int);void timer_arm(int);void timer_write(int,u16,u16);void timer_cb(int);
  scsp_device(){for(int i=0;i<3;i++){events[i].now=&now;m_timers[i].timer=&events[i];}}
  bool sound_irq(){return std::any_of(m_irq_cb.lines.begin(),m_irq_cb.lines.end(),[](bool b){return b;});}
@@ -88,7 +94,15 @@ int main(){
    t.base_time=s.now;s.events[i].deadline=s.now.ticks+1;
   }
   if(phase==2)s.now.ticks+=100;
+  // A dirty MIDI interface must not survive the reset either: both 4-byte
+  // FIFOs, their pointers/occupancy, the overflow latch and the shift register.
+  s.m_MidiW=2;s.m_MidiR=1;s.m_MidiCount=3;s.m_MidiOverflow=true;
+  s.m_MidiOutW=3;s.m_MidiOutR=1;s.m_MidiOutCount=4;s.tx_empty=false;
+  for(int i=0;i<4;i++){s.m_MidiStack[i]=u8(0xa0+i);s.m_MidiOutStack[i]=u8(0xb0+i);}
   s.device_reset();assert(!s.sound_irq()&&!s.m_current_level&&!s.m_main_irq_cb.asserted);
+  assert(!s.m_MidiW&&!s.m_MidiR&&!s.m_MidiCount&&!s.m_MidiOverflow);
+  assert(!s.m_MidiOutW&&!s.m_MidiOutR&&!s.m_MidiOutCount&&s.tx_empty);
+  for(int i=0;i<4;i++)assert(!s.m_MidiStack[i]&&!s.m_MidiOutStack[i]);
   for(unsigned reg=0x18/2;reg<0x30/2;reg++)assert(s.m_udata.data[reg]==0);
   assert(!s.m_mcieb&&!s.m_mcipd&&s.m_udata.data[0]==0x20f);
   for(int i=0;i<3;i++){

@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-cd4jmaro/test.cpp:651: int main(): Assertion `s.tx==std::vector<u8>({0xaa,0xbb})&&s.m_MidiOutCount==3' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 400, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-cd4jmaro/test']' died with <Signals.SIGABRT: 6>.

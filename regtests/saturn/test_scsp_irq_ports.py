@@ -17,7 +17,16 @@ methods='\n'.join(extract(sig) for sig in (
     'void scsp_device::w16(', 'u16 scsp_device::r16(',
     'void scsp_device::UpdateReg(', 'void scsp_device::UpdateRegR(',
     'void scsp_device::CheckPendingIRQ(', 'void scsp_device::MainCheckPendingIRQ(',
-    'void scsp_device::update_main_irq(', 'void scsp_device::ResetInterrupts('))
+    'void scsp_device::update_main_irq(', 'void scsp_device::ResetInterrupts(',
+    'void scsp_device::tra_callback(', 'void scsp_device::tra_complete(',
+    'void scsp_device::rcv_complete('))
+# The pre-FIFO source had no MIDI reset at all: device_reset left both buffers,
+# their pointers and the serial shift registers untouched. Reproduce exactly
+# that so an old-source negative control fails assertions instead of compiling.
+if 'void scsp_device::reset_midi(' in src:
+    methods+='\n'+extract('void scsp_device::reset_midi(')
+else:
+    methods+='\nvoid scsp_device::reset_midi() {}'
 # Bound old-source recursion before it can exhaust the host stack.
 dma=extract('void scsp_device::exec_dma(')
 dma=dma.replace('void scsp_device::exec_dma() {','void scsp_device::exec_dma() { assert(++dma_depth==1);')
@@ -32,6 +41,34 @@ if mutant=='dma-memory-step':methods=methods.replace('mem_addr = (mem_addr + 2) 
 if mutant=='dma-register-step':methods=methods.replace('reg_addr = (reg_addr + 2) & 0xffe;', 'reg_addr = reg_addr;')
 if mutant=='dma-gate':methods=methods.replace('gate ? 0 : tmp', 'tmp')
 if mutant=='dma-wrap':methods=methods.replace('(mem_addr + 2) & 0xffffe', '(mem_addr + 2)')
+if mutant=='midi-depth-wrap':methods=methods.replace('    if (m_MidiOutCount == 4)\n      break;\n', '')
+if mutant=='midi-status-bits':methods=methods.replace('''    u16 v = (m_MidiCount == 0 ? 0x0100 : 0) |
+            (m_MidiCount == 4 ? 0x0200 : 0) |
+            (m_MidiOverflow ? 0x0400 : 0) |
+            (m_MidiOutCount == 0 ? 0x0800 : 0) |
+            (m_MidiOutCount == 4 ? 0x1000 : 0) |
+            m_MidiStack[m_MidiR];''', '''    u16 v = m_udata.data[0x4 / 2];
+    v &= 0xff00;
+    v |= m_MidiStack[m_MidiR];''')
+if mutant=='midi-mobuf-readable':methods=methods.replace('    m_udata.data[0x6 / 2] = 0;\n    break;', '    break;')
+if mutant=='midi-in-depth':methods=methods.replace('if (m_MidiCount == 4) {', 'if (false) {')
+if mutant=='midi-overflow-latch':methods=methods.replace('    m_MidiOverflow = true;', '    m_MidiOverflow = false;')
+if mutant=='midi-overflow-clear':methods=methods.replace('        m_MidiOverflow = false;\n', '')
+if mutant=='midi-out-count':methods=methods.replace('  if (m_MidiOutCount)\n    --m_MidiOutCount;', '')
+if mutant=='midi-early-pop':methods=methods.replace('''void scsp_device::tra_callback() {
+  m_midi_out_cb(transmit_register_get_data_bit());''','''void scsp_device::tra_callback() {
+  if (m_MidiOutCount) {
+    --m_MidiOutCount;
+    m_MidiOutR = (m_MidiOutR + 1) & 3;
+    if (!m_MidiOutCount) {
+      m_udata.data[0x20 / 2] |= 0x200;
+      CheckPendingIRQ();
+      MainCheckPendingIRQ(0x200);
+    }
+  }
+  m_midi_out_cb(transmit_register_get_data_bit());''').replace('''  if (m_MidiOutCount)
+    --m_MidiOutCount;
+  m_MidiOutR = (m_MidiOutR + 1) & 3;''', '')
 if mutant=='midi-read-mask':methods=methods.replace('(mem_mask & 0x00ff) && !machine().side_effects_disabled()', '!machine().side_effects_disabled()')
 if mutant=='midi-debug-pop':methods=methods.replace(' && !machine().side_effects_disabled()', '')
 if mutant=='midi-merge-pop':methods=methods.replace('r16(offset * 2, 0)', 'r16(offset * 2)')
@@ -65,16 +102,37 @@ struct scsp_device {
  struct {u32 dmea=0,drga=0,dtlg=0,ddir=0,dgate=0;}m_dma;
  u16 m_mcieb=0,m_mcipd=0,m_latched_MSLC=0,m_latched_MSLC_data=0;
  u32 m_current_level=0,m_MidiR=0,m_MidiW=0,m_MidiOutR=0,m_MidiOutW=0;
+ // Deliberately oversized: production indexes both with &3 (ST-077 p.90 says
+ // 4 bytes each), and an old-source negative control must fail an assertion
+ // rather than write out of bounds first.
  u8 m_MidiStack[32]{},m_MidiOutStack[32]{};
+ u8 m_MidiCount=0,m_MidiOutCount=0;bool m_MidiOverflow=false;
  struct {bool lines[8]{};bool isunset(){return false;}void operator()(unsigned n,int v){assert(n<8);lines[n]=v;}}m_irq_cb;
  struct {bool line=false;void operator()(int v){line=v;}}m_main_irq_cb;
+ struct {unsigned bits=0;void operator()(int){++bits;}}m_midi_out_cb;
  struct stream {void update(){}}stream_instance;stream *m_stream=&stream_instance;
  u32 RBL(){return(m_udata.data[1]>>7)&3;}u32 RBP(){return m_udata.data[1]&63;}
  u32 SCILV0(){return m_udata.data[0x24/2];}u32 SCILV1(){return m_udata.data[0x26/2];}u32 SCILV2(){return m_udata.data[0x28/2];}
  bool inspecting=false;bool side_effects_disabled(){return inspecting;}
  auto &machine(){return *this;}const char*describe_context(){return "fixture";}
  template<class...T>void logerror(T...){}
- void update_master_volume(){}unsigned starts=0;void transmit_register_setup(u8){++starts;}void exec_dma();unsigned dma_depth=0;
+ void update_master_volume(){}unsigned starts=0;void exec_dma();unsigned dma_depth=0;
+ // Serial-engine stand-ins: a frame is "finished" only when the test says so.
+ bool tx_empty=true;u8 rx_byte=0;std::vector<u8> tx;
+ void transmit_register_setup(u8 b){assert(tx_empty);tx_empty=false;tx.push_back(b);++starts;}
+ bool is_transmit_register_empty(){return tx_empty;}
+ void transmit_register_reset(){tx_empty=true;}
+ void receive_register_reset(){}void receive_register_extract(){}
+ u8 get_received_char(){return rx_byte;}
+ u8 transmit_register_get_data_bit(){return 0;}
+ void tra_callback();void tra_complete();void rcv_complete();void reset_midi();
+ void finish_frame(){tx_empty=true;tra_complete();}
+ void set_in(unsigned pos,unsigned count,bool ovf){
+  m_MidiR=pos;m_MidiW=(pos+count)&3;m_MidiCount=count;m_MidiOverflow=ovf;
+  for(unsigned i=0;i<4;++i)m_MidiStack[i]=0;
+  for(unsigned i=0;i<count;++i)m_MidiStack[(pos+i)&3]=u8(0xa5+i);
+ }
+ u16 status(){return u16(read(0x404/2,0xff00)&0xff00);}
  std::map<u32,u16> ram;std::vector<u32> reads;std::vector<std::pair<u32,u16>> writes;
  auto &space(){return *this;}
  u16 raw(u32 a){auto it=ram.find(a);return it==ram.end()?u16((a>>1)^0x5a5a):it->second;}
@@ -132,40 +190,196 @@ int main(){
  }
  // DGATE forces zero at the destination but must not suppress source reads.
  for(bool gate:{false,true}){
-  scsp_device s;s.m_MidiW=1;s.m_MidiStack[0]=0xa5;s.seed(8,0,false);
+  scsp_device s;s.set_in(0,1,false);s.seed(8,0,false);
   s.write(0x412/2,0x8000);s.write(0x414/2,0x404);
   s.write(0x416/2,0x3002|(gate?0x4000:0));
-  assert(s.m_MidiR==1&&s.ram[0x8000]==(gate?0:0xa5));s.verify(0x10,0x10);++dma_cases;
+  assert(s.m_MidiR==1&&s.m_MidiCount==0&&s.ram[0x8000]==u16(gate?0:0x08a5));
+  s.verify(0x10,0x10);++dma_cases;
+ }
+ // DRGA advances past MIBUF, so the second word reads write-only MOBUF as 0.
+ for(bool gate:{false,true}){
+  scsp_device s;s.set_in(3,2,false);s.seed(8,0,false);
+  s.write(0x412/2,0x8000);s.write(0x414/2,0x404);
+  s.write(0x416/2,0x3004|(gate?0x4000:0));
+  assert(s.ram[0x8000]==u16(gate?0:0x08a5)&&!s.ram[0x8002]);
+  assert(s.m_MidiR==0&&s.m_MidiCount==1);s.verify(0x18,0x18);++dma_cases;
+  // The following two transfers are programmed without DGATE, so the FIFO
+  // bytes reach sound RAM whatever the first transfer's gate was.
+  // Draining the last queued byte through another transfer releases bit 3.
+  s.write(0x412/2,0x8004);s.write(0x414/2,0x404);s.write(0x416/2,0x3002);
+  assert(s.ram[0x8004]==0x08a6&&s.m_MidiR==1&&s.m_MidiCount==0);
+  s.verify(0x10,0x10);++dma_cases;
+  // An empty FIFO read through DMA does not pop and reports MIEMP.
+  s.write(0x412/2,0x8006);s.write(0x414/2,0x404);s.write(0x416/2,0x3002);
+  assert(s.ram[0x8006]==0x0900&&s.m_MidiR==1&&s.m_MidiCount==0);
+  s.verify(0x10,0x10);++dma_cases;
  }
  std::cout<<dma_cases<<" actual DMA transfer/gate/wrap/self-target safety cases passed\n";
  unsigned midi=0;
- for(unsigned pos=0;pos<32;++pos)for(unsigned count:{0u,1u,2u,31u})
- for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
- for(bool debug:{false,true}){
-  scsp_device s;s.m_MidiR=pos;s.m_MidiW=(pos+count)&31;s.m_MidiStack[pos]=0xa5;
-  s.m_udata.data[2]=0x7e00;s.seed(count?8:0,0,false);s.inspecting=debug;
-  auto value=s.read(0x404/2,mask);assert(value==0x7ea5);
-  bool pop=count&&(mask&0xff)&&!debug;
-  assert(s.m_MidiR==((pos+pop)&31));assert(s.m_MidiW==((pos+count)&31));
-  s.verify(count>unsigned(pop)?8:0,count>unsigned(pop)?8:0);++midi;
+ // Golden status words pin Figure 4.3 (p.28) bit positions: 8=MIEMP,
+ // 9=MIFULL, 10=MIOVF, 11=MOEMP, 12=MOFULL. Data byte 0xa5+i is at slot i.
+ {
+  scsp_device s;s.seed(0,0,false);s.reset_midi();
+  assert(s.status()==0x0900);++midi;                       // both FIFOs empty
+  s.rx_byte=0x11;s.rcv_complete();
+  assert(s.status()==0x0800&&s.read(0x404/2)==0x0811);++midi;   // data read pops
+  assert(s.status()==0x0900&&s.m_MidiCount==0);s.verify(0,0);++midi;
+  for(unsigned i=0;i<4;++i){s.rx_byte=u8(0x11+i);s.rcv_complete();}
+  assert(s.status()==0x0a00);++midi;                       // MIFULL at exactly 4
+  s.rx_byte=0x55;s.rcv_complete();s.rx_byte=0x66;s.rcv_complete();
+  assert(s.status()==0x0e00);++midi;                       // MIOVF latched
+  // The popped read above left R=1, so the FIFO wraps: bytes sit at 1,2,3,0.
+  assert(s.m_MidiCount==4&&s.m_MidiW==1&&s.m_MidiR==1);
+  for(unsigned i=0;i<4;++i)assert(s.m_MidiStack[(1+i)&3]==u8(0x11+i));  // kept
+  s.verify(8,8);++midi;
+  for(unsigned i=0;i<4;++i){
+   u16 const want=u16(0x0c00|(i?0:0x0200))|u16(0x11+i);
+   assert(s.read(0x404/2)==want);assert(s.m_MidiCount==u8(3-i));
+   assert(s.m_MidiOverflow==(i<3));++midi;                  // retires only when empty
+  }
+  assert(s.status()==0x0900&&!s.m_MidiOverflow);s.verify(0,0);++midi;
+  // Output side with the input FIFO empty, so every status word is distinct.
+  s.write(0x406/2,0xaa);
+  assert(s.status()==0x0100&&s.tx==std::vector<u8>({0xaa}));++midi;
+  s.verify(0,0);
+  for(u8 b:{u8(0xbb),u8(0xcc),u8(0xdd)})s.write(0x406/2,b);
+  assert(s.status()==0x1100&&s.m_MidiOutCount==4&&s.tx.size()==1);++midi;  // MOFULL
+  s.write(0x406/2,0xee);
+  assert(s.status()==0x1100&&s.m_MidiOutCount==4&&s.tx.size()==1);++midi;  // rejected
+  assert(s.read(0x406/2)==0);++midi;                       // MOBUF is write only
+  s.finish_frame();
+  assert(s.tx==std::vector<u8>({0xaa,0xbb})&&s.m_MidiOutCount==3);
+  assert(s.status()==0x0100);s.verify(0,0);++midi;         // MOFULL retired
+  s.finish_frame();s.finish_frame();
+  assert(s.tx==std::vector<u8>({0xaa,0xbb,0xcc,0xdd})&&s.m_MidiOutCount==1);
+  assert(s.status()==0x0100);s.verify(0,0);++midi;
+  s.finish_frame();
+  assert(s.m_MidiOutCount==0&&s.tx.size()==4&&s.tx_empty);
+  assert(s.status()==0x0900);s.verify(0x200,0x200);++midi;  // empty request at frame end
+  s.write(0x406/2,0x77);
+  assert(s.tx.size()==5&&s.tx.back()==0x77&&s.m_MidiOutCount==1);
+  assert(s.status()==0x0100);s.verify(0,0);++midi;         // restarts after a drain
  }
- for(unsigned pos=0;pos<32;++pos)for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
- for(u16 val:{u16(0),u16(0xffff),u16(0xa55a)}){
-  scsp_device s;s.m_MidiR=pos;s.m_MidiW=(pos+1)&31;s.m_MidiStack[pos]=0xa5;
-  s.m_udata.data[2]=0x7ea5;s.seed(8,0,false);
-  s.write(0x404/2,val,mask);assert(s.m_MidiR==pos&&s.m_udata.data[2]==0x7ea5);s.verify(8,8);
-  s.w16(0x404,val,mask);assert(s.m_MidiR==pos&&s.m_udata.data[2]==0x7ea5);s.verify(8,8);++midi;
+ // Combined status field: every input/output occupancy pair and overflow
+ // latch must report exactly the Figure 4.3 bits, with MIBUF in the low byte.
+ for(unsigned in=0;in<=4;++in)for(unsigned out=0;out<=4;++out)for(bool ovf:{false,true}){
+  scsp_device s;s.set_in(1,in,ovf);s.m_MidiOutW=2;s.m_MidiOutR=2;s.m_MidiOutCount=out;
+  for(unsigned i=0;i<out;++i)s.m_MidiOutStack[(2+i)&3]=u8(0x30+i);
+  s.tx_empty=!out;s.seed(in?8:0,0,false);
+  u16 const want=u16((in?0:0x0100)|(in==4?0x0200:0)|(ovf?0x0400:0)|
+                     (out?0:0x0800)|(out==4?0x1000:0));
+  assert(s.status()==want);
+  assert(s.read(0x404/2)==u16(want|s.m_MidiStack[1]));
+  assert(s.m_MidiCount==u8(in?(in-1):0));
+  assert(s.read(0x406/2)==0);                    // MOBUF never reads back
+  s.verify((in?(in-1):0)?8:0,(in?(in-1):0)?8:0);++midi;
  }
- for(unsigned pos=0;pos<32;++pos)for(bool busy:{false,true})
+ // Input read matrix: every pointer position, occupancy, lane and peek mode.
+ for(unsigned pos=0;pos<4;++pos)for(unsigned count=0;count<=4;++count)
+ for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
+ for(bool debug:{false,true})for(bool ovf:{false,true}){
+  scsp_device s;s.set_in(pos,count,ovf);s.seed(count?8:0,0,false);s.inspecting=debug;
+  u16 const want=u16((count?0:0x0100)|(count==4?0x0200:0)|(ovf?0x0400:0)|0x0800)
+                |s.m_MidiStack[pos];
+  assert(s.read(0x404/2,mask)==want);
+  bool const consume=(mask&0xff)&&!debug;
+  bool const pop=count&&consume;
+  assert(s.m_MidiR==((pos+pop)&3));assert(s.m_MidiCount==u8(count-pop));
+  // The latch retires on any consuming read that leaves the FIFO empty.
+  assert(s.m_MidiOverflow==(ovf&&!(consume&&(count-pop)==0)));
+  s.verify(s.m_MidiCount?8:0,s.m_MidiCount?8:0);++midi;
+ }
+ // Input register writes are ignored on every lane and path, DMA-facing too.
+ for(unsigned pos=0;pos<4;++pos)for(unsigned count=0;count<=4;++count)
  for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
  for(u16 val:{u16(0),u16(0xffff),u16(0xa55a)}){
-  scsp_device s;s.m_MidiOutW=pos;s.m_MidiOutR=busy?(pos+31)&31:pos;
-  s.m_udata.data[3]=0x1234;s.seed(0x200,0,false);s.write(0x406/2,val,mask);
-  bool send=mask&0xff;assert(s.m_MidiOutW==((pos+send)&31));
-  assert(s.starts==unsigned(send&&!busy));if(send)assert(s.m_MidiOutStack[pos]==(val&255));
+  scsp_device s;s.set_in(pos,count,count==4);s.seed(count?8:0,0,false);
+  u16 const want=u16((count?0:0x0100)|(count==4?0x0600:0)|0x0800);
+  s.write(0x404/2,val,mask);
+  assert(s.m_MidiR==pos&&s.m_MidiCount==count&&s.m_MidiW==((pos+count)&3));
+  // The write must not even reach the register file: the merge peek leaves the
+  // derived status/MIBUF word there, so a stored value would be observable.
+  assert(s.m_udata.data[2]==u16(want|s.m_MidiStack[pos]));
+  assert(s.status()==want);s.verify(count?8:0,count?8:0);
+  s.w16(0x404,val,mask);
+  assert(s.m_MidiR==pos&&s.m_MidiCount==count&&s.status()==want);
+  assert(s.m_udata.data[2]==u16(want|s.m_MidiStack[pos]));
+  s.verify(count?8:0,count?8:0);++midi;
+ }
+ // Output write matrix: full FIFO and non-data lanes must not queue or start.
+ for(unsigned pos=0;pos<4;++pos)for(unsigned count=0;count<=4;++count)
+ for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
+ for(u16 val:{u16(0),u16(0xffff),u16(0xa55a)}){
+  scsp_device s;s.m_MidiOutW=pos;s.m_MidiOutR=pos;s.m_MidiOutCount=count;
+  s.tx_empty=!count;if(count)s.tx={u8(0x10)};
+  s.seed(0x200,0,false);s.write(0x406/2,val,mask);
+  bool const send=(mask&0xff)&&count<4;
+  assert(s.m_MidiOutCount==u8(count+send));
+  assert(s.m_MidiOutW==((pos+send)&3)&&s.m_MidiOutR==pos);
+  assert(s.tx.size()==(count?1u:(send?1u:0u)));
+  if(send)assert(s.m_MidiOutStack[pos]==u8(val&0xff));
+  assert(s.status()==u16((count+send?0:0x0800)|((count+send)==4?0x1000:0)|0x0100));
   s.verify(send?0:0x200,send?0:0x200);++midi;
  }
- std::cout<<midi<<" actual MIDI read/write/debugger/byte-lane cases passed\n";
+ // Drain order/occupancy through the actual serial-completion method.
+ for(unsigned count=1;count<=4;++count){
+  scsp_device s;s.seed(0,0,false);
+  for(unsigned i=0;i<count;++i)s.write(0x406/2,0x10+i);
+  assert(s.tx==std::vector<u8>({0x10})&&s.m_MidiOutCount==count);
+  assert(s.status()==u16(0x0100|(count==4?0x1000:0)));
+  for(unsigned i=1;i<count;++i){
+   s.finish_frame();
+   assert(s.tx.size()==i+1);assert(s.tx[i]==u8(0x10+i));
+   assert(s.m_MidiOutCount==u8(count-i)&&!s.tx_empty);
+   assert(s.status()==0x0100);s.verify(0,0);++midi;
+  }
+  s.finish_frame();
+  assert(s.tx.size()==count&&s.m_MidiOutCount==0&&s.tx_empty);
+  assert(s.status()==0x0900);s.verify(0x200,0x200);++midi;
+ }
+ // Shifting bits out must not change FIFO occupancy: the queued byte leaves
+ // only when its frame is complete.
+ {
+  scsp_device s;s.seed(0,0,false);
+  s.write(0x406/2,0xa1);s.write(0x406/2,0xa2);
+  for(unsigned i=0;i<9;++i)s.tra_callback();
+  assert(s.m_midi_out_cb.bits==9&&s.m_MidiOutCount==2&&s.m_MidiOutR==0);
+  assert(s.status()==0x0100);s.verify(0,0);
+  s.finish_frame();
+  assert(s.m_MidiOutCount==1&&s.m_MidiOutR==1&&s.tx.size()==2);++midi;
+ }
+ // Input overflow depth: extra frames never enlarge or rotate the FIFO.
+ for(unsigned extra=0;extra<=3;++extra){
+  scsp_device s;s.seed(0,0,false);s.reset_midi();
+  for(unsigned i=0;i<4+extra;++i){s.rx_byte=u8(0x20+i);s.rcv_complete();}
+  assert(s.m_MidiCount==4&&s.m_MidiOverflow==(extra>0)&&s.m_MidiW==0);
+  for(unsigned i=0;i<4;++i)assert(s.m_MidiStack[i]==u8(0x20+i));
+  assert(s.status()==u16(0x0a00|(extra?0x0400:0)));s.verify(8,8);
+  for(unsigned i=0;i<4;++i){
+   // The reported word is pre-pop, so a latched overflow is still visible on
+   // the read that finally empties the FIFO.
+   assert(s.read(0x404/2)==(u16(0x0800|(i==0?0x0200:0)|(extra?0x0400:0))|u8(0x20+i)));
+   assert(s.m_MidiCount==u8(3-i));++midi;
+  }
+  assert(!s.m_MidiOverflow&&s.status()==0x0900);s.verify(0,0);++midi;
+ }
+ // A reset must clear both FIFOs, the overflow latch and the shift registers.
+ {
+  scsp_device s;s.seed(8,0xff,false);
+  s.set_in(2,4,true);s.m_MidiOutW=1;s.m_MidiOutR=1;s.m_MidiOutCount=4;s.tx_empty=false;
+  for(unsigned i=0;i<4;++i){s.m_MidiOutStack[i]=u8(0x50+i);}
+  s.tx={0x50};s.write(0x406/2,0x60);
+  assert(s.tx.size()==1&&s.m_MidiOutCount==4);
+  s.reset_midi();
+  assert(s.m_MidiCount==0&&s.m_MidiOutCount==0&&!s.m_MidiOverflow&&s.tx_empty);
+  assert(s.m_MidiR==0&&s.m_MidiW==0&&s.m_MidiOutR==0&&s.m_MidiOutW==0);
+  for(unsigned i=0;i<4;++i)assert(!s.m_MidiStack[i]&&!s.m_MidiOutStack[i]);
+  assert(s.status()==0x0900&&s.read(0x406/2)==0);++midi;
+  s.write(0x406/2,0x61);
+  assert(s.tx.size()==2&&s.tx.back()==0x61&&s.m_MidiOutCount==1);
+  assert(s.status()==0x0100);++midi;
+ }
+ std::cout<<midi<<" actual MIDI FIFO/status/lane/drain/reset cases passed\n";
  unsigned clears=0,pending=0;
  for(bool main:{false,true})for(unsigned p=0;p<2048;++p)
  for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})

@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-goz3dq45/test.cpp:572: int main(): Assertion `s.m_udata.data[0x18/2]==(gate?0:0x300)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 400, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-goz3dq45/test']' died with <Signals.SIGABRT: 6>.

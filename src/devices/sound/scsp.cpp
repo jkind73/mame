@@ -237,6 +237,9 @@ void scsp_device::device_start() {
   save_item(NAME(m_MidiStack));
   save_item(NAME(m_MidiW));
   save_item(NAME(m_MidiR));
+  save_item(NAME(m_MidiCount));
+  save_item(NAME(m_MidiOutCount));
+  save_item(NAME(m_MidiOverflow));
 
   for (int i = 0; i < 3; i++) {
     save_item(NAME(m_timers[i].counter), i);
@@ -290,6 +293,7 @@ void scsp_device::device_reset() {
   set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
   set_rate(31250);
 
+  reset_midi();
   reset_irq_timers();
 
   // the noise generator restarts from a known state
@@ -392,7 +396,7 @@ void scsp_device::CheckPendingIRQ() {
   u32 const en = m_udata.data[0x1e / 2];
 
   // MIDI input non-empty is derived from the input FIFO state
-  if (m_MidiW != m_MidiR) {
+  if (m_MidiCount) {
     m_udata.data[0x20 / 2] |= 0x08;
     pend |= 0x08;
   }
@@ -827,8 +831,9 @@ void scsp_device::init() {
   m_DSP.Init();
 
   m_current_level = 0;
-  m_MidiR = m_MidiW = 0;
-  m_MidiOutR = m_MidiOutW = 0;
+  m_MidiR = m_MidiW = m_MidiCount = 0;
+  m_MidiOutR = m_MidiOutW = m_MidiOutCount = 0;
+  m_MidiOverflow = false;
 
   m_DSP.space = &this->space();
   for (i = 0; i < 3; i++)
@@ -984,13 +989,18 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
   case 0x7: {
     if (!(mem_mask & 0x00ff))
       break; // MOBUF is in the low byte; status/reserved lanes do not transmit.
-    u8 data = m_udata.data[0x6 / 2] & 0xff;
-    if (m_MidiOutR == m_MidiOutW) {
-      // not busy, so start transmission
+    // Four FIFO bytes, independently of the serial shift register. A full
+    // FIFO rejects new writes rather than wrapping and appearing empty.
+    if (m_MidiOutCount == 4)
+      break;
+    u8 const data = m_udata.data[0x6 / 2] & 0xff;
+    m_MidiOutStack[m_MidiOutW] = data;
+    m_MidiOutW = (m_MidiOutW + 1) & 3;
+    ++m_MidiOutCount;
+    // Idle means no frame is currently being shifted out. The serial engine
+    // already saves that flag, so no separate busy state is needed.
+    if (is_transmit_register_empty())
       transmit_register_setup(data);
-    }
-    m_MidiOutStack[m_MidiOutW++] = data;
-    m_MidiOutW &= 31;
 
     // the buffer is no longer empty, drop the pending request
     m_udata.data[0x20 / 2] &= ~0x200;
@@ -1124,19 +1134,26 @@ void scsp_device::UpdateRegR(int reg, u16 mem_mask) {
   switch (reg & 0x3f) {
   case 4:
   case 5: {
-    u16 v = m_udata.data[0x4 / 2];
-    v &= 0xff00;
-    v |= m_MidiStack[m_MidiR];
+    // Status is captured before a data-byte read removes the front byte.
+    u16 v = (m_MidiCount == 0 ? 0x0100 : 0) |
+            (m_MidiCount == 4 ? 0x0200 : 0) |
+            (m_MidiOverflow ? 0x0400 : 0) |
+            (m_MidiOutCount == 0 ? 0x0800 : 0) |
+            (m_MidiOutCount == 4 ? 0x1000 : 0) |
+            m_MidiStack[m_MidiR];
     logerror("Read %x from SCSP MIDI\n", v);
     // Only a data-byte read consumes MIDI input. Status-byte reads, debugger
     // inspection and the register-write merge must leave the FIFO/IRQs alone.
     if ((mem_mask & 0x00ff) && !machine().side_effects_disabled()) {
-      if (m_MidiR != m_MidiW) {
-        ++m_MidiR;
-        m_MidiR &= 31;
+      if (m_MidiCount) {
+        m_MidiR = (m_MidiR + 1) & 3;
+        --m_MidiCount;
       }
-      if (m_MidiR == m_MidiW) // if the input FIFO is empty, clear the IRQ
+      if (!m_MidiCount) // if the input FIFO is empty, clear the IRQ
       {
+        // Draining also retires a latched overflow: ST-077 gives no other
+        // clear condition, and this needs no additional undocumented edge.
+        m_MidiOverflow = false;
         m_udata.data[0x20 / 2] &= ~0x08;
         m_mcipd &= ~0x08;
         CheckPendingIRQ();
@@ -1145,6 +1162,13 @@ void scsp_device::UpdateRegR(int reg, u16 mem_mask) {
     }
     m_udata.data[0x4 / 2] = v;
   } break;
+  case 6:
+  case 7:
+    // MOBUF[7:0] is write only and p.35 says write-only bits read as 0B. The
+    // MIDI-OUT status flags are reported by register 0x04, not here.
+    m_udata.data[0x6 / 2] = 0;
+    break;
+
   case 8:
   case 9: {
     m_udata.data[0x8 / 2] = m_latched_MSLC_data;
@@ -1600,16 +1624,30 @@ void scsp_device::write(offs_t offset, u16 data, u16 mem_mask) {
   w16(offset * 2, tmp, mem_mask);
 }
 
+void scsp_device::reset_midi() {
+  m_MidiR = m_MidiW = m_MidiCount = 0;
+  m_MidiOutR = m_MidiOutW = m_MidiOutCount = 0;
+  m_MidiOverflow = false;
+  std::fill(std::begin(m_MidiStack), std::end(m_MidiStack), 0);
+  std::fill(std::begin(m_MidiOutStack), std::end(m_MidiOutStack), 0);
+  receive_register_reset();
+  transmit_register_reset();
+}
+
 void scsp_device::tra_callback() {
   m_midi_out_cb(transmit_register_get_data_bit());
 }
 
 void scsp_device::tra_complete() {
-  m_MidiOutR++;
-  m_MidiOutR &= 31;
+  // The frame just finished, so its byte leaves the FIFO now: MOEMP/MOFULL
+  // describe data still waiting to be sent out, and the output-empty request
+  // keeps its frame-completion timing.
+  if (m_MidiOutCount)
+    --m_MidiOutCount;
+  m_MidiOutR = (m_MidiOutR + 1) & 3;
 
   // if buffer not empty, transmit next byte
-  if (m_MidiOutR != m_MidiOutW) {
+  if (m_MidiOutCount) {
     transmit_register_setup(m_MidiOutStack[m_MidiOutR]);
   } else {
     // the output buffer has drained, request the MIDI out empty interrupt
@@ -1622,8 +1660,16 @@ void scsp_device::tra_complete() {
 
 void scsp_device::rcv_complete() {
   receive_register_extract();
-  m_MidiStack[m_MidiW++] = get_received_char();
-  m_MidiW &= 31;
+  if (m_MidiCount == 4) {
+    // Figure 4.59/p.90: data arriving at a full buffer sets MIOVF and breaks
+    // MIDI communication. The queued bytes are kept; ST-077 does not say
+    // whether the new byte is discarded or replaces one.
+    m_MidiOverflow = true;
+  } else {
+    m_MidiStack[m_MidiW] = get_received_char();
+    m_MidiW = (m_MidiW + 1) & 3;
+    ++m_MidiCount;
+  }
 
   CheckPendingIRQ();
   MainCheckPendingIRQ(0x08);

@@ -64,7 +64,7 @@ struct scsp_device {
  // TIMER
  std::array<SCSP_TIMER,3> m_timers{};
  std::array<emu_timer,3> events{};
- attotime now{1000};u32 m_current_level=0,m_MidiW=0,m_MidiR=0,m_lfsr=0;
+ attotime now{1000};u32 m_current_level=0,m_MidiW=0,m_MidiR=0,m_MidiCount=0,m_lfsr=0;
  u16 m_mcieb=0,m_mcipd=0;
  struct {std::array<bool,8> lines{};void operator()(offs_t n,int v){assert(n<8);lines[n]=v;}} m_irq_cb;
  struct {bool asserted=false;void operator()(int v){asserted=v;}} m_main_irq_cb;
@@ -73,6 +73,9 @@ struct scsp_device {
  void set_rate(int r){assert(r==31250);}
  u32 SCILV0(){return m_udata.data[0x24/2];}u32 SCILV1(){return m_udata.data[0x26/2];}u32 SCILV2(){return m_udata.data[0x28/2];}
  int m_Slots[32]{};void Compute_LFO(int*){};void update_master_volume(){};
+ // MIDI clearing on reset is asserted by test_scsp_reset.py; this timer-phase
+ // harness only needs the call that production device_reset makes to exist.
+ void reset_midi(){};
  void device_post_load();void device_reset();void reset_irq_timers();void CheckPendingIRQ();void update_main_irq();void MainCheckPendingIRQ(u16);
  void timer_sync(int);void timer_arm(int);void timer_write(int,u16,u16);void timer_cb(int);
  scsp_device(){for(int i=0;i<3;i++){events[i].now=&now;m_timers[i].timer=&events[i];}}
