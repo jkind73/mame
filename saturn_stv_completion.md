@@ -131,9 +131,11 @@
   - Distinguish actual CPU behavior from disassembler defects when debugging geometry programs.
 - [ ] **DSP-02 — Complete DSP DMA and bus interaction. [M/P/R]**
   - Replace the source-noted burst-versus-cycle-steal approximation and DSP-stall substitution with correct bus/CPU acknowledgement behavior.
-  - Implement B/C-bus address-add/boundary rules and reconcile DSP transfer timing with SCU DMA.
+  - B-bus per-halfword write increments implemented for all eight modes and both count forms (ST-097 pp.134/136/138/140). A real 79f36021 binary passes only the four stride-one cases out of 32; other modes corrupt the mapped destination. New extracted checks pass; rebuilt native positive pending. A/C-bus quirks, program-RAM DMA and shared-bus acknowledgement remain open.
+  - Implement remaining A/C-bus address-add/boundary rules and reconcile DSP transfer timing with SCU DMA.
 - [ ] **DSP-03 — Qualify execution timing and integration. [P/V]**
   - Instruction/DMA overlap, end interrupts, host access while running, debugger/DRC synchronization and save/load of pipeline state.
+  - Registered the missing DMA stride/mode/direction/progress/state fields; reset now clears the private DMA HALT and T0 busy state. Extracted replay at WAIT/MOVE/completion and reset checks pass; real DSP mid-transfer save/load remains open.
   - Reproduce geometry corruption reports with current source before treating a title as evidence of a specific DSP defect.
 
 ## 6. SMPC: system management, RTC and controller transport
@@ -150,7 +152,7 @@
   - RTC counting and leap-year behavior, SETTIME/INTBACK, cold versus warm reset and battery persistence.
   - RTC support already exists; determine ST-V-specific battery/settings behavior rather than assuming console semantics.
 - [ ] **SMPC-04 — Complete peripheral protocol and event routing. [P/V]**
-  - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; native 2781 timeout/edge-save positives pass. Physical slot addressing/FF-empty ports and VBlank-sampled RESB are now integrated WIP with extracted/syntax passes; rebuilt live positives pending. Extended-size IDs, OPE and wire timing remain open.
+  - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; native 2781 timeout/edge-save positives pass. Physical slot addressing/FF-empty ports and VBlank-sampled RESB now pass the expanded 79f36021 live gate, including both tap types, empty root ports and real sampled-RESB save/load. Extended-size IDs, OPE and wire timing remain open.
   - Direct-port modes, peripheral identification, multitap discovery, packet lengths and handshake timing.
   - Integrate peripheral-origin PAD/beam latch signals with SCU/VDP2; resolve exceptional mode/read responses and NetLink delegation.
 
