@@ -257,3 +257,32 @@ measured build is not discarded by preservation pushes. YAML structure checks
 confirmed no existing workflow content changed except the added concurrency map.
 Already-running jobs created before this policy do not inherit the new grouping;
 this is not a claim that the current backlog has been canceled or cleared.
+
+## Prepared live multitap transport check
+
+`test_smpc_multitap_runtime.py` configures two real six-pad multitap devices and
+writes the CPU-visible SMPC registers. It gives all twelve pads distinct button
+patterns, checks 38-byte two-port reports and 19-byte single-port reports for
+both INTBACK request forms, and changes physical input values after page one to
+verify the retained tail. Its coroutine polls SF at 50-microsecond intervals;
+it does not stretch each continuation across an entire video frame. Each new
+request starts at VBlank. This does not qualify exact wire timing, collection
+latency, VBlank timeout, extended IDs or real save/load.
+
+Python syntax, Lua syntax using the repository's Lua compiler, and ten
+fake-executable runner controls pass. **Live execution has not happened yet.**
+The pre-transport binary is expected to fail this test; preserve that negative
+result before applying `smpc-transport.patch` and rerunning on a rebuilt binary.
+The runner keeps its full runtime log, including partial output on timeout.
+It uses isolated temporary NVRAM/configuration and does not upload BIOS files.
+
+```sh
+python saturn_pending/test_smpc_multitap_runtime.py \
+  --executable /home/user/saturn-ci-artifact/saturn --rompath ./regtests \
+  --output /home/user/multitap-before
+```
+
+The GCC12 CI run 35287467065 has left the queue and is compiling Saturn/ST-V.
+There is still no linked completion result. Another restored local checkout was
+archived and recovered without affecting that remote build or importing the
+mixed old workspace; the new live fixtures were preserved across recovery.
