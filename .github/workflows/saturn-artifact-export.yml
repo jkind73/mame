@@ -24,8 +24,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: jkind73/mame
-      SOURCE_RUN: '35372231634'
-      SOURCE_SHA: 'f1fe8e094fae31834ceae2e604bb71f22e77e5a6'
+      SOURCE_RUN: '35373461692'
+      SOURCE_SHA: 'dacd1f992627c71d67378a03bc9dc8c3578bc3dd'
     steps:
       - name: Verify successful source run and export its exact ZIP to a draft
         shell: python
