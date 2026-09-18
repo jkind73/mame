@@ -219,6 +219,18 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP MIDI: 1536 output-byte/serial-completion cases passed live' "$LOG_DIR/$phase.log"
 done
+# Self-execute payloads are allowed only after artifact/source verification above.
+phase=scsp-dma
+SCSP_DMA_SELF_EXECUTE=1 python3 saturn_pending/test_scsp_dma_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP DMA: 48 transfer/self-target cases passed live' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-dma-$system-drc"
+    SCSP_DMA_SELF_EXECUTE=1 python3 saturn_pending/test_scsp_dma_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP DMA: 48 transfer/self-target cases passed live' "$LOG_DIR/$phase.log"
+done
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
