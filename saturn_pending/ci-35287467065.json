@@ -1,0 +1,68 @@
+{
+  "databaseId": 35287467065,
+  "headSha": "5008a92331e4bf6698b7a9e53116c2167ddcc673",
+  "headBranch": "arena/01a09f50-mame",
+  "workflowName": "Saturn integration artifact",
+  "status": "completed",
+  "conclusion": "success",
+  "url": "https://github.com/jkind73/mame/actions/runs/35287467065",
+  "steps": [
+    {
+      "name": "Set up job",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+      "conclusion": "success"
+    },
+    {
+      "name": "Install real build dependencies",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain provenance",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Saturn and ST-V",
+      "conclusion": "success"
+    },
+    {
+      "name": "Configuration and ROM-free regressions",
+      "conclusion": "success"
+    },
+    {
+      "name": "Preserve partial compiler cache",
+      "conclusion": "success"
+    },
+    {
+      "name": "Expose compiler failure tail through check annotations",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Preserve binary and diagnostic evidence",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "conclusion": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 10526830262,
+      "name": "saturn-linux-5008a92331e4bf6698b7a9e53116c2167ddcc673",
+      "size_in_bytes": 16305765,
+      "digest": "sha256:25ac71bd57e42f29048effa4b87eb88f6f7f6b232a9d17021c16df51692d3801"
+    }
+  ],
+  "scope": "Native build, -validate, ROM-free scripts only. BIOS/runtime acceptance pending; ZIP not retrieved locally."
+}
