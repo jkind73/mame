@@ -1,0 +1,7 @@
+/tmp/scudsp-alu-55i1mie3/test.cpp:71:7: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scudsp_alu.py", line 102, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-alu-55i1mie3/test']' returned non-zero exit status 1.
