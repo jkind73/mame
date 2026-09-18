@@ -363,3 +363,23 @@ The additional JP DRC composition run on verified baseline `5008a923` completed:
 Its log is now preserved alongside the earlier 184 background cases and four
 BIOS replay configurations. This result belongs to the baseline executable;
 the new SMPC transport's native build/live-positive check is still pending.
+
+## Rebuilt SMPC artifact and partial-report save/load
+
+CI **35291979814 succeeded** for `234c7abc`; native build, configuration validation,
+and ROM-free regressions passed (`ci-35291979814.json`). Fresh download still
+fails with EOF at the Azure artifact host. Artifact `10527228938` is 16,305,741
+bytes, ZIP SHA-256 `7129a6434f59db271254f515c3f1a9fef7d00d862c9347f8f44f563c76c966f8`.
+The user has been asked to transfer this ZIP as with the previous artifact.
+
+`test_smpc_save_runtime.py` now checks a scheduled file save after byte 32 of a
+38-byte report, drains and overwrites its buffer, poisons modes/size/cursor with
+a zero-byte request, loads, then verifies the original page and six-byte tail.
+It uses retained MAME save/load notifiers, checks their order and requires a
+MAMESAVE file; it does not use the unsafe synchronous Lua buffer-save shortcut.
+The new helper shares register/input primitives with the six-case live fixture.
+Its 14 fake-process failure controls and the existing 10 controls pass. Running
+it on the original 5008 binary reaches real saved/mutated/loaded notifications
+without Lua errors and fails the expected transport assertions. Positive
+partial-report save-manager acceptance is still blocked on the rebuilt binary.
+The runtime consumer now requires this test as well as the six transport cases.
