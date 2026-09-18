@@ -1,0 +1,41 @@
+DSP_OPERAND case=1 PASS
+DSP_OPERAND case=2 PASS
+DSP_OPERAND case=3 PASS
+DSP_OPERAND case=4 PASS
+DSP_OPERAND case=5 PASS
+DSP_OPERAND case=6 PASS
+DSP_OPERAND case=7 PASS
+DSP_OPERAND case=8 PASS
+DSP_OPERAND case=9 PASS
+DSP_OPERAND case=10 PASS
+DSP_OPERAND case=11 PASS
+DSP_OPERAND case=12 PASS
+DSP_OPERAND case=13 PASS
+DSP_OPERAND case=14 PASS
+DSP_OPERAND case=15 PASS
+DSP_OPERAND case=16 PASS
+DSP_OPERAND FAIL count_case17 got=2 want=0
+DSP_OPERAND FAIL count_case18 got=2 want=0
+DSP_OPERAND FAIL count_case19 got=2 want=0
+DSP_OPERAND FAIL count_case20 got=2 want=0
+DSP_OPERAND FAIL count_case21 got=2 want=0
+DSP_OPERAND FAIL count_case22 got=2 want=0
+DSP_OPERAND FAIL count_case23 got=2 want=0
+DSP_OPERAND FAIL count_case24 got=2 want=0
+DSP_OPERAND FAIL source_cursor25 got=3 want=7
+DSP_OPERAND FAIL count_case25 got=2 want=0
+DSP_OPERAND FAIL source_cursor26 got=3 want=7
+DSP_OPERAND FAIL count_case26 got=2 want=0
+DSP_OPERAND FAIL source_cursor27 got=3 want=7
+DSP_OPERAND FAIL count_case27 got=2 want=0
+DSP_OPERAND FAIL source_cursor28 got=3 want=7
+DSP_OPERAND FAIL count_case28 got=2 want=0
+DSP_OPERAND FAIL source_cursor29 got=3 want=7
+DSP_OPERAND FAIL count_case29 got=2 want=0
+DSP_OPERAND FAIL source_cursor30 got=3 want=7
+DSP_OPERAND FAIL count_case30 got=2 want=0
+DSP_OPERAND FAIL source_cursor31 got=3 want=7
+DSP_OPERAND FAIL count_case31 got=2 want=0
+DSP_OPERAND FAIL source_cursor32 got=3 want=7
+DSP_OPERAND FAIL count_case32 got=2 want=0
+Average speed: 136.30% (2 seconds)

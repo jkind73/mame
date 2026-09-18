@@ -73,3 +73,11 @@ returns zero for selectors8–15. Pinned Mednafen and Ymir use only the bank and
 increment bits. Ignored-bit aliasing and actual MCx counter-fetch side effects
 need an isolated mapped test and correction; this is not covered by the current
 count-width cases. No new fix or native result for that issue is claimed here.
+
+
+Superseding build status:35347062472 failed in controller include ordering exposed
+by PRECOMPILE=0, not in the DSP source. Repair fc6664a6 puts emu.h before device
+headers in five controller units, all passing no-PCH full-TU syntax. Build
+35352902888 is running. See `build-repair/` for verified failed-artifact logs;
+these do not qualify a binary. The source-selector audit now has an isolated
+native negative and an unapplied candidate under `../dsp-count-operand/`.
