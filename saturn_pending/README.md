@@ -130,7 +130,7 @@ and BIOS identities, configuration, CD/cart/backup RAM, SCSP timers, SMPC
 transport/save/timeout, H/V edge restoration, and four BIOS/background replay
 configurations. Missing prerequisites cannot satisfy its positive markers.
 
-- `test_smpc_multitap_runtime.py`: six live transport cases; ten fake-process
+- `test_smpc_multitap_runtime.py`: six live transport cases per configuration; sixty fake-process
   failure controls in `test_smpc_multitap_runner.py`.
 - `test_smpc_save_runtime.py`: partial report file save/mutate/load; seventeen
   fake-process controls. The current fixture additionally restores sampled RESB=1
@@ -179,7 +179,7 @@ Empty ports return status F0 and ID FF instead of 00. The legacy flattened
 API remains for existing consumers. Actual adapter/port/SMPC methods pass 9,216
 ASan/UBSan topology/mode reports, direct/empty/bounds checks and four compiled
 negative controls. A genuine sparse-socket failure on 234c is retained in
-`evidence/234c-live/sparse-before.log`. The native gate now requires full/sparse six-pad and four-pad adapters,
+`evidence/234c-live/sparse-before.log`. The native gate now requires full/sparse six-pad and four-pad adapters, empty root ports,
 RESB status checks and real RESB latch save/load; these are NOT yet native-positive.
 
 Normal live requests use the mapped SCU VBlank-IN event, not the screen boundary
@@ -191,3 +191,11 @@ sparse SegaTap slots 1:2/2:3 fail with shifted/zero bytes. The extended schedule
 save/load test completes all three notifications but fails the expected missing
 RESB latch before save and after load. Logs are retained under
 `evidence/2781-live/additional-controls/`. No new-source positive is inferred.
+
+Production source **79f36021**: the complete **56-script local batch exited zero**,
+with three optional missing-default-binary live skips excluded from acceptance.
+See `evidence/79f36021-local/`. Native build **35303949227** is queued behind
+35301252871. The latter has the same build-input trees as qualified 2781;
+attempted cancellation returned HTTP 403, while push/read/PR APIs work.
+Empty root ports on 2781 independently reproduce status **00 instead of F0**.
+The current native gate must reject that result. Its negative log is preserved.
