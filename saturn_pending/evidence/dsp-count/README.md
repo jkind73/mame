@@ -46,3 +46,12 @@ extracted tests, adapted real-save fixtures and expanded consumer gate. Apply
 only after the current loader baseline is qualified. There is no candidate
 native positive yet. Shared grants, exact timing, remaining address rules and
 alternate program-DMA serializers remain open; no parent closure.
+
+The candidate also uses MAME's supported PRECOMPILE=0 build option and records
+compiler-cache paths/configuration/statistics. Current source-labelled caches
+are only about14MB despite repeated full native builds; current builds use PCH.
+PCH-related rejection is a suspected bottleneck, not proven by existing logs
+(which have no ccache statistics). No sloppy time-macro/PCH settings are enabled.
+The first no-PCH build is cold; any claimed speed improvement requires observed
+later cache hits and successful native acceptance. This is a build experiment,
+not emulation performance evidence, and is not applied yet.
