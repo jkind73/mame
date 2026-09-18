@@ -110,3 +110,28 @@ flags. The legacy IOGA change only guards inspection cursor advancement.
 Detailed scope and the unresolved primary-reference timing discrepancy remain
 in `saturn_pending/README.md`. Start a new gated native validation against this
 integrated revision; no result is inherited from the lost build.
+
+
+## Integrated SMPC transport and VBlank boundary follow-up
+
+- Source `234c7abc`: native build/configuration/ROM-free checks and the complete
+  live consumer passed. Six mapped two-multitap packets and a scheduled partial
+  packet save/mutate/load passed with unchanged source/binary provenance.
+- `smpc_hle_device::vblank_in()` is now wired to the driver's rising VDP2 edge.
+  It cancels pending initial peripheral completion and CONTINUE, clears PDL/NPE
+  and saved packet cursor/size, and leaves unrelated commands and the legacy
+  no-controller/ST-V path alone. The callback emits no new report or IRQ.
+- The driver's previous H/V edge levels are explicitly initialized, reset, and
+  save-registered. Live inspection confirmed these registrations were absent
+  in the 5008 baseline. Real edge-history restoration still needs qualification.
+- Four live negative expiry cases were reproduced on the transport-fixed 234c
+  binary before integrating timeout. 73,728 extracted combinations, four edge/
+  ordering cases, eight rejected compiled mutants, and full-TU syntax checks
+  support the new code but are not native timeout acceptance. The new binary
+  must pass `saturn_pending/test_smpc_timeout_runtime.py` plus the other gates.
+- Baseline `5008a923` now passes all four 1,042-case composition configurations
+  (4,168 total). That result is not attributed to a newly compiled revision.
+- Artifact transfer is available through the checksum-verified temporary GitHub
+  API blob exported alongside an unpublished draft release. No firmware,
+  sandbox token, or binary source-tree commit is involved. Native receipts and
+  text logs are under `saturn_pending/`; no working flags are promoted.

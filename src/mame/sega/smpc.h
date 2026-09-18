@@ -31,6 +31,8 @@ public:
 
   void m68k_reset_trigger();
 
+  void vblank_in();
+
   bool get_iosel(bool which);
 
   uint8_t get_ddr(bool which);

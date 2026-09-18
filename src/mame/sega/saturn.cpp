@@ -185,6 +185,8 @@ constexpr uint16_t RGB_B(uint16_t color) { return (color >> 10) & 0x1f; }
 } // anonymous namespace
 
 void saturn_state::machine_start() {
+  save_item(NAME(m_prev_hint));
+  save_item(NAME(m_prev_vint));
   save_item(NAME(m_system_halt));
   save_item(NAME(m_main_dma_halt));
   save_item(NAME(m_sound_dma_halt));
@@ -198,6 +200,7 @@ void saturn_state::reset_halt_state() {
 }
 
 void saturn_state::machine_reset() {
+  m_prev_hint = m_prev_vint = 0;
   vdp2_reset_rotation_latches();
   vdp1_reset_framebuffers();
   vdp1_abort_draw();
@@ -268,12 +271,12 @@ void saturn_state::scsp_irq(offs_t offset, uint8_t data) {
 
 /*
 (Preliminary) explanation about this:
-VBLANK-OUT is used at the start of the vblank period. It also sets the timer
+VBLANK-OUT marks the end of vertical blanking. It also sets the timer
 zero variable to 0. If the Timer Compare register is zero too,the Timer 0 irq is
 triggered.
 
-HBLANK-IN is used at the end of each scanline except when in VBLANK-IN/OUT
-periods.
+HBLANK-IN reaches the SCU at the end of each scanline, including vertical
+blanking. Only the slave SH-2 horizontal interrupt is gated during VBlank.
 
 The timer 0 is also incremented by one at each HBLANK and checked with the value
 of the Timer Compare register;if equal,the timer 0 irq is triggered here too.
@@ -281,7 +284,8 @@ Notice that the timer 0 compare register can be more than the VBLANK maximum
 range,in this case the timer 0 irq is simply never triggered.This is a known
 Sega Saturn/ST-V "bug".
 
-VBLANK-IN is used at the end of the vblank period.
+VBLANK-IN marks entry into vertical blanking and terminates unfinished
+console SMPC peripheral collection.
 
 SCU register[36] is the timer zero compare register.
 SCU register[40] is for IRQ masking.
@@ -293,6 +297,7 @@ TODO:
 void saturn_state::vint_callback(int state) {
   if (m_prev_vint != state) {
     if (state) {
+      m_smpc_hle->vblank_in();
       m_scu->vblank_in_w(1);
       m_slave->set_input_line(0x6, ASSERT_LINE);
     } else {
