@@ -50,3 +50,14 @@ covered. Before-source tests fail. Existing80,968 ALU,34,816 multiplier and
 Full batch/build/new-source native acceptance pending; consumer adds576 programs
 across four configurations without dropping earlier gates. No complete DSP,
 exact timing, shared grants, hardware-collision proof or working flags claimed.
+
+
+Five targeted mutants fail: early CT commit, multiple increments, lost CT-write
+precedence, read-bank write acceptance and same-bank D1 increment. A real active
+4096-iteration parallel-copy file replay also reproduces the old error: all
+save/mutation/load phases succeed, but63 of64 destination words and both product
+observations disagree both before and after load (130 failures). It uses legal
+PPAF-only phase observation, stopped RAM access, and poisons source/destination
+RAM, counters, LOP, input/product registers and program before restoring.
+The expanded consumer requires this scheduled replay too;14 save-parser controls
+pass separately. Full64-script local batch and CI35369703506 are running.
