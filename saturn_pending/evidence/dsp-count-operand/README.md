@@ -1,4 +1,4 @@
-# DSP-02 / DSP-03: count-source selector candidate (NOT APPLIED)
+# DSP-02 / DSP-03: count-source selector implementation (NATIVE WIP)
 
 ST-097-R5-072694 pp.135–136 describes the count source as bits0–2: two
 RAM-bank bits and MCx post-increment. Bit3 is not part of that selector. Source:
@@ -8,11 +8,11 @@ Pinned Ymir6d779960127ced72087a418c1daefc637d0aaa80 and
 Beetle/Mednafen1382b85dcad2e98ef9a67426a775ba548eaf0c68 likewise select the
 bank and increment from these three bits. No reference code is copied.
 
-Production still passes opcode&0xf to get_source_mem_value; selectors8–15
+Previous production passes opcode&0xf to get_source_mem_value; selectors8–15
 return zero without fetching RAM or incrementing its cursor. The candidate
 changes this one call to opcode&7 and updates the existing width mutant's
 matching expression. It does not change the common operand helper or other
-instruction formats. Portable patch: `../../scudsp-count-operand.patch`.
+instruction formats. The portable patch is retained in Git history; do not reapply it.
 
 Real cd074b71 tests:16 canonical controls pass,16 unused-bit aliases fail.
 Both transfer directions, hold modes, M1/MC1 and source positions0/63 are covered.
@@ -36,8 +36,15 @@ unrelated earlier opcode mask and passed; it was corrected to match the count
 fetch expression exactly before recording these rejection logs. Full-TU C++20
 syntax and12 parser controls pass separately.
 
-Candidate native positive is pending. Keep it separate until the current
-counter/include-order baseline is qualified. The full counter width/zero tests,
+Integrated after f1a65715 passed the full native counter/save/integration gate.
+New-source native positive is pending. The full counter width/zero tests,
 loader/save gates, bus timing and broader hardware parents are not replaced by
 this source-selector gate. Shared-bus timing and actual save-manager acceptance
 are not inferred from extracted endpoint replay.
+
+
+New f1a65715 negative independently repeats16 passes/16 failures after count width
+and zero encoding are fixed. Aliased reads now transfer256 instead of3 words,
+and MC1 still fails to increment. This is preserved separately from cd074b71.
+The extracted gate is now `regtests/saturn/test_scudsp_count_operand.py`; the
+expanded native consumer requires128 operand programs across four configurations.

@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 source = Path(os.environ.get('SCUDSP_OPERAND_SOURCE', ROOT/'src/devices/cpu/scudsp/scudsp.cpp'))
 src = source.read_text()
 

@@ -1,38 +1,28 @@
-# Integrated DSP count correction — native WIP
+# Integrated DSP count-source decoder correction — native WIP
 
-The eight-bit counter and zero-as-256 behavior are now implemented after the
-program-loader baseline qualified. Both data and program save fixtures now use
-legal zero-encoded 256-word transfers. Extracted 20,480 count cases, 5,120 program
-loads, prior suites, parser controls and full-TU syntax pass. Native positives
-remain pending in native consumption of successful build35354598861. Build35347062472 failed because
-five controller units and the SCSP DSP unit relied on PCH-supplied emulator
-definitions. Their include ordering is fixed through f1a65715; full-TU no-PCH
-checks and the full59-script local batch pass (three optional live skips
-excluded). Failed-artifact diagnostics and partial cache statistics are in
-`evidence/dsp-count/build-repair/`. The full58-script local batch passed,
-excluding three optional live skips. See `evidence/dsp-count/README.md` for
-reference limitations.
-The portable candidate patch is retained in Git history, not for reapplication.
+Memory-sourced DMA counts now decode only the three selector bits, preserving
+MCx fetch/increment when unused bit3 is set. Actual f1a65715 passes16 canonical
+controls and fails16 aliases. Extracted131,072 operand/MC-wrap/overlap cases,
+20,480 count cases,5,120 program loads, prior suites and full-TU syntax pass.
+New-source native positive is pending. Evidence: `evidence/dsp-count-operand/`.
 
-**Latest fully native-qualified source: cd074b71.** Build35344168780 and
-export35346630133 passed. The expanded consumer passed128 program overlays
-across four configurations, actual192-word wrapped program save replay, actual
-pending address-00 slot save replay,4096 read programs and all prior integration
-gates. Binary SHA256:
-`a8f105fc369a36b137aed4f4bb3c1e02b9030fcdf345ddfab8408103b63e9685`.
-Evidence: `evidence/cd074b71-live/`. Its60,000-word data save is historical stress
-coverage, not a valid single hardware transfer under the new counter semantics.
+**Latest fully native-qualified source: f1a65715.** Build35354598861 and
+export35355654569 passed, then the complete expanded native consumer passed:
+96 count programs across four configurations, actual zero-encoded256-word data
+and program save replay, pending-slot save,128 overlays,4096 read programs and
+all prior integration gates. SHA256:
+`4cd888c8bda5c2f2e0f72157e66ebd76a8ec5110fb6cc7ccbeb827a143e7e527`.
+Evidence: `evidence/f1a65715-live/`. Source/binary checks passed before and after.
 
-Supported PRECOMPILE=0 plus compiler-cache diagnostics is now enabled as a build
-experiment. No relaxed macro settings and no measured speedup claim. Full DSP
-serialization, exact timing, shared grants and gameplay acceptance remain open.
+The no-PCH build's six include-order failures are repaired. Full59-script local
+and CI batches pass. Successful build cache:1267 hits/1273 cacheable calls,
+6 misses,4 uncacheable calls. This is compilation evidence, not emulator speed.
+No driver flags promoted and no full hardware/gameplay completion claimed.
 
-
-Next isolated correction, not applied: `scudsp-count-operand.patch`. Real cd074b71
-passes16 canonical count-source programs and fails16 bit3 aliases, including
-lost MC1 post-increment. Candidate actual-method checks pass131,072 operand/
-wrap/overlap cases, three targeted mutants and syntax. Contract:
-`evidence/dsp-count-operand/README.md`. No candidate native positive yet.
+Concrete remaining ALU work and manual/reference caveats are recorded in
+`evidence/dsp-count-operand/alu-followup.md`; none of those arithmetic fixes or
+native ALU tests is implemented yet. Broader serializers and bus timing remain
+open. Earlier WIP statements below are historical, superseded by source labels.
 
 ---
 

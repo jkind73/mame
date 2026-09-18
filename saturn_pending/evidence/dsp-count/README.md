@@ -1,4 +1,4 @@
-# DSP-02 / DSP-03: eight-bit transfer counter implementation (NATIVE WIP)
+# DSP-02 / DSP-03: eight-bit transfer counter implementation (NATIVE QUALIFIED)
 
 Previous cd074b71 retains the older 16-bit memory-sourced length and performs
 one transfer for zero. The candidate masks the fetched count to eight bits and
@@ -81,3 +81,10 @@ headers in five controller units, all passing no-PCH full-TU syntax. Build
 35352902888 is running. See `build-repair/` for verified failed-artifact logs;
 these do not qualify a binary. The source-selector audit now has an isolated
 native negative and an unapplied candidate under `../dsp-count-operand/`.
+
+
+Superseding acceptance: f1a65715 passed build35354598861/export35355654569 and
+the entire expanded native consumer:96 count programs across four configurations,
+actual zero-encoded256-word data/program save replay and all previous integration
+gates. Provenance checks passed before/after. See `../f1a65715-live/`. The separate
+count-source bit3 correction is subsequent native WIP, not part of this result.

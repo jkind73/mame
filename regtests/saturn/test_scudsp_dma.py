@@ -37,7 +37,7 @@ mutant = os.environ.get('MUTATE_DSP_DMA', '')
 if mutant == 'count-zero':
     methods = methods.replace('m_dma.size = 256;', 'm_dma.size = 0;')
 if mutant == 'count-width':
-    methods = methods.replace('get_source_mem_value( opcode & 0xf ) & 0xff', 'get_source_mem_value( opcode & 0xf ) & 0xffff')
+    methods = methods.replace('get_source_mem_value( opcode & 0x7 ) & 0xff', 'get_source_mem_value( opcode & 0x7 ) & 0xffff')
 if mutant == 'pram-alias':
     methods = methods.replace('(dir_from_D0 ? 0x300 : 0x700)', '0x300')
 if mutant == 'pram-early-stall':
