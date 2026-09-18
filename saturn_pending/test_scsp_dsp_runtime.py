@@ -129,7 +129,28 @@ local function test()
         check('signed_ring_read'..case,(sp:read_u32(base+0xe08)>>8)&0xffff,want)
         if #fails==before then print('SCSP_DSP case='..case..' PASS') end
     end end end end
-    if #fails==0 then print('SCSP_DSP PASS cases=247')
+    -- IWT commits MEMS after this instruction has captured its input operand.
+    sp:write_u16(base+0x402,0);sp:write_u16(base+0x700,0x7ff8)
+    sp:write_u16(base+0x780,0x4000);sp:write_u16(base+0x782,0x4001)
+    for iwa=0,31 do for _,same in ipairs({false,true}) do for _,enabled in ipairs({false,true}) do
+      for _,pair in ipairs({{0x1234,0x5678},{0x8000,0x7fff},{0xffff,0},{0,0x8000}}) do
+        case=case+1;local before=#fails;local ira=same and iwa or (iwa+1)&31
+        local c=blank()
+        c[7]=0xa000;c[8]=0x100;c[14]=0x20|ira
+        c[23]=0xa000;c[24]=0x104
+        c[30]=0xa000|(ira<<6)|(enabled and 0x20 or 0)|iwa;c[31]=2
+        c[35]=0x1002;c[38]=0xa000|(ira<<6);c[39]=2;c[43]=0x1102
+        sp:write_u16(0x05a08000,pair[1]);sp:write_u16(0x05a08002,pair[2])
+        upload(c);emu.wait(emu.attotime.from_usec(500))
+        check('entry_input'..case,sp:read_u16(base+0xec0),scaled(pair[1]))
+        local after=enabled and same and pair[2] or pair[1]
+        check('subsequent_input'..case,sp:read_u16(base+0xec2),scaled(after))
+        check('input_commit'..case,sp:read_u32(base+0xe00+ira*4)&0xffffff,after<<8)
+        if enabled then check('destination_commit'..case,sp:read_u32(base+0xe00+iwa*4)&0xffffff,pair[2]<<8) end
+        if #fails==before then print('SCSP_DSP case='..case..' PASS') end
+      end
+    end end end
+    if #fails==0 then print('SCSP_DSP PASS cases=759')
     else for _,f in ipairs(fails) do print('SCSP_DSP FAIL '..f) end end
     m:exit()
 end
@@ -144,8 +165,8 @@ print('SCSP_DSP armed')
 '''
 def validate_output(text,returncode):
     if (returncode or 'SCSP_DSP FAIL' in text or 'LUA ERROR' in text or
-        re.findall(r'^SCSP_DSP case=(\d+) PASS$',text,re.M)!=[str(i) for i in range(1,248)] or
-        len(re.findall(r'^SCSP_DSP PASS cases=247$',text,re.M))!=1):
+        re.findall(r'^SCSP_DSP case=(\d+) PASS$',text,re.M)!=[str(i) for i in range(1,760)] or
+        len(re.findall(r'^SCSP_DSP PASS cases=759$',text,re.M))!=1):
         raise RuntimeError('SCSP DSP fixture failed:\n'+text[-12000:])
 runner.validate_output=validate_output
-if __name__=='__main__':runner.main('SCSP DSP: 247 zero-tail/live-program/signed-address cases passed live')
+if __name__=='__main__':runner.main('SCSP DSP: 759 zero-tail/live-program/signed-address/input-order cases passed live')
