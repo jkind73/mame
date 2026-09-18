@@ -58,10 +58,16 @@ struct port {
  unsigned status_reads=0,id_reads=0,data_reads=0;
  u8 read_status(){++status_reads;return status;}
  u8 read_id(unsigned i){++id_reads;return ids.at(i);}
- u8 read_ctrl(unsigned i){++data_reads;return data.at(i);}
+ // Synthetic variable-length devices keep a packed backing vector; the new
+ // interface explicitly identifies a physical device before its payload byte.
+ u8 read_ctrl_slot(unsigned index,unsigned offset){
+  unsigned base=0;
+  for(unsigned i=0;i<index;++i)base+=ids.at(i)==0xff?0:(ids.at(i)&15);
+  ++data_reads;return data.at(base+offset);
+ }
 };
 struct smpc_hle_device {
- bool m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
+ bool m_resb=false,m_sf=false,m_cd_sf=false,m_iosel1=true,m_iosel2=true,m_exle1=true,m_exle2=true;
  u8 m_sr=0,m_ddr1=0,m_ddr2=0,m_pdr1_readback=0,m_pdr2_readback=0;
  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;
