@@ -48,3 +48,7 @@ and zero encoding are fixed. Aliased reads now transfer256 instead of3 words,
 and MC1 still fails to increment. This is preserved separately from cd074b71.
 The extracted gate is now `regtests/saturn/test_scudsp_count_operand.py`; the
 expanded native consumer requires128 operand programs across four configurations.
+
+Integrated8881caa1 full local60-script batch passed (exit0), excluding three
+optional live skips; log: `local/regressions.log`. Build35356222037 also passed
+its native build and60-script CI batch. Expanded native consumption is next.
