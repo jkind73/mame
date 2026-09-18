@@ -44,7 +44,7 @@ local function packet(invert)
     return bytes
 end
 local function request(modes)
-    emu.wait(screen:time_until_vblank_start())
+    wait_vblank()
     sp:write_u8(SF,1);sp:write_u8(I0,0);sp:write_u8(I1,modes|8)
     sp:write_u8(I2,0xf0);sp:write_u8(COM,0x10);ready()
 end

@@ -23,7 +23,7 @@ local function submit(status)
     sp:write_u8(I2,0xf0);sp:write_u8(COM,0x10)
 end
 local function report(status)
-    emu.wait(screen:time_until_vblank_start())
+    wait_vblank()
     submit(status);ready()
     check('initial_pending_flags',sp:read_u8(SR)&0x60,0x60)
 end
