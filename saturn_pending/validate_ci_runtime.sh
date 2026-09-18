@@ -231,6 +231,10 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP DMA: 48 transfer/self-target cases passed live' "$LOG_DIR/$phase.log"
 done
+phase=scsp-dma-save
+python3 saturn_pending/test_scsp_dma_save_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP DMA save: programmed addresses and independent transfer restored through real file replay' "$LOG_DIR/$phase.log"
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
