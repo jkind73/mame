@@ -1,0 +1,7 @@
+test: /tmp/scudsp-dma-fr3kaikv/test.cpp:400: int main(): Assertion `a.m_pc==3&&b.m_pc==3&&!a.m_delay_pending&&!b.m_delay_pending&&!b.halt' failed.
+Traceback (most recent call last):
+  File "/home/user/dsp-pram-candidate/regtests/saturn/test_scudsp_dma.py", line 239, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-dma-fr3kaikv/test']' died with <Signals.SIGABRT: 6>.
