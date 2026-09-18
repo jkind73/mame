@@ -681,6 +681,7 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	}
 
 	m_dma.dir = dir_from_D0;
+	m_dma.write_stride = 2;
 	// printf("SRC %08x DST %08x SIZE %08x UPDATE %08x DIR %08x ADD %08x\n",m_dma.src,m_dma.dst,m_dma.size,m_dma.update,m_dma.dir, add);
 
 	if ( m_dma.dir == 0 )
@@ -707,12 +708,15 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 		m_dma.src = dsp_mem;
 		m_dma.dst = (m_wa0 << 2) & 0x27ffffff;
 
-		// TODO: implement this rule for B-Bus
-		// (updates destination on every 16-bit write)
-		//if ((m_dma.dst & 0x0700'0000) == 0x0500'0000 || (m_dma.dst & 0x00e0'0000) >= 0x00a0'0000)
-		//{
-		//	m_dma.add = (1 << add) & ~1;
-		//}
+		// ST-097 pp.134/136/138/140: B-bus address addition happens
+		// after EACH 16-bit beat, for immediate and RAM-sourced counts.
+		// Keep A/C-bus rules separate; in particular CS2 at 058xxxxx is A-bus.
+		uint32_t const physical = m_dma.dst & 0x07ffffff;
+		if (physical >= 0x05900000 && physical < 0x06000000)
+		{
+			m_dma.write_stride = (1U << add) & ~1U;
+			m_dma.add = 2 * m_dma.write_stride;
+		}
 
 		// TODO: C-Bus uses the same add rule as B, except it's buggy for add mode = 1 and crossing 1KiB boundaries
 	}
@@ -852,7 +856,7 @@ void scudsp_cpu_device::exec_dma()
 		data = get_mem_source_dma( m_dma.src );
 
 		m_out_dma_cb(m_dma.dst, data >> 16 );
-		m_out_dma_cb(m_dma.dst + 2, data & 0xffff );
+		m_out_dma_cb(m_dma.dst + m_dma.write_stride, data & 0xffff );
 
 		m_dma.dst += m_dma.add;
 
@@ -957,6 +961,7 @@ void scudsp_cpu_device::device_start()
 	m_ct2 = 0;
 	m_ct3 = 0;
 	memset(&m_dma, 0x00, sizeof(m_dma));
+	m_dma_state = DMA_STATE_IDLE;
 
 	m_program = &space(AS_PROGRAM);
 	m_data = &space(AS_DATA);
@@ -991,6 +996,13 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_dma.src));
 	save_item(NAME(m_dma.dst));
 	save_item(NAME(m_dma.size));
+	save_item(NAME(m_dma.add));
+	save_item(NAME(m_dma.write_stride));
+	save_item(NAME(m_dma.update));
+	save_item(NAME(m_dma.ex));
+	save_item(NAME(m_dma.dir));
+	save_item(NAME(m_dma.count));
+	save_item(NAME(m_dma_state));
 
 	// Register state for debugger
 	state_add( SCUDSP_PC, "PC", m_pc ).formatstr("%02X");
@@ -1026,6 +1038,11 @@ void scudsp_cpu_device::device_reset()
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::never);
 	m_dma_state = DMA_STATE_IDLE;
+	m_dma.ex = 0;
+	m_dma.count = 0;
+	m_flags &= ~(1 << T0F);
+	// A reset during DMA must also release its private execution stall.
+	set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
 }
 
 // TODO: do we need this?

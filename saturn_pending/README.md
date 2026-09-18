@@ -1,3 +1,24 @@
+# Latest integration update
+
+**79f36021 now passes the complete expanded native gate**: both full/sparse tap
+adapters, disconnected root ports, seven RESB observations, actual sampled-RESB
+and peripheral snapshot save/load, plus earlier CD/cart/backup, timer, timeout,
+H/V restore and BIOS/background checks. Evidence: `evidence/79f36021-live/`.
+The first run's final provenance check correctly failed when DSP source editing
+began during execution; a clean-source rerun passed both provenance checks and
+all runtime phases. This is not full game acceptance.
+
+**New production DSP work (native WIP):** B-bus per-halfword DMA strides, complete
+DMA state registration, reset cancellation/private-stall release. See
+`evidence/dsp-dma/README.md` for primary references, extracted cases, compiled
+mutants and a genuine before-fix native failure. The gate now requires 32 actual
+DSP programs to pass. A/C quirks, program-RAM DMA and bus arbitration remain open.
+
+The dated acceptance records below describe earlier checkpoints; this update
+supersedes their pending-79f36021 statements.
+
+---
+
 # Saturn integration status and runtime delivery
 
 ## Current acceptance boundary

@@ -135,7 +135,7 @@ private:
 	uint32_t  m_ra0,m_wa0;                                /*DSP DMA registers*/
 	struct{
 		uint32_t src, dst;
-		uint16_t add;
+		uint16_t add, write_stride;
 		uint16_t size, update, ex, dir, count;
 	}m_dma;
 	address_space *m_program;
@@ -149,7 +149,7 @@ private:
 		DMA_STATE_WAIT,
 		DMA_STATE_MOVE
 	};
-	dma_state_t m_dma_state;
+	uint8_t m_dma_state;
 	TIMER_CALLBACK_MEMBER(dma_tick_cb);
 
 	uint32_t get_source_mem_reg_value( uint32_t mode );
