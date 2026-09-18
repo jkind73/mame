@@ -37,7 +37,7 @@ end
 local function advance(label)
     emu.unpause();sp:write_u32(control,0x04000000)
     -- More than one and less than two DSP clocks in either JP dot-clock mode.
-    -- The marker cannot be cleared again for at least five instructions.
+    -- Only the fetched marker and END can run; pause before observing RAM.
     emu.wait(emu.attotime.from_nsec(90))
     freeze_dsp();check(label,marker(),0x12)
 end
@@ -62,21 +62,23 @@ emu.register_frame_done(function()
     if frames<180 then return end
     if phase=='setup' then step(function()
         park()
-        writecode(0xfc,{0x1f00,0x8c000000,0x1f00,0xd0000003})
+        writecode(0xfc,{0x1f00,0x8c000000,0x1f00,0xd0000000})
         writecode(0,{0x8c000012})
-        writecode(3,{0xd00000fc,0})
+        writecode(1,{0xf0000000})
         sp:write_u32(control,0x180fc)
         local pending=false
         for n=1,500 do
-            emu.wait(emu.attotime.from_nsec(90))
+            emu.wait(emu.attotime.from_nsec(20))
             -- Current core reports post-fetch PC+1 at the public port.
-            if (sp:read_u32(control)&0x100ff)==0x10004 then
+            if (sp:read_u32(control)&0x100ff)==0x10001 then
                 freeze_dsp()
-                if (sp:read_u32(control)&0x100ff)==4 and marker()==0 then pending=true;break end
+                if (sp:read_u32(control)&0x100ff)==1 and marker()==0 then pending=true;break end
                 sp:write_u32(control,0x04000000)
             end
         end
         assert(pending,'did not observe wrapped pending slot through host ports')
+        -- Change RAM at the slot without LE; the fetched opcode must remain 0x12.
+        sp:write_u32(program,0x8c000034)
         m:save(state_path);emu.pause();phase='saved'
     end)
     elseif phase=='saved' and saved then step(function()
@@ -85,13 +87,17 @@ emu.register_frame_done(function()
         -- Reset clears the pending flag and changes PC; poison the marker too.
         sp:write_u32(control,0x8040)
         emu.wait(emu.attotime.from_usec(1))
+        -- Execute a different fetched slot, so a missing saved opcode cannot pass.
+        writecode(0x40,{0xd0000043,0x8c000077,0,0xf0000000})
+        sp:write_u32(control,0x18040);emu.wait(emu.attotime.from_usec(2))
+        assert((sp:read_u32(control)&0x10000)==0,'cache poison did not stop')
         sp:write_u32(addr,192);sp:write_u32(data,0x777)
         print('DSP_SLOT_SAVE mutated')
         m:load(state_path);emu.pause();phase='loaded'
     end)
     elseif phase=='loaded' and loaded then step(function()
         assert(m.paused and math.abs(emu.time()-save_clock)<1e-9,'load did not restore time')
-        check('restored_paused_pc',sp:read_u32(control)&0x100ff,4)
+        check('restored_paused_pc',sp:read_u32(control)&0x100ff,2)
         check('restored_marker',marker(),0)
         advance('replayed_slot');finish()
     end)

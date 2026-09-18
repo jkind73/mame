@@ -40,15 +40,24 @@ LUA=COMMON_LUA+'\nlocal code={'+','.join(hex(op) for op,_ in VECTORS)+r'''}
 local frames,done=0,false
 emu.register_frame_done(function()
     frames=frames+1;if done or frames<180 then return end;done=true
+    coroutine.wrap(function()
     local ok,err=pcall(function()
         park();sp:write_u32(0x05fe0080,0x8000)
         for _,op in ipairs(code) do sp:write_u32(0x05fe0084,op) end
         assert(m.debugger,'debugger not enabled')
         m.debugger:command('dasm "'..assert(os.getenv('DSP_DASM_FILE'))..'",0,f1,0,:scu:scudsp')
         print('DSP_DASM dumped words=241')
+        sp:write_u32(0x05fe0080,0x8000);sp:write_u32(0x05fe0084,0x8c000012)
+        sp:write_u32(0x05fe0080,0x8010);sp:write_u32(0x05fe0084,0xf0000000)
+        sp:write_u32(0x05fe0080,0x80ff);sp:write_u32(0x05fe0084,0xd0000010)
+        m.debugger:command('trace "'..assert(os.getenv('DSP_TRACE_FILE'))..'",:scu:scudsp,noloop')
+        sp:write_u32(0x05fe0080,0x180ff);emu.wait(emu.attotime.from_usec(2))
+        assert((sp:read_u32(0x05fe0080)&0x10000)==0,'trace program did not end')
+        m.debugger:command('trace off,:scu:scudsp')
     end)
     if not ok then print('DSP_DASM FAIL '..tostring(err)) end
     m:exit()
+    end)()
 end)
 print('DSP_DASM armed')
 '''
@@ -62,6 +71,12 @@ def validate_output(log,dump,returncode):
         if int(address,16)!=i or ' '.join(text.split())!=expected:
             errors.append(f'row{i}: {text!r} != {expected!r}')
     if errors:raise RuntimeError(f'{len(errors)} disassembly mismatches:\n'+'\n'.join(errors))
+def validate_trace(trace):
+    rows=re.findall(r'^([0-9a-fA-F]+):\s*(.*?)\s*$',trace,re.M)
+    actual=[(int(pc,16),' '.join(text.split())) for pc,text in rows]
+    expected=[(255,'JMP $10'),(0,'MVI #$12,MC3'),(16,'END')]
+    if actual!=expected or len(rows)!=len([line for line in trace.splitlines() if line.strip()]):
+        raise RuntimeError(f'Debugger slot trace mismatch: {actual!r} != {expected!r}')
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--executable',type=Path,required=True);p.add_argument('--rompath',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
@@ -72,10 +87,12 @@ def main():
         d=Path(tmp);(d/'test.lua').write_text(LUA)
         command=[str(exe),'saturnjp','-rompath',str(rom),'-noreadconfig','-skip_gameinfo','-nodrc','-debug','-debugger','none','-video','none','-sound','none','-nothrottle','-seconds_to_run','30','-autoboot_delay','0','-autoboot_script',str(d/'test.lua')]
         for option in ('nvram','cfg','state','snapshot'):command+=['-'+option+'_directory',str(d/option)]
-        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy','DSP_DASM_FILE':str(d/'dasm.txt')}
+        env={**os.environ,'SDL_VIDEODRIVER':'dummy','SDL_AUDIODRIVER':'dummy','DSP_DASM_FILE':str(d/'dasm.txt'),'DSP_TRACE_FILE':str(d/'trace.txt')}
         with (output/'runtime.log').open('w') as log:run=subprocess.run(command,cwd=d,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180)
         dump=(d/'dasm.txt').read_text() if (d/'dasm.txt').is_file() else ''
         (output/'disassembly.txt').write_text(dump)
         validate_output((output/'runtime.log').read_text(),dump,run.returncode)
-    print('DSP disassembler: 241 real debugger destination/parallel-command rows passed')
+        trace=(d/'trace.txt').read_text() if (d/'trace.txt').is_file() else ''
+        (output/'trace.txt').write_text(trace);validate_trace(trace)
+    print('DSP disassembler: 241 real debugger destination/parallel-command rows and three slot trace rows passed')
 if __name__=='__main__':main()
