@@ -1,0 +1,13 @@
+diff --git a/src/devices/cpu/scudsp/scudsp.cpp b/src/devices/cpu/scudsp/scudsp.cpp
+index f774978c..86257c09 100644
+--- a/src/devices/cpu/scudsp/scudsp.cpp
++++ b/src/devices/cpu/scudsp/scudsp.cpp
+@@ -365,7 +365,7 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
+ 	newval = oldval;
+ 	COMBINE_DATA(&newval);
+ 
+-	m_flags = (newval & 0x0063'0000) | (m_flags & ~0x0063'0000);
++	m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
+ 
+ 	if (BIT(m_flags, EPF))
+ 		popmessage("scudsp.cpp: single step enabled");
