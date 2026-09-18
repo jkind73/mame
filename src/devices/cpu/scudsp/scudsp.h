@@ -137,6 +137,7 @@ private:
 	struct{
 		uint32_t src, dst;
 		uint16_t add, write_stride;
+		uint8_t program_address;
 		uint16_t size, update, ex, dir, count;
 	}m_dma;
 	address_space *m_program;

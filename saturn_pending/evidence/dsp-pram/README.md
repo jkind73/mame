@@ -1,8 +1,8 @@
-# DSP-02 / DSP-03: program-RAM DMA loader candidate (NOT APPLIED)
+# DSP-02 / DSP-03: program-RAM DMA loader implementation (NATIVE WIP)
 
-The existing op_dma masks the destination to two bits: PRG selector 4 becomes
+The previous op_dma masks the destination to two bits: PRG selector 4 becomes
 MD0, so the nominal program-RAM branch is unreachable. That branch also contains
-a fatal-error stub. The new candidate decodes the selector, writes program RAM
+a fatal-error stub. The implementation decodes the selector, writes program RAM
 through an independently saved 8-bit cursor, allows the following MVI-to-PC to
 supply the load address before stalling, then returns to TOP and discards the old
 pending slot at completion. It does not import reference source code.
@@ -24,8 +24,9 @@ RAM and completion PC/TOP handling but has explicit timing hacks; not an oracle.
 Scope is ONLY the documented MVI-PC serialized loader path. Deferred MVI RA0/WA0,
 END/ENDI serialization, un-serialized self-modification, zero/large counts, exact
 bus grants and prefetch timing are NOT complete. The candidate must not be called
-full DSP program-RAM DMA support. Apply only after ca63041f's read-DMA native gate
-is qualified. It is presently a portable WIP patch, not production acceptance.
+full DSP program-RAM DMA support. Integrated after ca63041f passed its complete expanded native gate. The portable
+patch is retained in Git history; do not reapply it. New production native
+qualification remains pending.
 
 Extracted actual-method checks pass: 4,096 program-target/wrap/count/hold/count-form
 cases, five state-copy replay cuts each, existing 2,048 read-mirror cases, 768 DMA
