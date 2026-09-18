@@ -1,0 +1,9 @@
+{
+  "scope": "Historical8881caa1 only; not current-source acceptance",
+  "artifact": {
+    "source_commit": "8881caa17ef051ce16a4db3f6feb83e24cd0ba8c",
+    "binary_sha256": "20dee11ce310bb553054f219d3b08ee23f6a8cf9f596461890183a18dc7ba47e",
+    "executable": "/home/user/saturn-ci-8881caa1/saturn",
+    "run_url": "https://github.com/jkind73/mame/actions/runs/35356222037"
+  }
+}
