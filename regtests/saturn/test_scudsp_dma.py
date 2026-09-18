@@ -29,10 +29,23 @@ methods = '\n'.join(extract(s) for s in (
     'TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)',
     'void scudsp_cpu_device::device_reset()',
     'void scudsp_cpu_device::set_dest_dma_mem(',
+    'void scudsp_cpu_device::set_dest_mem_reg_2(',
     'uint32_t scudsp_cpu_device::get_mem_source_dma('))
 fields = re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state)\)\)', src)
 restore = '\n'.join(f' d.{field}=s.{field};' for field in fields)
 mutant = os.environ.get('MUTATE_DSP_DMA', '')
+if mutant == 'pram-alias':
+    methods = methods.replace('(dir_from_D0 ? 0x300 : 0x700)', '0x300')
+if mutant == 'pram-early-stall':
+    methods = methods.replace('if (m_dma.dir || m_dma.dst != 4)', 'if (true)')
+if mutant == 'pram-cursor':
+    restore = restore.replace('d.m_dma.program_address=s.m_dma.program_address;', '')
+if mutant == 'pram-resume':
+    methods = methods.replace('m_pc = m_top;', 'm_pc = m_top + 1;')
+if mutant == 'pram-flush':
+    begin = methods.index('TIMER_CALLBACK_MEMBER')
+    end = methods.index('void scudsp_cpu_device::device_reset()', begin)
+    methods = methods[:begin]+methods[begin:end].replace('m_delay_pending = false;', '')+methods[end:]
 if mutant == 'read-upper':
     methods = methods.replace('physical < 0x08000000', 'physical < 0x07000000')
 if mutant == 'read-low-bits':
@@ -62,6 +75,7 @@ harness = r'''
 #define INPUT_LINE_HALT 1
 #define ASSERT_LINE 1
 #define CLEAR_LINE 0
+#define scudsp_writeop(a,v) pram[(a)]=(v)
 #define scudsp_writemem(a,b,v) ram[(a)|((b)<<6)]=(v)
 #define scudsp_readmem(a,b) ram[(a)|((b)<<6)]
 using emu_fatalerror=std::runtime_error;
@@ -69,13 +83,14 @@ struct attotime {static constexpr int never=-1;static int from_ticks(int n,int){
 struct timer {int delay=-1;void adjust(int n){delay=n;}};
 struct scudsp_cpu_device {
  enum {DMA_STATE_IDLE,DMA_STATE_WAIT,DMA_STATE_MOVE,T0F=23};
- struct {uint32_t src=0,dst=0;uint16_t add=0,write_stride=0,size=0,update=0,ex=0,dir=0,count=0;} m_dma;
+ struct {uint32_t src=0,dst=0;uint8_t program_address=0;uint16_t add=0,write_stride=0,size=0,update=0,ex=0,dir=0,count=0;} m_dma;
+ uint8_t m_pc=0,m_top=0;
  bool m_delay_pending=false;uint8_t m_delay=0;
  uint8_t m_dma_state=0,m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0;
  uint32_t m_ra0=0,m_wa0=0,m_flags=0,count_source=1;
  int m_icount=0;bool halt=false;int ddwt=0,ddmv=0;
  timer t;timer *m_dma_timer=&t;
- std::array<uint32_t,256> ram{};
+ std::array<uint32_t,256> ram{},pram{};
  std::vector<std::pair<uint32_t,uint16_t>> writes;
  std::vector<uint32_t> reads;
  int clock(){return 1;}
@@ -84,6 +99,8 @@ struct scudsp_cpu_device {
  void m_out_ddwt_cb(int n){ddwt=n;}void m_out_ddmv_cb(int n){ddmv=n;}
  uint16_t m_in_dma_cb(uint32_t addr){reads.push_back(addr);return uint16_t(addr^0xabcd);}
  void m_out_dma_cb(uint32_t addr,uint16_t data){writes.emplace_back(addr,data);}
+ void set_dest_mem_reg(uint32_t,uint32_t){assert(false);}
+ void set_dest_mem_reg_2(uint32_t,uint32_t);
  void op_dma(uint32_t);void exec_dma();void dma_tick_cb(int);void device_reset();
  void set_dest_dma_mem(uint32_t,uint32_t);uint32_t get_mem_source_dma(uint32_t);
  void tick(){dma_tick_cb(0);}
@@ -94,6 +111,7 @@ void restore(scudsp_cpu_device &d,scudsp_cpu_device const &s){
  // The emulation framework owns timer/execution/memory state. Copy those
  // endpoints here; copy DMA state ONLY if registered by production source.
  d.t=s.t;d.halt=s.halt;d.ddwt=s.ddwt;d.ddmv=s.ddmv;
+ d.pram=s.pram;d.m_pc=s.m_pc;d.m_top=s.m_top;d.m_delay=s.m_delay;d.m_delay_pending=s.m_delay_pending;
  d.ram=s.ram;d.m_flags=s.m_flags;d.m_ra0=s.m_ra0;d.m_wa0=s.m_wa0;
  d.m_ct0=s.m_ct0;d.m_ct1=s.m_ct1;d.m_ct2=s.m_ct2;d.m_ct3=s.m_ct3;
  // RESTORE
@@ -152,6 +170,35 @@ int main(){
   assert(s.reads.size()==130&&s.writes.empty());
   for(unsigned i=0;i<130;++i)assert(s.reads[i]==0x06000000+i*2);
  }
+ unsigned program_cases=0;
+ for(unsigned target=0;target<256;++target)for(unsigned hold=0;hold<2;++hold)
+ for(unsigned indirect=0;indirect<2;++indirect)for(unsigned count:{1u,2u,63u,255u}){
+  scudsp_cpu_device s;s.m_ra0=0x06010000/4;s.count_source=count;s.m_pc=2;
+  s.op_dma(0xc0010400|(hold<<14)|(indirect<<13)|(indirect?0:count));
+  assert(s.m_dma.dst==4&&!s.halt);
+  // Model the post-fetch PC of the required following MVI-to-PC instruction.
+  s.m_pc=3;s.set_dest_mem_reg_2(12,target);
+  assert(s.halt&&s.m_pc==target&&s.m_top==3);
+  for(unsigned cut:{0u,1u,2u,count/2+1,count+1}){
+   scudsp_cpu_device a=s;a.m_dma_timer=&a.t;
+   for(unsigned i=0;i<cut;++i)a.tick();
+   scudsp_cpu_device b;restore(b,a);
+   a.reads.clear();a.finish();b.finish();
+   assert(a.pram==b.pram&&a.ram==b.ram&&a.reads==b.reads);
+   assert(a.m_pc==3&&b.m_pc==3&&!a.m_delay_pending&&!b.m_delay_pending&&!b.halt);
+  }
+  s.finish();
+  std::array<uint32_t,256> expected{};
+  for(unsigned i=0;i<count;++i){
+   uint32_t addr=0x06010000+i*4;
+   expected[(target+i)&255]=(uint32_t(uint16_t(addr^0xabcd))<<16)|uint16_t((addr+2)^0xabcd);
+  }
+  assert(s.pram==expected);
+  for(auto word:s.ram)assert(word==0);
+  assert(s.m_ra0==0x06010000/4+(hold?0:count));
+  ++program_cases;
+ }
+ std::cout<<program_cases<<" program-RAM DMA target/wrap/count/hold cases and five replay cuts passed\n";
  unsigned read_cases=0;
  for(uint32_t alias:{0u,0x20000000u})for(unsigned mirror=0;mirror<32;++mirror)
  for(unsigned mode=0;mode<8;++mode)for(unsigned hold=0;hold<2;++hold)

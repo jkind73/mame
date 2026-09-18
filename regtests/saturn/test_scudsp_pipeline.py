@@ -42,6 +42,7 @@ harness=r'''
 #define scudsp_readop(a) readop(a)
 #define INPUT_LINE_HALT 1
 #define CLEAR_LINE 0
+#define ASSERT_LINE 1
 namespace util {int32_t sext(uint32_t v,unsigned bits){uint32_t sign=1u<<(bits-1);return int32_t((v&((1u<<bits)-1))^sign)-int32_t(sign);}}
 struct attotime {static constexpr int never=-1;};
 struct timer {void adjust(int){}};
@@ -50,7 +51,7 @@ struct scudsp_cpu_device {
  uint8_t m_pc=0,m_delay=0,m_top=0,m_update_mul=0,m_dma_state=0;
  bool m_delay_pending=false;uint16_t m_lop=0;uint32_t m_flags=0;
  int m_icount=0;int64_t m_mul=0;struct{int32_t si=0;}m_rx,m_ry;
- struct{unsigned ex=0,count=0;}m_dma;
+ struct{unsigned ex=0,count=0,dir=0,dst=0;}m_dma;
  timer t;timer *m_dma_timer=&t;
  std::array<uint32_t,256> code{};std::vector<unsigned> fetch;
  uint32_t readop(uint8_t a){fetch.push_back(a);return code[a];}
