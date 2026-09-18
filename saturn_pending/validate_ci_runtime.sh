@@ -60,6 +60,16 @@ python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/sat
     --rompath "$ROOT/regtests" --empty-pad 1:2 --empty-pad 2:5 \
     --output "$LOG_DIR/smpc-sparse" > "$LOG_DIR/smpc-sparse.log" 2>&1
 grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-sparse.log"
+phase=smpc-segatap
+python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --adapter segatap \
+    --output "$LOG_DIR/smpc-segatap" > "$LOG_DIR/smpc-segatap.log" 2>&1
+grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-segatap.log"
+phase=smpc-segatap-sparse
+python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --adapter segatap --empty-pad 1:2 --empty-pad 2:3 \
+    --output "$LOG_DIR/smpc-segatap-sparse" > "$LOG_DIR/smpc-segatap-sparse.log" 2>&1
+grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-segatap-sparse.log"
 phase=smpc-resb
 python3 saturn_pending/test_smpc_resb_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/smpc-resb" > "$LOG_DIR/smpc-resb.log" 2>&1
@@ -94,4 +104,4 @@ phase=final-provenance
 python3 saturn_pending/verify_ci_artifact.py "$ARTIFACT" --run-id "$RUN_ID" > "$LOG_DIR/final-artifact.json"
 cmp "$LOG_DIR/artifact.json" "$LOG_DIR/final-artifact.json"
 sha256sum -c "$LOG_DIR/bios.sha256"
-echo 'PASS: CI-artifact configuration, CD/cart/backup, three SCSP timers, multitap transport/save-load/timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
+echo 'PASS: CI-artifact configuration, CD/cart/backup, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
