@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-u_h4lru2/test.cpp:424: int main(): Assertion `s.m_MidiR==((pos+pop)&31)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 134, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-u_h4lru2/test']' died with <Signals.SIGABRT: 6>.
