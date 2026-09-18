@@ -1,3 +1,12 @@
+# Qualification update
+
+2e14f275 is native-qualified for the selected contract: build35369703506 /
+export35370407444, full64-script local/CI and complete native consumer pass.
+All576 parallel programs/four configurations, actual active-copy file replay,
+all prior gates and both provenance checks pass. Evidence: ../2e14f275-live/.
+Reference disagreements below remain open; native agreement is not hardware proof.
+Earlier WIP notes below are historical.
+
 # DSP-01 parallel data buses — integrated, native WIP
 
 Production op_alu now keeps the instruction-entry CT addresses through X, Y and
