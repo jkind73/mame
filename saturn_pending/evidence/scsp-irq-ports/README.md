@@ -45,3 +45,12 @@ not the archived fixture. Raw old-negative output is included.
 Matching build,1728 native cases/four configurations and all preceding gates
 are pending. This does not close the whole sound interrupt/timing parent,
 SCU arbitration, external IRQ pins, waveform or game acceptance. No flags change.
+
+Actual file replay is now required too: save pending DMA/CPU/sample requests
+and a stale high-byte clear command, issue low-byte acknowledgements, poison
+pending state, load, and repeat the command at exactly the restored timestamp.
+Both pending banks must restore exactly and both commands must leave unrelated
+requests intact. Old35f5d58b preserves/restores its bad result but fails five
+expected observations (two original acknowledgements, main DMA poisoning and
+two replayed acknowledgements).14 save-parser controls pass. Native rebuilt
+replay is pending. This is not sound waveform continuity or a timed DMA save.
