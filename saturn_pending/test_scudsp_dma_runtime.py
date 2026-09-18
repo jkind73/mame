@@ -77,7 +77,7 @@ def validate_output(text, returncode):
             rows!=list(range(1,33)) or len(re.findall(r'^DSP_DMA PASS cases=32$',text,re.M))!=1):
         raise RuntimeError('DSP DMA native fixture failed:\n'+text[-10000:])
 
-def main():
+def main(success_message="DSP DMA: 32 mapped-program B-bus addressing cases passed live"):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--executable',type=Path,default=ROOT/'saturn')
     p.add_argument('--rompath',type=Path,default=ROOT/'regtests')
@@ -98,6 +98,6 @@ def main():
         with (output/'runtime.log').open('w') as log:
             result=subprocess.run(command,cwd=d,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180)
         validate_output((output/'runtime.log').read_text(errors='replace'),result.returncode)
-    print('DSP DMA: 32 mapped-program B-bus addressing cases passed live')
+    print(success_message)
 
 if __name__=='__main__':main()
