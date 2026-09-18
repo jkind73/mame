@@ -343,8 +343,9 @@
 - **Dependencies:** the relevant component chain for each machine configuration; run incrementally during implementation, not only after the last chip.
 - [ ] **QA-01 — Complete fresh linked builds and aggregate validation. [V]**
   - Run focused Saturn/ST-V builds, MAME `-validate`, all existing regression subsets together, and linked mapped-register/background/composition tests with exact source/binary provenance.
-  - At this report's audit, the `812ec7a8` full build is still running and the automatic linked batch is waiting for it. No new linked pass is claimed here.
-  - All 47 extracted regression scripts previously passed for the fetch changes; this does not close T02 or validate real bus timing.
+  - Fresh native build, MAME `-validate`, and the ROM-free regression batch passed in [CI run 35287467065](https://github.com/jkind73/mame/actions/runs/35287467065), source `5008a92331e4bf6698b7a9e53116c2167ddcc673` (Ubuntu 22.04/GCC 12). Receipt: `saturn_pending/ci-35287467065.json`.
+  - The artifact is preserved on GitHub; local retrieval is blocked by artifact-host TLS EOF, and inbound preview transfer requires an access token. No token was exposed or protection bypassed. User-transferred ZIP ingestion now checks GitHub's independent ZIP digest before source/binary provenance checks.
+  - BIOS-dependent tests, linked mapped-register/background/composition runs and live save/load still require the artifact locally; QA-01 remains open. Historical extracted/BIOS totals are not fresh evidence for this revision.
 - [ ] **QA-02 — Complete deterministic whole-machine save/load/reset coverage. [V]**
   - Both SH-2 engines; DMA/DSP/VDP draw/erase/fetch/SCSP/CD activity; pending interrupts, clock changes and partial frames.
   - Compare uninterrupted and restored execution, memory, frame/audio output and IRQ sequences; distinguish host-backed RTC/network behavior from deterministic hardware state.
