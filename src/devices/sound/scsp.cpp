@@ -982,6 +982,8 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
   } break;
   case 0x6:
   case 0x7: {
+    if (!(mem_mask & 0x00ff))
+      break; // MOBUF is in the low byte; status/reserved lanes do not transmit.
     u8 data = m_udata.data[0x6 / 2] & 0xff;
     if (m_MidiOutR == m_MidiOutW) {
       // not busy, so start transmission
@@ -1118,7 +1120,7 @@ void scsp_device::UpdateReg(int reg, u16 mem_mask) {
 
 void scsp_device::UpdateSlotRegR(int slot, int reg) {}
 
-void scsp_device::UpdateRegR(int reg) {
+void scsp_device::UpdateRegR(int reg, u16 mem_mask) {
   switch (reg & 0x3f) {
   case 4:
   case 5: {
@@ -1126,16 +1128,20 @@ void scsp_device::UpdateRegR(int reg) {
     v &= 0xff00;
     v |= m_MidiStack[m_MidiR];
     logerror("Read %x from SCSP MIDI\n", v);
-    if (m_MidiR != m_MidiW) {
-      ++m_MidiR;
-      m_MidiR &= 31;
-    }
-    if (m_MidiR == m_MidiW) // if the input FIFO is empty, clear the IRQ
-    {
-      m_udata.data[0x20 / 2] &= ~0x08;
-      m_mcipd &= ~0x08;
-      CheckPendingIRQ();
-      update_main_irq();
+    // Only a data-byte read consumes MIDI input. Status-byte reads, debugger
+    // inspection and the register-write merge must leave the FIFO/IRQs alone.
+    if ((mem_mask & 0x00ff) && !machine().side_effects_disabled()) {
+      if (m_MidiR != m_MidiW) {
+        ++m_MidiR;
+        m_MidiR &= 31;
+      }
+      if (m_MidiR == m_MidiW) // if the input FIFO is empty, clear the IRQ
+      {
+        m_udata.data[0x20 / 2] &= ~0x08;
+        m_mcipd &= ~0x08;
+        CheckPendingIRQ();
+        update_main_irq();
+      }
     }
     m_udata.data[0x4 / 2] = v;
   } break;
@@ -1180,6 +1186,8 @@ void scsp_device::w16(u32 addr, u16 val, u16 mem_mask) {
     UpdateSlotReg(slot, addr & 0x1f);
   } else if (addr < 0x600) {
     if (addr < 0x430) {
+      if (addr == 0x404)
+        return; // MIBUF and MIDI status are read-only, including DMA writes.
       // SCIPD and MCIPD are r/o except for bit 5 CPU irqs
       if (addr == 0x420 || addr == 0x42c) {
         *((u16 *)(m_udata.datab + ((addr & 0x3f)))) |= val & mem_mask & 0x20;
@@ -1211,7 +1219,7 @@ void scsp_device::w16(u32 addr, u16 val, u16 mem_mask) {
   }
 }
 
-u16 scsp_device::r16(u32 addr) {
+u16 scsp_device::r16(u32 addr, u16 mem_mask) {
   u16 v = 0;
   addr &= 0xffff;
   if (addr < 0x400) {
@@ -1221,7 +1229,7 @@ u16 scsp_device::r16(u32 addr) {
     v = *((u16 *)(m_Slots[slot].udata.datab + (addr)));
   } else if (addr < 0x600) {
     if (addr < 0x430) {
-      UpdateRegR(addr & 0x3f);
+      UpdateRegR(addr & 0x3f, mem_mask);
       v = *((u16 *)(m_udata.datab + ((addr & 0x3f))));
     }
   } else if (addr < 0x700)
@@ -1595,15 +1603,15 @@ void scsp_device::exec_dma() {
   MainCheckPendingIRQ(0x10);
 }
 
-u16 scsp_device::read(offs_t offset) {
+u16 scsp_device::read(offs_t offset, u16 mem_mask) {
   m_stream->update();
-  return r16(offset * 2);
+  return r16(offset * 2, mem_mask);
 }
 
 void scsp_device::write(offs_t offset, u16 data, u16 mem_mask) {
   m_stream->update();
 
-  u16 tmp = r16(offset * 2);
+  u16 tmp = r16(offset * 2, 0); // peek for merging, not a MIDI data read
   COMBINE_DATA(&tmp);
   w16(offset * 2, tmp, mem_mask);
 }

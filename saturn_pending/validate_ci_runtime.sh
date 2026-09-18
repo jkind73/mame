@@ -208,6 +208,17 @@ phase=scsp-irq-save
 python3 saturn_pending/test_scsp_irq_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
 grep -q 'SCSP IRQ save: pending requests and independent byte acknowledgements restored through real file replay' "$LOG_DIR/$phase.log"
+phase=scsp-midi
+python3 saturn_pending/test_scsp_midi_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP MIDI: 1536 output-byte/serial-completion cases passed live' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-midi-$system-drc"
+    python3 saturn_pending/test_scsp_midi_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP MIDI: 1536 output-byte/serial-completion cases passed live' "$LOG_DIR/$phase.log"
+done
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
