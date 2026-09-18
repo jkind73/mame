@@ -1,4 +1,4 @@
-# SND-04 signed DSP address displacement — native WIP
+# SND-04 signed DSP address displacement — NATIVE QUALIFIED
 
 ADREB must sign-extend ADRS_REG's twelve bits before the existing ring/TABLE
 mask and RBP addition. Production changes only that addition. No GPL code copied.
@@ -38,8 +38,11 @@ passes199/fails48 programs, including all original31 passing. The48 negative
 address cases produce64 failed observations because16 writes also hit the
 wrong-address guard. Raw old-native and method/mutant logs are included.
 Source66e351f7 passes full70-script local/CI and build35391990957.
-Matching rebuilt native acceptance is PENDING, not an accepted production
-endpoint. Four profiles will require988 programs. Full DSP timing, bus
+Matching build35391990957/export35393028889 and the complete native consumer
+PASS:988 programs across JP/interpreter, JP/DRC, PAL/DRC and ST-V/DRC,
+plus actual file replay and every preceding gate. Binary SHA256
+805d46ff2b630843f28ec1d703f35626c2d4c4e80f954160acdca33cafb9573b.
+Raw evidence: `../66e351f7-live/`; consumer revision recorded separately. Full DSP timing, bus
 arbitration, final writes, IWT forwarding, waveform/game and whole-driver
 acceptance remain open; no working flags changed.
 
@@ -50,4 +53,4 @@ sample after load must use the restored displacement before the late ADRL
 can repair it. Separate source reads preserve the existing main and step127
 read-pipeline controls. Old9baba980 fails only the three expected signed-address
 observations (initial, original and replayed); other replay/poison controls
-remain intact.14 save-parser controls pass. Rebuilt native replay pending.
+remain intact.14 save-parser controls pass. Rebuilt native replay PASS, including signed-address restoration before refresh.

@@ -155,3 +155,17 @@ integrated revision; no result is inherited from the lost build.
   API blob exported alongside an unpublished draft release. No firmware,
   sandbox token, or binary source-tree commit is involved. Native receipts and
   text logs are under `saturn_pending/`; no working flags are promoted.
+
+## Qualified SCSP microprogram and address contract
+
+Source66e351f7 executes all128 steps and adds sign-extended twelve-bit ADRS_REG
+only with ADREB, before TABLE/ring masking and RBP. Simultaneous ADRL affects
+the next instruction, not the current address.69632 new method cases plus6531
+previous cases/stopped control, nine compiled mutants,70-script local/CI and
+build35391990957/export35393028889 pass. Complete native consumer passes988
+programs/four profiles and actual effect/late-read/signed-address file replay,
+including the first sample before the address latch can refresh. Evidence and
+precise source pins: `saturn_pending/evidence/scsp-dsp-address/README.md` and
+`../66e351f7-live/`. Consumer revision is separate from compiled source.
+No change to IWT forwarding, memory arbitration, write flushing, whole sound
+timing, game-performance acceptance or working flags is implied.
