@@ -1,7 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:ElSemi, R. Belmont
-#include "scspdsp.h"
 #include "emu.h"
+#include "scspdsp.h"
 
 
 #include <cstring>
