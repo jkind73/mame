@@ -30,6 +30,7 @@ jobs:
       - name: Verify successful source run and export its exact ZIP to a draft
         shell: python
         run: |
+          import base64
           import hashlib
           import json
           import os
@@ -78,5 +79,24 @@ jobs:
               subprocess.run(['gh', 'release', 'create', tag, '--draft', '--target', source,
                   '--title', 'Saturn validation ' + source[:8] + ' (unreleased)', '--notes', notes], check=True)
           subprocess.run(['gh', 'release', 'upload', tag, str(path), '--clobber'], check=True)
+          # A temporary, unreferenced Git blob supports API-only transfer when
+          # the client's binary download hosts are unavailable. It creates no
+          # commit, tree, branch or tag. The draft asset remains durable storage;
+          # the transfer blob may eventually be garbage-collected by GitHub.
+          payload = Path('transfer-blob.json')
+          data = path.read_bytes()
+          payload.write_text(json.dumps({'encoding': 'base64',
+              'content': base64.b64encode(data).decode('ascii')}))
+          blob = json.loads(gh('api', f'repos/{repo}/git/blobs', '--method', 'POST',
+                              '--input', str(payload)))
+          payload.unlink()
+          expected_blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          assert blob['sha'] == expected_blob
+          notes = ('Unpublished validation storage, not a MAME release or working-driver promotion.\n\n'
+                   + run['url'] + '\nSource: ' + source + '\nOriginal CI ZIP: ' + digest
+                   + '\nNo firmware or game images. Complete corresponding source is at '
+                   + f'https://github.com/{repo}/tree/{source}.\n'
+                   + 'Temporary API transfer blob: ' + blob['sha'] + '\n')
+          subprocess.run(['gh', 'release', 'edit', tag, '--notes', notes], check=True)
           print('Verified original CI ZIP stored in draft ' + tag)
           print(digest)
