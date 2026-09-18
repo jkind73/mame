@@ -61,5 +61,5 @@ validates the real MAMESAVE file. This is prior-behavior save coverage, not an
 old-source arithmetic negative or candidate acceptance. Thirteen save-parser
 controls pass separately. The expanded native consumer requires this replay too.
 
-Source ea9a7a7c passed the61-script full local batch (three optional live skips
-excluded) and CI35363539017. Native new-source consumption remains pending.
+Source ea9a7a7c passed the61-script full local batch (three optional live scripts
+skipped locally, then executed in the native consumer) and CI35363539017. Native new-source consumption remains pending.

@@ -1,3 +1,16 @@
+# Native-qualified12-bit DSP loop counter
+
+Production/latest native-qualified source: **280c40e1**. Build35366921336,
+export35367861840, full63-script local/CI and complete legal-port native consumer
+pass. All320 loop programs/four configs, actual active4096-iteration loop file
+replay,256 multiplier and844 arithmetic programs, and every preceding gate pass.
+Both provenance checks and BIOS hashes pass. Binary SHA256:
+`103e82860b5704d7ec19ad02ff49ea121d79021e1d23e547f3beba9b5e7fec36`.
+Evidence: `evidence/280c40e1-live/`. No working flags promoted or parent closed.
+All WIP notes below are historical and superseded for this qualified scope.
+
+---
+
 # 12-bit DSP loop counter — native WIP
 
 LOP writes now retain12 bits rather than16, as documented and corroborated by

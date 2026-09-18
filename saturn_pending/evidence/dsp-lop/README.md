@@ -1,3 +1,11 @@
+# Qualification update
+
+280c40e1 is native-qualified: build35366921336/export35367861840, full63-script
+local/CI and complete legal-port native consumer pass. All320 loop programs/four
+configurations, active4096-iteration file replay and all prior gates pass with
+both provenance checks. Evidence: ../280c40e1-live/. Earlier WIP statements below
+are historical; no complete-loop/DSP parent or working flag is claimed.
+
 # Integrated12-bit loop-counter correction — native WIP
 
 The shared LOP destination setter now masks to0xfff in production. The actual
