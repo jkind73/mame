@@ -178,6 +178,17 @@ phase=dsp-slot-save
 python3 saturn_pending/test_scudsp_slot_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-slot-save" > "$LOG_DIR/dsp-slot-save.log" 2>&1
 grep -q 'DSP pending slot save: wrapped slot restored and executed exactly' "$LOG_DIR/dsp-slot-save.log"
+phase=scsp-dsp
+python3 saturn_pending/test_scsp_dsp_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP DSP: 31 zero-tail/live-program cases passed live' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-dsp-$system-drc"
+    python3 saturn_pending/test_scsp_dsp_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP DSP: 31 zero-tail/live-program cases passed live' "$LOG_DIR/$phase.log"
+done
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1

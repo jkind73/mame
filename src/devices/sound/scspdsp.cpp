@@ -81,7 +81,9 @@ void SCSPDSP::Step() {
   /* ACC, FRC_REG, Y_REG and ADRS_REG are chip registers that persist across
      samples; see the declaration in scspdsp.h. */
 
-  for (int step = 0; step < /*128*/ LastStep; ++step) {
+  // All 128 slots are clocked. Zero words still update the MAC/input latches
+  // and complete pending memory accesses; LastStep is not an execution bound.
+  for (int step = 0; step < 128; ++step) {
     u16 *const IPtr = MPRO + (step * 4);
 
     // if (!IPtr[0] && !IPtr[1] && !IPtr[2] && !IPtr[3])
