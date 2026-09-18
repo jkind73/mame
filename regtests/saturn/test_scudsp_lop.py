@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import tempfile
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 src=Path(os.environ.get('SCUDSP_LOP_SOURCE',ROOT/'src/devices/cpu/scudsp/scudsp.cpp')).read_text()
 def extract(sig):
     start=src.index(sig);end=src.index('{',start)+1;depth=1
@@ -87,7 +87,7 @@ int main(){
  std::cout<<cases<<" actual LOP write/width/conditional and full-count BTM/LPS cases passed under UBSan\n";
 }
 '''
-with tempfile.TemporaryDirectory(prefix='scudsp-mul-') as folder:
+with tempfile.TemporaryDirectory(prefix='scudsp-lop-') as folder:
     source=Path(folder)/'test.cpp';exe=Path(folder)/'test'
     source.write_text(cpp.replace('// MACROS',macros).replace('// METHODS',methods))
     subprocess.run([os.environ.get('CXX','g++'),'-std=c++20','-O1','-g','-fsanitize=undefined',

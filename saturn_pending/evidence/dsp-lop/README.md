@@ -1,3 +1,16 @@
+# Integrated12-bit loop-counter correction — native WIP
+
+The shared LOP destination setter now masks to0xfff in production. The actual
+method harness is in the default suite at regtests/saturn/test_scudsp_lop.py.
+It passes991,232 cases under UBSan. Latest qualified25f13c07 repeats the42-pass/
+38-fail native count negative; scheduled active-loop file replay also completes
+but emits65536 rather than4096 iterations both before and after load. All128
+final output-ring words disagree; active/save/mutation/load sequencing succeeds.
+New consumer requires320 loop programs/four configurations and actual active
+4096-iteration file replay, in addition to every prior accepted gate.
+Candidate native positive/full build/full63-script batch remain pending.
+Earlier external-candidate notes below are historical.
+
 # DSP-01 next candidate:12-bit loop-counter input (not integrated yet)
 
 Primary ST-097 printed78/PDF94 calls LOP12-bit; source header already agrees.

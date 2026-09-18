@@ -1,3 +1,15 @@
+#12-bit DSP loop counter — native WIP
+
+LOP writes now retain12 bits rather than16, as documented and corroborated by
+both pinned emulators.991,232 actual-method UBSan cases pass. Qualified25f13c07
+passes42 controls/fails38 iteration-count programs; actual active-loop file
+replay reproduces65536 rather than4096 iterations. New native gate adds320 loop
+programs/four configurations and active-loop file replay. Full63-script batch,
+build and candidate native positive pending. Contract: `evidence/dsp-lop/README.md`.
+Latest fully native-qualified source remains25f13c07 for the scope below.
+
+---
+
 # Native-qualified multiplier refresh
 
 Production/latest native-qualified source: **25f13c07**. Build35365374912,
