@@ -1181,8 +1181,12 @@ void scsp_device::w16(u32 addr, u16 val, u16 mem_mask) {
   } else if (addr < 0x600) {
     if (addr < 0x430) {
       // SCIPD and MCIPD are r/o except for bit 5 CPU irqs
-      if (addr == 0x420 || addr == 0x42e) {
-        *((u16 *)(m_udata.datab + ((addr & 0x3f)))) |= val & 0x20;
+      if (addr == 0x420 || addr == 0x42c) {
+        *((u16 *)(m_udata.datab + ((addr & 0x3f)))) |= val & mem_mask & 0x20;
+      } else if (addr == 0x422 || addr == 0x42e) {
+        // Interrupt reset ports are write-one commands, not merged storage.
+        // Inactive byte lanes must not replay a previous acknowledgement.
+        *((u16 *)(m_udata.datab + ((addr & 0x3f)))) = val & mem_mask;
       } else
         *((u16 *)(m_udata.datab + ((addr & 0x3f)))) = val;
       UpdateReg(addr & 0x3f, mem_mask);
