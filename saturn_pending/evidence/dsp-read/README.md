@@ -34,3 +34,7 @@ missing upper C-bus half, low-bit B-bus misclassification, CS2 treated as B-bus.
 Full-TU C++20 syntax passes. Twelve parser controls pass, not device evidence.
 New-source native positive is pending; the gate requires read-DMA programs on
 JP/interpreter, JP/DRC, PAL/DRC and ST-V/DRC, in addition to all earlier gates.
+
+Production ca63041f full local batch: 58 scripts, exit zero. Three optional
+missing-default-binary live skips are excluded from native acceptance. Log:
+`local/regressions.log`. Native build 35341486010 is still building.
