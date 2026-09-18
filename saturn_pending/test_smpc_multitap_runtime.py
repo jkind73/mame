@@ -43,6 +43,16 @@ local function park()
         cpu.state["SR"].value=0xf0;cpu.state["PC"].value=0x06000000
     end
 end
+local function wait_vblank()
+    -- Observe the device/SCU edge, not screen blank (one scanline earlier).
+    -- Both SH-2s are parked with IRQs masked, so they cannot acknowledge it.
+    sp:write_u32(0x05fe00a4,0xfffffffe)
+    for n=1,800 do
+        if (sp:read_u32(0x05fe00a4)&1)~=0 then return end
+        emu.wait(emu.attotime.from_usec(50))
+    end
+    error("SCU VBlank-IN timeout")
+end
 local buttons={{"A",0x0400},{"B",0x0100},{"X",0x0040},{"Y",0x0020}}
 local function set_pad(index, pattern)
     local word=0xffff
@@ -55,14 +65,27 @@ local function set_pad(index, pattern)
 end
 '''
 LUA = COMMON_LUA + r'''
+local empty={}
+for port,slot in (os.getenv('SMPC_EMPTY_PADS') or ''):gmatch('([12]):([1-6])') do
+    empty[(tonumber(port)-1)*6+tonumber(slot)]=true
+end
+local set_connected_pad=set_pad
+local function set_pad(index,pattern)
+    if empty[index] then return 0xffff end
+    return set_connected_pad(index,pattern)
+end
 local function test()
     park()
     for port=1,2 do for sub=1,6 do
         local tag=string.format(":ctrl%d:multitap:ctrl%d:joypad:JOY",port,sub)
         local p=m.ioport.ports[tag]
-        assert(p,"missing pad "..tag)
-        for _,entry in ipairs(buttons) do assert(p.fields[entry[1]],"missing button "..entry[1]) end
-        pads[#pads+1]=p
+        local index=(port-1)*6+sub
+        if empty[index] then assert(not p,"expected empty pad "..tag)
+        else
+            assert(p,"missing pad "..tag)
+            for _,entry in ipairs(buttons) do assert(p.fields[entry[1]],"missing button "..entry[1]) end
+        end
+        pads[index]=p or false
     end end
     local case=0
     for _,modes in ipairs({{0,0},{3,0},{0,3}}) do
@@ -76,13 +99,16 @@ local function test()
                     local index=(port-1)*6+sub
                     local word=set_pad(index,index)
                     if modes[port]~=3 then
-                        want[#want+1]=2;want[#want+1]=(word>>8)&255;want[#want+1]=word&255
+                        if empty[index] then want[#want+1]=0xff
+                        else
+                            want[#want+1]=2;want[#want+1]=(word>>8)&255;want[#want+1]=word&255
+                        end
                     end
                 end
             end
             -- Begin each independent request at VBlank, not a frame-paced
             -- continuation of the previous packet.
-            emu.wait(screen:time_until_vblank_start())
+            wait_vblank()
             sp:write_u8(SF,1)
             sp:write_u8(I0,status);sp:write_u8(I1,(modes[2]<<6)|(modes[1]<<4)|8)
             sp:write_u8(I2,0xf0);sp:write_u8(COM,0x10)
@@ -131,10 +157,21 @@ print("SMPC_MULTITAP armed")
 '''
 
 
-def validate_output(text, returncode):
+def empty_pad(value):
+    if not re.fullmatch(r'[12]:[1-6]', value):
+        raise argparse.ArgumentTypeError('use PORT:SLOT, ports 1-2 and slots 1-6')
+    return tuple(map(int, value.split(':')))
+
+
+def expected_packets(empty):
+    lengths = [19-2*sum(p == port for p, slot in empty) for port in (1, 2)]
+    return [(n, (n+31)//32) for n in (sum(lengths),)*2+(lengths[1],)*2+(lengths[0],)*2]
+
+
+def validate_output(text, returncode, specification=EXPECTED):
     records = [tuple(map(int, x)) for x in re.findall(
         r'^SMPC_MULTITAP case=(\d+) bytes=(\d+) pages=(\d+) PASS$', text, re.M)]
-    expected = [(i, length, pages) for i, (length, pages) in enumerate(EXPECTED, 1)]
+    expected = [(i, length, pages) for i, (length, pages) in enumerate(specification, 1)]
     if (returncode or 'SMPC_MULTITAP FAIL' in text or 'LUA ERROR' in text or
             records != expected or not re.search(r'^SMPC_MULTITAP PASS cases=6$', text, re.M)):
         raise RuntimeError('SMPC multitap fixture failed:\n' + text[-8000:])
@@ -145,7 +182,9 @@ def main():
     p.add_argument('--executable', type=Path, default=ROOT/'saturn')
     p.add_argument('--rompath', type=Path, default=ROOT/'regtests')
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--empty-pad', type=empty_pad, action='append', default=[])
     a = p.parse_args()
+    empty=set(a.empty_pad)
     a.executable=a.executable.resolve();a.rompath=a.rompath.resolve();a.output=a.output.resolve()
     if not a.executable.is_file() or not (a.rompath/'saturnjp.zip').is_file():
         print('SKIP: need native executable and saturnjp BIOS')
@@ -153,17 +192,20 @@ def main():
     a.output.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='smpc-multitap-') as tmp:
         d=Path(tmp);script=d/'test.lua';script.write_text(LUA)
-        env=os.environ.copy();env.update(SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy')
+        env=os.environ.copy();env.update(SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy',
+            SMPC_EMPTY_PADS=','.join(f'{p}:{s}' for p,s in sorted(empty)))
         command=[str(a.executable),'saturnjp','-rompath',str(a.rompath),
             '-ctrl1','multitap','-ctrl2','multitap','-noreadconfig','-skip_gameinfo','-nodrc',
             '-video','none','-sound','none','-nothrottle','-seconds_to_run','30',
             '-autoboot_delay','0','-autoboot_script',str(script),
             '-nvram_directory',str(d/'nvram'),'-cfg_directory',str(d/'cfg'),
             '-state_directory',str(d/'sta'),'-snapshot_directory',str(d/'snap')]
+        for port,slot in sorted(empty):
+            command += [f'-ctrl{port}:multitap:ctrl{slot}', '']
         with (a.output/'runtime.log').open('w') as log:
             result=subprocess.run(command,cwd=d,env=env,text=True,
                 stdout=log,stderr=subprocess.STDOUT,timeout=180)
-        validate_output((a.output/'runtime.log').read_text(errors='replace'),result.returncode)
+        validate_output((a.output/'runtime.log').read_text(errors='replace'),result.returncode,expected_packets(empty))
     print('SMPC multitap: six live transport cases passed; not wire-timing/save-manager acceptance')
 
 

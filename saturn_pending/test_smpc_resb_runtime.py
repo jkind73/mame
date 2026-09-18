@@ -18,7 +18,7 @@ local function test()
     park()
     local reset=m.ioport.ports[':RESET'];assert(reset,'missing RESET port')
     local button=reset.fields['Reset Button'];assert(button,'missing reset button')
-    emu.wait(screen:time_until_vblank_start());ready()
+    wait_vblank();ready()
     -- Exercise RESDISA through mapped registers, not a private-field write.
     sp:write_u8(SF,1);sp:write_u8(COM,0x1a);ready()
     button:set_value(0)
