@@ -79,7 +79,8 @@ jobs:
                            + '\nNo firmware or game images. Complete corresponding source is at '
                            + f'https://github.com/{repo}/tree/{source}.\n')
                   subprocess.run(['gh', 'release', 'create', tag, '--draft', '--target', source,
-                      '--title', 'Saturn validation ' + source[:8] + ' (unreleased)', '--notes', notes], check=True)
+                      '--title', 'Saturn validation ' + source[:8] + ' (unreleased)', '--notes', notes],
+                      check=True, stderr=subprocess.PIPE, text=True)
               subprocess.run(['gh', 'release', 'upload', tag, str(path), '--clobber'], check=True)
               # A temporary, unreferenced Git blob supports API-only transfer when
               # the client's binary download hosts are unavailable. It creates no
@@ -102,8 +103,8 @@ jobs:
               subprocess.run(['gh', 'release', 'edit', tag, '--notes', notes], check=True)
               print('Verified original CI ZIP stored in draft ' + tag)
               print(digest)
-          except Exception:
-              detail = re.sub(r'https?://[^\s]+', '<URL>', traceback.format_exc())
+          except Exception as error:
+              detail = re.sub(r'https?://[^\s]+', '<URL>', traceback.format_exc() + str(getattr(error, 'stderr', '') or ''))
               detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::error title=Artifact export diagnostic::' + detail)
               raise
