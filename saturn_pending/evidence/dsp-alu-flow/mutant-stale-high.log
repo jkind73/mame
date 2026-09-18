@@ -1,0 +1,7 @@
+test: /tmp/scudsp-flow-kn53dtb5/test.cpp:333: int main(): Assertion `uint64_t(d.m_alu)==result' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_alu_flow_model.py", line 61, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-flow-kn53dtb5/test']' died with <Signals.SIGABRT: 6>.

@@ -1,4 +1,4 @@
-# Pause/resume integrated — native WIP
+# Pause/resume — NATIVE QUALIFIED
 
 The preserved prototype is now in production, after dacd1f99 passed its complete
 native acceptance. The default suite includes4480 actual-method cases plus four
@@ -8,9 +8,11 @@ command priority. Actual paused state is reflected in debugger flag text.
 The complete consumer now requires24 native pause programs/four configurations
 and an actual paused/odd-phase DMA file replay. The complete68-script local
 batch passes; binary-dependent local checks remain separate from native acceptance.
-GitHub authentication is restored. Checkpoint f944ce85 is pushed and remote-verified;
-build35376996618 is running. Latest native-qualified source remains dacd1f99.
-Candidate native acceptance has NOT run. ES single-step and exact prefetch/timing
+Checkpoint f944ce85 passes build35376996618/export35377759991 and the complete
+expanded native consumer:24 pause programs/four configurations, actual paused
+odd-phase DMA file replay, every prior gate and before/after provenance/BIOS
+checks. Binary SHA256:1c0d88d5f123bc50bdd19563b8d704cd25242af1327fa9660b99f865dea9fb13.
+Evidence: ../f944ce85-live/. ES single-step and exact prefetch/timing
 remain open. Two saved fields are added; cross-version saves are not promised.
 Earlier prototype notes below are historical; do not reapply the patch.
 
