@@ -1,3 +1,14 @@
+# RX multiplier-refresh follow-up — native WIP
+
+D1/MVI RX writes now refresh the cached product at the existing instruction
+boundary. Prior qualified ea9a7a7c passes24/fails40 new multiplier programs;
+all64 old-P observations pass. Corrected actual methods pass34,816 UBSan cases,
+full-TU syntax and12 parser controls. Native gate adds256 programs/four configs.
+Build/full batch/new-source native positive pending. Contract:
+`evidence/dsp-multiplier/README.md`. Arithmetic-qualified baseline below is ea9a7a7c.
+
+---
+
 # Native-qualified DSP arithmetic correction
 
 Production and latest fully native-qualified source: **ea9a7a7c**.
