@@ -693,13 +693,16 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 		// TODO: inherit bus reading from base SCU
 		// C-Bus reads can either be 0 or 4 only
 		// - mshvssf definitely wants this behaviour for palette at title & gameplay
-		if ((m_dma.src & 0x0700'0000) == 0x0600'0000)
+		uint32_t const physical = m_dma.src & 0x07ffffff;
+		if (physical >= 0x06000000 && physical < 0x08000000)
 		{
 			m_dma.add = (1 << (add & 2)) & ~1;
 		}
 
-		// B-Bus reads are reportedly always +4
-		if ((m_dma.src & 0x0700'0000) == 0x0500'0000 || (m_dma.src & 0x00e0'0000) >= 0x00a0'0000)
+		// B-bus reads are paired halfwords with a +4 source advance.
+		// Decode the entire bus address: testing only the low address bits
+		// misclassifies Work RAM-H mirrors and A-bus cartridge/CS2 accesses.
+		else if (physical >= 0x05900000 && physical < 0x06000000)
 		{
 			m_dma.add = 4;
 		}
