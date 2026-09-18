@@ -18,7 +18,8 @@ import zipfile
 
 ALLOWED = {'saturn', 'binary.sha256', 'source-commit.txt', 'input-trees.txt',
            'status.txt', 'build.log', 'compiler.txt', 'libc.txt', 'libraries.txt',
-           'validate.log', 'regressions.log'}
+           'validate.log', 'regressions.log', 'compiler-paths.txt',
+           'ccache-stats.txt', 'ccache-config.txt'}
 REQUIRED = {'saturn', 'binary.sha256', 'source-commit.txt', 'input-trees.txt', 'status.txt'}
 
 

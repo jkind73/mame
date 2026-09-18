@@ -1,0 +1,43 @@
+# DSP-02 / DSP-03: count-source selector candidate (NOT APPLIED)
+
+ST-097-R5-072694 pp.135–136 describes the count source as bits0–2: two
+RAM-bank bits and MCx post-increment. Bit3 is not part of that selector. Source:
+SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73, PDF blob
+ffa8932249634ebd98947dad123621cebe3f24fa (reviewed in the prior DMA audit).
+Pinned Ymir6d779960127ced72087a418c1daefc637d0aaa80 and
+Beetle/Mednafen1382b85dcad2e98ef9a67426a775ba548eaf0c68 likewise select the
+bank and increment from these three bits. No reference code is copied.
+
+Production still passes opcode&0xf to get_source_mem_value; selectors8–15
+return zero without fetching RAM or incrementing its cursor. The candidate
+changes this one call to opcode&7 and updates the existing width mutant's
+matching expression. It does not change the common operand helper or other
+instruction formats. Portable patch: `../../scudsp-count-operand.patch`.
+
+Real cd074b71 tests:16 canonical controls pass,16 unused-bit aliases fail.
+Both transfer directions, hold modes, M1/MC1 and source positions0/63 are covered.
+The following MOV M1,MC2 independently probes the counter-fetch cursor: the
+aliased MC1 cases return3 instead of7, demonstrating the missing increment as
+well as wrong transfer length. All writes use mapped SCU ports.
+
+The old executable was recovered after the sandbox lost external runtime files.
+The ZIP was validated against its original Actions digest. The normal verifier
+correctly rejects it against current HEAD. For this explicitly historical
+negative, the unchanged verifier function instead checks its immutable cd074b71
+input trees, successful source run and previously accepted executable SHA256.
+`historical-artifact.json` records that scope. This is NOT new-source acceptance.
+
+The extracted gate compiles actual op_dma AND get_source_mem_value, rather than
+stubbing the fetched counter. Candidate:131,072 unused-bit/bank/MC/CT-wrap/
+direction/hold/same-bank cases, five registered-state replay cuts each, pass.
+Production fails the size assertion. Three correctly targeted compiled mutants
+(selector, increment bit, CT wrap) fail. An initial mutation accidentally hit an
+unrelated earlier opcode mask and passed; it was corrected to match the count
+fetch expression exactly before recording these rejection logs. Full-TU C++20
+syntax and12 parser controls pass separately.
+
+Candidate native positive is pending. Keep it separate until the current
+counter/include-order baseline is qualified. The full counter width/zero tests,
+loader/save gates, bus timing and broader hardware parents are not replaced by
+this source-selector gate. Shared-bus timing and actual save-manager acceptance
+are not inferred from extracted endpoint replay.
