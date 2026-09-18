@@ -51,6 +51,10 @@ phase=dsp-pipeline
 python3 saturn_pending/test_scudsp_pipeline_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pipeline" > "$LOG_DIR/dsp-pipeline.log" 2>&1
 grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/dsp-pipeline.log"
+phase=dsp-count
+python3 saturn_pending/test_scudsp_count_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-count" > "$LOG_DIR/dsp-count.log" 2>&1
+grep -q 'DSP DMA count: 24 zero/width/direction/hold programs passed live' "$LOG_DIR/dsp-count.log"
 phase=dsp-read
 python3 saturn_pending/test_scudsp_read_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-read" > "$LOG_DIR/dsp-read.log" 2>&1
@@ -70,11 +74,11 @@ grep -q 'DSP program RAM save: busy wrapped transfer and instruction image resto
 phase=dsp-save
 python3 saturn_pending/test_scudsp_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-save" > "$LOG_DIR/dsp-save.log" 2>&1
-grep -q 'DSP save: busy transfer restored and 60000-word replay verified' "$LOG_DIR/dsp-save.log"
+grep -q 'DSP save: busy transfer restored and 256-word replay verified' "$LOG_DIR/dsp-save.log"
 # Default DSP fixtures above use JP/interpreter; exercise the other shared-core
 # configurations explicitly rather than inferring DSP acceptance from BIOS boot.
 for system in saturnjp saturneu stvbios; do
-    for fixture in dma pipeline read pram; do
+    for fixture in dma pipeline read pram count; do
         phase="dsp-$fixture-$system-drc"
         python3 "saturn_pending/test_scudsp_${fixture}_runtime.py" \
             --executable "$ARTIFACT/saturn" --rompath "$ROOT/regtests" \
@@ -85,6 +89,8 @@ for system in saturnjp saturneu stvbios; do
             grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == pram ]]; then
             grep -q 'DSP program RAM: 32 mapped loader/overlay programs passed live' "$LOG_DIR/$phase.log"
+        elif [[ "$fixture" == count ]]; then
+            grep -q 'DSP DMA count: 24 zero/width/direction/hold programs passed live' "$LOG_DIR/$phase.log"
         else
             grep -q 'DSP read DMA: 1024 Work RAM-H mirror/mode programs passed live' "$LOG_DIR/$phase.log"
         fi

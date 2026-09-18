@@ -34,6 +34,10 @@ methods = '\n'.join(extract(s) for s in (
 fields = re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state)\)\)', src)
 restore = '\n'.join(f' d.{field}=s.{field};' for field in fields)
 mutant = os.environ.get('MUTATE_DSP_DMA', '')
+if mutant == 'count-zero':
+    methods = methods.replace('m_dma.size = 256;', 'm_dma.size = 0;')
+if mutant == 'count-width':
+    methods = methods.replace('get_source_mem_value( opcode & 0xf ) & 0xff', 'get_source_mem_value( opcode & 0xf ) & 0xffff')
 if mutant == 'pram-alias':
     methods = methods.replace('(dir_from_D0 ? 0x300 : 0x700)', '0x300')
 if mutant == 'pram-early-stall':
@@ -117,6 +121,34 @@ void restore(scudsp_cpu_device &d,scudsp_cpu_device const &s){
  // RESTORE
 }
 int main(){
+ unsigned count_cases=0;
+ for(unsigned raw=0;raw<256;++raw)for(unsigned bank=0;bank<4;++bank)
+ for(unsigned dir=0;dir<2;++dir)for(unsigned hold=0;hold<2;++hold)
+ for(unsigned indirect=0;indirect<2;++indirect)
+ for(uint32_t upper:{0u,0x100u,0x5500u,0xffff0000u}){
+  if(!indirect&&upper)continue;
+  scudsp_cpu_device s;
+  s.m_ra0=0x06010000/4;s.m_wa0=0x05e40000/4;s.count_source=upper|raw;
+  uint32_t opcode=0xc0000000|((dir?1:2)<<15)|(hold<<14)|(indirect<<13)|(dir<<12)|(bank<<8)|(indirect?0:raw);
+  unsigned expected=raw?raw:256;
+  s.op_dma(opcode);assert(s.m_dma.size==expected);
+  for(unsigned cut:{0u,1u,2u,expected/2+1,expected+1}){
+   scudsp_cpu_device a=s;a.m_dma_timer=&a.t;
+   for(unsigned i=0;i<cut;++i)a.tick();
+   scudsp_cpu_device b;b.m_dma.size=7;b.m_dma.count=13;
+   restore(b,a);a.writes.clear();a.reads.clear();a.finish();b.finish();
+   assert(a.writes==b.writes&&a.reads==b.reads&&a.ram==b.ram);
+   assert(a.m_dma.count==expected&&b.m_dma.count==expected);
+  }
+  s.finish();
+  assert(s.reads.size()==(dir?0:expected*2)&&s.writes.size()==(dir?expected*2:0));
+  assert(s.m_dma.count==expected&&!s.m_dma.ex&&!s.halt);
+  assert((dir?s.m_wa0:s.m_ra0)==(dir?0x05e40000u/4:0x06010000u/4)+(hold?0:expected));
+  ++count_cases;
+ }
+ assert(count_cases==20480);
+ std::cout<<count_cases<<" count-width/zero/direction/bank/hold cases and five replay cuts passed\n";
+
  unsigned cases=0;
  for(unsigned bank=0;bank<4;++bank)for(unsigned mode=0;mode<8;++mode)
  for(unsigned hold=0;hold<2;++hold)for(unsigned indirect=0;indirect<2;++indirect)
@@ -172,9 +204,9 @@ int main(){
  }
  unsigned program_cases=0;
  for(unsigned target=0;target<256;++target)for(unsigned hold=0;hold<2;++hold)
- for(unsigned indirect=0;indirect<2;++indirect)for(unsigned count:{1u,2u,63u,255u}){
+ for(unsigned indirect=0;indirect<2;++indirect)for(unsigned count:{1u,2u,63u,255u,256u}){
   scudsp_cpu_device s;s.m_ra0=0x06010000/4;s.count_source=count;s.m_pc=2;
-  s.op_dma(0xc0010400|(hold<<14)|(indirect<<13)|(indirect?0:count));
+  s.op_dma(0xc0010400|(hold<<14)|(indirect<<13)|(indirect?0:(count&255)));
   assert(s.m_dma.dst==4&&!s.halt);
   // Model the post-fetch PC of the required following MVI-to-PC instruction.
   s.m_pc=3;s.set_dest_mem_reg_2(12,target);

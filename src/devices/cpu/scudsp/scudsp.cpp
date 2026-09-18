@@ -659,7 +659,7 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 
 	if ( opcode & 0x2000 )
 	{
-		m_dma.size = get_source_mem_value( opcode & 0xf );
+		m_dma.size = get_source_mem_value( opcode & 0xf ) & 0xff;
 		switch ( add & 0x7 )
 		{
 			case 0: m_dma.add = 0; break;
@@ -685,6 +685,10 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 			case 7: m_dma.add = 256; break; /* 64 */
 		}
 	}
+
+	// The eight-bit transfer counter decrements with wrap: zero means 256.
+	if (!m_dma.size)
+		m_dma.size = 256;
 
 	m_dma.dir = dir_from_D0;
 	m_dma.write_stride = 2;
