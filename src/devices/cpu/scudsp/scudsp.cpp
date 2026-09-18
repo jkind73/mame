@@ -200,7 +200,7 @@ void scudsp_cpu_device::set_dest_mem_reg( uint32_t mode, uint32_t value )
 			/* ??? */
 			break;
 		case 0xa:   /* LOP */
-			m_lop = value;
+			m_lop = value & 0xfff;
 			break;
 		case 0xb:   /* TOP */
 			m_top = value;
