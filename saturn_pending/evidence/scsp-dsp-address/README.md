@@ -41,3 +41,12 @@ Matching rebuilt native acceptance is PENDING, not an accepted production
 endpoint. Four profiles will require988 programs. Full DSP timing, bus
 arbitration, final writes, IWT forwarding, waveform/game and whole-driver
 acceptance remain open; no working flags changed.
+
+The real-file replay now also checks the saved signed ADRS latch. A late ADRL
+loads -1, an early request in the next sample reads MADRS-1, and intervening
+poisoning sets ADRS to zero through guest instructions. The first changed
+sample after load must use the restored displacement before the late ADRL
+can repair it. Separate source reads preserve the existing main and step127
+read-pipeline controls. Old9baba980 fails only the three expected signed-address
+observations (initial, original and replayed); other replay/poison controls
+remain intact.14 save-parser controls pass. Rebuilt native replay pending.
