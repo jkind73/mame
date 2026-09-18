@@ -99,6 +99,14 @@ phase=dsp-dma
 python3 saturn_pending/test_scudsp_dma_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-dma" > "$LOG_DIR/dsp-dma.log" 2>&1
 grep -q 'DSP DMA: 32 mapped-program B-bus addressing cases passed live' "$LOG_DIR/dsp-dma.log"
+phase=dsp-cbus
+python3 saturn_pending/test_scudsp_cbus_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-cbus" > "$LOG_DIR/dsp-cbus.log" 2>&1
+grep -q 'DSP C-bus: 512 mapped-program placement/WA0 cases passed live' "$LOG_DIR/dsp-cbus.log"
+phase=dsp-cbus-save
+python3 saturn_pending/test_scudsp_cbus_save_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-cbus-save" > "$LOG_DIR/dsp-cbus-save.log" 2>&1
+grep -q 'DSP C-bus save: odd-phase cursor and WA0 replay verified' "$LOG_DIR/dsp-cbus-save.log"
 phase=dsp-pram
 python3 saturn_pending/test_scudsp_pram_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pram" > "$LOG_DIR/dsp-pram.log" 2>&1
@@ -114,7 +122,7 @@ grep -q 'DSP save: busy transfer restored and 256-word replay verified' "$LOG_DI
 # Default DSP fixtures above use JP/interpreter; exercise the other shared-core
 # configurations explicitly rather than inferring DSP acceptance from BIOS boot.
 for system in saturnjp saturneu stvbios; do
-    for fixture in dma pipeline read pram count count_operand alu multiplier lop parallel; do
+    for fixture in dma pipeline read pram count count_operand alu multiplier lop parallel cbus; do
         phase="dsp-$fixture-$system-drc"
         python3 "saturn_pending/test_scudsp_${fixture}_runtime.py" \
             --executable "$ARTIFACT/saturn" --rompath "$ROOT/regtests" \
@@ -129,6 +137,8 @@ for system in saturnjp saturneu stvbios; do
             grep -q 'DSP DMA count: 24 zero/width/direction/hold programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == count_operand ]]; then
             grep -q 'DSP count operand: 32 source-alias/increment/wrap programs passed live' "$LOG_DIR/$phase.log"
+        elif [[ "$fixture" == cbus ]]; then
+            grep -q 'DSP C-bus: 512 mapped-program placement/WA0 cases passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == parallel ]]; then
             grep -q 'DSP parallel buses: 144 RAM/register/counter programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == lop ]]; then

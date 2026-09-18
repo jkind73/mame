@@ -1,11 +1,15 @@
-# Disassembler correction integrated — native WIP
+# Disassembler correction — NATIVE QUALIFIED
 
 Separate MVI destinations and separated X/Y mnemonics are now in production.
 The complete real-class337-case UBSan test is in the default suite as
 regtests/saturn/test_scudsp_disassembler.py;13 debugger dump parser controls pass.
 Native consumer adds a241-row real MAME debugger dump (JP/interpreter with the
 headless debugger), not a replacement disassembler or CPU-state mutation.
-Full65-script local batch/build and candidate native positive remain pending.
+Source ff717b2e: full65-script local/CI batch PASS (build35370828718).
+Export35371877378 and the COMPLETE expanded native consumer PASS, including
+all241 actual debugger rows and every previous runtime/save/provenance gate.
+Binary SHA256: 4dbca0dcf8e093b011049a16c5eb1e2441025afa945905bad6298a40abb919ba.
+Evidence: ../ff717b2e-live/.
 Earlier external-candidate notes below are historical.
 
 # DSP-01 disassembler candidate (not integrated yet)
