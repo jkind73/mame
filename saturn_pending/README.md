@@ -1,3 +1,15 @@
+# Native-qualified multiplier refresh
+
+Production/latest native-qualified source: **25f13c07**. Build35365374912,
+export35366355244, full62-script local/CI and complete native consumer pass.
+All256 multiplier programs/four configs and every preceding gate pass with
+before/after provenance checks. Evidence: `evidence/25f13c07-live/`.
+The first consumer caught an incorrect fixture runner binding; after correction
+and a new contract control the entire consumer was rerun successfully. No source
+acceptance bypass or working-flag promotion. WIP notes below are historical.
+
+---
+
 # RX multiplier-refresh follow-up — native WIP
 
 D1/MVI RX writes now refresh the cached product at the existing instruction
