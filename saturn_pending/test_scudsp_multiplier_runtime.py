@@ -2,7 +2,7 @@
 # license:BSD-3-Clause
 """Public-port RX write-path/product probes; no private state or cycle oracle."""
 import re
-import test_smpc_save_runtime as runner
+import test_scudsp_dma_runtime as runner
 from test_smpc_multitap_runtime import COMMON_LUA
 runner.LUA=COMMON_LUA+r'''
 local done,frames=false,0

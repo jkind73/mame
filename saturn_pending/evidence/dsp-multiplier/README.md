@@ -53,3 +53,11 @@ instruction concurrency text does not resolve that conflict here.
 Three targeted mutants are rejected: suppressing the MVI refresh, clobbering P
 while updating RX, and losing X-bus refresh. The removed destination refresh is
 also rejected by the before-source run. No new-source native positive yet.
+
+
+First new-source consumer attempt was rejected at the JP multiplier runner: all64
+raw programs passed, but the ordinary fixture incorrectly delegated to the save
+runner, requiring a nonexistent save file and lacking alternate-configuration
+arguments. Corrected binding to the existing multi-configuration DSP runner; a
+new parser/runner-contract control catches that mistake. Complete consumer must
+be rerun; this was a fixture failure, not accepted native qualification.

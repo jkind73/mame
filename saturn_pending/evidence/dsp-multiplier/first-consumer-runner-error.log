@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_multiplier_runtime.py", line 66, in <module>
+    runner.main('DSP multiplier: 64 RX write-path/product programs passed live')
+  File "/home/user/mame/saturn_pending/test_smpc_save_runtime.py", line 182, in main
+    raise RuntimeError('Missing or malformed scheduled save file')
+RuntimeError: Missing or malformed scheduled save file
