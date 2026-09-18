@@ -36,3 +36,22 @@ ADD carry, SUB overflow, AD2 carry/width, SR carry, V latch and signed ADD UB.
 
 Full-TU syntax and existing DMA/count/operand/pipeline suites pass. No complete
 ALU/DSP parent closure, commercial-gameplay acceptance or working-flag promotion.
+
+
+Expanded native boundary coverage: multiplier-built48-bit P operands add eight
+AD2 cases around +2^47/-2^47, including signed overflow/underflow. Both the low32
+result and ALU bits16–47 are read through ordinary MOV instructions. Old8881caa1
+passes five of these eight; total90 pass/121 fail of211, still zero result-word
+mismatches. This validates the public-port setup independently of the flag fix.
+The new native gate requires844 arithmetic programs across four configurations.
+
+An actual scheduled file save/mutate/load control also passes on8881caa1: create
+a48-bit overflow, save without reading away V, read/clear flags and poison the
+ALU/output, load, verify restored V/read-clear and full48-bit output, then poison
+only output RAM and re-observe the restored ALU through MOVs. Shared runner
+validates the real MAMESAVE file. This is prior-behavior save coverage, not an
+old-source arithmetic negative or candidate acceptance. Thirteen save-parser
+controls pass separately. The expanded native consumer requires this replay too.
+
+Source ea9a7a7c passed the61-script full local batch (three optional live skips
+excluded) and CI35363539017. Native new-source consumption remains pending.
