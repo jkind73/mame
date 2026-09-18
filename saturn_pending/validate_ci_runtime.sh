@@ -102,7 +102,7 @@ grep -q 'DSP ALU dataflow: 192 entry-A/bypass/high-half programs passed live' "$
 phase=dsp-alu
 python3 saturn_pending/test_scudsp_alu_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-alu" > "$LOG_DIR/dsp-alu.log" 2>&1
-grep -q 'DSP ALU: 211 arithmetic/flag/read-clear programs passed live' "$LOG_DIR/dsp-alu.log"
+grep -q 'DSP ALU: 438 arithmetic/flag/read-clear programs passed live' "$LOG_DIR/dsp-alu.log"
 phase=dsp-alu-save
 python3 saturn_pending/test_scudsp_alu_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-alu-save" > "$LOG_DIR/dsp-alu-save.log" 2>&1
@@ -168,7 +168,7 @@ for system in saturnjp saturneu stvbios; do
         elif [[ "$fixture" == multiplier ]]; then
             grep -q 'DSP multiplier: 64 RX write-path/product programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == alu ]]; then
-            grep -q 'DSP ALU: 211 arithmetic/flag/read-clear programs passed live' "$LOG_DIR/$phase.log"
+            grep -q 'DSP ALU: 438 arithmetic/flag/read-clear programs passed live' "$LOG_DIR/$phase.log"
         else
             grep -q 'DSP read DMA: 1024 Work RAM-H mirror/mode programs passed live' "$LOG_DIR/$phase.log"
         fi

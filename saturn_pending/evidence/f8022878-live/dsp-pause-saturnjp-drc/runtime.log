@@ -1,0 +1,9 @@
+DSP_PAUSE armed
+DSP_PAUSE case=1 PASS
+DSP_PAUSE case=2 PASS
+DSP_PAUSE case=3 PASS
+DSP_PAUSE case=4 PASS
+DSP_PAUSE case=5 PASS
+DSP_PAUSE case=6 PASS
+DSP_PAUSE PASS cases=6
+Average speed: 512.47% (2 seconds)

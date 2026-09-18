@@ -43,7 +43,16 @@ local function test()
         local flags=sp:read_u32(control)
         check('finished'..case,flags&0x810000,0)
         local result,carry,overflow,negative
-        if op==8 then
+        if op<=3 then
+            result=op==1 and (a&b) or (op==2 and (a|b) or (a~b));carry=false;overflow=false
+            negative=(result&0x80000000)~=0
+        elseif op==9 or op==10 or op==11 or op==15 then
+            if op==9 then result=((a>>1)|(a<<31))&0xffffffff;carry=(a&1)~=0
+            elseif op==10 then result=(a<<1)&0xffffffff;carry=(a&0x80000000)~=0
+            elseif op==11 then result=((a<<1)|(a>>31))&0xffffffff;carry=(a&0x80000000)~=0
+            else result=((a<<8)|(a>>24))&0xffffffff;carry=(a&0x01000000)~=0 end
+            overflow=false;negative=(result&0x80000000)~=0
+        elseif op==8 then
             result=(a>>1)|(a&0x80000000);carry=(a&1)~=0;overflow=false
             negative=(result&0x80000000)~=0
         elseif op==6 then
@@ -70,11 +79,11 @@ local function test()
         if op==6 then check('result48'..case,sp:read_u32(data),(result>>16)&0xffffffff) end
         if #fails==before then print(string.format('DSP_ALU case=%d PASS',case)) end
     end
-    for _,op in ipairs({4,5,6}) do for _,a in ipairs(values) do for _,b in ipairs(values) do
+    for _,op in ipairs({1,2,3,4,5,6}) do for _,a in ipairs(values) do for _,b in ipairs(values) do
         run(op,a,b,false)
     end end end
-    for _,a in ipairs(values) do run(8,a,0,false) end
-    for _,op in ipairs({4,5,6}) do run(op,0x7fffffff,1,true) end
+    for _,op in ipairs({8,9,10,11,15}) do for _,a in ipairs(values) do run(op,a,0,false) end end
+    for _,op in ipairs({1,2,3,4,5,6}) do run(op,0x7fffffff,1,true) end
     for _,a in ipairs({0,0xffff,0x10000,0xffffffff}) do run(6,a,0,false,0x7fffffff,0x10000) end
     for _,a in ipairs({0,1,0xffffffff,0xffff0000}) do run(6,a,0,false,0x80000000,0x10000) end
 end
@@ -84,7 +93,7 @@ emu.register_frame_done(function()
     if frames==180 then coroutine.wrap(function()
         local ok,err=pcall(test)
         if not ok then fails[#fails+1]=tostring(err) end
-        if #fails==0 then print('DSP_ALU PASS cases=211')
+        if #fails==0 then print('DSP_ALU PASS cases=438')
         else for _,f in ipairs(fails) do print('DSP_ALU FAIL '..f) end end
         m:exit()
     end)() end
@@ -92,9 +101,9 @@ end)
 '''
 def validate_output(text,returncode):
     if (returncode or 'DSP_ALU FAIL' in text or 'LUA ERROR' in text or
-            [int(n) for n in re.findall(r'^DSP_ALU case=(\d+) PASS$',text,re.M)]!=list(range(1,212)) or
-            len(re.findall(r'^DSP_ALU PASS cases=211$',text,re.M))!=1):
+            [int(n) for n in re.findall(r'^DSP_ALU case=(\d+) PASS$',text,re.M)]!=list(range(1,439)) or
+            len(re.findall(r'^DSP_ALU PASS cases=438$',text,re.M))!=1):
         raise RuntimeError('DSP arithmetic fixture failed:\n'+text[-16000:])
 runner.validate_output=validate_output
 if __name__=='__main__':
-    runner.main('DSP ALU: 211 arithmetic/flag/read-clear programs passed live')
+    runner.main('DSP ALU: 438 arithmetic/flag/read-clear programs passed live')
