@@ -55,3 +55,9 @@ control-port EX/PC observation and explicitly stopped DSP before setup RAM write
 (including the ALU save fixture). Runtime execution semantics did not change.
 The stronger fixture is rerun through the entire consumer before acceptance;
 its14 parser controls also enforce observation/save/mutation/load ordering.
+
+The initial control-phase probe mistakenly compared raw internal PC4 against
+PPAF, whose existing readback adds1. Corrected to public value5 and repeated the
+old-source run: full save/mutation/load completed with128 output-word mismatches
+(65536 rather than4096 iterations), no phase failure. The phase test is a MAME
+public-port observation, not proof of physical prefetch timing.
