@@ -150,7 +150,7 @@
   - RTC counting and leap-year behavior, SETTIME/INTBACK, cold versus warm reset and battery persistence.
   - RTC support already exists; determine ST-V-specific battery/settings behavior rather than assuming console semantics.
 - [ ] **SMPC-04 — Complete peripheral protocol and event routing. [P/V]**
-  - Integrated bounded multi-page controller transport after live reproduction of lost tail/OREG31/mode faults. Rebuilt live acceptance pending; extended-size IDs, VBlank timeout and wire timing remain open.
+  - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; new native acceptance pending. Extended-size IDs, OPE and wire timing remain open.
   - Direct-port modes, peripheral identification, multitap discovery, packet lengths and handshake timing.
   - Integrate peripheral-origin PAD/beam latch signals with SCU/VDP2; resolve exceptional mode/read responses and NetLink delegation.
 
@@ -346,7 +346,7 @@
   - Run focused Saturn/ST-V builds, MAME `-validate`, all existing regression subsets together, and linked mapped-register/background/composition tests with exact source/binary provenance.
   - Fresh native build, MAME `-validate`, and the ROM-free regression batch passed in [CI run 35287467065](https://github.com/jkind73/mame/actions/runs/35287467065), source `5008a92331e4bf6698b7a9e53116c2167ddcc673` (Ubuntu 22.04/GCC 12). Receipt: `saturn_pending/ci-35287467065.json`.
   - User-transferred artifact verified and live baseline passed: CD/cart/backup RAM, 24 SCSP timer/divisor combinations, and four BIOS/background replay configurations. See `saturn_pending/evidence/5008-live/`. ST-V showed its no-cartridge BIOS error screen, not game boot.
-  - The newly integrated SMPC transport fix has a failing old-binary live baseline and passing extracted/syntax checks; rebuilt live acceptance and the wider composition/software matrix remain pending. QA-01 stays open; baseline results are not attributed to the new binary.
+  - The rebuilt 234c7abc transport passes six live packet cases and partial-report file save/load; its full runtime consumer passes. The 5008a923 composition baseline now passes all four configurations (4,168 cases). The next timeout/edge-history revision awaits native qualification; QA-01 stays open for this and real software.
 - [ ] **QA-02 — Complete deterministic whole-machine save/load/reset coverage. [V]**
   - Both SH-2 engines; DMA/DSP/VDP draw/erase/fetch/SCSP/CD activity; pending interrupts, clock changes and partial frames.
   - Compare uninterrupted and restored execution, memory, frame/audio output and IRQ sequences; distinguish host-backed RTC/network behavior from deterministic hardware state.

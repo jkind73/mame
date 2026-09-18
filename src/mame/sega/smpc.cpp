@@ -404,7 +404,7 @@ void smpc_hle_device::command_register_w(uint8_t data) {
 
     break;
   case 0x10: {
-    // TODO: not allowed outside vblank
+    // Peripheral collection must finish by the next VBlank-IN (ST-169 p.50).
 
     // copy ireg to our intback buffer
     for (int i = 0; i < 3; i++)
@@ -418,7 +418,7 @@ void smpc_hle_device::command_register_w(uint8_t data) {
     if (m_ireg[0] != 0) // non-peripheral data
       timing += 8;
 
-    // TODO: At vblank-out actually
+    // TODO: OPE scheduling and per-device wire timing (ST-169 pp.55-57).
     if (m_ireg[1] & 8) // peripheral data
       timing += 700;
 
@@ -592,6 +592,33 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::sound_reset) {
   // from m68k reset opcode trigger
   m_sndres(1);
   m_sndres(0);
+}
+
+// ST-169-R1 p.50: peripheral INTBACK terminates at VBlank-IN if it
+// has not finished. Pending command completion and CONTINUE are distinct
+// timers. Do not cancel an unrelated system command sharing the SF register.
+void smpc_hle_device::vblank_in() {
+  // Leave the legacy no-controller/ST-V handshake unchanged.
+  if (!m_has_ctrl_ports)
+    return;
+
+  bool const pending = m_command_in_progress && m_comreg == 0x10 &&
+                       (m_intback_buf[1] & 8);
+  if (!pending && !m_intback_stage)
+    return;
+
+  if (pending) {
+    m_cmd_timer->reset();
+    m_command_in_progress = false;
+  }
+  m_intback_timer->reset();
+  m_intback_stage = 0;
+  m_peripheral_size = m_peripheral_pos = 0;
+  // No new report or interrupt. Clear PDL/NPE, retain the last report's
+  // type, reset-button indication and port modes (Ymir cross-check).
+  m_sr &= ~0x60;
+  if (!m_command_in_progress)
+    sf_ack(false);
 }
 
 void smpc_hle_device::resolve_intback() {
