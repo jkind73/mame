@@ -19,6 +19,7 @@ def extract(signature):
     return source[start:end]
 functions='\n'.join(extract(s) for s in ('void smpc_hle_device::ireg_w(', 'inline void smpc_hle_device::sr_ack()', 'inline void smpc_hle_device::sr_set(', 'inline void smpc_hle_device::sf_ack(', 'inline void smpc_hle_device::sf_set()', 'TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request)', 'void smpc_hle_device::device_reset()'))
 harness=r'''
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -43,10 +44,11 @@ struct smpc_hle_device {
  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;
  u8 m_intback_stage=0,m_pmode=0;
+ u8 m_peripheral_data[512]{};uint16_t m_peripheral_size=64,m_peripheral_pos=0;
  unsigned ports=0,irqs=0;
  timer cmd,intback,snd,rtc;
  timer *m_cmd_timer=&cmd,*m_intback_timer=&intback,*m_sndres_timer=&snd,*m_rtc_timer=&rtc;
- void read_saturn_ports(){++ports;} void irq_request(){++irqs;}
+ void read_saturn_ports(){++ports;m_peripheral_size=64;m_peripheral_pos=0;} void irq_request(){++irqs;}
  void ireg_w(offs_t,uint8_t);void sr_ack();void sr_set(uint8_t);void sf_ack(bool);void sf_set();
  void intback_continue_request(int);void device_reset();
  void fire(){if(intback.pending){intback.pending=false;intback_continue_request(0);}}
@@ -59,7 +61,7 @@ int main(){
    for(unsigned data=0;data<256;++data){
     // Simultaneous CONT and BREAK is explicitly prohibited (table 3.2).
     if((data&0x40)&&((previous^data)&0x80))continue;
-    smpc_hle_device s;s.m_intback_stage=stage;s.m_ireg[0]=previous;s.m_sr=0xe5;
+    smpc_hle_device s;s.m_intback_stage=stage;s.m_peripheral_pos=stage==2?32:0;s.m_ireg[0]=previous;s.m_sr=0xe5;
     s.ireg_w(1,data);
     bool cont=stage&&!(data&0x40)&&((previous^data)&0x80);
     bool stop=stage&&(data&0x40);
@@ -67,13 +69,13 @@ int main(){
     assert(s.m_intback_stage==(stop?0:stage));
     assert(s.m_sr==(stop?5:0xe5));
     s.fire();
-    assert(s.irqs==unsigned(cont)&&s.ports==unsigned(cont));
-    if(cont){assert(!s.m_sf&&s.m_oreg[31]==0x10);assert(s.m_intback_stage==(stage==2?0:2));}
+    assert(s.irqs==unsigned(cont)&&s.ports==unsigned(cont&&stage==1));
+    if(cont){assert(!s.m_sf&&s.m_oreg[31]==0);assert(s.m_intback_stage==(stage==2?0:2));}
     ++cases;
    }
  for(unsigned stage : {1u,2u})
   for(unsigned previous : {0u,0x80u}){
-   smpc_hle_device s;s.m_intback_stage=stage;s.m_ireg[0]=previous;s.m_sr=0xe7;
+   smpc_hle_device s;s.m_intback_stage=stage;s.m_peripheral_pos=stage==2?32:0;s.m_ireg[0]=previous;s.m_sr=0xe7;
    u8 cont=previous^0x80;s.ireg_w(1,cont);assert(s.intback.pending&&s.m_sf);
    // Rewriting the same CONT bit must not restart or postpone the timer.
    unsigned arms=s.intback.arms;s.ireg_w(1,cont);assert(s.intback.arms==arms);
@@ -88,13 +90,20 @@ int main(){
   ++cases;
  }
  for(unsigned stage=0;stage<3;++stage){
-  smpc_hle_device s;s.m_intback_stage=stage;s.intback.adjust(700);s.m_sf=true;
+  smpc_hle_device s;s.m_intback_stage=stage;s.m_peripheral_pos=stage==2?32:0;s.intback.adjust(700);s.m_sf=true;
   s.device_reset();assert(!s.intback.pending&&!s.m_sf&&!s.m_cd_sf&&s.m_intback_stage==0);
   assert(!s.m_iosel1&&!s.m_iosel2&&!s.m_exle1&&!s.m_exle2);
   s.fire();s.intback_continue_request(0);assert(!s.irqs&&!s.ports);
   ++cases;
  }
- assert(cases==1173);
+ for(unsigned stage:{1u,2u}){
+  smpc_hle_device s;s.m_has_ctrl_ports=false;s.m_intback_stage=stage;
+  s.intback_continue_request(0);
+  assert(s.m_oreg[31]==0x10&&s.m_sr==(stage==1?0xc0:0x80));
+  assert(s.ports==0&&s.irqs==1&&s.m_intback_stage==(stage==1?2:0));
+  ++cases;
+ }
+ assert(cases==1175);
  std::cout<<cases<<" SMPC handshake/cancel/reset scenarios passed\n";
 }
 '''

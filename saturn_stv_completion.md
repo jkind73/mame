@@ -150,6 +150,7 @@
   - RTC counting and leap-year behavior, SETTIME/INTBACK, cold versus warm reset and battery persistence.
   - RTC support already exists; determine ST-V-specific battery/settings behavior rather than assuming console semantics.
 - [ ] **SMPC-04 — Complete peripheral protocol and event routing. [P/V]**
+  - Integrated bounded multi-page controller transport after live reproduction of lost tail/OREG31/mode faults. Rebuilt live acceptance pending; extended-size IDs, VBlank timeout and wire timing remain open.
   - Direct-port modes, peripheral identification, multitap discovery, packet lengths and handshake timing.
   - Integrate peripheral-origin PAD/beam latch signals with SCU/VDP2; resolve exceptional mode/read responses and NetLink delegation.
 
@@ -344,8 +345,8 @@
 - [ ] **QA-01 — Complete fresh linked builds and aggregate validation. [V]**
   - Run focused Saturn/ST-V builds, MAME `-validate`, all existing regression subsets together, and linked mapped-register/background/composition tests with exact source/binary provenance.
   - Fresh native build, MAME `-validate`, and the ROM-free regression batch passed in [CI run 35287467065](https://github.com/jkind73/mame/actions/runs/35287467065), source `5008a92331e4bf6698b7a9e53116c2167ddcc673` (Ubuntu 22.04/GCC 12). Receipt: `saturn_pending/ci-35287467065.json`.
-  - The artifact is preserved on GitHub; local retrieval is blocked by artifact-host TLS EOF, and inbound preview transfer requires an access token. No token was exposed or protection bypassed. User-transferred ZIP ingestion now checks GitHub's independent ZIP digest before source/binary provenance checks.
-  - BIOS-dependent tests, linked mapped-register/background/composition runs and live save/load still require the artifact locally; QA-01 remains open. Historical extracted/BIOS totals are not fresh evidence for this revision.
+  - User-transferred artifact verified and live baseline passed: CD/cart/backup RAM, 24 SCSP timer/divisor combinations, and four BIOS/background replay configurations. See `saturn_pending/evidence/5008-live/`. ST-V showed its no-cartridge BIOS error screen, not game boot.
+  - The newly integrated SMPC transport fix has a failing old-binary live baseline and passing extracted/syntax checks; rebuilt live acceptance and the wider composition/software matrix remain pending. QA-01 stays open; baseline results are not attributed to the new binary.
 - [ ] **QA-02 — Complete deterministic whole-machine save/load/reset coverage. [V]**
   - Both SH-2 engines; DMA/DSP/VDP draw/erase/fetch/SCSP/CD activity; pending interrupts, clock changes and partial frames.
   - Compare uninterrupted and restored execution, memory, frame/audio output and IRQ sequences; distinguish host-backed RTC/network behavior from deterministic hardware state.
