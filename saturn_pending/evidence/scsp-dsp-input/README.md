@@ -1,4 +1,4 @@
-# SND-04 MEMS operand/write ordering — native WIP
+# SND-04 MEMS operand/write ordering — NATIVE QUALIFIED
 
 Remove the IWT-to-INPUTS bypass: an instruction captures INPUTS before its
 MEMS write, including IRA==IWA. Subsequent instructions observe the new MEMS.
@@ -35,6 +35,10 @@ same-address current-operand checks fail. Subsequent operands and committed
 memory controls pass. Raw evidence included.
 
 Full70-script local/CI and build35393858442 PASS for production35f5d58b.
-Matching3036-program/four-profile acceptance and preceding runtime/save
-gates are pending. This is not complete sound timing/arbitration, waveform or
+Build35393858442/export35395365686 and the complete native consumer PASS:
+3036 programs across JP/interpreter, JP/DRC, PAL/DRC and ST-V/DRC; actual
+effect/late-read/signed-address file replay; all preceding runtime/save gates
+and source/binary/BIOS provenance checks. Binary SHA256
+008d13e4c47b6445359d7696de1406e88af2ad5ce8573a501ec9b59ee218521d.
+Raw evidence: `../35f5d58b-live/`, with consumer revision recorded separately. This is not complete sound timing/arbitration, waveform or
 whole-driver acceptance. Signed addresses and full128 execution remain intact.
