@@ -37,6 +37,7 @@ Qualified old source9baba980 (binary SHA256
 passes199/fails48 programs, including all original31 passing. The48 negative
 address cases produce64 failed observations because16 writes also hit the
 wrong-address guard. Raw old-native and method/mutant logs are included.
+Source66e351f7 passes full70-script local/CI and build35391990957.
 Matching rebuilt native acceptance is PENDING, not an accepted production
 endpoint. Four profiles will require988 programs. Full DSP timing, bus
 arbitration, final writes, IWT forwarding, waveform/game and whole-driver
