@@ -39,3 +39,13 @@ inline/out-of-line destinations and FF->00 load wrap, both count forms and hold
 modes. No private DSP state is patched. A native positive for the candidate does
 not exist yet. The runtime fixture does not prove exact bus timing or commercial
 game operation. Twelve result-parser controls pass separately.
+
+A real scheduled save/load negative now covers a busy 192-word program transfer
+starting at slot 200 and wrapping through 00. The DSP program address space is
+read only, first checked against mapped host-port uploads. Captured instruction
+RAM is checked immediately after load, then the complete expected 256-slot image
+is checked after DMA. All save/mutate/load notifications complete on 89764c08,
+but the first program word is never written and all 192 transferred words are
+wrong after both original completion and replay. This is a missing-feature
+negative, not new-source acceptance. Thirteen save-parser controls and the shared
+runner's seventeen file/output controls pass separately.
