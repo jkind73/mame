@@ -1,3 +1,18 @@
+## Current integration status
+
+The user-provided CI ZIP has been retrieved and verified. Live validation of
+source `5008a923` **passed**; text evidence is in `evidence/5008-live/`. This
+supersedes the historical transfer-blocked notes below. ST-V's no-cartridge
+BIOS screen is not game acceptance.
+
+The combined SMPC transport patch is now **applied to production** after its
+live negative baseline reproduced the faults. Its 5,402 transport cases, 1,175
+handshake cases, six compiled mutation controls and C++ syntax checks were rerun
+successfully on production paths. The patch files below are historical review
+artifacts; **do not apply them again**. A rebuilt binary must pass the six-case
+live multitap test and the existing integration suite before this fix is
+considered live-validated. Full hardware/driver completion remains open.
+
 # Integrated follow-up patches
 
 The IOGA inspection and SCSP timer-phase patches are now applied to production

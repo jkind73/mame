@@ -51,6 +51,10 @@ phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1
 grep -q '24 timer/divisor rates and three clear/reassert paths verified live' "$LOG_DIR/scsp-timers.log"
+phase=smpc-multitap
+python3 saturn_pending/test_smpc_multitap_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/smpc-multitap" > "$LOG_DIR/smpc-multitap.log" 2>&1
+grep -q 'SMPC multitap: six live transport cases passed' "$LOG_DIR/smpc-multitap.log"
 for spec in 'saturnjp drc' 'saturnjp interpreter' 'saturneu drc' 'stvbios drc'; do
     read -r system engine <<< "$spec"
     args=()
@@ -69,4 +73,4 @@ phase=final-provenance
 python3 saturn_pending/verify_ci_artifact.py "$ARTIFACT" --run-id "$RUN_ID" > "$LOG_DIR/final-artifact.json"
 cmp "$LOG_DIR/artifact.json" "$LOG_DIR/final-artifact.json"
 sha256sum -c "$LOG_DIR/bios.sha256"
-echo 'PASS: CI-artifact configuration, CD/cart/backup, three SCSP timers, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
+echo 'PASS: CI-artifact configuration, CD/cart/backup, three SCSP timers, multitap transport, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
