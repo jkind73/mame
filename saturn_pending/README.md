@@ -1,3 +1,19 @@
+# DSP arithmetic correction — native WIP
+
+Production ea9a7a7c corrects ADD/SUB carry/overflow, AD2 carry/result width,
+SR carry and overflow latching. The existing OR workaround is unchanged.
+Old8881caa1 passes85/fails118 of203 real arithmetic programs, with correct result
+words but incorrect flags. Old ADD also triggers UBSan signed overflow. Corrected
+actual methods pass80,968 boundary/random/sticky/read-clear checks under UBSan,
+seven mutants, full-TU syntax and existing DSP suites. Native build35363539017
+and the full61-script local batch are running. No ALU native positive yet.
+Contract and reference caveats: `evidence/dsp-alu/README.md`.
+
+The accepted baseline below remains8881caa1 for its prior scope. The new consumer
+requires812 ALU programs across four configurations in addition to those gates.
+
+---
+
 # Native-qualified DSP count-source correction
 
 **Production and latest fully native-qualified source:8881caa1.**

@@ -27,7 +27,12 @@ The mapped native fixture contains203 arithmetic/flag/read-clear programs and
 reads PPAF only after a bounded10us execution wait, never polling away overflow.
 AD2 native operands are sign-extended32-bit words, not arbitrary48-bit boundaries.
 The next full native gate requires812 programs across four configurations.
-Native old-source negatives and new-source positives are still pending.
+Verified old8881caa1 passes85 and fails118 of203 programs: ADD17/64 pass,
+SUB32/64, AD2 32/64, SR4/8, sticky V0/3. Result words all match; failures are
+flags/read-clear expectations. Source/run/ZIP/executable were independently
+verified against the immutable historical commit, not the modified worktree.
+New-source native positives remain pending. Seven compiled mutants are rejected:
+ADD carry, SUB overflow, AD2 carry/width, SR carry, V latch and signed ADD UB.
 
 Full-TU syntax and existing DMA/count/operand/pipeline suites pass. No complete
 ALU/DSP parent closure, commercial-gameplay acceptance or working-flag promotion.
