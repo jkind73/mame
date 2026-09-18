@@ -192,6 +192,7 @@
   - Check audio output against deterministic hardware captures, including CD-DA and effects-heavy playback.
 - [ ] **SND-05 — Qualify sound state continuity. [V]**
   - Current integration: Timer origins now save and restore without losing fractional phase; extracted restore checks pass, real save-manager/audio replay pending. See `regtests/saturn/handoff/integration.md`.
+  - Actual SCSP effect/read-pipeline file replay is now a consumer gate: mapped RAM/EFREG/MEMS observations must reproduce the first changed sample after restoring COEF/MPRO/RAM and a step127 read, with intervening guest-program poisoning. Qualified9b596f90 passes the full-length-program control; rebuilt9baba980 acceptance is pending. This tests digital effect/read-state continuity, not analog waveforms, audio-buffer continuity, pending writes or all DSP state. Evidence: `saturn_pending/evidence/scsp-dsp-tail/README.md`.
   - Save/load during envelopes, DMA, DSP delay lines, interrupt handshakes and CD audio; no lost/duplicated IRQs or discontinuities caused by unsaved state.
 
 ## 8. VDP1: drawing engine and framebuffer
