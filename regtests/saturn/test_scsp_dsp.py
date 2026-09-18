@@ -14,6 +14,8 @@ if mutant=='addr-unconditional':src=src.replace('if (ADREB)', 'if (true)')
 if mutant=='addr-late-latch':
  a=src.index('    if (ADRL) {');b=src.index('    // EFREG',a);block=src[a:b]
  src=src[:a]+src[b:];src=src.replace('    {\n      u32 ADDR',block+'    {\n      u32 ADDR')
+if mutant=='input-bypass':src=src.replace('MEMS[IWA] = ReadValue;', 'MEMS[IWA] = ReadValue; if (IRA == IWA) INPUTS = ReadValue;')
+if mutant=='signed-input-bypass':src=src.replace('MEMS[IWA] = ReadValue;', 'MEMS[IWA] = ReadValue; if (IRA == IWA) INPUTS = util::sext(ReadValue, 24);')
 if mutant=='trimmed':src=src.replace('step < 128;', 'step < LastStep;')
 if mutant=='padded-trim':src=src.replace('step < 128;', 'step < std::min(LastStep + 2, 128);')
 if mutant=='missing-final':src=src.replace('step < 128;', 'step < 127;')
@@ -73,6 +75,27 @@ int main(){
   if(last<127){d.MPRO[127*4+2]=0x1100;d.Step();assert(d.EFREG[1]==effect(tail_acc(t,d.FRC_REG)));++cases;}
  }
 
+ unsigned input_cases=0;
+ for(unsigned ira=0;ira<32;++ira)for(unsigned iwa=0;iwa<32;++iwa)
+ for(u32 prior:{0u,1u,0x7fffffu,0x800000u,0xffff00u,0xffffffu})
+ for(u32 incoming:{0u,1u,0x7fffffu,0x800000u,0xffff00u,0xffffffu})
+ for(unsigned enabled=0;enabled<2;++enabled){
+  SCSPDSP d;d.Init();address_space mem;d.space=&mem;
+  d.MEMS[ira]=prior;d.ReadValue=incoming;d.COEF[0]=0x7ff8;
+  d.MPRO[5]=0xa000|(ira<<6)|(enabled?0x20:0)|iwa;d.MPRO[6]=0x8a;
+  d.MPRO[10]=0x1002;
+  d.MPRO[13]=0xa000|(ira<<6);d.MPRO[14]=2;d.MPRO[18]=0x1102;
+  d.Start();d.Step();
+  u32 after=enabled&&ira==iwa?incoming:prior;
+  assert(d.EFREG[0]==effect(s32((s64(signed_bits(prior,24))*4095)>>12)));
+  assert(d.EFREG[1]==effect(s32((s64(signed_bits(after,24))*4095)>>12)));
+  assert(d.Y_REG==signed_bits(prior,24));
+  assert((u32(d.ADRS_REG)&0xfff)==(u32(signed_bits(prior,24)>>16)&0xfff));
+  assert((u32(d.MEMS[ira])&0xffffff)==after);
+  if(enabled)assert((u32(d.MEMS[iwa])&0xffffff)==incoming);
+  ++input_cases;
+ }
+ std::cout<<input_cases<<" actual MEMS read-before-write/MAC/YRL/ADRL cases passed\n";
  unsigned address_cases=0;
  for(unsigned form=0;form<2;++form)for(unsigned raw=0;raw<(form?4096u:256u);++raw)
  for(unsigned rb=0;rb<4;++rb)for(unsigned table=0;table<2;++table)

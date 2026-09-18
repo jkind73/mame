@@ -178,8 +178,7 @@ void SCSPDSP::Step() {
     if (IWT) {
       // ReadValue was latched by the read completed in the previous step
       MEMS[IWA] = ReadValue;
-      if (IRA == IWA)
-        INPUTS = ReadValue;
+      // INPUTS was captured before this write, including when IRA equals IWA.
     }
 
     // Operand sel

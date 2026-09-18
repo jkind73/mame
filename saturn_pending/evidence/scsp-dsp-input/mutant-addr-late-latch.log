@@ -1,0 +1,7 @@
+test: /tmp/scsp-dsp-75eh9vp4/test.cpp:423: int main(): Assertion `(mem.addresses==std::vector<u32>{first,expected})' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_dsp.py", line 129, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-dsp-75eh9vp4/test']' died with <Signals.SIGABRT: 6>.
