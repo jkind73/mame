@@ -19,7 +19,15 @@ methods='\n'.join(extract(sig) for sig in (
     'void scsp_device::CheckPendingIRQ(', 'void scsp_device::MainCheckPendingIRQ(',
     'void scsp_device::update_main_irq(', 'void scsp_device::ResetInterrupts('))
 mutant=os.environ.get('SCSP_IRQ_MUTANT','')
+# Old-source negative controls retain their old bodies; add unused mask parameters
+# solely to make the old no-mask API callable by the same byte-lane harness.
+methods=methods.replace('u16 scsp_device::read(offs_t offset) {','u16 scsp_device::read(offs_t offset, u16 mem_mask) {').replace('u16 scsp_device::r16(u32 addr) {','u16 scsp_device::r16(u32 addr, u16 mem_mask) {').replace('void scsp_device::UpdateRegR(int reg) {','void scsp_device::UpdateRegR(int reg, u16 mem_mask) {')
 original=methods
+if mutant=='midi-read-mask':methods=methods.replace('(mem_mask & 0x00ff) && !machine().side_effects_disabled()', '!machine().side_effects_disabled()')
+if mutant=='midi-debug-pop':methods=methods.replace(' && !machine().side_effects_disabled()', '')
+if mutant=='midi-merge-pop':methods=methods.replace('r16(offset * 2, 0)', 'r16(offset * 2)')
+if mutant=='midi-write-input':methods=methods.replace('if (addr == 0x404)', 'if (false)')
+if mutant=='midi-output-mask':methods=methods.replace('if (!(mem_mask & 0x00ff))', 'if (false)')
 if mutant=='wrong-port':methods=methods.replace('addr == 0x420 || addr == 0x42c','addr == 0x420 || addr == 0x42e')
 if mutant=='stale-clear':methods=methods.replace('= val & mem_mask;', '= val;')
 if mutant=='sticky-clear':methods=methods.replace('= val & mem_mask;', '|= val & mem_mask;')
@@ -51,13 +59,14 @@ struct scsp_device {
  struct stream {void update(){}}stream_instance;stream *m_stream=&stream_instance;
  u32 RBL(){return(m_udata.data[1]>>7)&3;}u32 RBP(){return m_udata.data[1]&63;}
  u32 SCILV0(){return m_udata.data[0x24/2];}u32 SCILV1(){return m_udata.data[0x26/2];}u32 SCILV2(){return m_udata.data[0x28/2];}
+ bool inspecting=false;bool side_effects_disabled(){return inspecting;}
  auto &machine(){return *this;}const char*describe_context(){return "fixture";}
  template<class...T>void logerror(T...){}
- void update_master_volume(){}void transmit_register_setup(u8){}void exec_dma(){assert(false);}
+ void update_master_volume(){}unsigned starts=0;void transmit_register_setup(u8){++starts;}void exec_dma(){assert(false);}
  void timer_write(int,u16,u16){assert(false);}u8 timer_read(int){return 0;}
  void UpdateSlotReg(int,int){}void UpdateSlotRegR(int,int){}
- void write(offs_t,u16,u16=0xffff);u16 read(offs_t);
- void w16(u32,u16,u16=0xffff);u16 r16(u32);void UpdateReg(int,u16);void UpdateRegR(int);
+ void write(offs_t,u16,u16=0xffff);u16 read(offs_t,u16=0xffff);
+ void w16(u32,u16,u16=0xffff);u16 r16(u32,u16=0xffff);void UpdateReg(int,u16);void UpdateRegR(int,u16=0xffff);
  void CheckPendingIRQ();void MainCheckPendingIRQ(u16);void update_main_irq();void ResetInterrupts();
  void seed(u16 pend,u16 stale,bool main){
   m_udata.data[0x20/2]=pend;m_mcipd=pend;
@@ -73,6 +82,34 @@ struct scsp_device {
 };
 // METHODS
 int main(){
+ unsigned midi=0;
+ for(unsigned pos=0;pos<32;++pos)for(unsigned count:{0u,1u,2u,31u})
+ for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
+ for(bool debug:{false,true}){
+  scsp_device s;s.m_MidiR=pos;s.m_MidiW=(pos+count)&31;s.m_MidiStack[pos]=0xa5;
+  s.m_udata.data[2]=0x7e00;s.seed(count?8:0,0,false);s.inspecting=debug;
+  auto value=s.read(0x404/2,mask);assert(value==0x7ea5);
+  bool pop=count&&(mask&0xff)&&!debug;
+  assert(s.m_MidiR==((pos+pop)&31));assert(s.m_MidiW==((pos+count)&31));
+  s.verify(count>unsigned(pop)?8:0,count>unsigned(pop)?8:0);++midi;
+ }
+ for(unsigned pos=0;pos<32;++pos)for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
+ for(u16 val:{u16(0),u16(0xffff),u16(0xa55a)}){
+  scsp_device s;s.m_MidiR=pos;s.m_MidiW=(pos+1)&31;s.m_MidiStack[pos]=0xa5;
+  s.m_udata.data[2]=0x7ea5;s.seed(8,0,false);
+  s.write(0x404/2,val,mask);assert(s.m_MidiR==pos&&s.m_udata.data[2]==0x7ea5);s.verify(8,8);
+  s.w16(0x404,val,mask);assert(s.m_MidiR==pos&&s.m_udata.data[2]==0x7ea5);s.verify(8,8);++midi;
+ }
+ for(unsigned pos=0;pos<32;++pos)for(bool busy:{false,true})
+ for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})
+ for(u16 val:{u16(0),u16(0xffff),u16(0xa55a)}){
+  scsp_device s;s.m_MidiOutW=pos;s.m_MidiOutR=busy?(pos+31)&31:pos;
+  s.m_udata.data[3]=0x1234;s.seed(0x200,0,false);s.write(0x406/2,val,mask);
+  bool send=mask&0xff;assert(s.m_MidiOutW==((pos+send)&31));
+  assert(s.starts==unsigned(send&&!busy));if(send)assert(s.m_MidiOutStack[pos]==(val&255));
+  s.verify(send?0:0x200,send?0:0x200);++midi;
+ }
+ std::cout<<midi<<" actual MIDI read/write/debugger/byte-lane cases passed\n";
  unsigned clears=0,pending=0;
  for(bool main:{false,true})for(unsigned p=0;p<2048;++p)
  for(u16 mask:{u16(0),u16(0xff),u16(0xff00),u16(0xffff)})

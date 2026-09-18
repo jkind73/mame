@@ -35,7 +35,7 @@ public:
   auto midi_out_cb() { return m_midi_out_cb.bind(); }
 
   // SCSP register access
-  u16 read(offs_t offset);
+  u16 read(offs_t offset, u16 mem_mask = ~0);
   void write(offs_t offset, u16 data, u16 mem_mask = ~0);
 
   // MIDI I/O access (used for comms on Model 2/3)
@@ -203,9 +203,9 @@ private:
   void UpdateSlotReg(int s, int r);
   void UpdateReg(int reg, u16 mem_mask = ~0);
   void UpdateSlotRegR(int slot, int reg);
-  void UpdateRegR(int reg);
+  void UpdateRegR(int reg, u16 mem_mask);
   void w16(u32 addr, u16 val, u16 mem_mask = ~0);
-  u16 r16(u32 addr);
+  u16 r16(u32 addr, u16 mem_mask = ~0);
   inline s32 UpdateSlot(SCSP_SLOT *slot);
   void DoMasterSamples(sound_stream &stream);
 
