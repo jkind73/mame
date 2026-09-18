@@ -51,6 +51,10 @@ phase=dsp-pipeline
 python3 saturn_pending/test_scudsp_pipeline_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pipeline" > "$LOG_DIR/dsp-pipeline.log" 2>&1
 grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/dsp-pipeline.log"
+phase=dsp-read
+python3 saturn_pending/test_scudsp_read_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-read" > "$LOG_DIR/dsp-read.log" 2>&1
+grep -q 'DSP read DMA: 1024 Work RAM-H mirror/mode programs passed live' "$LOG_DIR/dsp-read.log"
 phase=dsp-dma
 python3 saturn_pending/test_scudsp_dma_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-dma" > "$LOG_DIR/dsp-dma.log" 2>&1
@@ -62,15 +66,17 @@ grep -q 'DSP save: busy transfer restored and 60000-word replay verified' "$LOG_
 # Default DSP fixtures above use JP/interpreter; exercise the other shared-core
 # configurations explicitly rather than inferring DSP acceptance from BIOS boot.
 for system in saturnjp saturneu stvbios; do
-    for fixture in dma pipeline; do
+    for fixture in dma pipeline read; do
         phase="dsp-$fixture-$system-drc"
         python3 "saturn_pending/test_scudsp_${fixture}_runtime.py" \
             --executable "$ARTIFACT/saturn" --rompath "$ROOT/regtests" \
             --system "$system" --drc --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
         if [[ "$fixture" == dma ]]; then
             grep -q 'DSP DMA: 32 mapped-program B-bus addressing cases passed live' "$LOG_DIR/$phase.log"
-        else
+        elif [[ "$fixture" == pipeline ]]; then
             grep -q 'DSP pipeline: 12 wrapped/nonwrapped control-flow programs passed live' "$LOG_DIR/$phase.log"
+        else
+            grep -q 'DSP read DMA: 1024 Work RAM-H mirror/mode programs passed live' "$LOG_DIR/$phase.log"
         fi
     done
 done
@@ -136,4 +142,4 @@ phase=final-provenance
 python3 saturn_pending/verify_ci_artifact.py "$ARTIFACT" --run-id "$RUN_ID" > "$LOG_DIR/final-artifact.json"
 cmp "$LOG_DIR/artifact.json" "$LOG_DIR/final-artifact.json"
 sha256sum -c "$LOG_DIR/bios.sha256"
-echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP wrapped control flow, DSP DMA B-bus addressing and in-flight save replay, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
+echo 'PASS: CI-artifact configuration, CD/cart/backup, DSP wrapped control flow and read mirrors, DSP DMA B-bus addressing and in-flight save replay, three SCSP timers, full/sparse multitap transport, sampled RESB and snapshot save-load, timeout, H/V edge restore, and four BIOS/background replay configurations. Not full gameplay or hardware acceptance.' | tee "$LOG_DIR/status.txt"
