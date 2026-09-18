@@ -17,3 +17,9 @@ fails remaining-data flags, byte 32 (overwritten with 10), the second-page tail,
 and zero-byte port mode/report selection. This demonstrates the live bug before
 integrating the pending transport fix. Positive live acceptance of that fix
 requires a new binary and is not included in these baseline results.
+
+Additional baseline validation: the JP DRC **1,042-case composition suite**
+completed successfully, including its pixel checks and real save/mutate/load
+replay. See `saturnjp-drc-composition.log`. This used the same verified 5008a923
+executable, not the new SMPC source. Other composition configurations and real
+software/gameplay are not inferred from this result.
