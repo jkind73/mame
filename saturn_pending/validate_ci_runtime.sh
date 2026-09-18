@@ -51,6 +51,10 @@ phase=dsp-disassembler
 python3 saturn_pending/test_scudsp_disassembler_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-disassembler" > "$LOG_DIR/dsp-disassembler.log" 2>&1
 grep -q 'DSP disassembler: 241 real debugger destination/parallel-command rows passed' "$LOG_DIR/dsp-disassembler.log"
+phase=dsp-hostflags
+python3 saturn_pending/test_scudsp_hostflags_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-hostflags" > "$LOG_DIR/dsp-hostflags.log" 2>&1
+grep -q 'DSP host flags: 112 guest-ALU/read-only/masked-write cases passed live' "$LOG_DIR/dsp-hostflags.log"
 phase=dsp-pipeline
 python3 saturn_pending/test_scudsp_pipeline_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/dsp-pipeline" > "$LOG_DIR/dsp-pipeline.log" 2>&1
@@ -122,7 +126,7 @@ grep -q 'DSP save: busy transfer restored and 256-word replay verified' "$LOG_DI
 # Default DSP fixtures above use JP/interpreter; exercise the other shared-core
 # configurations explicitly rather than inferring DSP acceptance from BIOS boot.
 for system in saturnjp saturneu stvbios; do
-    for fixture in dma pipeline read pram count count_operand alu multiplier lop parallel cbus; do
+    for fixture in dma pipeline read pram count count_operand alu multiplier lop parallel cbus hostflags; do
         phase="dsp-$fixture-$system-drc"
         python3 "saturn_pending/test_scudsp_${fixture}_runtime.py" \
             --executable "$ARTIFACT/saturn" --rompath "$ROOT/regtests" \
@@ -137,6 +141,8 @@ for system in saturnjp saturneu stvbios; do
             grep -q 'DSP DMA count: 24 zero/width/direction/hold programs passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == count_operand ]]; then
             grep -q 'DSP count operand: 32 source-alias/increment/wrap programs passed live' "$LOG_DIR/$phase.log"
+        elif [[ "$fixture" == hostflags ]]; then
+            grep -q 'DSP host flags: 112 guest-ALU/read-only/masked-write cases passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == cbus ]]; then
             grep -q 'DSP C-bus: 512 mapped-program placement/WA0 cases passed live' "$LOG_DIR/$phase.log"
         elif [[ "$fixture" == parallel ]]; then
