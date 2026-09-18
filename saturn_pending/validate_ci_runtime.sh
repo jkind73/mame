@@ -189,6 +189,10 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP DSP: 31 zero-tail/live-program cases passed live' "$LOG_DIR/$phase.log"
 done
+phase=scsp-dsp-save
+python3 saturn_pending/test_scsp_dsp_save_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP DSP save: active effect and late-read state restored through real file replay' "$LOG_DIR/$phase.log"
 phase=scsp-timers
 python3 saturn_pending/test_scsp_timers.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" > "$LOG_DIR/scsp-timers.log" 2>&1

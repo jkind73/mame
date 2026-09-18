@@ -38,3 +38,15 @@ parent ID.14 parser controls pass. Full70-script local/CI and rebuilt native
 acceptance (124 programs/four configurations, all preceding gates retained)
 are pending. Full DSP file replay/audio continuity, hardware phase/arbitration
 and game-performance qualification remain open; no SND parent is closed.
+
+## Existing-state native file replay control
+
+A new actual save-manager gate runs a decaying SCSP effect with a second MRD at
+step127. It observes the first changed sample after save/restore, not an assumed
+hardware phase: RAM, both EFREG outputs and both MEMS inputs must reproduce the
+same one-step decay and late-read diagnostic. It poisons COEF, MPRO, RAM, output
+state and removes the late read before load. TEMP initialization uses guest DSP
+instructions. Qualified9b596f90 passes this full-length-program control before
+the zero-tail correction; raw output is preserved. The candidate must also pass.
+This adds native read-pipeline/effect replay coverage, not analog waveform/audio
+buffer continuity, pending-write arbitration or full SND-05 closure.
