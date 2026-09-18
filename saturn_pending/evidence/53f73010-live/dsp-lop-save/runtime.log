@@ -1,0 +1,7 @@
+DSP_LOP_SAVE armed
+DSP_LOP_SAVE observed partial loop
+DSP_LOP_SAVE saved
+DSP_LOP_SAVE mutated
+DSP_LOP_SAVE loaded
+DSP_LOP_SAVE PASS iterations=4096 replay=exact
+Average speed: 118.84% (2 seconds)

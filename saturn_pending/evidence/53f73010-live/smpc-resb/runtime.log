@@ -1,0 +1,10 @@
+SMPC_RESB armed
+SMPC_RESB case=released PASS
+SMPC_RESB case=press-before-edge PASS
+SMPC_RESB case=press-sampled PASS
+SMPC_RESB case=status-report PASS
+SMPC_RESB case=peripheral-report PASS
+SMPC_RESB case=release-before-edge PASS
+SMPC_RESB case=release-sampled PASS
+SMPC_RESB PASS cases=7
+Average speed: 131.75% (2 seconds)

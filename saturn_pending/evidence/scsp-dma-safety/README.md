@@ -1,4 +1,4 @@
-# SND-03 SCSP DMA self-target safety — native WIP
+# SND-03 SCSP DMA self-target safety — NATIVE SAFETY QUALIFIED
 
 A memory-to-register DMA could write its own DEXE bit, recursively entering the
 host transfer routine. Even without DEXE, restoring only the visible register
@@ -32,7 +32,12 @@ The old recursive behavior is tested ONLY under the extracted depth guard.
 SCSP_DMA_SELF_EXECUTE=1 adds executable payloads for48 cases; the full consumer
 opts in only after verifying the fixed artifact against current production.
 Full71-script local/CI and build35402288912 PASS for source53f73010.
-Matching192 native cases/four profiles and preceding gates pending.
+Build35402288912/export35402954230 and the complete native consumer PASS:
+192 DMA transfer/self-target cases across JP/interpreter, JP/DRC, PAL/DRC
+and ST-V/DRC; actual DMA parameter file replay; prior6144 MIDI output,1728
+IRQ and3036 DSP cases; all previous file-replay/runtime/BIOS/provenance gates.
+Binary SHA256 b1cc2e68c1325bae0a1f5c4bb9220964f118e7e16c0e35ca0efa80c6018f13d9.
+Evidence: `../53f73010-live/`; consumer revision recorded separately.
 
 The self-target cases qualify host robustness only. Timer/serial stand-ins in
 the extracted harness are not timing proof. Memory wrapping is an existing
@@ -46,7 +51,7 @@ poison DMA addresses/RAM/coefficient/timer control, load, and repeat. Both
 restored observations and the independent transfer must match. Old2f54b074
 fails four expected observations (cached-address reuse and untouched coefficient,
 before and after load); save/restore equality and mutation controls remain
-intact.14 replay-parser controls pass. Rebuilt replay pending. This is a
+intact.14 replay-parser controls pass. Rebuilt parameter replay PASS. This is a
 completed-transfer parameter save, not an in-flight DMA timing qualification.
 
 A separate fixed-point control reuses the method harness with payload DMEA8000,
