@@ -1,0 +1,9 @@
+SCSP_DMA_SAVE armed
+SCSP_DMA_SAVE saved
+SCSP_DMA_SAVE mutated
+SCSP_DMA_SAVE loaded
+SCSP_DMA_SAVE FAIL original_cached_parameters got=300 want=100
+SCSP_DMA_SAVE FAIL original_untouched_coefficient got=0 want=7ff8
+SCSP_DMA_SAVE FAIL replayed_cached_parameters got=300 want=100
+SCSP_DMA_SAVE FAIL replayed_untouched_coefficient got=0 want=7ff8
+Average speed: 122.88% (2 seconds)
