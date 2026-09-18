@@ -61,3 +61,15 @@ loading now implemented and qualified, zero-encoded program save copies its firs
 word correctly but finishes before save; exactly255 words are wrong after both
 original completion and replay. This isolates the remaining counter defect from
 the older ca63041f program-loader failure.
+
+Integrated5d88f975 full local batch passed all58 scripts (exit0); three optional
+missing-default-binary live skips are excluded. Log: `local/regressions.log`.
+Native build35347062472 remains in progress; full source/binary-qualified
+counter/save positives must still be run after export.
+
+Next concrete decoder audit: op_dma still passes opcode&0xf to the count-source
+helper, although ST-097 pp.135–136 select the source using bits0–2. The helper
+returns zero for selectors8–15. Pinned Mednafen and Ymir use only the bank and
+increment bits. Ignored-bit aliasing and actual MCx counter-fetch side effects
+need an isolated mapped test and correction; this is not covered by the current
+count-width cases. No new fix or native result for that issue is claimed here.

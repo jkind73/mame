@@ -4,7 +4,9 @@ The eight-bit counter and zero-as-256 behavior are now implemented after the
 program-loader baseline qualified. Both data and program save fixtures now use
 legal zero-encoded 256-word transfers. Extracted 20,480 count cases, 5,120 program
 loads, prior suites, parser controls and full-TU syntax pass. Native positives
-remain pending. See `evidence/dsp-count/README.md` for reference limitations.
+remain pending in build35347062472. The full58-script local batch passed,
+excluding three optional live skips. See `evidence/dsp-count/README.md` for
+reference limitations.
 The portable candidate patch is retained in Git history, not for reapplication.
 
 **Latest fully native-qualified source: cd074b71.** Build35344168780 and
