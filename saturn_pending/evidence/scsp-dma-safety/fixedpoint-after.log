@@ -1,0 +1,4 @@
+74 actual DMA transfer/gate/wrap/self-target safety cases passed
+2176 actual MIDI read/write/debugger/byte-lane cases passed
+851968 actual SCSP acknowledgement/mask/stale-command cases and 114688 pending-port cases passed
+SCSP fixed-point DMA recursion control passed (actual methods, not native execution)

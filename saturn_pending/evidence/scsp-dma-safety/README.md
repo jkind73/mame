@@ -47,3 +47,10 @@ fails four expected observations (cached-address reuse and untouched coefficient
 before and after load); save/restore equality and mutation controls remain
 intact.14 replay-parser controls pass. Rebuilt replay pending. This is a
 completed-transfer parameter save, not an in-flight DMA timing qualification.
+
+A separate fixed-point control reuses the method harness with payload DMEA8000,
+DRGA412 and DEXE1008: the old core reissues the identical DMA recursively,
+rather than merely nesting into another destination. Its test-only depth guard
+stops the first nested call. The fixed core passes the same guarded stimulus.
+Both logs and `test_scsp_dma_recursion.py` are preserved; this control is never
+submitted to an old native executable. It does not identify the user's crash.
