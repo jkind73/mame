@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+# license:BSD-3-Clause
+"""DSP loop save result-parser controls; actual file handling uses the shared runner."""
+from test_scudsp_lop_save_runtime import validate_output
+stages=['DSP_LOP_SAVE saved\n','DSP_LOP_SAVE mutated\n','DSP_LOP_SAVE loaded\n']
+final='DSP_LOP_SAVE PASS iterations=4096 replay=exact\n'
+observed='DSP_LOP_SAVE observed partial loop\n'
+good=observed+''.join(stages)+final
+validate_output(good,0)
+for bad in [final, ''.join(stages[:-1])+final, ''.join(stages[::-1])+final,
+            good+stages[0],good+final,''.join(stages),good.replace('iterations=4096','iterations=0'),
+            good.replace(observed,''),good+'DSP_LOP_SAVE FAIL deliberate\n',
+            good+'LUA ERROR deliberate\n',good.replace('replay=exact\n','replay=exact extra\n')]:
+    try:validate_output(bad,0)
+    except RuntimeError:pass
+    else:raise AssertionError('invalid replay output accepted')
+try:validate_output(good,1)
+except RuntimeError:pass
+else:raise AssertionError('nonzero exit accepted')
+print('13 DSP loop save result-parser controls passed (no emulator execution)')
