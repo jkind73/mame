@@ -1,16 +1,17 @@
 Traceback (most recent call last):
-  File "/home/user/mame/saturn_pending/test_scsp_midi_fifo_runtime.py", line 98, in <module>
+  File "/home/user/mame/saturn_pending/test_scsp_midi_fifo_runtime.py", line 116, in <module>
     if __name__=='__main__':runner.main('SCSP MIDI FIFO: %d depth/status/drain-window cases passed live'%CASES)
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/home/user/mame/saturn_pending/test_scudsp_dma_runtime.py", line 110, in main
     validate_output((output/'runtime.log').read_text(errors='replace'),result.returncode)
-  File "/home/user/mame/saturn_pending/test_scsp_midi_fifo_runtime.py", line 96, in validate_output
+  File "/home/user/mame/saturn_pending/test_scsp_midi_fifo_runtime.py", line 114, in validate_output
     raise RuntimeError('SCSP MIDI FIFO fixture failed:\n'+text[-16000:])
 RuntimeError: SCSP MIDI FIFO fixture failed:
 SCSP_MIDI_FIFO armed
+SCSP_MIDI_FIFO FAIL reset_status got=0 want=900
+SCSP_MIDI_FIFO FAIL prime_status got=0 want=900
 SCSP_MIDI_FIFO FAIL idle_status1 got=0 want=900
-SCSP_MIDI_FIFO FAIL idle_sound_pending1 got=0 want=200
-SCSP_MIDI_FIFO FAIL idle_main_pending1 got=0 want=200
+SCSP_MIDI_FIFO FAIL idle_mobuf_zero1 got=5a want=0
 SCSP_MIDI_FIFO FAIL one_status1 got=0 want=100
 SCSP_MIDI_FIFO FAIL one_drained_status1 got=0 want=900
 SCSP_MIDI_FIFO FAIL full_status1 got=0 want=1100
@@ -193,5 +194,5 @@ SCSP_MIDI_FIFO FAIL fifth_status24 got=0 want=1100
 SCSP_MIDI_FIFO FAIL fifth_mobuf_zero24 got=404 want=0
 SCSP_MIDI_FIFO FAIL four_frame_window24 got=0 want=1
 SCSP_MIDI_FIFO FAIL full_drained_status24 got=0 want=900
-Average speed: 132.91% (2 seconds)
+Average speed: 125.36% (2 seconds)
 

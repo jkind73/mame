@@ -19,6 +19,24 @@ local function test()
     ss:write_u16(0x70000,0x60fe);snd.state['SR'].value=0x2700;snd.state['PC'].value=0x70000
     sp:write_u16(base+0x41e,0);sp:write_u16(base+0x42a,0)
     emu.wait(emu.attotime.from_msec(20))
+    -- Documented reset state: MOBUF/MIEMP report both buffers empty, but no
+    -- output-empty request exists yet because nothing has been sent out. The
+    -- manual (p.91, interrupt note 9) makes the request a transition to empty,
+    -- so one priming frame establishes it before the per-case loops.
+    check('reset_status',sp:read_u16(base+0x404)&0xff00,0x0900)
+    check('reset_mobuf_zero',sp:read_u16(base+0x406),0)
+    check('reset_sound_request',sp:read_u16(base+0x420)&0x200,0)
+    check('reset_main_request',sp:read_u16(base+0x42c)&0x200,0)
+    sp:write_u16(base+0x406,0x5a)
+    check('prime_activity',sp:read_u16(base+0x420)&0x200,0)
+    local primed=false
+    for n=1,30 do
+        emu.wait(emu.attotime.from_usec(50))
+        if (sp:read_u16(base+0x420)&0x200)~=0 then primed=true;break end
+    end
+    check('prime_completed',primed and 1 or 0,1)
+    check('prime_main_request',sp:read_u16(base+0x42c)&0x200,0x200)
+    check('prime_status',sp:read_u16(base+0x404)&0xff00,0x0900)
     local step=emu.attotime.from_usec(50)
     -- One 10-bit frame at 31.25 kbps is 320 usec; polling at 50 usec keeps the
     -- windows wide enough for exact virtual timing yet narrow enough to tell
