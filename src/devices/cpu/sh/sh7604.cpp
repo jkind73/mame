@@ -249,6 +249,8 @@ void sh7604_device::device_reset()
 
 	for (int i = 0; i < 2; i++)
 	{
+		// DRCR resets to external DREQ selection (section 9.2.6).
+		m_dmac[i].drcr = 0;
 		m_dma_timer_active[i] = 0;
 		m_dma_irq[i] = 0;
 		m_active_dma_incs[i] = 0;
