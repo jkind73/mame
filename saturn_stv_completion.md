@@ -199,8 +199,30 @@
   post-fix binary (CI run 35422729391, sha256 9a7d21c9...) with two exact phase
   zero checks. The pre-fix qualified binary 803be0ad reproduces the old formula
   case by case, so the two runs bracket the change. Evidence:
-  saturn_pending/evidence/scsp-fm/{prefix-803be0ad,live-7bebd197}/. PCM formats,
-  interpolation and live register changes remain open under this parent.
+  saturn_pending/evidence/scsp-fm/{prefix-803be0ad,live-7bebd197}/. PCM wave form playback is now native-qualified with no defect
+  found, and one fixture question is recorded rather than dressed up as one.
+  `saturn_pending/test_scsp_pcm_runtime.py` measures the wave form source the FM
+  and envelope fixtures hold constant, on four profiles (JP interpreter, JP DRC,
+  PAL DRC, ST-V DRC, all PASS): PCM8B and PCM16B play byte-identical wave forms
+  from the same logical samples (0.00000 of the span), SA is a byte address and
+  16 bit samples are big endian (0x4000/0xC000 reaches the level of an 8 bit
+  0x40/0xC0 square, ratio 1.00000, while a byte swapped DC is 1/256),
+  interpolation advances on every sample at a fractional pitch (1.00000), one
+  64 word loop at 0.25 words/sample takes 256.00 samples, a reverse loop turns at
+  both ends, a no-loop slot stops at LEA (tail span 0.00000), and a live one
+  octave pitch write doubles the measured advance (2.00x). The mixer pan table
+  was measured slot by slot (DIPAN 0x1f hard left, 0x0f hard right, 0x10 centre,
+  idle capture silent) and matches `m_LPANTABLE`/`m_RPANTABLE`. Two false leads
+  are recorded in the evidence so they are not re-run: a key-on write of a
+  constant control word silently switched slots back to PCM8B + normal loop
+  (fixture bug, not an emulator defect - `key_reg()` now preserves LPCTL/PCM8B),
+  and the ~250 ms key-on transient must be excluded from measurements. The
+  ping-pong case (`LPCTL=3`) captures a railed constant in the fixture while the
+  isolated probe measures a healthy triangle for the same registers; it is
+  reported and not asserted, because that is a difference between two test
+  harnesses until it is understood. Evidence:
+  `saturn_pending/evidence/scsp-pcm/README.md`. Mixer gain/master volume and
+  CD-DA/effects-heavy playback remain open under this parent.
   - Investigate historical stuck-envelope/pitch reports against current recordings and configurations before declaring an engine defect.
 - [ ] **SND-03 — Complete timing, DMA and interrupt qualification. [P/V]**
   - Current integration: Integrated timer phase-preserving rearm and attotime-boundary fix; extracted deadline/reset checks and the live24 timer/divisor plus three clear/reassert paths pass in the complete native consumer. Fractional hardware phase and broader sound acceptance remain open. See `regtests/saturn/handoff/integration.md`.
