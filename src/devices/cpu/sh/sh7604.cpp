@@ -41,6 +41,8 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_read_rxd(*this, 1)
 	, m_write_sck(*this)
 	, m_tier(0), m_ftcsr(0), m_ftcsr_read(0), m_frc_tcr(0), m_tocr(0), m_frt_temp(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
+	, m_frt_out_a(false), m_frt_out_b(false)
+	, m_write_ftoa(*this), m_write_ftob(*this)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0)
@@ -139,6 +141,8 @@ void sh7604_device::device_start()
 	save_item(NAME(m_ocra));
 	save_item(NAME(m_ocrb));
 	save_item(NAME(m_frc_icr));
+	save_item(NAME(m_frt_out_a));
+	save_item(NAME(m_frt_out_b));
 	save_item(NAME(m_frc_base));
 	save_item(NAME(m_frt_input));
 	save_item(NAME(m_frt_clock_input));
@@ -415,6 +419,10 @@ void sh7604_device::frt_reset()
 	m_frc_icr = 0;
 	m_frc_base = total_cycles();
 	m_timer->adjust(attotime::never);
+	m_frt_out_a = false;
+	m_frt_out_b = false;
+	m_write_ftoa(0);
+	m_write_ftob(0);
 }
 
 void sh7604_device::sh2_timer_resync()
@@ -450,14 +458,14 @@ void sh7604_device::sh2_timer_activate()
 	// Compare uses the count before its update (Figure 11.11, p.311).
 	// Equality alone is not an event: even OCR == FRC waits one tick.
 	// Clear-on-A must keep running after software leaves OCFA latched.
-	if (!(m_ftcsr & OCFA) || (m_ftcsr & CCLRA))
+	if (!(m_ftcsr & OCFA) || (m_ftcsr & CCLRA) || (m_frt_out_a != BIT(m_tocr, 1)))
 	{
 		int delta = uint16_t(m_ocra - frc) + 1;
 		if (delta < max_delta)
 			max_delta = delta;
 	}
 
-	if (!(m_ftcsr & OCFB))
+	if (!(m_ftcsr & OCFB) || (m_frt_out_b != BIT(m_tocr, 0)))
 	{
 		int delta = uint16_t(m_ocrb - frc) + 1;
 		if (delta < max_delta)
@@ -504,8 +512,13 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_timer_callback)
 // Shared count-edge behavior for internal and external FRT clocks.
 void sh7604_device::frt_compare_tick(uint16_t previous)
 {
+	bool const old_a = m_frt_out_a;
+	bool const old_b = m_frt_out_b;
 	if (previous == m_ocrb)
+	{
 		m_ftcsr |= OCFB;
+		m_frt_out_b = BIT(m_tocr, 0);
+	}
 
 	if (previous == 0xffff)
 		m_ftcsr |= OVF;
@@ -513,11 +526,18 @@ void sh7604_device::frt_compare_tick(uint16_t previous)
 	if (previous == m_ocra)
 	{
 		m_ftcsr |= OCFA;
+		m_frt_out_a = BIT(m_tocr, 1);
 
 		if (m_ftcsr & CCLRA)
 			m_frc = 0;
 	}
 
+	// Publish after committing both levels and the counter clear. OLVLA/B
+	// select the level at compare, not a toggle or an immediate write effect.
+	if (old_a != m_frt_out_a)
+		m_write_ftoa(m_frt_out_a);
+	if (old_b != m_frt_out_b)
+		m_write_ftob(m_frt_out_b);
 }
 
 void sh7604_device::ftci_w(int state)
@@ -1593,7 +1613,7 @@ uint8_t sh7604_device::tocr_r()
 void sh7604_device::tocr_w(uint8_t data)
 {
 	sh2_timer_resync();
-	// TODO: output levels A/B (bits 1-0)
+	// Output levels A/B (bits 1-0) take effect on their next compare.
 	m_tocr = data & 0x13;
 	sh2_timer_activate();
 	sh2_recalc_irq();

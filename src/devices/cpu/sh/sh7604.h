@@ -37,6 +37,8 @@ public:
 	auto sck_wr_callback() { return m_write_sck.bind(); }
 	void sck_w(int state);
 	void ftci_w(int state);
+	auto ftoa_wr_callback() { return m_write_ftoa.bind(); }
+	auto ftob_wr_callback() { return m_write_ftob.bind(); }
 
 	void sh2_notify_dma_data_available();
 
@@ -235,6 +237,8 @@ private:
 	uint8_t m_tier, m_ftcsr, m_ftcsr_read, m_frc_tcr, m_tocr, m_frt_temp;
 	uint16_t m_frc;
 	uint16_t m_ocra, m_ocrb, m_frc_icr;
+	bool m_frt_out_a, m_frt_out_b;
+	devcb_write_line m_write_ftoa, m_write_ftob;
 
 	// INTC
 	struct

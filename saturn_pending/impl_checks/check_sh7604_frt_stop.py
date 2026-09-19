@@ -61,6 +61,9 @@ struct Callback { bool isnull() const { return true; } void operator()(uint32_t)
 struct sh2_device { void device_reset() {} };
 struct Device : sh2_device {
  static constexpr uint8_t ICF=0x80, OCFA=8, OCFB=4, OVF=2, CCLRA=1;
+ bool m_frt_out_a=false, m_frt_out_b=false;
+ void m_write_ftoa(int) {}
+ void m_write_ftob(int) {}
  bool m_frt_clock_input=false;
  uint8_t m_frt_temp=0;
  uint8_t m_ftcsr_read=0;
