@@ -116,6 +116,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_sci_rx_state));
 	save_item(NAME(m_sci_rx_shift));
 	save_item(NAME(m_sci_rx_parity_error));
+	save_item(NAME(m_sci_rx_mp));
 	save_item(NAME(m_sci_rx_bitcnt));
 	save_item(NAME(m_sci_rx_phase));
 	save_item(NAME(m_sci_rx_vote));
@@ -244,6 +245,7 @@ void sh7604_device::device_reset()
 	m_sci_rx_state = 0;
 	m_sci_rx_shift = 0;
 	m_sci_rx_parity_error = false;
+	m_sci_rx_mp = false;
 	m_sci_rx_bitcnt = 0;
 	m_sci_rx_phase = 0;
 	m_sci_rx_vote = 0;
@@ -1129,6 +1131,7 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 			m_sci_rx_phase = 0;
 			m_sci_rx_shift = 0;
 			m_sci_rx_parity_error = false;
+			m_sci_rx_mp = false;
 			m_sci_rx_bitcnt = 0;
 		}
 		break;
@@ -1163,9 +1166,7 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 				}
 				else if (m_sci_rx_bitcnt == data_bits + 1 && mp_mode)
 				{
-					// MPB latches into SSR.MPB (not modelled as wake filter)
-					if (bit)
-						m_ssr |= SSR_MPB;
+					m_sci_rx_mp = bit;
 				}
 				else if (m_sci_rx_bitcnt == data_bits + 1 && parity_enable)
 				{
@@ -1178,7 +1179,18 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 				else if (m_sci_rx_bitcnt == total_bits)
 				{
 					// first stop bit must be 1 (only the first is checked, p.338)
-					sci_rx_complete(m_sci_rx_shift, m_sci_rx_parity_error, !bit);
+					// Section 13.2.6 p.341 / Figure 13.13: in MP mode,
+					// MPIE discards data/error results until an address
+					// character (MPB=1) wakes the receiver. MPB is the
+					// received value, not a sticky one-bit flag.
+					if (mp_mode)
+					{
+						m_ssr = (m_ssr & ~SSR_MPB) | (m_sci_rx_mp ? SSR_MPB : 0);
+						if (m_sci_rx_mp)
+							m_scr &= ~0x08; // hardware clears MPIE
+					}
+					if (!mp_mode || !BIT(m_scr, 3))
+						sci_rx_complete(m_sci_rx_shift, m_sci_rx_parity_error, !bit);
 					m_sci_rx_state = 0;
 					m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
 					return;

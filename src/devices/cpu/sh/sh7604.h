@@ -207,6 +207,7 @@ private:
 	uint8_t m_sci_rx_state;     // receive oversample state
 	uint8_t m_sci_rx_shift;     // data bits collected so far
 	bool m_sci_rx_parity_error; // pending parity result until the stop-bit sample
+	bool m_sci_rx_mp;          // pending received multiprocessor bit
 	uint8_t m_sci_rx_bitcnt;    // data bits collected count
 	uint8_t m_sci_rx_phase;     // oversample phase 0-15 within a bit
 	uint8_t m_sci_rx_vote;      // majority-vote accumulator
