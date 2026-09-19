@@ -403,3 +403,24 @@
   rate/timing (how fast the external counter increments per trackball
   tick) is ioport-driven and unqualified; counter-mode + satellite-mode
   bit interaction unmodelled.
+
+---
+
+## Session addendum (second batch)
+
+6. **EXP-01 document lead closed:** ST-240-A/B in the SDK set are the
+   **SCU DSP Assembler** manuals (title page verified from blob
+   `288d9605cd090e017230c26176aa5b91ba1a81d7` this session), not the
+   Video CD/MPEG board manuals. No primary MPEG-board documentation is
+   present in the pinned SDK set; EXP-01 remains R/blocked on either the
+   correct Sega document or a board trace.
+7. **CPU-04 status:** confirmed this session that the SH-2 core
+   (`sh2.h`/`sh2.cpp`) has no deferred/restartable memory-access
+   infrastructure at all (no delayed-access members). The remaining work
+   is a coordinated interpreter+DRC design; no dormant stage is
+   queueable without its BUS-02 consumer and a stated observable.
+8. **Regression guard for IMPL-0005:** aligned/even DMA was verified to
+   keep identical memory results and identical word-write counts
+   (sweep 2 of the check script), so the frozen DMA-acknowledgement and
+   accepted-game behaviours should be untouched; the falsifier covers
+   the case where that assumption is wrong on hardware.
