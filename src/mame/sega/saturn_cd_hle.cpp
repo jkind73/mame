@@ -1967,149 +1967,110 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
 }
 
 void saturn_cd_hle_device::cmd_move_sector_data() {
-  // Move Sector Data
-  // swordsor and riglord2 use the copy variant of this command
-  uint32_t src_filter = (cr3 >> 8) & 0xff;
-  uint32_t dst_filter = cr1 & 0xff;
-  uint32_t sectnum = cr4 & 0xff;
-
-  LOGCMD("%s: Move sector data (SN %d SO %d BN %d -> %d)\n",
-         machine().describe_context(), sectnum, cr2, src_filter, dst_filter);
-
-  if ((src_filter >= MAX_FILTERS) || (dst_filter >= MAX_FILTERS)) {
-    LOGWARN("CD: invalid buffer number\n");
-    cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ECPY);
-    update_hirq();
-    return;
-  }
-
-  /* the count comes from CR4 but a partition only holds MAX_BLOCKS sectors */
-  if (sectnum > MAX_BLOCKS) {
-    LOGWARN("CD: move sector data, count %d truncated to %d\n", sectnum,
-            MAX_BLOCKS);
-    sectnum = MAX_BLOCKS;
-  }
-
-  for (int i = 0; i < sectnum; i++) {
-    blockT *const srcblock = partitions[src_filter].blocks[i];
-
-    // the source partition can hold fewer sectors than we were asked to move
-    if (srcblock == nullptr) {
-      LOGWARN("CD: move sector data, no source block %d in partition %02x\n", i,
-              src_filter);
-      break;
-    }
-
-    // allocate the dst blocks
-    partitions[dst_filter].blocks[i] =
-        cd_alloc_block(&partitions[dst_filter].bnum[i]);
-
-    // cd_alloc_block() returns null once every block is in use
-    if (partitions[dst_filter].blocks[i] == nullptr) {
-      partitions[dst_filter].bnum[i] = 0xff;
-      LOGWARN("CD: move sector data, buffer full after %d sectors\n", i);
-      break;
-    }
-
-    if (partitions[dst_filter].size == -1)
-      partitions[dst_filter].size = 0;
-    partitions[dst_filter].size += srcblock->size;
-    partitions[dst_filter].numblks++;
-
-    /* unlike cmd_copy_sector_data(), which only copies the sector payload and
-       leaves the block's FAD and subheader at whatever the recycled block held,
-       move the whole block across: Get Sector Information reports those fields
-       and the hardware relocates the block rather than re-reading it */
-    *partitions[dst_filter].blocks[i] = *srcblock;
-
-    // release the source block, which is what makes this a move and not a copy
-    partitions[src_filter].size -= srcblock->size;
-    cd_free_block(srcblock);
-    partitions[src_filter].blocks[i] = (blockT *)nullptr;
-    partitions[src_filter].bnum[i] = 0xff;
-    partitions[src_filter].numblks--;
-  }
-
-  cd_defragblocks(&partitions[src_filter]);
-
-  hirqreg |= (CMOK | ECPY);
-  update_hirq();
-  cr_standard_return(cd_stat);
+  cd_copy_move_sector_data(true);
 }
 
 void saturn_cd_hle_device::cmd_copy_sector_data() {
-  // swordsor and riglord2 uses this
-  // TODO: incomplete
-  uint32_t src_filter = (cr3 >> 8) & 0xff;
-  uint32_t dst_filter = cr1 & 0xff;
-  uint32_t sectnum = cr4 & 0xff;
+  cd_copy_move_sector_data(false);
+}
 
-  if (src_filter >= MAX_FILTERS) {
-    LOGWARN("CD: invalid buffer number\n");
-    cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ECPY);
+void saturn_cd_hle_device::cd_copy_move_sector_data(bool move) {
+  const unsigned source = cr3 >> 8;
+  const uint8_t input = cr1 & 0xff;
+  uint32_t offset = cr2;
+  uint32_t count = cr4;
+
+  auto const respond = [this](uint16_t status, bool completed) {
+    cr_standard_return(status);
+    hirqreg |= CMOK | (completed ? ECPY : 0);
+    if (!freeblocks)
+      hirqreg |= BFUL;
     update_hirq();
+  };
+  if (source >= MAX_FILTERS || input >= MAX_FILTERS) {
+    respond(CD_STAT_REJECT, false);
     return;
   }
-  if (dst_filter >= MAX_FILTERS) {
-    LOGWARN("CD: invalid buffer number\n");
-    cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ECPY);
-    update_hirq();
+
+  partitionT &src = partitions[source];
+  // Resolve both sentinels against the original partition, before a self
+  // copy/move can append anything. Do not truncate an unavailable range.
+  if (offset == 0xffff)
+    offset = src.numblks ? src.numblks - 1 : 0;
+  if (count == 0xffff)
+    count = offset < src.numblks ? src.numblks - offset : 0;
+  if (xfertype != XFERTYPE_INVALID || xfertype32 != XFERTYPE32_INVALID ||
+      !count || offset >= src.numblks || count > src.numblks - offset ||
+      src.numblks > MAX_BLOCKS || (!move && count > freeblocks)) {
+    respond(cd_stat | CD_STAT_WAIT, false);
     return;
   }
 
-  // cd_stat |= CD_STAT_TRANS;
-  // transpart = &partitions[dst_filter];
-
-  /* the count comes from CR4 but a partition only holds MAX_BLOCKS sectors */
-  if (sectnum > MAX_BLOCKS) {
-    LOGWARN("CD: copy sector data, count %d truncated to %d\n", sectnum,
-            MAX_BLOCKS);
-    sectnum = MAX_BLOCKS;
+  // Stable block identities let a selected range move back into its own
+  // source partition without reprocessing the newly appended tail.
+  uint8_t selected[MAX_BLOCKS];
+  for (unsigned i = 0; i < count; ++i) {
+    selected[i] = src.bnum[offset + i];
+    if (selected[i] >= MAX_BLOCKS ||
+        src.blocks[offset + i] != &blocks[selected[i]]) {
+      respond(cd_stat | CD_STAT_WAIT, false);
+      return;
+    }
   }
 
-  for (int i = 0; i < sectnum; i++) {
-    blockT *const srcblock = partitions[src_filter].blocks[i];
+  // A filter input has one producer (ST-162 Table 5.1). The temporary
+  // partition-output connection replaces a CD/false-output connection.
+  if (cddevicenum == input) {
+    cddevice = nullptr;
+    cddevicenum = 0xff;
+  }
+  for (filterT &filter : filters)
+    if (filter.condfalse == input)
+      filter.condfalse = 0xff;
 
-    // the source partition can hold fewer sectors than we were asked to copy
-    if (srcblock == nullptr) {
-      LOGWARN("CD: copy sector data, no source block %d in partition %02x\n", i,
-              src_filter);
-      break;
+  if (move) {
+    for (unsigned i = 0; i < count; ++i) {
+      src.size -= src.blocks[offset + i]->size;
+      src.blocks[offset + i] = nullptr;
+      src.bnum[offset + i] = 0xff;
     }
-
-    // allocate the dst blocks
-    partitions[dst_filter].blocks[i] =
-        cd_alloc_block(&partitions[dst_filter].bnum[i]);
-
-    // cd_alloc_block() returns null once every block is in use
-    if (partitions[dst_filter].blocks[i] == nullptr) {
-      partitions[dst_filter].bnum[i] = 0xff;
-      LOGWARN("CD: copy sector data, buffer full after %d sectors\n", i);
-      break;
-    }
-
-    if (partitions[dst_filter].size == -1)
-      partitions[dst_filter].size = 0;
-    partitions[dst_filter].size += partitions[dst_filter].blocks[i]->size;
-    partitions[dst_filter].numblks++;
-
-    // copy data
-    for (int j = 0; j < sectlenin; j++)
-      partitions[dst_filter].blocks[i]->data[j] = srcblock->data[j];
-
-    // deallocate the src blocks
-    // partitions[src_filter].size -= partitions[src_filter].blocks[i]->size;
-    // cd_free_block(partitions[src_filter].blocks[i]);
-    // partitions[src_filter].blocks[i] = (blockT *)nullptr;
-    // partitions[src_filter].bnum[i] = 0xff;
+    src.numblks -= count;
+    cd_defragblocks(&src);
   }
 
-  hirqreg |= (CMOK | ECPY);
-  update_hirq();
-  cr_standard_return(cd_stat);
+  for (unsigned i = 0; i < count; ++i) {
+    blockT *sector = &blocks[selected[i]];
+    uint8_t id = selected[i];
+    if (!move) {
+      blockT *const copy = cd_alloc_block(&id);
+      // Preflight reserves enough space in the synchronous model. Keep
+      // malformed legacy buffer states from becoming a null dereference.
+      if (!copy)
+        break;
+      *copy = *sector;
+      sector = copy;
+    }
+
+    const uint8_t destination = cd_filter_destination(input, *sector);
+    if (destination == 0xff || partitions[destination].numblks >= MAX_BLOCKS) {
+      // An unconnected selector output discards its sector (section 5.3.1).
+      // MOVE has already removed the complete selected source range.
+      cd_free_block(sector);
+      continue;
+    }
+    partitionT &dst = partitions[destination];
+    dst.blocks[dst.numblks] = sector;
+    dst.bnum[dst.numblks++] = id;
+    if (dst.size < 0)
+      dst.size = 0;
+    dst.size += sector->size;
+  }
+
+  if (freeblocks == MAX_BLOCKS)
+    sectorstore = 0;
+  // Still synchronous: no invented copy rate, busy interval or intermediate
+  // ECPY edge. The actual asynchronous command engine remains separate work.
+  respond(cd_stat, true);
 }
 
 void saturn_cd_hle_device::cmd_get_sector_data_copy_or_move_error() {
