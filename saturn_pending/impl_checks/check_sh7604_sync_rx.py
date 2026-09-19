@@ -42,6 +42,9 @@ struct Device {
  void sci_update_sync_clock() {}
  // External asynchronous receive is exercised by its own pin-clock fixture.
  void sci_rx_tick(int) {}
+ uint8_t m_sci_tx_phase=0;
+ // External asynchronous TX is covered by a separate pin-clock fixture.
+ void sci_tx_tick(int) {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
  int sci_bit_period() const { return 16; }

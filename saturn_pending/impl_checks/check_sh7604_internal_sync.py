@@ -62,6 +62,9 @@ struct Device {
  std::vector<std::pair<ticks,int>> wire, clocks, irqs;
  // External asynchronous receive is exercised by its own pin-clock fixture.
  void sci_rx_tick(int) {}
+ uint8_t m_sci_tx_phase=0;
+ // External asynchronous TX is covered by a separate pin-clock fixture.
+ void sci_tx_tick(int) {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
  unsigned clock() const { return 1; } // mock attotime retains phi ticks

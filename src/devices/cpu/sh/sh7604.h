@@ -85,7 +85,7 @@ private:
 	void ssr_w(uint8_t data);
 	uint8_t rdr_r();
 
-	// SCI transfer engine (async RX: internal/external; async TX: internal; sync: both)
+	// SCI transfer engine (asynchronous/synchronous, internal/external clock)
 	attotime sci_bit_period() const;
 	void sci_recalc_rates();
 	void sci_sync_edge(bool level);
@@ -206,6 +206,7 @@ private:
 	uint8_t m_sci_ssr_read;     // status flags observed by the last CPU read
 	uint8_t m_rdr, m_tsr, m_rsr;
 	uint8_t m_sci_tx_bit;       // next TX data bit (sync) or timer event (async)
+	uint8_t m_sci_tx_phase;     // external asynchronous divider (0-15)
 	bool m_sci_tx_active;       // a character is being shifted out
 	bool m_sci_tx_loaded;       // next TSR loaded while the last stop bit is on TxD
 	bool m_sci_rx_enabled;      // oversampling run flag
