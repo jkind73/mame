@@ -2955,3 +2955,80 @@
   checks do not qualify native save-manager or debugger integration.
   Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths, validator
   assets and existing expected values untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0040 | CPU-02 | f97d3a7e | UNVALIDATED | Cold BSC construction uses the documented BCR1/BCR2/WCR power-on image; warm reset policy is unchanged |
+
+### IMPL-0040 — CPU-02 — cold BSC register image
+
+- branch/commit: `arena/01a0b897-mame` @ **f97d3a7e** (base: 75c21d03).
+  **Local only pending GitHub reconnection; push failed with authentication.**
+- files: `src/devices/cpu/sh/sh7604.cpp:51`;
+  `saturn_pending/impl_checks/check_sh7604_bsc_initial.py`.
+- contract: newly constructed BSC register state uses BCR1=03F0,
+  BCR2=00FC and WCR=AAFF. MCR, RTCSR, RTCNT and RTCOR already initialize
+  to zero and remain so. BCR1's read-only master/slave indication continues
+  to reflect the configured mode, giving 03F0 or 83F0. This is cold
+  initialization only, not a new generic device-reset assignment.
+- primary source: SH7604 ADE-602-085C Rev.4, section 7.1.4 p.134/Table 7.2
+  (initial register image), section 7.2.1 p.136 (MASTER bit). Manual reset
+  retains BSC settings, unlike power-on reset; that distinction must not
+  be erased by blindly applying these values to every device_reset call.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:363-369`, assigns the same BSC
+  initial values. Its wider reset-cause policy is not used as an oracle.
+  Blob `9746b438b8a71de63ff65cd2d4325bc582a5114b`. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp` constructor BSC initializer list, and
+  fork base `75c21d03:src/devices/cpu/sh/sh7604.cpp:51`, initialize these
+  three registers to zero. No reference code imported.
+- expected observable: at cold start before firmware programs the BSC,
+  master/slave BCR1 reads 03F0/83F0, BCR2 reads 00FC, WCR reads AAFF,
+  and MCR/RTCSR/RTCNT/RTCOR read zero. Exact register values; no timing
+  claim for the wait states those register fields describe.
+- suggested method: native fresh-device boot with firmware stopped before
+  BSC writes, on both CPU configurations. Check saved initial state and
+  reads before initial programming. Qualify later power-on and manual
+  resets separately through a reset-cause-aware execution path.
+- falsifier: any documented cold register value missing before programming,
+  or wrong configured master/slave bit, rejects this initialization candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `14 cold BSC read images across master/slave selection; 2 state-copy controls`.
+  It extracts the actual production constructor expressions and getters,
+  not a native device instance. Pre-change `75c21d03` expressions/methods
+  exit 1 at line 50, `d.bcr1_r()==(0x03f0|(slave?0x8000:0))`.
+  UBSan enabled; existing save registrations checked. Twenty-seven prior
+  scripts exit 0; unchanged `frt_stop`, `frt_phase`, `wdt_access`
+  expectation conflicts remain at lines 444, 380, 132. Current working
+  series: 31 SH7604 scripts, 28 exit 0 and 3 exit 1. Warning-enabled TU
+  syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes)
+  and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED; publication pending the connection blocker below.
+- not covered / known doubts: no new fields or save-layout change; all
+  seven BSC fields already have save_item registration. Native cold boot,
+  generic-reset cause selection, later power-on reinitialization, manual
+  reset retention/refresh suspension and bus timings remain unqualified.
+  Generic device_reset is deliberately unchanged here: resetting BSC
+  indiscriminately would destroy the required manual-reset retention.
+  Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths, validator
+  assets and existing expected values unchanged.
+
+### Publication blocker — 2026-09-19
+
+- state: **BLOCKED(GitHub connection authentication for origin arena/01a0b897-mame)**.
+- Last successful publication: **75c21d03**, including IMPL-0039 handoff.
+- Next production commit **f97d3a7e** exists locally; the required
+  `git push origin arena/01a0b897-mame` failed with
+  `fatal: could not read Username for 'https://github.com': terminal prompts disabled`.
+- This handoff is also being committed locally. No history was rewritten,
+  no alternate branch was used and no credentials were requested or stored.
+- External unblock action: reconnect GitHub in Arena, then resume the
+  explicit push to the same implementation branch. Publication of the
+  newest candidate is not claimed until that push succeeds.
+- Implementation work is paused at a clean committed checkpoint rather
+  than accumulating more unpublishable changes. This is a delivery blocker,
+  not evidence that remaining hardware work is complete or validated.
