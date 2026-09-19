@@ -2038,12 +2038,55 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
     return;
   }
 
-  xfertype32 = XFERTYPE32_PUTSECTOR;
-
-  /*TODO: eventual errors? */
-
   cd_getsectoroffsetnum(bufnum, &sectofs, &sectnum);
 
+  /* The sectors have to exist before the host can write them.  ST-162-062094
+     printed p.32 ("Data transfer errors") lists exactly this case: "Write
+     sectors cannot be secured - empty sectors could not be reserved by
+     writing sector data (with the DRDY flag at 0 the EHST flag is 1)".  So a
+     requested range that cannot be reserved in full is an error response, not
+     a shorter transfer, and DRDY stays 0: the host is told the write did not
+     begin instead of being invited to push data into blocks that are not
+     there.  Whether a partial reservation is kept is not stated; this frees
+     what this attempt took so the buffer is left as it was found. */
+  partitionT &part = partitions[bufnum];
+  uint32_t reserved = 0;
+  uint8_t reserved_bnum[MAX_BLOCKS];
+  blockT *reserved_blocks[MAX_BLOCKS];
+
+  for (uint32_t i = sectofs; i < sectofs + sectnum; i++) {
+    if (i >= MAX_BLOCKS)
+      break;
+
+    uint8_t bnum = 0xff;
+    blockT *const blk = cd_alloc_block(&bnum);
+    if (blk == nullptr) {
+      for (uint32_t j = 0; j < reserved; j++) {
+        cd_free_block(reserved_blocks[j]);
+        part.blocks[sectofs + j] = nullptr;
+        part.bnum[sectofs + j] = 0xff;
+        part.numblks--;
+      }
+      LOGWARN("CD: put sector data, %u of %u sectors could not be secured\n",
+              sectnum, sectnum);
+      cr_standard_return(CD_STAT_REJECT);
+      hirqreg |= (CMOK | EHST);
+      update_hirq();
+      return;
+    }
+
+    reserved_blocks[reserved] = blk;
+    reserved_bnum[reserved] = bnum;
+    reserved++;
+    part.blocks[i] = blk;
+    part.bnum[i] = bnum;
+    if (part.size == -1)
+      part.size = 0;
+    part.size += blk->size;
+    part.numblks++;
+  }
+
+  xfertype32 = XFERTYPE32_PUTSECTOR;
   cd_stat |= CD_STAT_TRANS;
 
   xferoffs = 0;
@@ -2051,29 +2094,7 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
   xferdnum = 0;
   xfersectpos = sectofs;
   xfersectnum = sectnum;
-  transpart = &partitions[bufnum];
-
-  // allocate the blocks
-  for (int i = xfersectpos; i < xfersectpos + xfersectnum; i++) {
-    transpart->blocks[i] = cd_alloc_block(&transpart->bnum[i]);
-
-    /* cd_alloc_block() returns null once every block is in use. Both the host
-       transfer and the deallocation that follows it walk xfersectnum blocks, so
-       shorten the transfer instead of dereferencing it - cd_filterdata() gives
-       up the same way when the buffer fills up while the disc is being read */
-    if (transpart->blocks[i] == nullptr) {
-      transpart->bnum[i] = 0xff;
-      xfersectnum = i - xfersectpos;
-      LOGWARN("CD: put sector data, buffer full after %d sectors\n",
-              xfersectnum);
-      break;
-    }
-
-    if (transpart->size == -1)
-      transpart->size = 0;
-    transpart->size += transpart->blocks[i]->size;
-    transpart->numblks++;
-  }
+  transpart = &part;
 
   hirqreg |= (CMOK | DRDY);
   update_hirq();
@@ -3569,9 +3590,17 @@ saturn_cd_hle_device::cd_alloc_block(uint8_t *blknum) {
   for (i = 0; i < MAX_BLOCKS; i++) {
     if (blocks[i].size == -1) {
       freeblocks--;
-      if (freeblocks <= 0) {
+      if (freeblocks <= 0 && !buffull) {
+        /* BFUL is an interrupt factor, not just a polled status: ST-162-062094
+           printed p.28 describes it beside CMOK/CSCT/PEND, and printed p.38
+           ("CD read in a full CD buffer") says a full buffer pauses the drive
+           and raises the flag, with play resuming by itself once space
+           appears.  Raising the interrupt here is what lets a host that is
+           not polling notice the pause. */
         buffull = 1;
         LOGWARN("buffull in cd_alloc_block\n");
+        hirqreg |= BFUL;
+        update_hirq();
       }
 
       blocks[i].size = sectlenin;
