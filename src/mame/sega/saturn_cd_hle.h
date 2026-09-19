@@ -88,6 +88,23 @@ private:
     uint8_t fnum; // file number
     uint8_t subm; // subchannel mode
     uint8_t cinf; // coding information
+    bool raw_data = false; // media data sectors retain their entire raw image
+
+    int32_t host_size(int32_t length) const {
+      if (!raw_data)
+        return size;
+      return length == 2048 && data[15] == 2 && (data[18] & 0x20) ? 2324 : length;
+    }
+
+    uint16_t host_offset(int32_t length) const {
+      if (!raw_data || length == 2352)
+        return 0;
+      if (length == 2340)
+        return 12;
+      if (length == 2336)
+        return 16;
+      return data[15] == 2 ? 24 : 16;
+    }
   };
 
   struct partitionT {
@@ -249,6 +266,8 @@ private:
   trans32T xfertype32;
   uint32_t xfercount, calcsize;
   uint32_t xferoffs, xfersect, xfersectpos, xfersectnum, xferdnum;
+  uint16_t m_xfer_raw_offset = 0, m_xfer_raw_size = 0;
+  uint32_t m_xfer_raw_sector = 0xffffffff;
 
   filterT filters[MAX_FILTERS];
   filterT *cddevice;

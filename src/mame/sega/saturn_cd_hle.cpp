@@ -145,6 +145,9 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(xfersectpos));
   save_item(NAME(xfersectnum));
   save_item(NAME(xferdnum));
+  save_item(NAME(m_xfer_raw_offset));
+  save_item(NAME(m_xfer_raw_size));
+  save_item(NAME(m_xfer_raw_sector));
   save_item(NAME(cddevicenum));
   save_item(NAME(cr1));
   save_item(NAME(cr2));
@@ -210,6 +213,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(STRUCT_MEMBER(blocks, fnum));
   save_item(STRUCT_MEMBER(blocks, subm));
   save_item(STRUCT_MEMBER(blocks, cinf));
+  save_item(STRUCT_MEMBER(blocks, raw_data));
   save_item(STRUCT_MEMBER(curblock, size));
   save_item(STRUCT_MEMBER(curblock, FAD));
   save_item(STRUCT_MEMBER(curblock, data));
@@ -217,6 +221,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(STRUCT_MEMBER(curblock, fnum));
   save_item(STRUCT_MEMBER(curblock, subm));
   save_item(STRUCT_MEMBER(curblock, cinf));
+  save_item(STRUCT_MEMBER(curblock, raw_data));
 }
 
 void saturn_cd_hle_device::device_pre_save() {
@@ -286,6 +291,8 @@ void saturn_cd_hle_device::device_reset() {
   transpart = nullptr;
   m_saved_transpart = m_saved_cddevice = -1;
   curblock = {};
+  m_xfer_raw_offset = m_xfer_raw_size = 0;
+  m_xfer_raw_sector = 0xffffffff;
 
   // reset buffer partitions
   for (i = 0; i < MAX_FILTERS; i++) {
@@ -412,12 +419,28 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
         xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
       blockT *const blk = transpart->blocks[xfersectpos + xfersect];
 
+      int32_t payload_size = blk ? blk->size : 0;
+      uint32_t payload_offset = 0;
+      if (blk && blk->raw_data) {
+        // A Set Sector Length during a transfer takes effect on the next
+        // sector, not halfway through the already selected host view.
+        if (m_xfer_raw_sector != xfersect) {
+          m_xfer_raw_offset = blk->host_offset(sectlenin);
+          m_xfer_raw_size = blk->host_size(sectlenin);
+          m_xfer_raw_sector = xfersect;
+        }
+        payload_size = m_xfer_raw_size;
+        payload_offset = m_xfer_raw_offset;
+      }
+
       // a hole in the partition has nothing to hand over; leave the port at
       // its idle value and move on to the next sector rather than chasing a
       // null pointer or running off a block with a nonsense size
       if (blk == nullptr || blk->size < 4 ||
-          uint32_t(blk->size) > sizeof(blk->data) ||
-          xferoffs > uint32_t(blk->size) - 4) {
+          uint32_t(blk->size) > sizeof(blk->data) || payload_size < 4 ||
+          payload_offset > sizeof(blk->data) ||
+          uint32_t(payload_size) > sizeof(blk->data) - payload_offset ||
+          xferoffs > uint32_t(payload_size) - 4) {
         LOGWARN("CD: Get Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -427,14 +450,14 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
       }
 
       // get next longword
-      rv = get_u32be(&blk->data[xferoffs]);
+      rv = get_u32be(&blk->data[payload_offset + xferoffs]);
 
       xferdnum += 4;
       xferoffs += 4;
 
       // did we run out of sector? (this tested blocks[xfersect], missing the
       // partition offset the data read above uses)
-      if (xferoffs >= blk->size) {
+      if (xferoffs >= payload_size) {
         LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
 
         xferoffs = 0;
@@ -1755,7 +1778,7 @@ void saturn_cd_hle_device::cmd_calculate_actual_data_size() {
 
     for (i = 0; i < numsect; i++) {
       if (partitions[bufnum].blocks[sectoffs + i]) {
-        calcsize += (partitions[bufnum].blocks[sectoffs + i]->size / 2);
+        calcsize += partitions[bufnum].blocks[sectoffs + i]->host_size(sectlenin) / 2;
       }
     }
   }
@@ -1876,6 +1899,16 @@ void saturn_cd_hle_device::cmd_get_sector_data() {
   xfersectpos = sectofs;
   xfersectnum = sectnum;
   transpart = &partitions[bufnum];
+  // The first host view is selected when GET starts, before its first read.
+  m_xfer_raw_sector = 0xffffffff;
+  if (sectnum && sectofs < MAX_BLOCKS) {
+    const blockT *const first = transpart->blocks[sectofs];
+    if (first && first->raw_data) {
+      m_xfer_raw_offset = first->host_offset(sectlenin);
+      m_xfer_raw_size = first->host_size(sectlenin);
+      m_xfer_raw_sector = 0;
+    }
+  }
 
   cd_stat |= CD_STAT_TRANS;
   cr_standard_return(cd_stat);
@@ -1983,6 +2016,16 @@ void saturn_cd_hle_device::cmd_get_and_delete_sector_data() {
   xfersectpos = sectofs;
   xfersectnum = sectnum;
   transpart = &partitions[bufnum];
+  // The first host view is selected when GET starts, before its first read.
+  m_xfer_raw_sector = 0xffffffff;
+  if (sectnum && sectofs < MAX_BLOCKS) {
+    const blockT *const first = transpart->blocks[sectofs];
+    if (first && first->raw_data) {
+      m_xfer_raw_offset = first->host_offset(sectlenin);
+      m_xfer_raw_size = first->host_size(sectlenin);
+      m_xfer_raw_sector = 0;
+    }
+  }
 
   cd_stat |= CD_STAT_TRANS;
   cr_standard_return(cd_stat);
@@ -3499,6 +3542,7 @@ saturn_cd_hle_device::cd_alloc_block(uint8_t *blknum) {
       }
 
       blocks[i].size = sectlenin;
+      blocks[i].raw_data = false; // PUT/synthetic allocations retain cooked semantics
       *blknum = i;
 
       LOG("Allocating block %d, size %x\n", i, sectlenin);
@@ -3942,37 +3986,41 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
   // copy working block to the newly allocated one
   memcpy(filterprt->blocks[filterprt->numblks], &curblock, sizeof(blockT));
 
-  // and massage the data format a bit
-  switch (curblock.size) {
-  case 2048: // user data
-    if (curblock.data[15] == 2) {
-      // mode 2
-      memcpy(&filterprt->blocks[filterprt->numblks]->data[0],
-             &curblock.data[24], curblock.size);
-    } else {
-      // mode 1
-      memcpy(&filterprt->blocks[filterprt->numblks]->data[0],
-             &curblock.data[16], curblock.size);
+  // Media data sectors keep headers, subheaders and trailing bytes so a
+  // later Get Sector Length can select another view without rereading media.
+  // Retain the legacy audio/synthetic-sector representation on this path.
+  if (!curblock.raw_data) {
+    switch (curblock.size) {
+    case 2048: // user data
+      if (curblock.data[15] == 2) {
+        // mode 2
+        memcpy(&filterprt->blocks[filterprt->numblks]->data[0],
+               &curblock.data[24], curblock.size);
+      } else {
+        // mode 1
+        memcpy(&filterprt->blocks[filterprt->numblks]->data[0],
+               &curblock.data[16], curblock.size);
+      }
+      break;
+
+    case 2324: // Mode 2 Form 2 data
+      memcpy(&filterprt->blocks[filterprt->numblks]->data[0], &curblock.data[24],
+             curblock.size);
+      break;
+
+    case 2336: // Mode 2 Form 2 skip sync/header
+      memcpy(&filterprt->blocks[filterprt->numblks]->data[0], &curblock.data[16],
+             curblock.size);
+      break;
+
+    case 2340: // Mode 2 Form 2 skip sync only
+      memcpy(&filterprt->blocks[filterprt->numblks]->data[0], &curblock.data[12],
+             curblock.size);
+      break;
+
+    case 2352: // want all data, it's already done, so don't do it again :)
+      break;
     }
-    break;
-
-  case 2324: // Mode 2 Form 2 data
-    memcpy(&filterprt->blocks[filterprt->numblks]->data[0], &curblock.data[24],
-           curblock.size);
-    break;
-
-  case 2336: // Mode 2 Form 2 skip sync/header
-    memcpy(&filterprt->blocks[filterprt->numblks]->data[0], &curblock.data[16],
-           curblock.size);
-    break;
-
-  case 2340: // Mode 2 Form 2 skip sync only
-    memcpy(&filterprt->blocks[filterprt->numblks]->data[0], &curblock.data[12],
-           curblock.size);
-    break;
-
-  case 2352: // want all data, it's already done, so don't do it again :)
-    break;
   }
 
   // update the status of the partition
@@ -4014,7 +4062,8 @@ saturn_cd_hle_device::cd_read_filtered_sector(int32_t fad, uint8_t *p_ok) {
                                cdrom_file::CD_TRACK_AUDIO);
     }
 
-    curblock.size = sectlenin;
+    curblock.raw_data = trktype != cdrom_file::CD_TRACK_AUDIO;
+    curblock.size = curblock.raw_data ? cdrom_file::MAX_SECTOR_DATA : sectlenin;
     curblock.FAD = fad;
 
     // if track is Mode 2, get the subheader values
@@ -4024,10 +4073,7 @@ saturn_cd_hle_device::cd_read_filtered_sector(int32_t fad, uint8_t *p_ok) {
       curblock.subm = curblock.data[18];
       curblock.cinf = curblock.data[19];
 
-      // if it's Form 2, the length is actually 2324 bytes
-      if (curblock.subm & 0x20) {
-        curblock.size = 2324;
-      }
+      // Form 2 payload length is selected when the host reads the raw sector.
     } else {
       // ST-162 section 5.4: non-Mode-2 subheaders are treated as zero.
       // Do not inherit metadata from the previous Mode 2 sector.

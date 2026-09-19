@@ -23,6 +23,8 @@ head=head[:head.rfind('};')]+r'''
  transT xfertype=XFERTYPE_INVALID;trans32T xfertype32=XFERTYPE32_INVALID;
  uint32_t xferoffs=0,xfersect=0,xfersectpos=0,xfersectnum=0,xferdnum=0;
  uint16_t cd_stat=0x4100,cr1=0,cr2=0,cr3=0,cr4=0,hirqreg=0;
+ uint16_t m_xfer_raw_offset=0,m_xfer_raw_size=0;
+ uint32_t m_xfer_raw_sector=0xffffffff;
  unsigned irqs=0;auto &machine(){return *this;}bool side_effects_disabled(){return false;}
  void update_hirq(){++irqs;}
  void device_pre_save();void device_post_load();void register_state();
@@ -45,7 +47,7 @@ u32 get_u32be(const u8 *p){return u32(p[0])<<24|u32(p[1])<<16|u32(p[2])<<8|p[3];
 void put_u32be(u8 *p,u32 v){for(int i=3;i>=0;--i){p[i]=v;v>>=8;}}
 '''
 start=extract(source,'void saturn_cd_hle_device::device_start()')
-selected={'xfertype','xfertype32','xferoffs','xfersect','xfersectpos','xfersectnum','xferdnum','cddevicenum','lastbuf','freeblocks','buffull','sectorstore','cd_stat','cr1','cr2','cr3','cr4','hirqreg','m_saved_transpart','m_saved_cddevice'}
+selected={'sectlenin','m_xfer_raw_offset','m_xfer_raw_size','m_xfer_raw_sector','xfertype','xfertype32','xferoffs','xfersect','xfersectpos','xfersectnum','xferdnum','cddevicenum','lastbuf','freeblocks','buffull','sectorstore','cd_stat','cr1','cr2','cr3','cr4','hirqreg','m_saved_transpart','m_saved_cddevice'}
 regs=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] in selected]
 regs+=re.findall(r'save_item\(STRUCT_MEMBER\((?:filters|partitions|blocks|curblock), \w+\)\);',start)
 functions='void saturn_cd_hle_device::register_state(){\n'+'\n'.join(regs)+'\n}\n'
