@@ -2174,3 +2174,89 @@
   separate work. Full-word controls preserve prior behavior, not a claim
   that all prior behavior is documented hardware. Frozen DMA, delay-slot,
   sound/game paths, validator assets and fixture expectations untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0028 | CPU-03 | 157107eb | UNVALIDATED | Watchdog OVF/WOVF require independent read-one/write-zero qualifications, respecting read byte lanes and debugger inspection |
+
+### IMPL-0028 — CPU-03 — watchdog overflow acknowledgement
+
+- branch/commit: `arena/01a0b897-mame` @ **157107eb** (base: 81279ec8).
+- files: `src/devices/cpu/sh/sh7604.cpp:48,187,244` (state lifecycle),
+  `:1914-1993` (status reads and keyed writes);
+  `src/devices/cpu/sh/sh7604.h:179-182,273` (read masks and state);
+  `saturn_pending/impl_checks/check_sh7604_wdt_flags.py`.
+  Three prior extraction mocks only gain the new field declaration;
+  no expected values changed.
+- contract: WTCSR.OVF and RSTCSR.WOVF may be cleared by the appropriate
+  keyed write only after software reads the corresponding set flag.
+  Qualifications are independent and consumed on clear. WTCSR is the
+  high read lane at FE80, WTCNT the low lane at FE81; reading WTCNT alone
+  does not qualify OVF. RSTCSR is the low read lane at FE83, not FE82.
+  Debugger inspection neither arms nor replaces qualifications. A new
+  overflow after a clear requires a fresh status read. Device reset clears
+  the new read-history byte. Existing timer and reset-delivery paths are
+  not changed by this register candidate.
+- primary source: SH7604 ADE-602-085C Rev.4, section 12.2.2 p.322
+  (OVF read/clear), section 12.2.3 pp.323-324 (WOVF read/clear), section
+  12.2.4 pp.324-325/Figures 12.2/12.3 (keyed word writes and distinct
+  byte read addresses). Valid WOVF clear command is H'A500. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_wdt.hpp:113-142` has a WTCSR
+  read qualifier and peek guard. Its write path does not consume that
+  qualifier, clears OVF additionally on TME=0, and its WOVF path
+  (`:195-225`) is not read-qualified; those differences are not adopted
+  as SH7604 evidence. Primary per-flag rules govern this candidate.
+  Blob `331dc8d6e4096a3be637c4b923b1962c924697e3`. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1262-1321`, lacks both qualifications;
+  fork base `81279ec8` has only IMPL-0027's byte-write guard added.
+  No reference code imported.
+- expected observable: after interval overflow, a keyed WTCSR write with
+  OVF=0 leaves OVF set until a CPU WTCSR read precedes it. WTCNT-only or
+  debugger reads do not suffice. After watchdog overflow, H'A500 leaves
+  WOVF set until a CPU read from FE83; a high-lane read at FE82 does not
+  suffice. Each successful clear protects the next newly raised event
+  against an unread zero write. RSTE/RSTS writes do not consume WOVF's
+  pending qualification. Exact bits; no new timing tolerance asserted.
+- suggested method: generate both overflow sources separately, vary
+  status-read lanes and debugger reads, then attempt keyed acknowledgements.
+  Interleave qualifications, save/load between read/write and clear/event,
+  and repeat a clear without another status read. Use native CPU byte
+  accesses to qualify the address-space mask routing independently.
+- falsifier: unread overflow clearing, unrelated-lane/debugger reads
+  authorizing a clear, one register's read authorizing the other flag,
+  stale qualification clearing a new event, or lost qualification across
+  save/load rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `1136 qualified watchdog writes; 1136 state-copy replays;
+  256 status-lane/debugger read cases`, plus actual overflow callback and
+  repeated-clear probes. Same script against pre-change `81279ec8`
+  methods (read signatures adapted only) exits 1:
+  `line 111: unread.m_wtcsr&0x80`.
+  Seventeen prior scripts exit 0. **Three expected-value conflicts remain
+  visible with expectations unchanged:**
+  - `frt_stop`: old `release+65535*8` deadline (line 431).
+  - `frt_phase`: old 37/53 compare deadline expression (line 367).
+  - `wdt_access`: `line 132: d.m_wtcsr==(data&0xff) && d.syncs==1 && d.irqs==1`.
+    Its original full-word compatibility control expects an unread OVF
+    clear. That part of the old behavior is superseded here; the prior
+    byte-rejection contract is not withdrawn.
+  New binary uses UBSan. Warning-enabled TU syntax with session includes
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`) and `git diff --check`
+  exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: **save-state layout break**, new saved byte
+  `m_wdt_read`, with constructor and device-reset initialization. Those
+  registration/reset statements are checked, not native reset execution.
+  Old saves are not assumed compatible. Native IRQ/CPU/DRC/debugger and
+  on-disk save-manager behavior remain unqualified. The existing permissive
+  decode of nonzero A5xx RSTCSR payloads is not repaired; the contract
+  uses documented A500. Longword rejection, watchdog timer phase, WDTOVF
+  output, internal reset delivery, RSTCSR hardware-reset initialization and
+  whole-chip standby remain separate work. The three fixture conflicts
+  need validator review, not silent expectation updates. Frozen DMA,
+  delay-slot, sound/game paths and validator assets were not edited.
