@@ -4942,3 +4942,66 @@ are unchanged. No code or contract change.
   that all unavailable CD stream ranges reject rather than WAIT. Raw PUT
   metadata, unrelated full-width offset decoders and FAD search remain
   separate. No new state/layout change, validator or frozen-path edits.
+
+### IMPL-0065 mutation line correction (append-only)
+
+The stored mutant logs report byte-position rejection at generated **line109**
+and no-END response at **line107**, not lines108/105. Failure predicates and
+outcomes are unchanged; `/tmp/impl-ref/cd-sectorinfo-{byte-position,no-end}.log`
+are method-level raw output, not native evidence.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0066 | CD-01 | 577ba67c | UNVALIDATED | Standard responses retain the requested REJECT/WAIT status even without mounted media |
+
+### IMPL-0066 — CD-01 — empty-media command status
+
+- branch/commit/base: `arena/01a0b897-mame` @ **577ba67c**; base **38fefea4**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:766-774` cr_standard_return;
+  `saturn_pending/impl_checks/check_cd_empty_media_response.py`.
+- contract: when the caller supplies a command response status, a missing
+  image must not replace that status with the normal OPEN/NODISC drive
+  status. Honor the requested status in the same way as media-present
+  response branches. Retain existing low response byte/other report words
+  in this no-image branch; no drive/media/IRQ side effects are introduced.
+- primary source: ST-162-062094 printed p.31 section3.3 defines improper
+  command REJECT and deferred WAIT responses independent of drive status;
+  p.59 Data Specification4.0 defines FF as REJECT and bit7 as WAIT with a
+  valid drive-status code. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1852-1870`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  passes rejected/WAIT status into MakeReport without an image-existence
+  override. Ymir 6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:1232-1242`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, packs the provided status.
+  Local blame 5a6b74a52 and upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d cr_standard_return were inspected:
+  the no-image branch used cd_stat instead of cur_status. No reference block
+  imported; media-present branches are unchanged.
+- expected observable: with cd_stat=0700 and no media, an invalid selector
+  command returns status byte FF, not 07. An explicitly requested WAIT over
+  OPEN/NODISC returns 86/87, not 06/07. Normal status calls still return the
+  supplied normal status. Exact status byte, zero tolerance.
+- suggested method: boot empty/tray-open, send invalid selector/sector
+  commands, inspect CR1 high byte and unchanged graph. Exercise native
+  deferred-response callers separately; compare media-present response
+  words and relevant frozen boot/game paths through the validation agent.
+- falsifier: suppressed REJECT/WAIT due to absent image, read of disc metadata
+  in the no-image branch, changed untouched media-present formatting, or
+  accidental state/IRQ change from standard-response generation alone.
+- self-check run (method-level, unvalidated): actual standard-return helper,
+  1,536 absent-image status images; 695 actual rejected selector/sector/CD
+  connection commands using that helper; 384 media-present formatting
+  controls; fail-fast UBSan exit 0. Historical 38fefea4 fails status-byte
+  comparison at generated line147. CD warning-enabled C++20 syntax/diff
+  checks exit 0. No native media/BIOS/full-build qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: low report fields in OPEN/NODISC, WAIT report
+  validity/flag normalization, seek-track numbering, physical tray event
+  ordering, command scheduler and actual IRQ/firmware behavior remain
+  separate. Mock metadata controls protect untouched branches but do not
+  qualify their existing hardware semantics. No new fields/layout change,
+  validator asset/expectation or frozen CPU/sound/video edits.
