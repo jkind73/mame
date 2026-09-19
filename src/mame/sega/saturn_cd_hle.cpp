@@ -1760,31 +1760,28 @@ void saturn_cd_hle_device::cmd_get_actual_data_size() {
   update_hirq();
 }
 
-// falcom2
 void saturn_cd_hle_device::cmd_get_sector_information() {
-  // get sector info
-  uint32_t sectoffs = cr2 & 0xff;
-  uint32_t bufnum = cr3 >> 8;
-
-  /* sectoffs is masked to 8 bits but blocks[] only holds MAX_BLOCKS (200)
-     entries, so 200..255 read past the array and then dereferenced whatever
-     was found there; reject those through the existing path. */
-  if (bufnum >= MAX_FILTERS || sectoffs >= MAX_BLOCKS ||
-      !partitions[bufnum].blocks[sectoffs]) {
-    cr1 |= CD_STAT_REJECT & 0xff00;
-    hirqreg |= (CMOK | ESEL);
-    update_hirq();
-    LOGWARN("Get sector info reject\n");
-  } else {
-    cr1 = cd_stat | ((partitions[bufnum].blocks[sectoffs]->FAD >> 16) & 0xff);
-    cr2 = partitions[bufnum].blocks[sectoffs]->FAD & 0xffff;
-    cr3 = ((partitions[bufnum].blocks[sectoffs]->fnum & 0xff) << 8) |
-          (partitions[bufnum].blocks[sectoffs]->chan & 0xff);
-    cr4 = ((partitions[bufnum].blocks[sectoffs]->subm & 0xff) << 8) |
-          (partitions[bufnum].blocks[sectoffs]->cinf & 0xff);
-    hirqreg |= (CMOK | ESEL);
-    update_hirq();
+  const uint8_t bufnum = cr3 >> 8;
+  uint32_t position = cr2;
+  const blockT *sector = nullptr;
+  if (bufnum < MAX_FILTERS) {
+    const partitionT &partition = partitions[bufnum];
+    if (position == 0xffff && partition.numblks)
+      position = partition.numblks - 1;
+    if (position < partition.numblks && position < MAX_BLOCKS)
+      sector = partition.blocks[position];
   }
+  if (!sector) {
+    cr_standard_return(CD_STAT_REJECT);
+  } else {
+    cr1 = cd_stat | ((sector->FAD >> 16) & 0xff);
+    cr2 = sector->FAD & 0xffff;
+    cr3 = (uint16_t(sector->fnum) << 8) | sector->chan;
+    cr4 = (uint16_t(sector->subm) << 8) | sector->cinf;
+  }
+  // Sector information is a query, not a selector-setting operation.
+  hirqreg |= CMOK;
+  update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_set_sector_length() {
