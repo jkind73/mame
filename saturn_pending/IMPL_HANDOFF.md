@@ -2472,3 +2472,73 @@
   internal reset remain separate. This fixes observation relative to the
   existing deadline, not all watchdog timing. No validator assets,
   expected values, frozen DMA, delay-slot or sound/game paths changed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0032 | CPU-03 | 10276d04 | UNVALIDATED | Same-clock active watchdog writes preserve the selected-clock partial period instead of restarting it |
+
+### IMPL-0032 — CPU-03 — watchdog phase through active register writes
+
+- branch/commit: `arena/01a0b897-mame` @ **10276d04** (base: 0fc51593).
+- files: `src/devices/cpu/sh/sh7604.cpp:579-593`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_phase.py`.
+- contract: while TME remains set and CKS/mode are unchanged, WTCNT reloads
+  replace the counter but retain the partial selected-clock period.
+  WTCSR writes affecting only status/unchanged control do not postpone
+  overflow. The old active deadline supplies the residual phase; stopped
+  timers have no residual deadline. The existing initial-enable convention
+  is deliberately unchanged, not promoted to a physical startup claim.
+- primary source: SH7604 ADE-602-085C Rev.4, sections 12.2.1-12.2.2
+  pp.321-323 (WTCNT counts pulses from the selected internal divided
+  clock), section 12.4.1 p.330/Figure 12.8 (counter writes on that clock;
+  write has priority over a coincident increment), sections 12.4.2/12.4.3
+  p.330 (stop before changing clock selection or timer mode). SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_wdt.hpp:44-45,163-166`, keeps
+  the divided-clock grid while replacing WTCNT; `libs/ymir-core/src/ymir/
+  hw/sh2/sh2.cpp:1550-1559` advances before register changes. Its absolute
+  startup grid is not imported. Saturn_MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`, `rtl/SH/SH7604/WDT.sv:
+  48-60,155-178`, uses external divided clock-enables; WTCNT writes do not
+  reset those dividers. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:457-460`, and fork base `0fc51593`
+  schedule a whole number of periods from every write, dropping phase.
+  No reference code imported.
+- expected observable: with divider 64 and an established overflow deadline
+  at 16384 phi, an unchanged WTCSR write at phi 1 keeps the deadline at
+  16384, not 16385. Reloading FF at phi 1 sets overflow at phi 64, not 65;
+  reloading FF at phi 63 leaves one phi until overflow. These are whole-phi
+  relative-deadline observations, not claims about initial clock alignment.
+  Stopping/re-enabling must not inherit the canceled timer's residual phase.
+- suggested method: observe overflow timestamps while repeatedly rewriting
+  unchanged WTCSR, then reload WTCNT between selected-clock edges. Sweep
+  clock selections and reload values; keep CKS and mode constant while
+  enabled. Save/load between phase-bearing writes. Check native T3/clock
+  contention independently from callback ordering.
+- falsifier: same-clock WTCSR writes shifting overflow, WTCNT reloads
+  restarting a full selected period instead of retaining its phase,
+  a disabled timer carrying an old deadline into a new enable, or divergent
+  save/load timing rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `552 active WTCSR controls; 16384 counter reloads;
+  16936 state-copy replays; 64 stopped-clock-change controls`.
+  Pre-change `0fc51593` methods exit 1 at line 253, deadline/replay
+  assertion. UBSan enabled. Twenty-one prior scripts exit 0; the unchanged
+  `frt_stop`, `frt_phase`, `wdt_access` expectation conflicts remain at
+  lines 438, 374, 132. Current total 25 SH7604 scripts: 22 exit 0, 3 exit 1.
+  Warning-enabled TU syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare`,
+  session includes) and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new fields or save-layout change; phase
+  is reconstructed from the already-scheduled timer deadline. Actual
+  save-manager restoration, fractional-phi conversion, dynamic CPU clock
+  changes, initial-enable phase and scheduler/bus ordering at an exact
+  coincident write/clock edge remain unqualified. Active CKS/mode changes
+  are forbidden by the manual and not modeled as supported transitions.
+  This does not add WDTOVF output, RSTE=1 reset or longword rejection.
+  No validator assets, expected values, frozen DMA acknowledgement,
+  delay-slot IRQ, sound-reset/clock or game paths changed.
