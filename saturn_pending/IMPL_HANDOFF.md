@@ -2113,3 +2113,64 @@
   No FTO callback peer is configured for Saturn/ST-V. The two legacy
   timing conflicts remain visible. Frozen DMA, delay-slot, sound, game
   paths and validator assets were not edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0027 | CPU-03 | 4d997aed | UNVALIDATED | Watchdog keyed-register handlers reject byte/partial writes instead of reusing or assembling stale keys |
+
+### IMPL-0027 — CPU-03 — watchdog keyed word-access guard
+
+- branch/commit: `arena/01a0b897-mame` @ **4d997aed** (base: f0907753).
+- files: `src/devices/cpu/sh/sh7604.cpp:1923-1929,1962-1968`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_access.py:1-106`.
+- contract: the WTCNT/WTCSR and RSTCSR write handlers require both byte
+  lanes in one word access. Byte writes, including upper/lower pairs,
+  cannot reuse a previously stored key or combine to form a command.
+  Rejected accesses cause no counter/status, timer or IRQ changes.
+  Complete-word dispatch is unchanged in this candidate.
+- primary source: SH7604 ADE-602-085C Rev.4, section 12.2.4 pp.324-325,
+  Figures 12.2/12.3: keyed word writes at H'FFFFFE80 and H'FFFFFE82;
+  byte writes cannot write these registers. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1430-1446,1545-1575`, ignores
+  byte writes and dispatches keyed word writes separately. Upstream MAME
+  pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1273-1321`, combines partial writes into
+  old command data; fork base `f0907753` still has that path. No reference
+  code imported; the guard is local to watchdog handlers, not general DMA.
+- expected observable: after a valid H'5Axx counter write, a subsequent
+  byte write to the low lane must not change WTCNT. Writing H'A5 and a
+  payload in separate byte accesses must not enable/disable the timer,
+  change RSTE/RSTS or acknowledge WOVF. A complete keyed word still reaches
+  the prior handler. Exact state and callback-count comparisons; no new
+  timing latency/tolerance claimed.
+- suggested method: issue native SH-2 byte writes in both lane orders,
+  before and after valid keyed words, observe registers/timer deadline/IRQ
+  state, then use complete words as controls. Separately inspect native
+  longword dispatch: that restriction is not established by this guard.
+- falsifier: byte writes altering any watchdog register, scheduling or IRQ
+  state; split bytes assembling a command; or a complete keyed word being
+  rejected solely by this guard contradicts the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `6144 byte-lane writes; 131070 partial-mask robustness cases;
+  1024 two-byte assembly attempts; 131072 existing full-word dispatch controls`.
+  Pre-change `f0907753` methods exit 1 at `line 76: d.snapshot()==before`.
+  Seventeen prior scripts exit 0; the unchanged `frt_stop` and `frt_phase`
+  compare-deadline expectations still exit 1 as recorded in IMPL-0024/0026.
+  UBSan enabled. Warning-enabled full TU syntax with session includes
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`) and `git diff --check`
+  exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new state fields or save-layout change.
+  Native CPU/DRC/address-space dispatch and timer/IRQ behavior are not
+  qualified by extracted handlers. A longword may be decomposed into
+  full-mask word callbacks; original transaction width is not available
+  to these handlers, so this does NOT implement the manual's longword
+  rejection rule. Existing overflow acknowledgement, exact RSTCSR command
+  filtering, timer phase, WDTOVF output and internal reset delivery remain
+  separate work. Full-word controls preserve prior behavior, not a claim
+  that all prior behavior is documented hardware. Frozen DMA, delay-slot,
+  sound/game paths, validator assets and fixture expectations untouched.
