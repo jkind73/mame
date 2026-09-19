@@ -1128,7 +1128,9 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 		if (!line)
 		{
 			m_sci_rx_state = 1;
-			m_sci_rx_phase = 0;
+			// The next timer pulse is the first after synchronization.
+			// Sample eight pulses later (section 13.5, Figure 13.21).
+			m_sci_rx_phase = 1;
 			m_sci_rx_shift = 0;
 			m_sci_rx_parity_error = false;
 			m_sci_rx_mp = false;
