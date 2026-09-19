@@ -26,7 +26,7 @@ extra=r'''
  void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
  void cd_defragblocks(partitionT*);void cd_free_block(blockT*);
  void cmd_move_sector_data();void cmd_copy_sector_data();
- void cd_copy_move_sector_data(bool);
+ void cd_copy_move_sector_data(bool);void cd_disconnect_filter_input(uint8_t);
 };
 '''
 head=head[:head.rfind('};')]+extra
@@ -44,6 +44,8 @@ signatures=[
 ]
 if 'void saturn_cd_hle_device::cd_copy_move_sector_data(' in source:
     signatures.append('void saturn_cd_hle_device::cd_copy_move_sector_data(')
+if 'void saturn_cd_hle_device::cd_disconnect_filter_input(' in source:
+    signatures.append('void saturn_cd_hle_device::cd_disconnect_filter_input(')
 functions='\n'.join(extract(source,s) for s in signatures)
 tail=r'''
 using Device=saturn_cd_hle_device;using Block=Device::blockT;

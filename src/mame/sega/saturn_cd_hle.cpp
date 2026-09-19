@@ -1327,34 +1327,33 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
   update_hirq();
 }
 
-void saturn_cd_hle_device::cmd_set_cddevice_connection() {
-  uint8_t param;
-
-  // get operation
-  param = cr3 >> 8;
-
-  LOGCMD("%s: Set CD Device Connection filter # %x\n",
-         machine().describe_context(), param);
-
-  cddevicenum = param;
-
-  // a param of 0xff disconnects
-  if (param == 0xff) {
-    cddevice = (filterT *)nullptr;
-  } else {
-    if (param < MAX_FILTERS) {
-      cddevice = &filters[param];
-    } else {
-      // TODO: should just require a rejection
-      popmessage(
-          "saturn_cd_hle.cpp: cmd_set_cddevice_connection() with param %02x",
-          param);
-    }
+// Filter inputs have one producer; partition inputs may have many true
+// producers (ST-162 Table 5.1). Use the active pointer as authority because
+// legacy file commands can leave the visible connection number stale.
+void saturn_cd_hle_device::cd_disconnect_filter_input(uint8_t input) {
+  if (input >= MAX_FILTERS)
+    return;
+  if (cddevice == &filters[input] || (!cddevice && cddevicenum == input)) {
+    cddevice = nullptr;
+    cddevicenum = 0xff;
   }
+  for (filterT &filter : filters)
+    if (filter.condfalse == input)
+      filter.condfalse = 0xff;
+}
 
-  hirqreg |= (CMOK | ESEL);
+void saturn_cd_hle_device::cmd_set_cddevice_connection() {
+  const uint8_t input = cr3 >> 8;
+  if (input >= MAX_FILTERS && input != 0xff) {
+    cr_standard_return(CD_STAT_REJECT);
+  } else {
+    cd_disconnect_filter_input(input);
+    cddevice = input < MAX_FILTERS ? &filters[input] : nullptr;
+    cddevicenum = input;
+    cr_standard_return(cd_stat);
+  }
+  hirqreg |= CMOK | ESEL;
   update_hirq();
-  cr_standard_return(cd_stat);
 }
 
 void saturn_cd_hle_device::cmd_get_cddevice_connection() {
@@ -1537,30 +1536,26 @@ void saturn_cd_hle_device::cmd_get_filter_mode() {
 }
 
 void saturn_cd_hle_device::cmd_set_filter_connection() {
-  // Set Filter Connection
-  // FIXME: verify usage of cr3 LSB
-  // (false condition?)
-  uint8_t fnum = (cr3 >> 8) & 0xff;
-
-  LOGCMD("%s: Set Filter Connection %x => mode %x parm %04x\n",
-         machine().describe_context(), fnum, cr1 & 0xf, cr2);
-  if (fnum >= MAX_FILTERS) {
-    LOGWARN("CD: invalid filter number %02x\n", fnum);
+  const uint8_t fnum = cr3 >> 8;
+  const uint8_t true_output = cr2 >> 8;
+  const uint8_t false_output = cr2;
+  // Validate all selected outputs before changing any part of the graph.
+  // Unselected command bytes have no effect, even if not valid selectors.
+  if (fnum >= MAX_FILTERS ||
+      ((cr1 & 1) && true_output >= MAX_FILTERS && true_output != 0xff) ||
+      ((cr1 & 2) && false_output >= MAX_FILTERS && false_output != 0xff)) {
     cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ESEL);
-    update_hirq();
-    return;
+  } else {
+    if (cr1 & 1)
+      filters[fnum].condtrue = true_output;
+    if (cr1 & 2) {
+      cd_disconnect_filter_input(false_output);
+      filters[fnum].condfalse = false_output;
+    }
+    cr_standard_return(cd_stat);
   }
-
-  if (cr1 & 1) // set true condition
-    filters[fnum].condtrue = (cr2 >> 8) & 0xff;
-
-  if (cr1 & 2) // set false condition
-    filters[fnum].condfalse = cr2 & 0xff;
-
-  hirqreg |= (CMOK | ESEL);
+  hirqreg |= CMOK | ESEL;
   update_hirq();
-  cr_standard_return(cd_stat);
 }
 
 void saturn_cd_hle_device::cmd_get_filter_connection() {
@@ -1642,13 +1637,10 @@ void saturn_cd_hle_device::cmd_reset_selector() {
 
   // reset all filter input connectors
   if (BIT(cr1, 5)) {
-    for (i = 0; i < MAX_FILTERS; i++) {
-      if (i == cddevicenum)
-        cddevice = (filterT *)nullptr;
-
-      if (filters[i].condfalse < MAX_FILTERS)
-        filters[i].condfalse = 0xff;
-    }
+    cddevice = nullptr;
+    cddevicenum = 0xff;
+    for (filterT &filter : filters)
+      filter.condfalse = 0xff;
   }
 
   // reset all true filter output connectors
@@ -2099,13 +2091,7 @@ void saturn_cd_hle_device::cd_copy_move_sector_data(bool move) {
 
   // A filter input has one producer (ST-162 Table 5.1). The temporary
   // partition-output connection replaces a CD/false-output connection.
-  if (cddevicenum == input) {
-    cddevice = nullptr;
-    cddevicenum = 0xff;
-  }
-  for (filterT &filter : filters)
-    if (filter.condfalse == input)
-      filter.condfalse = 0xff;
+  cd_disconnect_filter_input(input);
 
   if (move) {
     for (unsigned i = 0; i < count; ++i) {
