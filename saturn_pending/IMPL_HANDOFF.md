@@ -3175,3 +3175,58 @@
   requests, CMI interrupt integration and memory grants are still absent/
   unqualified; no IRQ arbitration or DMA acknowledgement code was changed.
   Frozen delay-slot IRQ, sound/game paths and validator assets untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0043 | CPU-02 | — | BLOCKED(SH7604 RTCNT/RTCOR enable and equality-write timing trace) | Resolve refresh-counter comparison and first-edge semantics before choosing an event scheduler |
+
+### IMPL-0043 — CPU-02 — refresh-counter timing boundary
+
+- branch/base: `arena/01a0b897-mame` @ 0ceadeb3; no production change.
+- files: `src/devices/cpu/sh/sh7604.cpp`, RTCNT/RTCOR/RTCSR handlers;
+  `src/devices/cpu/sh/sh7604_bus.cpp`, separate unintegrated BSC device.
+- known contract: SH7604 ADE-602-085C Rev.4 sections 7.2.5-7.2.7
+  pp.146-148 specify clock selections, an 8-bit counter, comparison,
+  CMF setting and counter clear on match. Section 7.5.7 pp.174-176
+  describes starting from the current count, refresh requests waiting for
+  the bus, replacement of an unserviced request and manual-reset count
+  suspension. Section 7.1.1 p.130 permits interval-timer use separately
+  from memory refresh. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- unresolved contract: the text calls comparison continuous, while the
+  inspected implementation reference compares after an enabled increment.
+  A preload equal to RTCOR, an equal RTCOR write, RTCOR=0, and enabling
+  from a stopped equal state therefore need explicit observation. The
+  first selected-clock edge relative to CKS enable and write/edge collision
+  ordering also need evidence before a native deadline model is chosen.
+- cross-checks: Saturn_MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/BSC.sv:965-978,1007-1016`, compares incremented RTCNT
+  against RTCOR only at RT_CE and separately clears RFS_REQ on bus service.
+  Blob `87400001ce983a1a02add311897fd482a90c00bb`. It does not supply CMF
+  production/read qualification, so it is not a complete timing oracle.
+  Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1748-1762`, is register storage
+  with CMF rules TODO. Local `sh7604_bus.cpp` still lists timer-clock and
+  bus-control TODOs and has fatal stubs for counter accesses; it is not
+  a completed engine to wire in unchanged.
+- expected observable to resolve: RTCNT and CMF sampled around successive
+  selected-clock edges, including equal preloads and RTCOR=0, with MCR.RFSH=0
+  to isolate counting from memory grants. Units: CPU/CKIO clocks; capture
+  exact count/flag transition edges before assigning a timing tolerance.
+- suggested method: hardware trace/test program using legal keyed writes,
+  several enable phases and counter/compare values immediately below,
+  equal to and above each other. Include writes between and coincident
+  with count edges, and compare polling against an unpolled instance.
+- falsifier for a future candidate: wrong first increment, match/clear
+  edge, zero-compare period or active-write behavior against that capture.
+- self-check run: primary/reference/source inspection only; no counter
+  implementation, native test or hardware validation claim.
+- state: **BLOCKED(SH7604 RTCNT/RTCOR enable and equality-write timing trace)**.
+  Unblock with an attributable hardware capture or additional primary
+  timing documentation. The selected-clock model must not be guessed
+  merely because it matches the FPGA code.
+- not covered: actual refresh grants/completion also depend on CPU-04 and
+  BUS-01/02; an immediate nominal-time refresh is not an arbiter. CMI
+  delivery and reset-cause handling are separate. This blocker does not
+  prevent unrelated implementation work or alter existing candidates.
