@@ -1,0 +1,7 @@
+test: /tmp/scsp-lfo-ojzsuamo/test.cpp:246: int main(): Assertion `s.ALFO.noise==(aws==3)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_lfo.py", line 289, in <module>
+    subprocess.run([str(p/'test')], check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-lfo-ojzsuamo/test']' died with <Signals.SIGABRT: 6>.

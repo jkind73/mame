@@ -36,6 +36,7 @@
 
 
 #include <algorithm>
+#include <cmath>
 
 // fixed-width enum, safe to save/restore directly
 ALLOW_SAVE_TYPE(scsp_device::SCSP_STATE);
@@ -54,6 +55,8 @@ static constexpr u32 SAMPLE_CLOCKS = 512;
 
 #define SHIFT 12
 #define LFO_SHIFT 8
+// fractional bits of the LFO phase accumulator (see SCSP_LFO_t::phase)
+#define LFO_PHASE_SHIFT 24
 #define FIX(v) ((u32)((float)(1 << SHIFT) * (v)))
 
 /*
@@ -120,11 +123,9 @@ static constexpr u32 SAMPLE_CLOCKS = 512;
 #define MVOL() ((m_udata.data[0] >> 0x0) & 0x000F)
 #define RBL() ((m_udata.data[1] >> 0x7) & 0x0003)
 #define RBP() ((m_udata.data[1] >> 0x0) & 0x003F)
-#define MOFULL() ((m_udata.data[2] >> 0x0) & 0x1000)
-#define MOEMPTY() ((m_udata.data[2] >> 0x0) & 0x0800)
-#define MIOVF() ((m_udata.data[2] >> 0x0) & 0x0400)
-#define MIFULL() ((m_udata.data[2] >> 0x0) & 0x0200)
-#define MIEMPTY() ((m_udata.data[2] >> 0x0) & 0x0100)
+// The MIDI status bits are derived from FIFO occupancy in UpdateRegR, not read
+// back from the register file; the old MOFULL/MOEMPTY/MIOVF/MIFULL/MIEMPTY
+// macros were unused and only reported stale written bits.
 
 #define SCILV0() ((m_udata.data[0x24 / 2] >> 0x0) & 0xff)
 #define SCILV1() ((m_udata.data[0x26 / 2] >> 0x0) & 0xff)
@@ -788,6 +789,26 @@ u32 scsp_device::Step(SCSP_SLOT *slot) {
   return Fn;
 }
 
+// ST-077-R2-052594 p.89: "LFORE (R/W) LFO REset - Sets the LFO reset to yes or
+// no. If this bit is set to 1, the LFO is reset. If 0 is written then operation
+// starts." p.37 adds that when the LFO waveform select is noise (ALFOWS or
+// PLFOWS = 3) the LFORE reset does not function. Beetle (scsp.inc RunLFO) and
+// MiSTer (SCSP.sv, LFORE forces the divider and phase data to zero) both hold
+// the phase at zero; neither models the noise exemption.
+// The hold is applied every sample whether or not a modulation depth is
+// programmed, because the LFO block itself is held reset: a later depth change
+// must start from the reset phase rather than from a stale accumulator.
+// Returns the hold flag so the step functions do not advance a held phase.
+bool scsp_device::LFO_ResetHold(SCSP_SLOT *slot) {
+  if (!LFORE(slot))
+    return false;
+  if (!slot->PLFO.noise)
+    slot->PLFO.phase = 0;
+  if (!slot->ALFO.noise)
+    slot->ALFO.phase = 0;
+  return true;
+}
+
 void scsp_device::Compute_LFO(SCSP_SLOT *slot) {
   if (PLFOS(slot) != 0)
     LFO_ComputeStep(&(slot->PLFO), LFOF(slot), PLFOWS(slot), PLFOS(slot), 0);
@@ -1311,8 +1332,10 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
   u32 *addr[2] = {&addr1, &addr2}; // used for linear interpolation
   u32 *slot_addr[2] = {&(slot->cur_addr), &(slot->nxt_addr)}; //
 
+  bool const lfo_hold = LFO_ResetHold(slot);
+
   if (PLFOS(slot) != 0) {
-    step = step * PLFO_Step(&(slot->PLFO));
+    step = step * PLFO_Step(&(slot->PLFO), lfo_hold);
     step >>= SHIFT;
   }
 
@@ -1431,7 +1454,7 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
 
   if (!SDIR(slot)) {
     if (ALFOS(slot) != 0) {
-      sample = sample * ALFO_Step(&(slot->ALFO));
+      sample = sample * ALFO_Step(&(slot->ALFO), lfo_hold);
       sample >>= SHIFT;
     }
 
@@ -1749,35 +1772,43 @@ void scsp_device::LFO_Init() {
   }
 }
 
-s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO) {
+s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO, bool hold) {
   int p;
-  LFO->phase += LFO->phase_step;
-#if LFO_SHIFT != 8
-  LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
-#endif
-  p = LFO->noise ? (int)(s8)(m_lfsr & ~1) : LFO->table[LFO->phase >> LFO_SHIFT];
+  // A held LFO reports its reset-phase output, so the accumulator must not run.
+  if (hold && !LFO->noise)
+    LFO->phase = 0;
+  else
+    LFO->phase += LFO->phase_step; // wraps at 2^32 == one cycle
+  p = LFO->noise ? (int)(s8)(m_lfsr & ~1)
+                 : LFO->table[LFO->phase >> LFO_PHASE_SHIFT];
   p = LFO->scale[p + 128];
   return p << (SHIFT - LFO_SHIFT);
 }
 
-s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO) {
+s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO, bool hold) {
   int p;
-  LFO->phase += LFO->phase_step;
-#if LFO_SHIFT != 8
-  LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
-#endif
-  p = LFO->noise ? (int)(u8)(m_lfsr & ~1) : LFO->table[LFO->phase >> LFO_SHIFT];
+  // A held LFO reports its reset-phase output, so the accumulator must not run.
+  if (hold && !LFO->noise)
+    LFO->phase = 0;
+  else
+    LFO->phase += LFO->phase_step; // wraps at 2^32 == one cycle
+  p = LFO->noise ? (int)(u8)(m_lfsr & ~1)
+                 : LFO->table[LFO->phase >> LFO_PHASE_SHIFT];
   p = LFO->scale[p];
   return p << (SHIFT - LFO_SHIFT);
 }
 
 void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS,
                                   u32 LFOS, int ALFO) {
-  // steps are per output sample: use the actual stream rate instead of
+  // Steps are per output sample: use the actual stream rate instead of
   // assuming 44100 (ST-V runs the chip slightly faster, and the rate is
-  // programmable through the clock)
-  float step = (float)LFOFreq[LFOF] * 256.0f / (float)(clock() / SAMPLE_CLOCKS);
-  LFO->phase_step = (u32)((float)(1 << LFO_SHIFT) * step);
+  // programmable through the clock). Round to nearest so the slow end of
+  // Table 4.21 survives: at 0.17 Hz the increment is ~65/2^24 per sample,
+  // which the old 8.8 accumulator truncated to zero. Beetle and MiSTer both
+  // reach the same low frequencies with an integer sample divider instead.
+  double const rate = double(clock()) / SAMPLE_CLOCKS;
+  LFO->phase_step =
+      (u32)std::llround(double(LFOFreq[LFOF]) * double(1u << LFO_PHASE_SHIFT) / rate);
   if (ALFO) {
     switch (LFOWS) {
     case 0:
