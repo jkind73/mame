@@ -2260,3 +2260,73 @@
   whole-chip standby remain separate work. The three fixture conflicts
   need validator review, not silent expectation updates. Frozen DMA,
   delay-slot, sound/game paths and validator assets were not edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0029 | CPU-03 | fdcbc6e7 | UNVALIDATED | RES-style device reset initializes RSTCSR and cancels stale watchdog deadlines |
+
+### IMPL-0029 — CPU-03 — RES-style watchdog reset lifecycle
+
+- branch/commit: `arena/01a0b897-mame` @ **fdcbc6e7** (base: 7bbace47).
+- files: `src/devices/cpu/sh/sh7604.cpp:242-250`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_reset.py:1-96`;
+  two shared extraction mocks gain WDT timer/RSTCSR declarations only.
+- contract: generic device reset is the RES-style reset path for WDT:
+  WTCNT reads 00, WTCSR reads 18, RSTCSR reads 1F; the counter is stopped
+  and no old watchdog timer deadline may fire after reset. Internal
+  watchdog-generated reset is distinct and must preserve RSTCSR; this
+  candidate does not add that reset path or wire it to generic reset.
+- primary source: SH7604 ADE-602-085C Rev.4, Table 12.2 and section
+  12.2.1 p.321 (reset values and counter reset), section 12.2.2 p.322
+  (TME=0 stops/initializes counter), section 12.2.3 p.323 (RES initializes
+  RSTCSR to 1F; WDT internal reset does not), section 12.3.1 p.326 (RES
+  takes priority over simultaneous watchdog reset and clears WOVF).
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_wdt.hpp:23-31`, explicitly
+  distinguishes watchdog-initiated reset, clearing RSTCSR only otherwise;
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:377` passes that reset cause.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp` device_reset WTC block, and fork base
+  `7bbace47:src/devices/cpu/sh/sh7604.cpp:241-244`, initialize only counter
+  and control (plus the fork's new read history); neither cancels WDT's
+  old deadline nor initializes RSTCSR. No reference code imported.
+- expected observable: resetting with a timer active and WOVF/RSTE/RSTS
+  set yields the documented three byte-read reset values immediately.
+  Advancing past the old deadline with TME still zero produces no overflow
+  status/event. Re-enabling and loading a counter establishes a new
+  deadline from the new control/counter, not the pre-reset schedule.
+  Exact register bytes and event counts; no physical reset-pin latency
+  asserted by a device-method call.
+- suggested method: native reset during interval and watchdog modes,
+  sweep all eight clock selections and counter values, then wait past the
+  old deadline and inspect status before re-enabling. Save/load after reset
+  and compare the first newly enabled interval. Qualify external RES and
+  internally generated reset independently; do not route the latter through
+  this generic path without handling RSTCSR preservation.
+- falsifier: RSTCSR retaining old WOVF/control bits after RES-style reset,
+  a stale overflow firing with TME=0, wrong reset byte reads, or old timer
+  state influencing the newly enabled schedule rejects this candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `16384 active-deadline reset cases; 16384 restart controls;
+  16384 state-copy replays`. Real device_reset and WDT register/timer
+  methods; base CPU reset and unrelated FRT/SCI reset helpers are mocks.
+  Pre-change `7bbace47` methods exit 1 at line 218, reset register-image
+  assertion. UBSan enabled. Eighteen prior scripts exit 0; the three
+  unchanged expectation conflicts from IMPL-0028 remain: `frt_stop`
+  line 438 (65535 ticks), `frt_phase` line 374 (37/53 deadlines),
+  `wdt_access` line 132 (unread OVF clear). Warning-enabled TU syntax
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes) and
+  `git diff --check` exit 0. No full build or native qualification.
+- state: UNVALIDATED
+- not covered / known doubts: no new production state fields or save-layout
+  change. Existing saved RSTCSR is initialized here; existing read-history
+  reset is retained. Native CPU reset delivery/order, physical RES pulse,
+  WDT-generated internal resets and WDTOVF remain unimplemented/unqualified.
+  The reset fixture's watchdog restart control stops at the overflow flag,
+  not a completed internal reset. WDT-local reset when RSTE=0 (sections
+  12.2.3/12.4.5) remains separate from this RES path. This changes no
+  sound-reset or board-clock code, DMA acknowledgement, delay-slot IRQ,
+  game-specific paths, validator assets or fixture expected values.
