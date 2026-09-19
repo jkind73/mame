@@ -3519,3 +3519,88 @@ and UNVALIDATED status are unchanged. No milestone ID is renamed.
   unqualified. ICR reset/NMI behavior and VCRDIV readback disagreement
   remain separate. No new saved state or layout change. No changes to
   frozen DMA acknowledgement, delay-slot IRQ, sound or video paths.
+
+### Workspace-history recovery before IMPL-0048
+
+On resuming, local HEAD was the session base `82152a8b`, with the prior
+implementation restored as working files. The published session branch
+still pointed to `1f973e3d`. Fetched that branch and compared all 49 paths
+changed since the base against the published tip: all matched byte-for-byte,
+including handoff/probes. Restored the same local branch/index to that tip
+with a mixed reset, leaving working-file contents intact; resulting status
+was clean. No published history was rewritten and no other branch used.
+Temporary reference files had not survived and were retrieved again by
+pinned GitHub blob identity. No downloaded reference/build files committed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0048 | CPU-03 | 663eedba | UNVALIDATED | Device reset clears ICR.NMIE/VECMD and their decoded mode flags without overwriting NMI input state |
+
+### IMPL-0048 — CPU-03 — INTC control reset image
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `663eedba`,
+  base `1f973e3d`; committed and pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:224-227`, `device_reset`;
+  `saturn_pending/impl_checks/check_sh7604_intc_control_reset.py` (new);
+  declaration-only additions to existing `check_sh7604_frt_stop.py` and
+  `check_sh7604_module_stop.py`. Their assertions remain unchanged.
+- contract: reset clears the ICR control backing word and both cached
+  flags, NMIE and VECMD. The reset control selection is falling-edge NMI
+  detection and auto-vector IRL mode. This does NOT implement or qualify
+  NMI edge detection: only its stored control selection is corrected.
+  NMIL remains synthesized by the existing getter from the input state;
+  this change does not overwrite the input or change its polarity mapping.
+- primary source: SH7604 ADE-602-085C Rev.4 section 5.3.8 pp.95-96,
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`. ICR resets to
+  8000 or 0000 depending on NMI input level, with NMIE/VECMD zero;
+  standby does not initialize ICR. Bit 15 is read-only input-level status.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/INTC.sv:253-274` resets ICR and separately samples NMIL
+  from NMI_N on RES_N; `rtl/SH/SH7604/SH7604_pkg.sv:80-89` defines the
+  fields and zero ICR_INIT. Blobs
+  `3018e750e3ff0c10b1bad5e7ca3f12ba67461301` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`. This supports the reset
+  control bits, not the accuracy of MAME's NMI input abstraction.
+- provenance: existing local ICR writer decodes two saved flags; constructor
+  initializes them once, but device reset omitted them. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-211`, also omits this reset. Existing
+  upstream/fork reset history was inspected during IMPL-0046/0047; no
+  external implementation imported. Base SH2 reset leaves NMI line state
+  intact (`src/devices/cpu/sh/sh2.cpp:85-109`); that code is not changed.
+- expected observable: after programming ICR controls to 0101, completed
+  power-on/manual reset yields ICR & 0101 = 0000 and both cached flags
+  false. NMIL may read either 8000 or 0000 according to input. Units:
+  exact register bits, zero bit tolerance after reset completion. Later
+  legal writes restore either control bit. Peripheral module stop without
+  reset retains them. No pin-edge or interrupt-delivery latency claimed.
+- suggested measurement: native master/slave SH7604 ICR programming and
+  reset/readback test with separately controlled NMI level, no coincident
+  NMI transition; repeat writes and save/load. Qualify actual edge selection,
+  IRL external-vector fetch and system standby separately.
+- falsifier: NMIE/VECMD or their cached flags remain set after completed
+  reset, readback no longer reflects the held NMI level, or subsequent
+  legal writes cannot restore the controls. A module-stop entry clearing
+  these INTC controls would also contradict the candidate's retention scope.
+- self-check run (method-level, unvalidated): actual reset/ICR/SBYCR methods,
+  mocked CPU/peripheral reset helpers and IRQ refresh, fail-fast UBSan;
+  128 reset images, 256 module-stop retention controls, 256 reprogramming
+  controls and 128 operand-state-copy replays; exit 0. Two input states
+  exercise preservation of the existing NMIL mapping, not silicon pin
+  timing. Existing save registrations checked. Historical `1f973e3d`
+  source fails the first reset observation (generated line 317).
+  Prior selected 36-script series: 32 exit 0/four conflicts. Including this
+  probe: selected 37-script series, 33 exit 0/four unchanged semantic
+  conflicts (frt_stop generated line 459, frt_phase 395, wdt_access 132,
+  bsc_access 98). Expectations and validator assets untouched.
+  Warning-enabled C++20 TU syntax-only and `git diff --check`: exit 0.
+  No full build or native qualification.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: the getter's NMI polarity TODO and lack of
+  NMIE-dependent delivery remain; no delay-slot, arbitration, DMA ack or
+  external vector-fetch handler changes. Native reset routing, WDT internal
+  reset, whole-chip standby and live save/load remain unqualified. No new
+  saved fields or layout change. No frozen sound/video/title paths edited.
