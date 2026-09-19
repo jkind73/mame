@@ -244,8 +244,27 @@
   The fixture records rather than adopts the one reference disagreement - Ymir
   and MiSTer scale the output by four when DAC18B is set because their output
   domain is 16 bit, which the ST-077 interface-width reading does not. Evidence:
-  `saturn_pending/evidence/scsp-mvol/README.md`. CD-DA/effects-heavy playback
-  (the EXTS and DSP effect return paths) remains open under this parent.
+  `saturn_pending/evidence/scsp-mvol/README.md`. The send-level tables and the
+  DSP effect return are likewise native-qualified, which closes the effect half
+  of "effects-heavy playback". The direct send level (DISDL, Table 4.27) and the
+  effect return level (EFSDL, Table 4.29) are measured as 6 dB steps with the
+  0 dB step at 0.142151: 0.501160 and 0.501073 at one step down through
+  0.015808 / 0.015673 at six steps (36 dB), with both zero levels exactly silent,
+  and the effect pan (EFPAN, Table 4.30) measures the documented positions
+  (0x10 centre equal and non-zero, 0x1f / 0x0f hard, 0x01 / 0x11 at 0.707811 =
+  -3 dB). The D/A checker needed the DSP to run first: the fixture drives the
+  mapped microprogram's EFREG[0] to 0x1232 and requires that read-back before it
+  measures, and the return of a constant program is confirmed static (span
+  0.000000) so the tables are read directly rather than through span ratios. The
+  tolerance is 0.6% so the fixture selects ST-077's -6 dB steps (0.501187) over
+  the MiSTer core's `LevelCalc` shift (0.5 per step, 0.24% per step and 1.2% over
+  six steps apart) and -3 dB pan over that core's `PanLCalc` (0.75 at 01H, 5.6%
+  apart); both disagreements are recorded rather than smoothed over. Slot
+  register 0x16 packs DISDL/DIPAN/EFSDL/EFPAN, which is why the earlier fixtures
+  that wrote DISDL-only constants never reached the effect path. Evidence:
+  `saturn_pending/evidence/scsp-fx/README.md`. EXTS0/1 and hence the CD-DA input
+  remain open: EXTS is fed by the CD device route and cannot be driven until the
+  stage-10 CD block exists.
   - Investigate historical stuck-envelope/pitch reports against current recordings and configurations before declaring an engine defect.
 - [ ] **SND-03 — Complete timing, DMA and interrupt qualification. [P/V]**
   - Current integration: Integrated timer phase-preserving rearm and attotime-boundary fix; extracted deadline/reset checks and the live24 timer/divisor plus three clear/reassert paths pass in the complete native consumer. Fractional hardware phase and broader sound acceptance remain open. See `regtests/saturn/handoff/integration.md`.
