@@ -2833,3 +2833,66 @@
   values. Signed-32 boundary and WDTOVF blockers remain as recorded.
   Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths, validator
   assets and existing expected values unchanged.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0038 | CPU-02 | 90a718b5 | UNVALIDATED | All seven BSC registers require one complete 32-bit write with A55A in the upper half |
+
+### IMPL-0038 — CPU-02 — BSC keyed longword access
+
+- branch/commit: `arena/01a0b897-mame` @ **90a718b5** (base: 011088c3).
+- files: `src/devices/cpu/sh/sh7604.cpp`, BCR1/BCR2/WCR/MCR/RTCSR/RTCNT/
+  RTCOR write handlers; `saturn_pending/impl_checks/check_sh7604_bsc_access.py`.
+- contract: BSC writes are accepted only as complete 32-bit accesses with
+  upper half A55A. Byte, word, other partial-mask and wrong-key writes
+  leave the register unchanged, including separate key/payload words.
+  Table 7.2's 16-bit accessibility is read-only, not permission to write
+  the low word without the key. Existing accepted-write payload handling
+  is unchanged by this gate.
+- primary source: SH7604 ADE-602-085C Rev.4, section 7.1.4 p.134 and
+  Table 7.2 notes 1/2: seven 16-bit registers, keyed 32-bit writes only;
+  word reads use address+2. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1728-1762`, checks A55A before
+  each of the seven writes; its word path `:1606-1614` forwards without
+  fabricating the missing upper key, so a plain word cannot unlock them.
+  Blob `9746b438b8a71de63ff65cd2d4325bc582a5114b`. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1373-1457`, and fork base `011088c3`
+  only partially guard BCR1/BCR2, while other BSC writes are unguarded.
+  No reference code imported.
+- expected observable: writing 00001234 as a longword to WCR must leave
+  its prior value, whereas A55A1234 reaches the existing payload handler.
+  A word/byte write at the payload address cannot update WCR, MCR or a
+  refresh register, even after an earlier valid keyed write. Exact
+  register comparisons; no bus-grant or wait-cycle latency is asserted.
+- suggested method: native stores of all three SH-2 widths to each BSC
+  register, varying keys and both word halves. Include a split A55A/key
+  sequence after valid commands, and controls for correctly keyed longwords.
+  Inspect the architectural read masks separately from access rejection.
+- falsifier: an unkeyed/partial write changing a BSC register, key reuse
+  across accesses, or a complete valid-key command rejected solely by this
+  guard contradicts the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `917504 partial-mask writes; 458745 wrong-key longwords;
+  458752 existing valid-key dispatch controls; 14 split-key sequences`.
+  Pre-change `011088c3` methods exit 1 at line 66,
+  `unkeyed.m_wcr==0xaaff`. UBSan enabled. Twenty-five prior scripts exit 0;
+  the unchanged `frt_stop`, `frt_phase`, `wdt_access` expectation conflicts
+  remain at lines 444, 380, 132. Current working series: 29 SH7604 scripts,
+  26 exit 0 and 3 exit 1. Warning-enabled TU syntax
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes) and
+  `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new fields or save-layout change.
+  Native lane dispatch, reserved lower-field masks, BSC reset defaults,
+  upper-half readback, read-qualified RTCSR.CMF, refresh counting and bus
+  timing/arbitration remain separate. In particular WCR/MCR still expose
+  legacy stored upper key bits on reads; these write-gate controls preserve
+  accepted-write storage, not an assertion that its readback is correct.
+  No implementation of memory grants/waits is implied by register access
+  handling. Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths,
+  validator assets and existing expected values unchanged.
