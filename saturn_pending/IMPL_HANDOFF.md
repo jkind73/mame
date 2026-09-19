@@ -27,6 +27,7 @@
 | IMPL-0013 | CPU-03/IO-02 | ef6a191e | UNVALIDATED | External SCK clocks synchronous SCI receive: eight LSB-first rising-edge samples per character |
 | IMPL-0014 | CPU-03/IO-02 | 5a128134 | UNVALIDATED | External synchronous SCI TX changes on falling SCK, chains at MSB and supports concurrent RX |
 | IMPL-0015 | CPU-03/IO-02 | 01374a7d | UNVALIDATED | Internal synchronous SCI emits baud-derived SCK pulses, idles high and clocks TX/RX together |
+| IMPL-0016 | CPU-03/IO-02 | 520b3f8a | UNVALIDATED | External asynchronous receive advances only on rising 16x SCK edges, without RX timer pacing |
 
 ---
 
@@ -1097,3 +1098,75 @@
   Old save files are incompatible. Externally clocked asynchronous mode,
   asynchronous SCK output, SCI DMA and configured modem/cable/peer devices
   remain absent. Frozen accepted paths and validator assets are untouched.
+
+
+### IMPL-0016 — CPU-03/IO-02 — externally clocked asynchronous SCI receive
+
+- branch/commit: `arena/01a0b897-mame` @ **520b3f8a** (base: 60bc961f).
+- files: `src/devices/cpu/sh/sh7604.cpp:939-951` (RE initialization),
+  `:1018-1033` (SCK dispatch), `:1150-1162` (rate recalculation),
+  `:1255-1356` (RX timer guards), `src/devices/cpu/sh/sh7604.h:88`
+  (scope comment), `saturn_pending/impl_checks/check_sh7604_external_async_rx.py`.
+  Existing synchronous fixture mocks gain only an unused async callback
+  stub; their expected values are unchanged.
+- contract: with C/A=0, CKE1=1 and RE=1, rising SCK edges provide the
+  receiver's 16x base-clock pulses. Falling edges and repeated levels do
+  not advance the sampler. Start validation is eight rising pulses after
+  detection; subsequent samples are sixteen rising pulses apart, using
+  the existing framing/MP/error engine. BRR/CKS do not pace external RX.
+  No RX timer is armed on enable, error stall, completion or recalculation
+  in external mode. RE=0 abandons partial input; a legal disable/change/
+  re-enable sequence restores internal-clock sampling when CKE1=0.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.2.6 pp.341-342 CKE table (both CKE=2/3 select external
+  input), section 13.3.1 p.352 (baud generator unused for external clock),
+  section 13.3.2 pp.354,356 (16x external input), section 13.5 pp.381-382
+  / Figure 13.21 (rising-eighth-pulse sample). SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:391-410,705-709` routes an external
+  clock into the async sampler and uses a 16-phase counter. Its external
+  edge dispatch/counter interpretation differs (both changed levels call
+  the sampler), so it is not evidence of the same physical-edge contract.
+  MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:138-139` selects internal SCE for async mode
+  even with external CKE; that omission is not adopted. The primary
+  clock-frequency/sampling descriptions govern this candidate.
+- expected observable: for a complete external 8N1 frame, RDRF/receive
+  completion occurs at rising pulse 152 after the pulse detecting start
+  (start sample at 8, data bit0 at 24, bit7 at 136). BRR=0 vs 255,
+  all CKS values and CKE=2 vs 3 give identical pulse-indexed results.
+  No positive RX timer scheduling occurs. Exact edge counts/register
+  bytes, tolerance zero; physical setup/hold and synchronizer delay in
+  CPU cycles are outside this contract.
+- suggested method: drive independent 16x SCK and RxD pins through a
+  linked per-device fixture; read mapped SCI registers before/after stop
+  sampling. Include 7/8-bit data, parity/MP, false starts, both stops,
+  combined errors, repeated pin levels and receive-disable/restart.
+  Compare native save/load at start detection, mid-bit and pending stop.
+- falsifier: reception driven by BRR/internal timers in external mode,
+  a falling/repeated SCK level advancing the sampler, wrong 16x sample
+  count, missing receive completion, a partial frame surviving RE=0,
+  or lost/duplicated samples on save/load contradicts this candidate.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 32768 external-clock async format/data frames; 2560 phase state-copy replays
+  method-level, unvalidated: BRR independence, edge filtering, no RX timer arms, errors and clock-mode controls exercised
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_external_async_rx.py`.
+  Same script with pre-change `60bc961f` source exits 1:
+  `line 281: d.m_sci_rx_enabled && d.timer.arms==0`.
+  Eight earlier focused SCI checks rerun with unchanged expectations:
+  exit 0. Extracted checks use UBSan. Full `sh7604.cpp` TU syntax with
+  `-std=c++20 -Wall -Werror -Wno-sign-compare` and session includes:
+  exit 0, no diagnostics; reorder enabled. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: no native execution, physical timing or
+  save-manager run. Existing saved SCK/phase/shift/error state is reused;
+  no new field/save-layout change. The manual warns not to stop the
+  external clock during operation, so deterministic pin-step/state-copy
+  checks are not a hardware pause/resume claim. External-clock async TX
+  is not implemented in this commit: its older internal-timer path is
+  not a supported external-mode transmitter. Async SCK output, SCI DMA
+  and actual peripheral wiring also remain absent.
