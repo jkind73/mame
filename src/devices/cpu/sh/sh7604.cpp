@@ -49,6 +49,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_dmaor(0)
 	, m_sbycr(0), m_ccr(0)
 	, m_bcr1(0x03f0), m_bcr2(0x00fc), m_wcr(0xaaff), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
+	, m_rtcsr_read(false)
 	, m_frc_base(0), m_frt_input(0), m_frt_clock_input(false)
 	, m_timer(nullptr), m_wdtimer(nullptr)
 	, m_is_slave(0)
@@ -213,6 +214,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_rtcsr));
 	save_item(NAME(m_rtcor));
 	save_item(NAME(m_rtcnt));
+	save_item(NAME(m_rtcsr_read));
 }
 
 void sh7604_device::device_reset()
@@ -2170,8 +2172,13 @@ void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	COMBINE_DATA(&m_mcr);
 }
 
-uint32_t sh7604_device::rtcsr_r()
+uint32_t sh7604_device::rtcsr_r(offs_t offset, uint32_t mem_mask)
 {
+	// CMF clearing requires a status read as one (section 7.2.5).
+	// Only the permitted longword/low-word reads qualify, not an upper
+	// word, unsupported partial read, or debugger inspection.
+	if ((mem_mask == 0xffffffff || mem_mask == 0x0000ffff) && !machine().side_effects_disabled())
+		m_rtcsr_read = bool(m_rtcsr & 0x80);
 	return m_rtcsr & 0xf8;
 }
 
@@ -2180,7 +2187,11 @@ void sh7604_device::rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
 		return;
 
-	COMBINE_DATA(&m_rtcsr);
+	// Software cannot set CMF; a read-one/write-zero sequence clears it.
+	// Consume the qualification so a subsequent match needs a fresh read.
+	m_rtcsr = (data & ~0x80U) | (m_rtcsr & 0x80 & (m_rtcsr_read ? data : 0x80U));
+	if (!(m_rtcsr & 0x80))
+		m_rtcsr_read = false;
 }
 
 uint32_t sh7604_device::rtcnt_r()
