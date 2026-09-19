@@ -19,13 +19,13 @@ def extract(name, result):
     return match[0].replace('sh7604_device::', '')
 
 functions = '\n'.join(extract(n, t) for n, t in (
-    ('sck_w', 'void'), ('sci_sync_edge', 'void'), ('sci_update_sync_clock', 'void'),
+    ('sck_w', 'void'), ('sci_sync_edge', 'void'), ('sci_update_clock', 'void'),
     ('scr_w', 'void'), ('smr_w', 'void'), ('brr_w', 'void'), ('ssr_r', 'uint8_t'),
     ('ssr_w', 'void'), ('tdr_w', 'void'), ('sci_transmit_start', 'void'),
     ('sci_recalc_rates', 'void'), ('sci_bit_period', 'attotime'), ('sci_rx_complete', 'void')))
-match = re.search(r'^TIMER_CALLBACK_MEMBER\(sh7604_device::sci_sync_tick\)\n\{.*?^\}', source, re.M | re.S)
+match = re.search(r'^TIMER_CALLBACK_MEMBER\(sh7604_device::sci_clock_tick\)\n\{.*?^\}', source, re.M | re.S)
 assert match
-functions += '\nvoid sci_sync_tick(int param)\n' + match[0].split('\n', 1)[1]
+functions += '\nvoid sci_clock_tick(int param)\n' + match[0].split('\n', 1)[1]
 head = r'''
 #include <cstdint>
 #include <cstdio>
@@ -81,7 +81,7 @@ tail = r'''
   unsigned events=0;
   while (clock_timer.due<=end) {
    CHECK(++events<10000); now=clock_timer.due;
-   clock_timer.due=attotime::never.value; sci_sync_tick(0);
+   clock_timer.due=attotime::never.value; sci_clock_tick(0);
   }
   now=end;
  }
