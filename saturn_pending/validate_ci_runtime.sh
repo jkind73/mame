@@ -267,6 +267,17 @@ done
 phase=scsp-eg-parser
 python3 saturn_pending/test_scsp_eg_runner.py > "$LOG_DIR/$phase.log" 2>&1
 grep -q 'SCSP EG result-parser controls passed: 16 mutants rejected' "$LOG_DIR/$phase.log"
+phase=scsp-pcm
+python3 saturn_pending/test_scsp_pcm_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP PCM: PASS' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-pcm-$system-drc"
+    python3 saturn_pending/test_scsp_pcm_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP PCM: PASS' "$LOG_DIR/$phase.log"
+done
 phase=scsp-fm
 python3 saturn_pending/test_scsp_fm_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
