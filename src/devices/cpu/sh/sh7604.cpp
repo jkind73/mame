@@ -111,6 +111,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_rsr));
 	save_item(NAME(m_sci_tx_bit));
 	save_item(NAME(m_sci_tx_active));
+	save_item(NAME(m_sci_tx_loaded));
 	save_item(NAME(m_sci_rx_enabled));
 	save_item(NAME(m_sci_rx_state));
 	save_item(NAME(m_sci_rx_shift));
@@ -237,6 +238,7 @@ void sh7604_device::device_reset()
 	m_rsr = 0;
 	m_sci_tx_bit = 0;
 	m_sci_tx_active = false;
+	m_sci_tx_loaded = false;
 	m_sci_rx_enabled = false;
 	m_sci_rx_state = 0;
 	m_sci_rx_shift = 0;
@@ -900,7 +902,8 @@ uint8_t sh7604_device::scr_r()
 
 void sh7604_device::scr_w(uint8_t data)
 {
-	bool const old_re = BIT(m_scr, 4);
+	uint8_t const old_scr = m_scr;
+	bool const old_re = BIT(old_scr, 4);
 	m_scr = data;
 
 	// TE=0 locks TDRE at 1, sets TEND and initializes TSR; TE=1 alone does
@@ -910,6 +913,7 @@ void sh7604_device::scr_w(uint8_t data)
 		m_ssr |= SSR_TDRE;
 		m_ssr |= SSR_TEND;
 		m_sci_tx_active = false;
+		m_sci_tx_loaded = false;
 		m_sci_tx_timer->adjust(attotime::never);
 		m_write_txd(1);
 	}
@@ -931,7 +935,9 @@ void sh7604_device::scr_w(uint8_t data)
 		}
 	}
 
-	sci_recalc_rates();
+	// Interrupt-enable writes must not restart the in-flight bit period.
+	if ((old_scr ^ m_scr) & 3)
+		sci_recalc_rates();
 	sh2_recalc_irq();
 }
 
@@ -1013,12 +1019,13 @@ void sh7604_device::sci_transmit_start()
 {
 	// TDR has already been loaded into TSR by the TDRE-clear trigger;
 	// start shifting the frame LSB first from the start bit
-	m_sci_tx_bit = 0;
+	m_sci_tx_bit = 1; // next timed event is the first data bit
 	m_sci_tx_active = true;
+	m_sci_tx_loaded = false;
 	if (!BIT(m_smr, 7) && BIT(m_scr, 5))
 	{
 		m_write_txd(0); // start bit
-		m_sci_tx_timer->adjust(sci_bit_period(), 1);
+		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
 	}
 }
 
@@ -1035,6 +1042,24 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
 	uint8_t const frame_bits = data_bits
 		+ (mp_mode ? 1 : (parity_enable ? 1 : 0))
 		+ stop_bits;
+
+	// Retain ownership of TxD for the entire last stop bit, even when
+	// TEND has already risen. Software may queue a byte during that bit.
+	if (param > frame_bits)
+	{
+		if (!m_sci_tx_loaded && !BIT(m_ssr, 7))
+		{
+			m_tsr = m_tdr;
+			m_ssr |= SSR_TDRE;
+			m_sci_tx_loaded = true;
+			sh2_recalc_irq();
+		}
+		if (m_sci_tx_loaded)
+			sci_transmit_start();
+		else
+			m_sci_tx_active = false;
+		return;
+	}
 
 	int bit;
 	if (param <= data_bits)
@@ -1058,30 +1083,25 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
 
 	m_write_txd(bit);
 
-	// "The SCI checks the TDRE bit when it outputs the MSB": an already
-	// loaded TDR chains into the next frame (p.373 step 3)
-	if (param == data_bits && !BIT(m_ssr, 7))
+	// Asynchronous transmission checks TDRE at the last stop bit, not
+	// at the data MSB (SH7604 manual section 13.3.2, p.359 step 3).
+	// Keep the current TSR intact through parity; only then load the next
+	// character, raise TXI, and start it after a full stop-bit interval.
+	if (param == frame_bits)
 	{
-		m_tsr = m_tdr;
-		m_ssr |= SSR_TDRE;
-		m_sci_tx_bit = param;
-		m_sci_tx_timer->adjust(sci_bit_period(), param + 1);
-		return;
+		m_sci_tx_loaded = !BIT(m_ssr, 7);
+		if (m_sci_tx_loaded)
+		{
+			m_tsr = m_tdr;
+			m_ssr |= SSR_TDRE;
+		}
+		else
+			m_ssr |= SSR_TEND;
+		sh2_recalc_irq();
 	}
 
-	if (param < frame_bits)
-	{
-		m_sci_tx_bit = param;
-		m_sci_tx_timer->adjust(sci_bit_period(), param + 1);
-		return;
-	}
-
-	// frame complete without chained data: TEND. In asynchronous mode the
-	// line returns to the mark state (p.354); the MSB-hold of p.373 step 3
-	// applies to clocked synchronous mode, which is not implemented here.
-	m_sci_tx_active = false;
-	m_ssr |= SSR_TEND;
-	sh2_recalc_irq();
+	m_sci_tx_bit = param + 1;
+	m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
 }
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
