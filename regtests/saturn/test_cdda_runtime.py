@@ -352,6 +352,35 @@ local function test()
         emu.wait(ms(150))
     end
 
+    -- Put Sector Data ($64) for more sectors than the buffer can hold must
+    -- report the manual's "write sectors cannot be secured" error: EHST set,
+    -- DRDY clear, and the buffer left as it was found (ST-162-062094 p.32).
+    do
+        cmd(0x0000, 0, 0, 0)                -- settle into a known state
+        cmd(0x0100, 0, 0, 0)                -- Get Buffer Size reports free blocks
+        local free_before = sp:read_u16(CR2)
+        sp:write_u16(HIRQ, 0xffff)          -- clear everything, including DRDY
+        sp:write_u16(CR1, 0x6400)
+        sp:write_u16(CR2, 0x0000)           -- sector offset 0
+        sp:write_u16(CR3, 0x0000)           -- buffer partition 0
+        sp:write_u16(CR4, 0x00ff)           -- 255 sectors, more than 200
+        local done = false
+        for _ = 1, 500 do
+            if (sp:read_u16(HIRQ) & 0x0001) ~= 0 then done = true; break end
+            emu.wait(ms(1))
+        end
+        local h = sp:read_u16(HIRQ)
+        cmd(0x0000, 0, 0, 0)
+        local free_after = sp:read_u16(CR2)
+        print(string.format('CDDA put_error done=%s hirq=%04x free %d -> %d',
+                            tostring(done), h, free_before, free_after))
+        chk('put_error_responded', done, 'no CMOK')
+        chk('put_error_ehst', (h & 0x0080) ~= 0, string.format('%04x', h))
+        chk('put_error_no_drdy', (h & 0x0002) == 0, string.format('%04x', h))
+        chk('put_error_buffer_intact', free_after == free_before,
+            string.format('%d -> %d', free_before, free_after))
+    end
+
     -- scanning: the pickup must move and stay audible over the audio track
     chk('scan_play_accepted', play_track(2, 3), 'no CMOK')
     for _ = 1, 200 do
