@@ -115,6 +115,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_sci_rx_enabled));
 	save_item(NAME(m_sci_rx_state));
 	save_item(NAME(m_sci_rx_shift));
+	save_item(NAME(m_sci_rx_parity_error));
 	save_item(NAME(m_sci_rx_bitcnt));
 	save_item(NAME(m_sci_rx_phase));
 	save_item(NAME(m_sci_rx_vote));
@@ -242,6 +243,7 @@ void sh7604_device::device_reset()
 	m_sci_rx_enabled = false;
 	m_sci_rx_state = 0;
 	m_sci_rx_shift = 0;
+	m_sci_rx_parity_error = false;
 	m_sci_rx_bitcnt = 0;
 	m_sci_rx_phase = 0;
 	m_sci_rx_vote = 0;
@@ -1126,6 +1128,7 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 			m_sci_rx_state = 1;
 			m_sci_rx_phase = 0;
 			m_sci_rx_shift = 0;
+			m_sci_rx_parity_error = false;
 			m_sci_rx_bitcnt = 0;
 		}
 		break;
@@ -1167,20 +1170,15 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 				else if (m_sci_rx_bitcnt == data_bits + 1 && parity_enable)
 				{
 					uint8_t const mask = (1 << data_bits) - 1;
-					bool const parity_error =
+					// Defer publication until the stop-bit sample so PER, FER
+					// and ORER can be reported together (Table 13.14).
+					m_sci_rx_parity_error =
 						((std::popcount(unsigned(m_sci_rx_shift & mask)) & 1) ^ BIT(m_smr, 4)) != bit;
-					if (parity_error)
-					{
-						sci_rx_complete(m_sci_rx_shift, true, false);
-						m_sci_rx_state = 0;
-						m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
-						return;
-					}
 				}
 				else if (m_sci_rx_bitcnt == total_bits)
 				{
 					// first stop bit must be 1 (only the first is checked, p.338)
-					sci_rx_complete(m_sci_rx_shift, false, !bit);
+					sci_rx_complete(m_sci_rx_shift, m_sci_rx_parity_error, !bit);
 					m_sci_rx_state = 0;
 					m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
 					return;
@@ -1198,26 +1196,20 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 
 void sh7604_device::sci_rx_complete(uint8_t data, bool parity_error, bool framing_error)
 {
+	// SH7604 manual section 13.5, p.381 Table 13.14: errors latch
+	// independently. An overrun preserves the unread RDR even when the
+	// incoming character also has a parity and/or framing error.
 	if (framing_error)
-	{
-		// data is transferred to RDR but RDRF is not set (p.344)
-		m_rdr = data;
 		m_ssr |= SSR_FER;
-	}
-	else if (parity_error)
-	{
-		m_rdr = data;
+	if (parity_error)
 		m_ssr |= SSR_PER;
-	}
-	else if (m_ssr & SSR_RDRF)
-	{
-		// overrun: RSR content is lost, ORER stops reception (p.344)
+	if (m_ssr & SSR_RDRF)
 		m_ssr |= SSR_ORER;
-	}
 	else
 	{
 		m_rdr = data;
-		m_ssr |= SSR_RDRF;
+		if (!parity_error && !framing_error)
+			m_ssr |= SSR_RDRF;
 	}
 	sh2_recalc_irq();
 }
