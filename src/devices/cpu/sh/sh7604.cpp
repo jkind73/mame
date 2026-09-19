@@ -1864,7 +1864,9 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	int64_t a = m_dvdntl | ((uint64_t)m_dvdnth << 32);
 	int64_t b = (int32_t)m_dvsr;
 	LOG("SH2 div64+mod %d/%d\n", a, b);
-	if (b)
+	// This positive quotient exceeds even the host signed 64-bit range.
+	// Enter the existing DIVU overflow path without evaluating undefined / or %.
+	if (b && !(a == INT64_MIN && b == -1))
 	{
 		int64_t q = a / b;
 		if (q != (int32_t)q)
