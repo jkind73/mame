@@ -221,6 +221,11 @@ void sh7604_device::device_reset()
 {
 	sh2_device::device_reset();
 
+	// IPRA/IPRB reset to priority zero on power-on and manual reset
+	// (sections 5.3.1-5.3.2). Clear the decoded levels before peripherals reset.
+	m_ipra = m_iprb = 0;
+	m_irq_level.frc = m_irq_level.sci = m_irq_level.divu = m_irq_level.dmac = m_irq_level.wdt = 0;
+
 	// Reset releases module standby before starting the free-running timer.
 	m_sbycr = 0;
 	m_frt_input = 0;
