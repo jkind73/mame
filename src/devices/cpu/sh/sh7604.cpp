@@ -445,21 +445,24 @@ void sh7604_device::sh2_timer_activate()
 		return;
 
 	uint16_t frc = m_frc;
-	if (!(m_ftcsr & OCFA))
+	// Compare uses the count before its update (Figure 11.11, p.311).
+	// Equality alone is not an event: even OCR == FRC waits one tick.
+	// Clear-on-A must keep running after software leaves OCFA latched.
+	if (!(m_ftcsr & OCFA) || (m_ftcsr & CCLRA))
 	{
-		uint16_t delta = m_ocra - frc;
+		int delta = uint16_t(m_ocra - frc) + 1;
 		if (delta < max_delta)
 			max_delta = delta;
 	}
 
-	if (!(m_ftcsr & OCFB) && (m_ocra <= m_ocrb || !(m_ftcsr & CCLRA)))
+	if (!(m_ftcsr & OCFB))
 	{
-		uint16_t delta = m_ocrb - frc;
+		int delta = uint16_t(m_ocrb - frc) + 1;
 		if (delta < max_delta)
 			max_delta = delta;
 	}
 
-	if (!(m_ftcsr & OVF) && !(m_ftcsr & CCLRA))
+	if (!(m_ftcsr & OVF))
 	{
 		int delta = 0x10000 - frc;
 		if (delta < max_delta)
@@ -491,15 +494,17 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_timer_callback)
 		return;
 
 	sh2_timer_resync();
-	uint16_t frc = m_frc;
+	// Resync has advanced to this count edge. Compare the value held
+	// before that edge; overflow still describes FFFF -> 0000.
+	uint16_t const previous = m_frc - 1;
 
-	if (frc == m_ocrb)
+	if (previous == m_ocrb)
 		m_ftcsr |= OCFB;
 
-	if (frc == 0x0000)
+	if (m_frc == 0x0000)
 		m_ftcsr |= OVF;
 
-	if (frc == m_ocra)
+	if (previous == m_ocra)
 	{
 		m_ftcsr |= OCFA;
 
