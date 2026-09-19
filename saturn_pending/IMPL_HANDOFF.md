@@ -3604,3 +3604,78 @@ pinned GitHub blob identity. No downloaded reference/build files committed.
   external vector-fetch handler changes. Native reset routing, WDT internal
   reset, whole-chip standby and live save/load remain unqualified. No new
   saved fields or layout change. No frozen sound/video/title paths edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0049 | CPU-02 | e48a54e9 | UNVALIDATED | Device reset restores CCR=00 without treating reset as a cache purge |
+
+### IMPL-0049 — CPU-02 — cache-control register reset image
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `e48a54e9`,
+  base `05d0801f`; committed and pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:229-231`, `device_reset`;
+  `saturn_pending/impl_checks/check_sh7604_ccr_reset.py` (new);
+  existing `check_sh7604_frt_stop.py` and `check_sh7604_module_stop.py`
+  gain one CCR backing-field declaration each. No expectation changes.
+- contract: device reset writes CCR=00, restoring the documented control
+  image, including CE=0 (cache disabled). It does not clear cache arrays,
+  valid bits or LRU state or implement a purge. Existing CCR byte access
+  handlers and SCI/FRT module-stop behavior are unchanged.
+- primary source: SH7604 ADE-602-085C Rev.4 section 8.2/Table 8.1 and
+  bit definitions pp.214-215 establish CCR's 00 initial image. Section
+  8.4.6 p.224 explicitly says CE clears on power-on/manual reset; section
+  8.5.1 p.226 says cache memory is NOT initialized by reset and requires
+  software initialization. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. Section 8.5.5 p.229 requires
+  CCR reconfiguration with the cache disabled. No purge algorithm is inferred
+  from the inconsistent first sentence about CP's write value in 8.4.6;
+  purge is outside this candidate.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/CACHE.sv:409-418`, clears CCR on both RST_N and RES_N;
+  `rtl/SH/SH7604/SH7604_pkg.sv:92-104` defines the fields and CCR_INIT=00.
+  Blobs `31bfe3c5b81fd357ab68bf2a66c7c34032796674` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`. Reference purge/read-mask
+  details at CACHE.sv:419-427 are not used as a cache-behavior oracle.
+- provenance: local constructor initializes CCR once, but device reset
+  omitted it; upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-211`, has the same omission. Local
+  reset history reviewed; no external implementation imported. This is
+  register-state work, not completion of the CPU-02 cache engine.
+- expected observable: after nonzero CCR control programming, completed
+  reset yields CCR readback 00, particularly CE=0, independent of prior
+  W/TW/OD/ID selection. Units: exact 8-bit register image, zero bit
+  tolerance after reset completion. SCI/FRT module stop alone retains CCR.
+  There is no claimed hit/miss, fill, purge or reset-edge cycle result.
+- suggested measurement: native SH7604 byte-access program in cache-through
+  space, properly initializing the cache before any enabled-cache execution,
+  writes documented CCR controls then asserts/releases reset and reads CCR.
+  Reprogram from disabled state; repeat on master/slave and across native
+  saves. Check cache-array retention and CPU-engine timing separately.
+- falsifier: CCR retains a programmed nonzero control bit after completed
+  reset, later legal writes cannot restore the controls, or SCI/FRT module
+  stop unexpectedly clears them. A claim that this change purges native
+  cache memory would exceed its implemented contract.
+- self-check run (method-level, unvalidated): actual device-reset, CCR and
+  SBYCR methods with mocked base/peripheral reset helpers, fail-fast UBSan;
+  1,024 reset images, 2,048 SCI/FRT module-stop retention controls, 2,048
+  reprogramming controls and 1,024 operand-state-copy replays; exit 0.
+  The register sweep covers 64 non-purge, reserved-zero configurations;
+  it does not execute code through a populated cache. Existing CCR save
+  registration checked. Historical `05d0801f` source fails the first
+  CE-reset observation (generated line 321).
+  Prior selected 37-script series: 33 exit 0/four conflicts. Including
+  this new probe: selected 38-script series, 34 exit 0/four unchanged
+  semantic conflicts: frt_stop generated line 464, frt_phase 400,
+  wdt_access 132, bsc_access 98. No expectations/validator assets changed.
+  Warning-enabled C++20 TU syntax-only and `git diff --check`: exit 0.
+  No full build or native qualification.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: native reset-cause delivery, cache arrays/tags/
+  valid/LRU state, CP action, associative purges, replacement, RAM mode,
+  DRC/interpreter cache integration, bus contention, DMA visibility,
+  whole-chip standby and live save/load. No new state fields or save-layout
+  change. Frozen DMA/IRQ-delay-slot/sound/video paths remain unchanged.
