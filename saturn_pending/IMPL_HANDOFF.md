@@ -4816,3 +4816,67 @@ correct template but omitted its numeric line span. No contract/state change.
   excluded. Duplicate-input/cyclic combinations are storage diagnostics, not
   claims that such graphs are legal running streams. No new state fields or
   extra layout break; no validator asset/expectation/frozen-path changes.
+
+### IMPL-0063 primary page correction (append-only)
+
+The CD device connection functions 4.1/4.2 are on ST-162 printed **p.86**,
+not pp.83-84 as stated above. Table 5.1/p.46 and selector pp.90-91 anchors
+are unchanged. No code or contract change.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0064 | CD-01 | 5f26ee35 | UNVALIDATED | Selector range/subheader/mode queries echo the filter number and complete with CMOK without generating ESEL |
+
+### IMPL-0064 — CD-01 — selector query register images/completion
+
+- branch/commit/base: `arena/01a0b897-mame` @ **5f26ee35**; base **efc64c4f**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` cmd_get_filter_range,
+  cmd_get_filter_subheader_conditions, cmd_get_filter_mode;
+  `saturn_pending/impl_checks/check_cd_filter_queries.py`.
+- contract: commands 41/43/45 preserve the requested filter number in CR3's
+  high byte, alongside respectively range high byte, file ID, or zero in
+  the low byte. They return the other existing predicate words unchanged.
+  Successful and rejected queries set CMOK only; pending ESEL/other HIRQ
+  bits are preserved, but queries do not manufacture a selector-set event.
+- primary source: ST-162-062094 printed p.87 functions 5.2/5.4 and p.89
+  function 5.6 specify selector queries; p.30 Table 3.2 distinguishes ESEL
+  setting commands from queries. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3038-3055,3088-3103,3128-3142`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, has CR3's echoed index and
+  normal command response without TriggerIRQ(ESEL). Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2323-2349,2391-2419,2455-2481`,
+  blob e8fedadb2d7374db35667bd064bb47fdc14b41a8, agrees on register images
+  but spuriously includes ESEL for subheader/mode (not range); it is NOT
+  used as an IRQ oracle for those two commands. Local history/base and
+  upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d implementations
+  were reviewed: all three omitted CR3 index and included ESEL. No imported
+  reference block or modification of HIRQ read/ack/update implementations.
+- expected observable: querying filter7 returns CR3=07xx (range high/file
+  number) or 0700 (mode), not 00xx. With ESEL initially clear it remains
+  clear; with ESEL initially pending it stays pending. Exact register bits,
+  zero tolerance; conditions/topology are unchanged by query.
+- suggested method: write varied 24-bit ranges, subheader bytes and legal
+  modes to all filters, clear completion causes as the host would, query,
+  then compare response words and interrupt causes. Repeat with unrelated
+  pending causes and rejected filter indices. Native command sequencing,
+  bus mapping and IRQ timing must be tested separately by validation.
+- falsifier: dropped/wrong filter index, corrupted range/subheader/mode,
+  changed graph, newly set ESEL from a query, cleared pending cause, missing
+  CMOK, or invalid-index out-of-bounds access.
+- self-check run (method-level, unvalidated): actual six getter/setter bodies
+  and extracted dispatch arms, 18,432 setter operations, 110,592 query/IRQ
+  images and 696 invalid-filter controls, fail-fast UBSan exit 0. Historical
+  efc64c4f fails HIRQ at generated line217; an isolated missing-CR3-index
+  mutant fails the range response at line219. Warning-enabled CD C++20
+  syntax/diff checks exit 0. No full build or native qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: timing and races against live selector changes,
+  full scheduler, actual host transport/IRQ delivery and firmware/gameplay.
+  Prior pending ESEL is intentionally not acknowledged by reads. No new
+  fields/additional save-layout changes, validator asset/fixture expectation
+  edits or frozen CPU/sound/video changes.
