@@ -200,8 +200,9 @@ private:
 	uint8_t m_smr, m_brr, m_scr, m_tdr, m_ssr;
 	uint8_t m_sci_ssr_read;     // status flags observed by the last CPU read
 	uint8_t m_rdr, m_tsr, m_rsr;
-	uint8_t m_sci_tx_bit;       // bit index within the transmit frame
+	uint8_t m_sci_tx_bit;       // next timed bit index within the transmit frame
 	bool m_sci_tx_active;       // a character is being shifted out
+	bool m_sci_tx_loaded;       // next TSR loaded while the last stop bit is on TxD
 	bool m_sci_rx_enabled;      // oversampling run flag
 	uint8_t m_sci_rx_state;     // receive oversample state
 	uint8_t m_sci_rx_shift;     // data bits collected so far
