@@ -18,6 +18,7 @@
 | IMPL-0004 | CD-03 | — | BLOCKED(artifacts) | hardware-faithful CD block needs the cdb firmware dump + YGR019B register information before the SH-1 subsystem can be implemented |
 | IMPL-0005 | SCU-03/BUS-01 | 13845208 | UNVALIDATED | SCU DMA head/tail bytes outside longword boundaries move in byte units: odd destinations don't clobber neighbours, odd sizes move exactly the programmed count |
 | IMPL-0006 | STV-03/STV-04 | d6043a22 | UNVALIDATED | 315-5649 PORT-G counter reset latches a difference base; counter inputs wired to PORTG.0-3 ioports (patocar trackball path) |
+| IMPL-0007 | CPU-03/IO-02 | e860f29a | UNVALIDATED | SCI SSR flags require a prior CPU read; TEND/MPB remain read-only, MPBT writes replace bit 0 |
 
 ---
 
@@ -424,3 +425,67 @@
    (sweep 2 of the check script), so the frozen DMA-acknowledgement and
    accepted-game behaviours should be untouched; the falsifier covers
    the case where that assumption is wrong on hardware.
+
+
+### IMPL-0007 — CPU-03/IO-02 — SCI SSR acknowledgements and writable-bit contract
+
+- branch/commit: `arena/01a0b897-mame` @ **e860f29a** (base: 4e046da1).
+- files: `src/devices/cpu/sh/sh7604.cpp:108,233` (save/reset),
+  `:949-983` (SSR read/write), `src/devices/cpu/sh/sh7604.h:201`
+  (read snapshot), `saturn_pending/impl_checks/check_sh7604_ssr.py`.
+- contract: SSR bits 7-3 can be cleared by software only after being read
+  as one. A status inspection with side effects disabled does not arm an
+  acknowledgement. TE=0 prevents software clearing TDRE. TEND and MPB
+  cannot be directly written; an accepted TDRE clear also clears TEND.
+  MPBT is ordinary read/write, including 1-to-0 writes. Consumed read
+  permissions are removed before TDR-to-TSR loading raises TDRE anew.
+  This supersedes IMPL-0002's incorrect flags-7-2 write-mask description.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.2.7, printed pp.342-346 (PDF pp.358-362), SSR bit table and
+  TDRE/TEND/MPB/MPBT descriptions; section 13.2.6 p.340 TE=0 lock;
+  section 13.3.2 p.359 steps 1-2 for TDR/TSR handshake. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MAME upstream pinned at
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:202-222`: this candidate adapts its
+  read-qualified acknowledgement/mask pattern for the SH7604 SCI. H8 is
+  a related implementation, not independent SH7604 silicon evidence.
+  Upstream `src/devices/cpu/sh/sh7604.cpp:872-879` still stores SSR
+  directly/returns zero RDR, so it supplies no working SH7604 engine to
+  port. Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_sci.hpp:25-28` documents the
+  write-zero-only flags/reset value but not the read qualification.
+- expected observable: exact byte values (tolerance zero). Starting
+  SSR=0x84, TE=1: unread SSR write 0x7e leaves 0x84 and emits no start
+  bit; CPU read then write 0x7e starts an idle asynchronous transmitter,
+  clears TEND and reloads TDRE, leaving 0x80. Repeating the write without
+  another CPU read must not queue another byte. With TE=0 and reset SSR,
+  writes 0x01 then 0x00 leave 0x85 then 0x84. MPB retains its hardware
+  value across either write. No timing tolerance asserted by this entry.
+- suggested method: legal mapped-register probes at H'FFFFFE04 on both
+  CPU engines; interleave debugger inspection and CPU reads with writes;
+  inject a receive flag between read and acknowledgement. Save/load
+  between the CPU read and write, then between TDRE reload and next read.
+- falsifier: a write without a qualifying CPU read clearing a flag,
+  an inspection enabling such a clear, direct modification of TEND/MPB,
+  MPBT stuck high, or reuse of a consumed TDRE read to queue another
+  byte contradicts this candidate. A hardware trace showing the opposite
+  read-qualification rule would falsify the implemented model.
+- self-check run: `python3 saturn_pending/impl_checks/check_sh7604_ssr.py`
+  raw output (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 33554432 SSR transitions; read/inspect/re-arm cases exercised
+  method-level, unvalidated: SSR read-latch reset/save registration present
+  ```
+  `g++ -fsyntax-only -std=c++20 -w` with the session include set on
+  `src/devices/cpu/sh/sh7604.cpp`: exit 0. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: no linked/native execution. New
+  `m_sci_ssr_read` is saved/reset in the same production commit; save
+  files from earlier revisions are not layout-compatible. SH-DMAC SCI
+  request/implicit-ack routing is still absent. This entry does not
+  implement clocked synchronous/external SCK operation or repair queued
+  asynchronous frames; the latter is a separate follow-up. The older
+  IMPL-0002 extracted harness lacks the new read-latch/mock-machine
+  fields and is not an acceptance gate for this revision; its source
+  and expected values were not edited.
