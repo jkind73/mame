@@ -239,9 +239,14 @@ void sh7604_device::device_reset()
 		m_active_dma_count[i] = 0;
 	}
 
+	// RES-style device reset initializes WDT control/status and cancels
+	// any old deadline. A WDT-generated internal reset must preserve
+	// RSTCSR instead (section 12.2.3); its delivery remains separate.
 	m_wtcnt = 0;
 	m_wtcsr = 0;
+	m_rstcsr = 0;
 	m_wdt_read = 0;
+	m_wdtimer->adjust(attotime::never);
 
 	sci_reset();
 
