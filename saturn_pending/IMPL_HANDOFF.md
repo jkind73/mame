@@ -4134,3 +4134,112 @@ correct template but omitted its numeric line span. No contract/state change.
   No frozen DMA/IRQ-delay-slot/sound/video path edits, peripheral additions
   or inventory/status changes. The ongoing peripheral audit has not yet
   established a separate defensible behavioral change.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0055 | CPU-03 | 2ddf2ba6 | UNVALIDATED | A 32-bit zero-divisor start exposes the three-step intermediate image, saturating only the quotient when OVFIE=0 |
+
+### IMPL-0055 — CPU-03 — 32-bit divide-by-zero register image
+
+- branch/commit/base: `arena/01a0b897-mame` @ **2ddf2ba61865b402256f8d5efd59c60ea9ad05da**;
+  base **944d3322a7b0b3ed3e76b893850f063f4dc62ee6**. Production/probe
+  committed and pushed before this separate append-only handoff.
+- files: `src/devices/cpu/sh/sh7604.cpp:1856-1881`, zero-divisor block
+  at 1869-1880; `saturn_pending/impl_checks/check_sh7604_divu_zero32.py:1-79`.
+- contract: DVDNT starts signed 32/32 division. When DVSR=0, set OVF and
+  return the intermediate dividend image after three arithmetic steps.
+  Sign-extend the 32-bit operand, shift left three positions, and insert
+  111 for a nonnegative operand or 000 for a negative operand. DVDNTH
+  receives the image's upper word. With OVFIE=1, DVDNTL receives the lower
+  word; with OVFIE=0, it receives 7FFFFFFF for a nonnegative operand or
+  80000000 for a negative operand. Old DVDNTH does not affect a 32-bit
+  start. Use unsigned shifting after signed extension to avoid host
+  negative-shift/overflow dependence. Ordinary nonzero-divisor arithmetic,
+  IRQ-refresh calls and the complete 64-bit start handler are unchanged.
+- primary source: SH7604 ADE-602-085C Rev.4, section 10.3.2 p.292 specifies
+  signed 32/32 division initiated by DVDNT; section 10.3.3 p.293 explicitly
+  includes zero divisors in overflow and specifies three flag-setup plus
+  three division cycles, intermediate DVDNTH for either OVFIE setting,
+  and intermediate versus saturated quotient. Section 10.4.2 p.294/Table
+  10.2 specifies sticky OVF, retained DVSR/VCRDIV and overflow register
+  selection. Section 10.4.1 p.293 requires longword operand accesses and
+  describes busy access restrictions. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. As in IMPL-0054, the exact
+  bit recurrence/result patterns are reference-derived, not specified as
+  bit equations by the manual or represented here as hardware captures.
+- cross-checks/provenance:
+  - Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:147-166` (blob
+    `6b31b7d029449d63f68ef281dc04958d17d74339`): zero-divisor DVDNTH is
+    dividend arithmetic-right-shifted by 29; enabled quotient is dividend
+    shifted by three with low bits determined by its sign; disabled
+    quotient saturates by dividend sign. This candidate uses unsigned
+    sign-extended arithmetic rather than the reference's signed shifts.
+  - Saturn_MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/SH/SH7604/DIVU.sv:97-108,110-127,173,190-205` (blob
+    `09b259b5f91888dc0363884fd3b2c5d81644c118`): a 32-bit start sign-
+    extends into DVDNTH/DVDNTL; zero divisor triggers overflow after
+    steps 3-5. With D=0 the ordinary shift register inserts !R_SIGN
+    each step. At overflow only disabled-interrupt DVDNTL is replaced by
+    saturation; DIV64-only R64 output selection does not apply here.
+  - Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+    `src/devices/cpu/sh/sh7604.cpp:1140-1161`, and fork base 944d3322
+    return constant 7FFFFFFF in both words. Local history inspection
+    (`git log --all -S 'TODO: 8 cycles'`) traces that placeholder to
+    baseline 60ad2f1a; no prior implementation imported. The stale
+    eight-cycle TODO is corrected to six as documentation only, not a
+    newly implemented delay. No reference file/code block imported.
+- expected observable: exact 32-bit words, zero bit tolerance. With
+  DVSR=0 and OVFIE=1, reference-derived dividend -> DVDNTH, DVDNTL examples:
+  - 00000000 -> 00000000, 00000007;
+  - 00000001 -> 00000000, 0000000F;
+  - 7FFFFFFF -> 00000003, FFFFFFFF;
+  - 80000000 -> FFFFFFFC, 00000000;
+  - FFFFFFFF -> FFFFFFFF, FFFFFFF8.
+  With OVFIE=0 the high words remain identical and the low words become
+  7FFFFFFF for the first three inputs, 80000000 for the last two. OVF=1,
+  DVSR remains zero, OVFIE unchanged. Existing getter backing reads
+  DVDNT/DVDNTL identically and without side effects; separate physical
+  alias/storage behavior is not newly implemented or qualified.
+- suggested method: native longword DVSR=0 followed by a DVDNT operand
+  write, with both OVFIE settings and old OVF clear/set. Seed DVDNTH with
+  different prior values to distinguish 32-bit sign extension from a
+  64-bit start. Mask CPU interrupt acceptance while observing OVFIE=1
+  data; native delivery is a separate target. Place non-DIVU instructions
+  after the start and wait at least 39 cycles before sampling all result
+  registers/DVCR; compare nearby multiples of 2^29 and both sign limits.
+  Separately measure six-cycle readiness/busy extensions and native
+  save/load rather than treating this synchronous method as a scheduler.
+- falsifier: an attributable zero-divisor hardware capture differs from
+  the listed high/low words or sign-dependent saturation; old DVDNTH
+  influences a 32-bit result; DVSR/OVFIE or getter-read state changes;
+  OVF/IRQ-refresh behavior changes; ordinary nonzero division regresses;
+  or host arithmetic UB occurs in this branch. Agreement with the two
+  references alone is not native qualification.
+- self-check run (method-level, unvalidated): fail-fast UBSan exit 0:
+  **4,194,304 zero-divisor register/status/readback images**, all low16
+  values at 16 selected high16 prefixes across sign/high-word transitions,
+  OVFIE and old OVF each clear/set; **65,676 ordinary signed-32 controls**;
+  **4,259,980 operand-state-copy replays**. The independent formula oracle
+  uses mathematical floor division for the high word and multiplication/
+  modulo conversion for the low word, not the production unsigned shift.
+  Historical 944d3322 exits 1 at generated line 69 on the first zero
+  dividend observation. Zero-extension and missing-positive-quotient-bit
+  mutants each exit 1 at generated line 73. Prior selected 43 scripts:
+  39 exit 0/four unchanged conflicts; with this probe the selected series
+  is **44 scripts, 40 exit 0/four conflicts** (frt_stop 475, frt_phase 410,
+  wdt_access 132, bsc_access 98). `check_sh7604_sci.py` remains outside that
+  selected series. Warning-enabled C++20 TU syntax-only and
+  `git diff --check` exit 0. No full build or native qualification;
+  validator assets and existing fixture expectations untouched.
+- state: **UNVALIDATED** — validation agent owns qualification/status.
+- not covered/known doubts: the nonzero signed-32 INT32_MIN/-1 expression
+  remains unsafe and blocked by IMPL-0036; the new probe deliberately never
+  executes it. No 64-bit zero-divisor or INT64_MIN/-1 partial correction,
+  new boundary classification, DIVU interrupt-source integration, busy
+  state, six/39-cycle delay, native lanes/aliases/save-manager/DRC/MinGW
+  qualification. No new fields/save-layout change. Frozen DMA
+  acknowledgement, delay-slot IRQ and sound/video/game paths unchanged;
+  no peripheral additions or inventory/milestone-status changes.
