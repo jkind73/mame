@@ -45,7 +45,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_write_ftoa(*this), m_write_ftob(*this)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
-	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0)
+	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0), m_wdt_read(0)
 	, m_dmaor(0)
 	, m_sbycr(0), m_ccr(0)
 	, m_bcr1(0), m_bcr2(0), m_wcr(0), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
@@ -184,6 +184,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_wtcnt));
 	save_item(NAME(m_wtcsr));
 	save_item(NAME(m_rstcsr));
+	save_item(NAME(m_wdt_read));
 	save_item(NAME(m_wtcw));
 
 	// UBC
@@ -240,6 +241,7 @@ void sh7604_device::device_reset()
 
 	m_wtcnt = 0;
 	m_wtcsr = 0;
+	m_wdt_read = 0;
 
 	sci_reset();
 
@@ -1909,14 +1911,21 @@ void sh7604_device::barbl_w(offs_t offset, uint16_t data, uint16_t mem_mask)
  * WTC
  */
 
-uint16_t sh7604_device::wtcnt_r()
+uint16_t sh7604_device::wtcnt_r(offs_t offset, uint16_t mem_mask)
 {
 	sh2_wtcnt_recalc();
+	// WTCSR occupies the high read lane; a WTCNT-only or debugger read
+	// must not qualify an overflow acknowledgement (section 12.2.2).
+	if ((mem_mask & 0xff00) && !machine().side_effects_disabled())
+		m_wdt_read = (m_wdt_read & ~1) | BIT(m_wtcsr, 7);
 	return ((m_wtcsr | 0x18) << 8) | (m_wtcnt & 0xff);
 }
 
-uint16_t sh7604_device::rstcsr_r()
+uint16_t sh7604_device::rstcsr_r(offs_t offset, uint16_t mem_mask)
 {
+	// RSTCSR is the low read lane, at H'FFFFFE83 (section 12.2.4).
+	if ((mem_mask & 0x00ff) && !machine().side_effects_disabled())
+		m_wdt_read = (m_wdt_read & ~2) | (BIT(m_rstcsr, 7) << 1);
 	return (m_rstcsr & 0xe0) | 0x1f;
 }
 
@@ -1945,8 +1954,12 @@ void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			---- -xxx Clock select
 			*/
 			sh2_wtcnt_recalc();
-			m_wtcsr &= m_wtcw[0] & 0x80;
-			m_wtcsr |= m_wtcw[0] & 0x7f;
+			// OVF is read-one/write-zero, not an unconditional write-zero
+			// flag. Consume the read when cleared so a new event is protected.
+			m_wtcsr = (m_wtcsr & 0x80 & ((m_wdt_read & 1) ? m_wtcw[0] : 0x80))
+				| (m_wtcw[0] & 0x7f);
+			if (!(m_wtcsr & 0x80))
+				m_wdt_read &= ~1;
 			if (m_wtcsr & 0x20)
 				sh2_wdt_activate();
 			else
@@ -1971,8 +1984,11 @@ void sh7604_device::rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	{
 		case 0xa500:
 			// clear WOVF flag
-			if ((m_wtcw[1] & 0x80) == 0)
+			if ((m_wdt_read & 2) && (m_wtcw[1] & 0x80) == 0)
+			{
 				m_rstcsr &= 0x7f;
+				m_wdt_read &= ~2;
+			}
 			break;
 		case 0x5a00:
 			m_rstcsr = (m_rstcsr & 0x80) | (m_wtcw[1] & 0x60);
