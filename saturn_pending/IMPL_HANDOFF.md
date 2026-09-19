@@ -4402,3 +4402,99 @@ correct template but omitted its numeric line span. No contract/state change.
   Stored metadata for raw host PUT remains an independent ingestion gap.
   No new fields/save-layout change or edits to HIRQ, host-transfer methods,
   validator assets, existing expectations, SH/DMA/IRQ or sound/video paths.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0058 | CD-01 | 60332b84 | UNVALIDATED | COPY/MOVE honor source ranges, selector routing and append order; MOVE transfers ownership without allocating another block |
+
+### IMPL-0058 — CD-01 — routed sector COPY/MOVE
+
+- branch/commit/base: `arena/01a0b897-mame` @ **60332b84**; base **b0c8f399**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1969-2074`,
+  `src/mame/sega/saturn_cd_hle.h:199`,
+  `saturn_pending/impl_checks/check_cd_copy_move.py`.
+- contract: commands 65/66 use all 16 bits of CR2/CR4 as source offset/
+  count, resolving FFFF last-sector/to-end sentinels against the original
+  source partition. An unavailable range or active host transfer returns
+  WAIT without changing buffers/connections or newly asserting ECPY;
+  invalid selectors return REJECT. Accepted operations attach the source
+  stream to the destination FILTER, not a same-numbered buffer; its true/
+  false chain selects append targets or discards sectors. COPY preserves
+  the original and copies the entire stored sector record, including its
+  size/FAD/subheader, independent of current sectlenin. MOVE detaches the
+  selected identities, then routes those same blocks without allocation;
+  it works with zero free blocks. A self-move places its original selected
+  range after surviving sectors, once only. The input connection replaces
+  prior CD/false-output producers. ECPY is newly asserted on completion,
+  not a WAIT/REJECT. Last successful CD-read target is unaffected.
+- primary source: ST-162-062094, printed p.97 functions 7.6/7.7 (range,
+  sentinels, destination filter); pp.43-46 sections 5.3.1-5.3.3/Figures
+  5.3-5.7/Table 5.1 (false-filter/true-partition routing, append storage,
+  self-copy/move, one producer per filter input); p.47 section 5.3.4
+  (unavailable-range WAIT and full selected-range deletion on MOVE);
+  p.98 function 7.8 (async error/busy reporting remains separate).
+  SDK blob `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen pin
+  `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/cdb.cpp:3610-3680`,
+  blob `d367dd0c0500ff7b1e2637e748015543b0a3078e`, corroborates 16-bit
+  ranges, both sentinels, WAIT before mutation, copy-space preflight,
+  input disconnection, MOVE unlink/relink and shared FilterBuf routing;
+  `:863-883,1750-1781` gives input ownership and discard routing. The
+  preflight reservation for all requested COPY sectors follows that
+  reference; the manual does not specify its internal reservation scheme.
+  Yabause pin `82cb29171ebe61cf0129682794af5ceb5acaa0f2`,
+  `yabause/src/cs2.c:2735-2810`, blob
+  `ab2e76aa8179e99f1296efd4a51e91b8c8235159`, corroborates tail append and
+  MOVE pointer transfer but has a truncated count and bypasses filtering;
+  those defects are not imported. Ymir pin 6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:3023-3086`, has stubs,
+  not an implementation oracle. Upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d
+  CD source and local b0c8f399's two command bodies were inspected before
+  replacement; old code ignores offset, overwrites slot zero onward and
+  allocates a second block even for MOVE. New code uses the existing local
+  allocator/compactor and IMPL-0057's router; no reference block imported.
+- expected observable: exact sector order, metadata, bytes, sizes, pool
+  ownership and command bits; zero tolerance. With source [A,B,C,D,E],
+  offset=1/count=2 and destination [X,Y], COPY gives source unchanged and
+  destination [X,Y,B,C], consuming two blocks. MOVE gives [A,D,E] and
+  [X,Y,B,C] with unchanged free count. Self-MOVE gives [A,D,E,B,C]. With
+  all 200 blocks occupied, full-range MOVE succeeds without allocation
+  while COPY returns WAIT without mutation. Filter-selected discards free
+  only the moved/copied output; a COPY never deletes its original.
+- suggested method: drive mapped 65/66 commands after legal sector ingest
+  and selector programming, including offset/count sentinels, nonidentity
+  true targets, self routing, split targets, discard and full pool. Query
+  partition counts/free space/sector metadata, then GET byte payloads and
+  examine CMOK/ECPY/BFUL and WAIT/REJECT responses. Repeat after native
+  save/load and with frozen CD game/boot acceptance. Qualify command
+  overlap and asynchronous completion/error timing separately.
+- falsifier: lost/duplicated ownership, overwritten destination prefix,
+  wrong source slice, changed COPY source, MOVE requiring free storage,
+  metadata loss, repeated self-appending, or mutation/ECPY on an unaccepted
+  request; native command/boot regression also rejects integration.
+- self-check run (method-level, unvalidated): ASan plus fail-fast UBSan:
+  **120 range/self/append cases, 120 pointer-rebound state-copy replays,
+  four split/discard routes, four full-buffer controls, 16 range/overlap
+  WAIT cases**, plus invalid-selector REJECT controls; exit 0. Tests use
+  real allocation/free/compaction/router/command bodies, recording IRQ/
+  response helpers, and pool-wide unique ownership/byte-accounting checks.
+  Legal CD-only/false-output producers are covered separately; a dual-
+  producer injected legacy state is a diagnostic, not a legal wiring claim.
+  Historical b0c8f399 fails first destination-count comparison (generated
+  line 340 in the initial harness). Byte-count truncation, payload-only
+  copying and MOVE-allocation mutants fail at lines 300/300/340 in the
+  final harness. IMPL-0057's probe and existing CD transfer/HIRQ/trace
+  method checks exit 0; expectations untouched. CD HLE warning-enabled
+  C++20 syntax-only/diff checks exit 0. No full build/native qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: still an atomic synchronous HLE operation,
+  not timed/asynchronous COPY/MOVE or a running SH-1. Get Copy Error's
+  busy/error states and mid-command disconnect/buffer-fill events remain
+  absent. Defensive malformed-pointer/pool guards have no claimed hardware
+  meaning. Raw host PUT metadata ingestion, selector reset/ownership in
+  other commands and native buffer save state need further work. No new
+  persistent fields/save-layout change; no host-transfer/HIRQ handler,
+  validator asset, existing fixture expectation, frozen SH/DMA/sound/video
+  edits. These candidates require native game regression before integration.
