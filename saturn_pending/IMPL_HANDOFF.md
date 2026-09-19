@@ -5005,3 +5005,57 @@ are method-level raw output, not native evidence.
   separate. Mock metadata controls protect untouched branches but do not
   qualify their existing hardware semantics. No new fields/layout change,
   validator asset/expectation or frozen CPU/sound/video edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0067 | CD-01 | 7761a188 | UNVALIDATED | File-information transfer deactivates after exactly the advertised six words per record, without consuming a seventh word |
+
+### IMPL-0067 — CD-01 — file-information transfer end boundary
+
+- branch/commit/base: `arena/01a0b897-mame` @ **7761a188**; base **aec0f985**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` dataxfer_word_r FILEINFO_1 and
+  FILEINFO_254 cases; `saturn_pending/impl_checks/check_cd_file_transfer_length.py`.
+- contract: file-information transfer finishes at 12 bytes for one record,
+  or at 254*12 bytes for the existing advertised full-table transfer. The
+  final advertised word makes the transfer inactive and resets its position.
+  Extra reads must not consume another file word or increment DataEnd count.
+- primary source: ST-162-062094 printed p.100 function 8.4 specifies 12-byte
+  file information and up to254 records; p.32 section3.4 transfer procedure
+  and end semantics. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3824-3840`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  specifies six words per file. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:1365-1387`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, sets transfer length to
+  numFileInfos*12/sizeof(uint16). Neither is an oracle for the local legacy
+  padded-short-directory policy. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d and local history/base used strict
+  greater-than cutoffs for these cases; TOC/subcode cases already used >=.
+- expected observable: single-file DataEnd returns six words, not seven
+  after one extra read; full 254-record transfer returns1,524, not1,525.
+  No advance to a nonexistent255th ordinary record. Exact words/bytes,
+  zero tolerance; ordinary six-word record content is unchanged.
+- suggested method: native command73, read exactly its announced word count
+  and then an extra read, request DataEnd and compare counts; repeat partial
+  transfers and native save/load at every word and record boundary.
+- falsifier: transfer still active at the advertised boundary, extra word
+  consumed/counted, early truncation, changed remaining payload, or wrong
+  DataEnd word count after the boundary.
+- self-check run (method-level, unvalidated): 24 advertised streams,
+  6,240 every-word state-copy continuations, 224 TOC/subcode boundary
+  controls and extra-read/DataEnd checks; ASan/fail-fast UBSan exit0.
+  Historical aec0f985 fails exact-boundary assertion at generated line281.
+  Warning-enabled CD C++20 syntax/diff checks exit0. Prior aggregate at
+  aec0f985 ran all ten preceding CD probes plus existing CD transfer/HIRQ/
+  trace checks, all exit0 (raw outputs are method-level, unvalidated).
+- state: **UNVALIDATED**.
+- not covered/known doubts: idle-bus data value and DRDY timing, short-table
+  padding versus actual held-record count, file-number/attribute parsing,
+  unit/gap field ordering, raw media transfer scheduling and native
+  gameplay/save-manager behavior. State copies are NOT file save/load.
+  No new fields/save-layout change, existing fixture expectation changes,
+  HIRQ handler changes or frozen CPU/sound/video changes.
