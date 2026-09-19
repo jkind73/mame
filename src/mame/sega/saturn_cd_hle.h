@@ -103,7 +103,8 @@ private:
         return 12;
       if (length == 2336)
         return 16;
-      return data[15] == 2 ? 24 : 16;
+      // ST-162 section 5.4: only Mode 1 places user data after the header.
+      return data[15] == 1 ? 16 : 24;
     }
   };
 
