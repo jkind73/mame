@@ -315,6 +315,7 @@ private:
 	TIMER_CALLBACK_MEMBER(sh2_timer_callback);
 	TIMER_CALLBACK_MEMBER(sh2_wdtimer_callback);
 	TIMER_CALLBACK_MEMBER(sh2_dma_current_active_callback);
+	void frt_reset();
 	void sh2_timer_resync();
 	void sh2_timer_activate();
 	void sh2_wtcnt_recalc();
