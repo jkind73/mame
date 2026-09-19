@@ -19,6 +19,7 @@
 | IMPL-0005 | SCU-03/BUS-01 | 13845208 | UNVALIDATED | SCU DMA head/tail bytes outside longword boundaries move in byte units: odd destinations don't clobber neighbours, odd sizes move exactly the programmed count |
 | IMPL-0006 | STV-03/STV-04 | d6043a22 | UNVALIDATED | 315-5649 PORT-G counter reset latches a difference base; counter inputs wired to PORTG.0-3 ioports (patocar trackball path) |
 | IMPL-0007 | CPU-03/IO-02 | e860f29a | UNVALIDATED | SCI SSR flags require a prior CPU read; TEND/MPB remain read-only, MPBT writes replace bit 0 |
+| IMPL-0008 | CPU-03/IO-02 | 23eb938a | UNVALIDATED | SCI asynchronous TX reloads at the final stop bit, chains queued frames and preserves a full stop interval |
 
 ---
 
@@ -489,3 +490,91 @@
   IMPL-0002 extracted harness lacks the new read-latch/mock-machine
   fields and is not an acceptance gate for this revision; its source
   and expected values were not edited.
+
+
+### IMPL-0008 — CPU-03/IO-02 — SCI asynchronous queued-frame transmission
+
+- branch/commit: `arena/01a0b897-mame` @ **23eb938a** (base: 78124cf3;
+  depends on IMPL-0007's read-qualified SSR handshake).
+- files: `src/devices/cpu/sh/sh7604.cpp:114,241` (save/reset),
+  `:903-942` (SCR/TE cancellation and interrupt-enable writes),
+  `:1018-1105` (TX frame start/bit timer),
+  `src/devices/cpu/sh/sh7604.h:203-205` (next-event index/queued-TSR flag),
+  `saturn_pending/impl_checks/check_sh7604_tx_chain.py`.
+- contract: internally clocked asynchronous TX keeps the current data in
+  TSR through parity/MP output. At the final stop-bit output, pending
+  TDR data loads into TSR and TDRE rises; IRQ state is recalculated then.
+  The next start bit follows one full bit period later. Without pending
+  data, TEND rises at that stop-bit output, but the transmitter keeps
+  the line high until the full stop interval expires. A byte submitted
+  during that interval waits until the interval ends. TE=0 cancels both
+  current and queued work. TIE/TEIE-only SCR writes do not restart the
+  bit timer. No additional inter-frame idle bit is inserted.
+  This supersedes IMPL-0002's MSB-based asynchronous reload assumption
+  (that manual passage belongs to clocked synchronous mode).
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.3.2 pp.354-360, Table 13.11, p.359 steps 1-3 and Figure
+  13.6; section 13.3.3 pp.366-367/Figure 13.11 for MP format; section
+  13.2.7 p.345 specifies TEND at the last bit of a character. TE=0
+  initialization is in section 13.2.6 p.340. Source SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. The former p.373 citation
+  describes synchronous operation and is not the async contract.
+- cross-checks: MAME upstream pinned at
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:517-535,548-625`, independently stages
+  start/data/parity/stop and loads TDR only after the last stop output,
+  before the next start. This related Hitachi device is a structural
+  cross-check, not SH7604 hardware evidence. **Difference:** H8's
+  `ST_LAST_TICK` sets TEND after the last stop interval; this SH7604
+  candidate follows the SH7604 manual's stop-bit-output wording instead.
+  The exact TEND/TEI edge therefore remains an explicit silicon target.
+  Pinned upstream SH7604 remains a register stub (see IMPL-0007);
+  Ymir's pinned SH2 SCI header supplies no transmission engine.
+- expected observable: with 8N1 and bit period B CPU phi ticks, submit
+  byte A at t=0 and byte B before t=9B. A's start/data/stop occupy
+  t=0..10B; TDRE rises for the second TSR load at 9B, not 8B; B's
+  start occurs at 10B, and its data is not lost. With no third byte,
+  TEND rises at 19B and TxD stays high through 20B. For 8E1, parity
+  at 9B uses A, reload occurs at 10B and next start at 11B. For two
+  stops the next start is delayed by one additional B. A write halfway
+  through the final stop cannot truncate it. Tolerance: exact bit values
+  and periods for this model; allow one scheduler attosecond rounding
+  per bit for a native timer probe. Silicon edge/baud qualification is
+  not inferred from that software tolerance.
+- suggested method: record TxD callbacks and SSR/TXI/TEI through mapped
+  SH7604 register accesses, with queued data before MSB, between parity
+  and stop, and during stop. Include 7/8 data bits, parity none/even/odd,
+  1/2 stops, constant-MP-bit frames and TE cancellation. Save/load at
+  final-stop midpoint with one byte already in TSR and another in TDR;
+  compare uninterrupted suffixes and IRQs on both CPU engines.
+- falsifier: missing or duplicated queued bytes, parity calculated from
+  the next byte, TDRE rising at MSB, a shortened stop bit, lost TXI
+  recalculation, an extra start after TE=0, or TIE-only writes changing
+  bit spacing contradicts this candidate. A hardware trace showing
+  a different TEND edge or two-stop reload point falsifies that timing
+  assumption even if the extracted-method checks still agree.
+- self-check run: `python3 saturn_pending/impl_checks/check_sh7604_tx_chain.py`
+  raw output (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 4096 three-frame format/data cases; exact bit traces and state-copy replay
+  method-level, unvalidated: late queue, stop-bit hold, IRQ refresh and TE cancellation exercised
+  method-level, unvalidated: queued-TSR reset/save registration present
+  ```
+  Re-ran `check_sh7604_ssr.py` unchanged:
+  ```text
+  method-level, unvalidated: 33554432 SSR transitions; read/inspect/re-arm cases exercised
+  method-level, unvalidated: SSR read-latch reset/save registration present
+  ```
+  Both compile extracted methods with `-fsanitize=undefined`.
+  `g++ -fsyntax-only -std=c++20 -w` with the session include set on
+  `src/devices/cpu/sh/sh7604.cpp`: exit 0. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: no native MAME execution, real interrupt
+  vector/priority test, or save-manager replay. `m_sci_tx_loaded` is
+  saved/reset in this change, and `m_sci_tx_bit` now means the next
+  timer event, not the last event; older save files are incompatible.
+  MPBT changes while a different MP character is in flight are not
+  covered (the existing live MPBT sampling remains). RX simultaneous
+  parity/framing/overrun semantics, external SCK, synchronous transfer,
+  SCI DMA routing and real peripheral wiring remain incomplete.
+  No claim is made about external communication-device acceptance.
