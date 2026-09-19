@@ -157,8 +157,51 @@ local function subq()
 end
 
 local function play_track(first, last)
-    -- track mode: the host's one based track number in bits 15-8
-    return cmd(0x1000 | 0, first << 8, last << 8, 0)
+    -- track mode: the host's one based start track number in CR2 bits 15-8 and
+    -- the end track number in CR4 bits 15-8 (CR1/CR3 low bytes are the high
+    -- bits of a position when one is given)
+    return cmd(0x1000, first << 8, 0, last << 8)
+end
+
+-- CD-05: a save taken while the drive is playing must restore the drive
+-- position, the pending transfer state and the converter's own playback state.
+local save_path = os.getenv('CDDA_SAVE_FILE')
+local saves_seen, loads_seen, save_target, load_target = 0, 0, 0, 0
+if save_path then
+    emu.add_machine_pre_save_notifier(function()
+        saves_seen = saves_seen + 1
+    end)
+    emu.add_machine_post_load_notifier(function()
+        loads_seen = loads_seen + 1
+    end)
+end
+local function state_written()
+    if not save_path then return true end
+    local f = io.open(save_path, 'rb')
+    if not f then return false end
+    local size = f:seek('end')
+    f:close()
+    return size ~= nil and size > 32
+end
+local function request_save()
+    if not save_path then return false end
+    os.remove(save_path)
+    save_target = saves_seen + 1
+    m:save(save_path)
+    return true
+end
+local function request_load()
+    if not save_path then return false end
+    for _ = 1, 200 do
+        if state_written() then break end
+        emu.wait(ms(10))
+    end
+    if not state_written() then return false end
+    load_target = loads_seen + 1
+    m:load(save_path)
+    emu.pause()          -- the load rewinds emulated time
+    emu.unpause()
+    return true
 end
 
 local function park()
@@ -277,7 +320,44 @@ local function test()
     chk('resume_audible', rms(resumed) > 0.02,
         string.format('rms=%.6f', rms(resumed)))
 
+    -- CD-05: save and restore in the middle of playback
+    if save_path then
+        chk('cont_play_accepted', play_track(2, 3), 'no CMOK')
+        for _ = 1, 200 do
+            if state() == STAT.PLAY then break end
+            emu.wait(ms(10))
+        end
+        emu.wait(ms(300))
+        local q_before = subq()
+        local before_rms = rms(capture(200))
+        chk('cont_saved', request_save(), 'save refused')
+        chk('cont_loaded', request_load(), 'state file never appeared')
+        for _ = 1, 100 do
+            if state() == STAT.PLAY then break end
+            emu.wait(ms(10))
+        end
+        emu.wait(ms(200))
+        local q_after = subq()
+        local after = capture(250)
+        print(string.format('CDDA continuity state=%03x rms_before=%.6f '
+                            .. 'rms_after=%.6f g1k_after=%.5f abs %d -> %d',
+                            state(), before_rms, rms(after),
+                            tone(after, @@TONE@@), q_before.abs, q_after.abs))
+        chk('cont_play_state', state() == STAT.PLAY,
+            string.format('%03x', state()))
+        chk('cont_audio', rms(after) > 0.02, string.format('%.6f', rms(after)))
+        chk('cont_position', q_after.abs >= q_before.abs,
+            string.format('%d -> %d', q_before.abs, q_after.abs))
+        cmd(0x0400, 0, 0, 0)                 -- Init back to a known state
+        emu.wait(ms(150))
+    end
+
     -- scanning: the pickup must move and stay audible over the audio track
+    chk('scan_play_accepted', play_track(2, 3), 'no CMOK')
+    for _ = 1, 200 do
+        if state() == STAT.PLAY then break end
+        emu.wait(ms(10))
+    end
     cmd(0x1200, 0, 0, 0)                    -- Fast forward
     emu.wait(ms(200))
     local scann = capture(300)
@@ -292,8 +372,6 @@ local function test()
     chk('scan_moves', q2.abs > q1.abs, string.format('%d -> %d', q1.abs, q2.abs))
 
     -- playing the data track must stay silent
-    cmd(0x0400, 0, 0, 0)                    -- Init, stops the drive
-    emu.wait(ms(200))
     chk('data_play_accepted', play_track(1, 2), 'no CMOK')
     for _ = 1, 200 do
         if state() == STAT.PLAY then break end
@@ -400,11 +478,17 @@ def main():
         'command': cmd,
     }, indent=2) + '\n')
     env = dict(os.environ)
-    env.update(SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+    env.update(SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy',
+               CDDA_SAVE_FILE=str(out / 'cdda-continuity.sta'))
     with (out / 'runtime.log').open('w') as log:
         proc = subprocess.run(cmd, cwd=out, env=env, stdout=log,
                               stderr=subprocess.STDOUT, timeout=1800)
     text = (out / 'runtime.log').read_text(errors='replace')
+    if 'unknown option: -cdrom' in text:
+        # a configuration with no CD image device (ST-V cartridges) cannot be
+        # asked about Red Book output at all
+        print('SKIP: %s has no -cdrom option' % args.system)
+        return 0
     for line in text.splitlines():
         if line.startswith('CDDA '):
             print(line)

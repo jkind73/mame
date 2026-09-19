@@ -720,11 +720,14 @@ uint32_t saturn_cd_hle_device::cd_track_count() {
 }
 
 /* Track index holding the sector at FAD `fad`, or -1 when that position is
-   outside the programme area.  The image API's get_track() returns its input
-   unchanged for a position past the lead-out (the loop simply never matches),
-   and feeding that value back into the track table reads out of bounds, so
-   every position that comes from the host - or from a drive state that could
-   not be reached - goes through here. */
+   outside the programme area.  A position at or past the lead-out cannot be
+   told apart from the first track through the image API: cdrom_file's track
+   lookup only assigns its track out-parameter inside the loop over the tracks
+   (src/lib/util/cdrom.cpp, logical_to_chd_lba), so the caller's initialiser
+   survives and get_track() answers 0 - a perfectly valid track.  Everything
+   that comes from the host, or from a drive state that could not be reached,
+   goes through here so that "off the end of the disc" is a distinct answer
+   instead of track 1. */
 int saturn_cd_hle_device::cd_track_at(uint32_t fad) {
   if (!m_cdrom_image->exists() || fad < 150)
     return -1;
@@ -1163,15 +1166,18 @@ void saturn_cd_hle_device::cmd_play_disc() {
     }
   }
 
-  /* A range that runs past the lead-out (or backwards, which underflows) is
-     clamped: the drive cannot play what is not on the disc.  The range starts
-     where the pickup is going (the pending seek target when this command
-     chained one, otherwise the current position). */
+  /* The range is measured from where the pickup is going - the seek target
+     this command chained, or the current position when it did not - and it
+     cannot leave the disc.  An unset or backwards end (0, the 0xFFFFFF "no
+     end" encoding, or a position behind the start) is an open range: the
+     drive plays to the lead-out, which is the only sensible reading of a
+     protocol that cannot ask for a zero length play. */
   {
-    uint32_t const leadout = cd_track_start_fad(cd_track_count());
     uint32_t const start = (cd_fad_seek > 150) ? cd_fad_seek : cd_curfad;
-    uint32_t const max_len = (leadout > start) ? (leadout - start) : 0;
-    if (fadstoplay == 0xffffffff || fadstoplay > max_len)
+    uint32_t const max_len = (cd_track_start_fad(cd_track_count()) > start)
+                                 ? (cd_track_start_fad(cd_track_count()) - start)
+                                 : 0;
+    if (fadstoplay == 0 || fadstoplay == 0xffffffff || fadstoplay > max_len)
       fadstoplay = max_len;
   }
 
