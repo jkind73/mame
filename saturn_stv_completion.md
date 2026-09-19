@@ -401,7 +401,7 @@
   - DRDY and related status/interrupt transitions, buffer-full/empty behavior, transfer completion, command overlap and dual-port host interface semantics.
   - Audit filters/partitions, sector routing, file/sector access and reset/abort interactions through actual command sequences, not successful executable loading alone.
 - [ ] **CD-02 — Complete drive/media timing and state transitions. [P/V/R]**
-  - Current integration: the FAD/LBA mix is resolved on the drive path (`cd_track_at()`, `cd_track_start_fad()`, `cd_sectors_to_leadout()`); a track-mode play ends at the start of the requested end track instead of one track late, a FAD end position is treated as a position rather than as a sector count, and a range cannot run past the lead-out. A fast forward/rewind now moves the pickup at the audible 2x rate and `PEND` at the end of the programme area. Measured on a generated disc by `regtests/saturn/test_cdda_runtime.py`. See `regtests/saturn/handoff/integration.md`.
+  - Current integration: the FAD/LBA mix is resolved on the drive path (`cd_track_at()`, `cd_track_start_fad()`, `cd_sectors_to_leadout()`); a track-mode play ends at the start of the requested end track instead of one track late, a FAD end position is treated as a position rather than as a sector count, an unset or backwards end means play to the lead-out, and no range can leave the disc. Fast forward/rewind moves the pickup at the audible 2x rate and `PEND` at the end of the programme area. The protocol's field placement is asserted too: a track-mode range carries the end track number in CR4's high byte (CR3's low byte is the high part of a position when one is given). `regtests/saturn/test_cdda_math.py` (51 cases, no binary needed) covers the position/range layer, `regtests/saturn/test_cdda_runtime.py` measures it on a generated disc. See `regtests/saturn/handoff/integration.md`.
   - Startup identification, no-disc/open/tray transitions, seek/play/read timing derived from command parameters, track/index/pregap/multisession handling and end-of-disc/error paths.
   - Source still records approximate timings and assumed pregap behavior; reproduce affected media with known images and metadata.
 - [ ] **CD-03 — Complete a hardware-faithful CD block implementation. [M/P/R]**
@@ -413,6 +413,7 @@
   - Media/authentication command behavior and interaction with data transfers are still open; `cmd_check_copy_protection` implements the HLE response only, and no dump-level authentication is modelled.
   - Do not infer raw physical-disc authentication fidelity from a dumped image booting under HLE.
 - [ ] **CD-05 — Complete live CD-state save/reset acceptance. [V]**
+  - Current integration: a save taken in the middle of Red Book playback restores the drive in PLAY, the converter still sounding and the reported position not moving backwards (`CDDA_SAVE_FILE` case in `regtests/saturn/test_cdda_runtime.py`); the converter and the drive position are both saved state, and the click-free restart path re-arms it only if the stream really stopped.
   - Buffered sectors, partial transfers, outstanding commands, drive position and audio state; no duplicated sectors, lost IRQs or unrecoverable postload waits.
 
 ## 11. Saturn controller ports, cartridge slot and nonvolatile storage
