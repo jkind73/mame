@@ -86,7 +86,7 @@ void sh7604_device::device_start()
 	m_wdtimer->adjust(attotime::never);
 	m_sci_tx_timer = timer_alloc(FUNC(sh7604_device::sci_tx_tick), this);
 	m_sci_tx_timer->adjust(attotime::never);
-	m_sci_clock_timer = timer_alloc(FUNC(sh7604_device::sci_sync_tick), this);
+	m_sci_clock_timer = timer_alloc(FUNC(sh7604_device::sci_clock_tick), this);
 	m_sci_clock_timer->adjust(attotime::never);
 	m_sci_rx_timer = timer_alloc(FUNC(sh7604_device::sci_rx_tick), this);
 	m_sci_rx_timer->adjust(attotime::never);
@@ -888,7 +888,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: asynchronous SCK output
+// TODO: SCI DMA request/ack routing and module-standby integration
 
 uint8_t sh7604_device::smr_r()
 {
@@ -959,7 +959,7 @@ void sh7604_device::scr_w(uint8_t data)
 	// Interrupt-enable writes must not restart the in-flight bit period.
 	if ((old_scr ^ m_scr) & 3)
 		sci_recalc_rates();
-	sci_update_sync_clock();
+	sci_update_clock();
 	sh2_recalc_irq();
 }
 
@@ -1009,7 +1009,7 @@ void sh7604_device::ssr_w(uint8_t data)
 		m_ssr |= SSR_TDRE;
 		sci_transmit_start();
 	}
-	sci_update_sync_clock();
+	sci_update_clock();
 	sh2_recalc_irq();
 }
 
@@ -1098,16 +1098,19 @@ void sh7604_device::sci_sync_edge(bool level)
 	}
 }
 
-void sh7604_device::sci_update_sync_clock()
+void sh7604_device::sci_update_clock()
 {
-	bool const internal = BIT(m_smr, 7) && !BIT(m_scr, 1);
+	bool const synchronous = BIT(m_smr, 7);
+	bool const internal = !BIT(m_scr, 1) && (synchronous || BIT(m_scr, 0));
 	bool const error = m_ssr & (SSR_ORER | SSR_FER | SSR_PER);
 	bool const enabled = BIT(m_scr, 5) || BIT(m_scr, 4);
 	// Receive-only mode clocks while RE is set. In full duplex, TX starts
 	// the shared clock and RX must finish sampling the final transmitted bit.
 	bool const work = (BIT(m_scr, 5) && m_sci_tx_active) ||
 		(BIT(m_scr, 4) && (!BIT(m_scr, 5) || m_sci_rx_state));
-	if (!internal || !enabled || error || (!work && m_sci_sck_out))
+	// Async CKE=01 outputs a continuous baud-rate clock, even with TE/RE
+	// clear (section 13.3.2 p.356, initialization step 3).
+	if (!internal || (synchronous && (!enabled || error || (!work && m_sci_sck_out))))
 	{
 		m_sci_clock_running = false;
 		m_sci_clock_timer->adjust(attotime::never);
@@ -1124,7 +1127,7 @@ void sh7604_device::sci_update_sync_clock()
 	}
 }
 
-TIMER_CALLBACK_MEMBER(sh7604_device::sci_sync_tick)
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_clock_tick)
 {
 	if (!m_sci_clock_running)
 		return;
@@ -1133,14 +1136,27 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_sync_tick)
 	// Make TX data valid before notifying the peer of a falling edge.
 	// On rising edges, notify the peer before sampling its receive data.
 	if (!m_sci_sck_out)
-		sci_sync_edge(false);
+	{
+		if (BIT(m_smr, 7))
+			sci_sync_edge(false);
+		else if (m_sci_tx_active)
+		{
+			// Figure 13.3: async data boundaries are falling SCK edges,
+			// placing each rising edge at the center of the transmitted bit.
+			sci_tx_tick(m_sci_tx_bit);
+			// A completed stop interval may have armed the next frame.
+			// Emit its start on this edge, not one bit period later.
+			if (m_sci_tx_active && m_sci_tx_bit == 0)
+				sci_tx_tick(0);
+		}
+	}
 	m_write_sck(m_sci_sck_out);
-	if (m_sci_sck_out)
+	if (m_sci_sck_out && BIT(m_smr, 7))
 		sci_sync_edge(true);
 
 	// Always finish the last low half-period: TEND rises on MSB output,
 	// but its rising sample edge still belongs to this character (p.373).
-	sci_update_sync_clock();
+	sci_update_clock();
 	if (m_sci_clock_running)
 		m_sci_clock_timer->adjust(sci_bit_period() / 2);
 }
@@ -1159,11 +1175,11 @@ attotime sh7604_device::sci_bit_period() const
 
 void sh7604_device::sci_recalc_rates()
 {
-	// Synchronous modes use the shared clock/edge engine below.
-	sci_update_sync_clock();
+	// Sync and async clock-output modes use the shared SCK generator.
+	sci_update_clock();
 	if (BIT(m_smr, 7))
 		return;
-	if (m_sci_tx_active && BIT(m_scr, 5) && !BIT(m_scr, 1))
+	if (m_sci_tx_active && BIT(m_scr, 5) && (m_scr & 3) == 0)
 		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
 	else
 		m_sci_tx_timer->adjust(attotime::never);
@@ -1175,14 +1191,17 @@ void sh7604_device::sci_recalc_rates()
 
 void sh7604_device::sci_transmit_start()
 {
-	// TDR is already in TSR. Sync waits for a falling SCK edge;
-	// async emits a start bit and then shifts the frame LSB first.
+	// TDR is already in TSR. Sync and async SCK-output modes wait for
+	// a falling edge. Other async modes emit the start bit immediately.
 	m_sci_tx_bit = BIT(m_smr, 7) ? 0 : 1; // next sync data bit / async timer event
 	m_sci_tx_phase = 0;
 	m_sci_tx_active = true;
 	m_sci_tx_loaded = false;
-	if (BIT(m_smr, 7))
-		sci_update_sync_clock();
+	if (BIT(m_smr, 7) || (m_scr & 3) == 1)
+	{
+		m_sci_tx_bit = 0; // async zero denotes the pending start bit
+		sci_update_clock();
+	}
 	else if (BIT(m_scr, 5))
 	{
 		m_write_txd(0); // start bit
@@ -1224,7 +1243,11 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
 	}
 
 	int bit;
-	if (param <= data_bits)
+	if (param == 0)
+	{
+		bit = 0; // start bit deferred to a falling SCK output edge
+	}
+	else if (param <= data_bits)
 	{
 		// data bits, LSB first; 7-bit characters do not transmit the MSB
 		bit = (m_tsr >> (param - 1)) & 1;
@@ -1263,7 +1286,7 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
 	}
 
 	m_sci_tx_bit = param + 1;
-	if (!BIT(m_scr, 1))
+	if ((m_scr & 3) == 0)
 		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
 }
 

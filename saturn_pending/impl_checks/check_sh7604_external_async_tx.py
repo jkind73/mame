@@ -27,7 +27,7 @@ def extract(name, result):
     return match[0].replace('sh7604_device::', '')
 
 functions = '\n'.join(extract(n, t) for n, t in (
-    ('sck_w', 'void'), ('sci_sync_edge', 'void'), ('sci_update_sync_clock', 'void'),
+    ('sck_w', 'void'), ('sci_sync_edge', 'void'), ('sci_update_clock', 'void'),
     ('scr_w', 'void'), ('smr_w', 'void'), ('brr_w', 'void'), ('ssr_r', 'uint8_t'),
     ('ssr_w', 'void'), ('tdr_w', 'void'), ('sci_transmit_start', 'void'),
     ('sci_recalc_rates', 'void'), ('sci_bit_period', 'attotime'), ('sci_rx_complete', 'void')))

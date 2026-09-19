@@ -58,7 +58,7 @@ struct Device {
  Timer *m_sci_tx_timer=&tx, *m_sci_rx_timer=&rx;
  std::vector<std::pair<tick_t,int>> wire, irqs;
  // This fixture exercises register/async/external-edge methods, not the internal clock.
- void sci_update_sync_clock() {}
+ void sci_update_clock() {}
  uint8_t m_sci_tx_phase=0;
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }

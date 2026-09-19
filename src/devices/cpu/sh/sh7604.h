@@ -89,8 +89,8 @@ private:
 	attotime sci_bit_period() const;
 	void sci_recalc_rates();
 	void sci_sync_edge(bool level);
-	void sci_update_sync_clock();
-	TIMER_CALLBACK_MEMBER(sci_sync_tick);
+	void sci_update_clock();
+	TIMER_CALLBACK_MEMBER(sci_clock_tick);
 	void sci_transmit_start();
 	TIMER_CALLBACK_MEMBER(sci_tx_tick);
 	TIMER_CALLBACK_MEMBER(sci_rx_tick);
@@ -218,8 +218,8 @@ private:
 	uint8_t m_sci_rx_phase;     // oversample phase 0-15 within a bit
 	uint8_t m_sci_rx_vote;      // majority-vote accumulator
 	bool m_sci_sck;            // external SCK input level (edge history)
-	bool m_sci_sck_out;        // internal synchronous clock output level
-	bool m_sci_clock_running;  // internal synchronous clock timer enabled
+	bool m_sci_sck_out;        // internal SCK output level
+	bool m_sci_clock_running;  // internal SCK output timer enabled
 	emu_timer *m_sci_tx_timer;
 	emu_timer *m_sci_rx_timer;
 	emu_timer *m_sci_clock_timer;

@@ -39,7 +39,7 @@ struct Device {
  Timer timer; Timer *m_sci_rx_timer=&timer, *m_sci_tx_timer=&timer;
  int line=1, irqs=0, rate_changes=0;
  // This fixture exercises register/async/external-edge methods, not the internal clock.
- void sci_update_sync_clock() {}
+ void sci_update_clock() {}
  // External asynchronous receive is exercised by its own pin-clock fixture.
  void sci_rx_tick(int) {}
  uint8_t m_sci_tx_phase=0;
