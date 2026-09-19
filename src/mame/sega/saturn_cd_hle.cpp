@@ -519,7 +519,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     xfercount += 2;
     xferdnum += 2;
 
-    if (xfercount > 6 * 2) {
+    if (xfercount >= 6 * 2) {
       xfercount = 0;
       xfertype = XFERTYPE_INVALID;
     }
@@ -555,7 +555,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     xfercount += 2;
     xferdnum += 2;
 
-    if (xfercount > (254 * 6 * 2)) {
+    if (xfercount >= (254 * 6 * 2)) {
       xfercount = 0;
       xfertype = XFERTYPE_INVALID;
     }
