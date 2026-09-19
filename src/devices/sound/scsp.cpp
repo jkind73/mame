@@ -64,6 +64,56 @@ static constexpr u32 SAMPLE_CLOCKS = 512;
     that can generate FM and PCM (from ROM/RAM) sound
 */
 
+// FM voice mixing address shift: the value the "MDL" scaler sends to the phase
+// adder for the averaged modulator input ZD.
+//
+// ST-077-R2-052594 p.67 (Table 4.17): the maximum address shift is 32, 64, 128,
+// 256, 512, 1024 ... words for MDL 5, 6, 7, 8, 9, A ..., i.e. 2^MDL words, and
+// that maximum is reached at full scale ZD.  Table 4.15 gives the same set as
+// modulation rates 1/16, 1/8, 1/4 ... 64 (n/pi, measured against the half cycle
+// the text equates to 512 words), and a rate of 0 for MDL 0-4, so
+//     shift = ZD * 2^(MDL - 15) words
+// for a 16 bit ZD, and MDL 0-4 do not modulate at all.
+//
+// p.68 then says the shift is clipped at 1 Kword: "the SCSP clips (process to
+// prevent shift from exceeding a limit) shift that exceeds 1K word and returns
+// the shift to 0 ... Clipping process was done because the valid address bits
+// available for shift was 10."  A hardware shift quantity with 10 address bits
+// plus a sign bit wraps rather than saturating, so the shift is truncated to a
+// signed 11 bit field: MDL=AH at full scale is +1023 words (just inside the
+// documented limit) and MDL=BH at full scale is 2048 words, which comes back as
+// 0 - exactly the "returns to the shift to 0" the page describes.  Beetle
+// implements the same truncation (`sign_x_to_s32(11, sia >> 6)` in
+// beetle-scsp.inc, evaluated after adding the phase fraction), MiSTer keeps a
+// wider field and lets its loop mask wrap the sum.
+//
+// Returned in the fixed point word units of the address pointers (SHIFT
+// fraction bits), which is where the shift belongs: the PG steps by fractions
+// of a word through FNS, the interpolation uses the fraction of the modulated
+// address, and MiSTer's MDCalc keeps the same sub-word resolution (MOD_PHASE_
+// CURR adds the 6 bit phase fraction to the modulation value before its integer
+// part is taken).
+static inline s32 MD_Shift(s32 zd, u32 mdl)
+{
+  if (mdl < 5)
+    return 0;
+
+  // words << SHIFT, range of a 16 bit ZD times the largest 2^MDL factor
+  s64 const shifted = s64(zd) << (mdl - 3);
+
+  // 10 address bits and a sign bit, p.68
+  constexpr s64 FIELD = s64(2048) << SHIFT;
+  constexpr s64 HALF = s64(1024) << SHIFT;
+
+  s64 wrapped = shifted % FIELD;
+  if (wrapped < 0)
+    wrapped += FIELD;
+  if (wrapped >= HALF)
+    wrapped -= FIELD;
+
+  return s32(wrapped);
+}
+
 // SLOT PARAMETERS
 #define KEYONEX(slot) ((slot->udata.data[0x0] >> 0x0) & 0x1000)
 #define KEYONB(slot) ((slot->udata.data[0x0] >> 0x0) & 0x0800)
@@ -1347,20 +1397,34 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
     addr2 = (slot->nxt_addr >> (SHIFT - 1)) & ~1;
   }
 
+  // interpolation weight of addr1/addr2; the FM path below moves both
+  // addresses by the same amount, so it moves the fraction with them
+  s32 fpart = slot->cur_addr & ((1 << SHIFT) - 1);
+
   if (MDL(slot) != 0 || MDXSL(slot) != 0 || MDYSL(slot) != 0) {
-    s32 smp = (m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] +
-               m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) /
-              2;
+    // Averaging operation unit (ST-077-R2-052594 p.54): the two sound stack
+    // values are each halved before being added, so their sum cannot
+    // overflow, and the result is ZD = (XD + YD) / 2.
+    s32 const zd = (m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] +
+                    m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) /
+                   2;
 
-    smp <<= 0xA; // associate cycle with 1024
-    smp >>= 0x1A -
-            MDL(slot); // ex. for MDL=0xF, sample range corresponds to +/- 64 pi
-                       // (32=2^5 cycles) so shift by 11 (16-5 == 0x1A-0xF)
-    if (!PCM8B(slot))
-      smp <<= 1;
-
-    addr1 += smp;
-    addr2 += smp;
+    // The phase adder keeps fractional address bits (the PG itself steps by
+    // fractions of a word through FNS), so the modulation offset is applied to
+    // the fixed point addresses instead of to the integer word addresses.
+    s32 const offset = MD_Shift(zd, MDL(slot));
+    if (offset != 0) {
+      u32 const cur = slot->cur_addr + offset;
+      u32 const nxt = slot->nxt_addr + offset;
+      if (PCM8B(slot)) {
+        addr1 = cur >> SHIFT;
+        addr2 = nxt >> SHIFT;
+      } else {
+        addr1 = (cur >> (SHIFT - 1)) & ~1;
+        addr2 = (nxt >> (SHIFT - 1)) & ~1;
+      }
+      fpart = cur & ((1 << SHIFT) - 1);
+    }
   }
 
   if (SSCTL(slot) == 0) // External DRAM data
@@ -1370,7 +1434,6 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
       int8_t p1 = read_byte(SA(slot) + addr1);
       int8_t p2 = read_byte(SA(slot) + addr2);
       s32 s;
-      s32 fpart = slot->cur_addr & ((1 << SHIFT) - 1);
       s = (int)(p1 << 8) * ((1 << SHIFT) - fpart) + (int)(p2 << 8) * fpart;
       sample = (s >> SHIFT);
     } else // 16 bit signed (endianness?)
@@ -1378,7 +1441,6 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
       s16 p1 = read_word(SA(slot) + addr1);
       s16 p2 = read_word(SA(slot) + addr2);
       s32 s;
-      s32 fpart = slot->cur_addr & ((1 << SHIFT) - 1);
       s = (int)(p1) * ((1 << SHIFT) - fpart) + (int)(p2)*fpart;
       sample = (s >> SHIFT);
     }
@@ -1464,12 +1526,25 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
   }
 
   if (!STWINH(slot)) {
+    // ST-077-R2-052594 p.46: "SOUS ... is a data buffer for a slot output", and
+    // the p.53 block diagram has the level multiplier (TL, ALFO and the EG
+    // coefficient) feed both the sound stack write and the digital mixer, so
+    // only TL belongs here - the mixer's DISDL/DIPAN stage does not, and the
+    // stack is 16 bit wide like the SOUS register file at 0x600.
+    // LPANTABLE carries a 4x mixer gain, so shifting by SHIFT+2 undoes it and
+    // stores the slot output itself.  The previous SHIFT+1 store wrote twice
+    // the slot output and wrapped for every level at or above half scale,
+    // which the modulation read (which halved the two stack values) could not
+    // recover; the MDL scaler now works from the slot output directly, the way
+    // Table 4.17 is defined.
     if (!SDIR(slot)) {
       u16 Enc = ((TL(slot)) << 0x0) | (0x7 << 0xd);
-      *m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 1);
+      *m_RBUFDST = s16(std::clamp<s32>((sample * m_LPANTABLE[Enc]) >> (SHIFT + 2),
+                                       -32768, 32767));
     } else {
       u16 Enc = (0 << 0x0) | (0x7 << 0xd);
-      *m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 1);
+      *m_RBUFDST = s16(std::clamp<s32>((sample * m_LPANTABLE[Enc]) >> (SHIFT + 2),
+                                       -32768, 32767));
     }
   }
 

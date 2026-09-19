@@ -1,0 +1,44 @@
+SCSP FM voice mixing, native run against the pre-fix qualified binary
+(803be0ad, sha256 from invocation.json), saturnjp, -nodrc, -sound none.
+
+Method: two carriers play the same looped square wave from the same phase,
+slot 0 with the FM registers programmed and panned left, slot 2 unmodulated
+and panned right.  The distance between the two channels' rising edges is
+the address shift in words.  A duty cycle comparison cannot see a constant
+address offset: a wave form that repeats once per loop keeps its high and
+low times, only its phase moves (this run replaced that method).
+
+Measured vs ST-077-R2-052594 Table 4.17 / Table 4.15 / p.68 clip:
+
+  fast zero check (base): 0.00 words, 0.2500 words/sample, first edges 4792/4792
+  wide zero check (wbase): 0.00 words, 0.2500 words/sample, first edges 12543/12543
+  m5       MDL=5H level 0x2000 (ZD 8192):      8.0 words measured,      8.0 from Table 4.17 (peak 16384; the old doubled store gave 8.0)
+  m6       MDL=6H level 0x2000 (ZD 8192):     16.0 words measured,     16.0 from Table 4.17 (peak 16384; the old doubled store gave 16.0)
+  m7       MDL=7H level 0x2000 (ZD 8192):     32.0 words measured,     32.0 from Table 4.17 (peak 16384; the old doubled store gave 32.0)
+  m8       MDL=8H level 0x2000 (ZD 8192):     64.0 words measured,     64.0 from Table 4.17 (peak 16384; the old doubled store gave 64.0)
+  m9       MDL=9H level 0x2000 (ZD 8192):    128.0 words measured,    128.0 from Table 4.17 (peak 16384; the old doubled store gave 128.0)
+  wrap3    MDL=3H level 0x4000 (ZD 16384):     -4.0 words measured,      0.0 from Table 4.17 (peak 16384; the old doubled store gave -4.0)
+  wrap4    MDL=4H level 0x4000 (ZD 16384):     -8.0 words measured,      0.0 from Table 4.17 (peak 16384; the old doubled store gave -8.0)
+  wrap5    MDL=5H level 0x4000 (ZD 16384):    -16.0 words measured,     16.0 from Table 4.17 (peak 16384; the old doubled store gave -16.0)
+  wrap6    MDL=6H level 0x4000 (ZD 16384):    -32.0 words measured,     32.0 from Table 4.17 (peak 16384; the old doubled store gave -32.0)
+  wrap7    MDL=7H level 0x4000 (ZD 16384):    -64.0 words measured,     64.0 from Table 4.17 (peak 16384; the old doubled store gave -64.0)
+  wrap8    MDL=8H level 0x4000 (ZD 16384):   -128.0 words measured,    128.0 from Table 4.17 (peak 16384; the old doubled store gave -128.0)
+  wrap9    MDL=9H level 0x4000 (ZD 16384):   -256.0 words measured,    256.0 from Table 4.17 (peak 16384; the old doubled store gave -256.0)
+  wrap9b   MDL=9H level 0x6000 (ZD 24576):   -128.0 words measured,    384.0 from Table 4.17 (peak 16384; the old doubled store gave -128.0)
+  inj4     MDL=4H level 0x7f00 (ZD 32512):      7.0 words measured,      0.0 from Table 4.17 (peak 16384; the old doubled store gave 7.0)
+  inj9     MDL=9H level 0x3f00 (ZD 16128):    126.0 words measured,    252.0 from Table 4.17 (peak 16384; the old doubled store gave 126.0)
+
+Defects this documents:
+ * level >= 0x4000 (at or above half scale) flips the sign of the shift:
+   the 16 bit sound stack write stored twice the slot output and wrapped
+   (wrap5..wrap9b measure -16..-128 words where Table 4.17 gives +16..+384).
+ * MDL 0-4 modulated anyway (Table 4.15 rate 0): wrap3 -4, wrap4 -8 words.
+ * a SOUS word written by software is read as half depth (injA 252 for 504,
+   inj9 126 for 252, injC 256 for 512): the read of the 16 bit file has to
+   be the slot output, not the doubled internal value.
+ * injF (0x3F00 at MDL=FH) drives the carrier out of its wave form data
+   entirely, so no edges were measurable at all.
+
+Cases m5..mA2, deepB, clipB and clipF pass in this run: below half scale
+the old scaling already matched the table, which is why the fixture also
+covers the wrap, the MDL 0-4 rate and the injected stack words.
