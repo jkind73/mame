@@ -1906,9 +1906,34 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		{
 			m_divu_ovf = true;
 			// With OVFIE=0, the quotient saturates according to its sign
-			// (section 10.3.3). OVFIE=1 intermediate results remain TODO.
+			// (section 10.3.3).
 			m_dvdntl = (!m_divu_ovfie && q < 0) ? 0x80000000 : 0x7fffffff;
 			m_dvdnth = 0x7fffffff;
+
+			// The exact +2^31 quotient boundary still needs hardware evidence;
+			// leave its legacy outputs as well as its classification unchanged.
+			if (q != 0x80000000LL)
+			{
+				// Overflow ends after three flag-setup and three arithmetic steps.
+				// Use unsigned modulo arithmetic for the partial divide register.
+				uint64_t partial = uint64_t(a);
+				uint64_t const divisor = uint64_t(uint32_t(b)) << 32;
+				bool partial_negative = a < 0;
+				bool const divisor_negative = b < 0;
+				for (unsigned step = 0; step < 3; ++step)
+				{
+					if (partial_negative == divisor_negative)
+						partial -= divisor;
+					else
+						partial += divisor;
+					// Keep the pre-shift sign for the next add/subtract decision.
+					partial_negative = bool(partial >> 63);
+					partial = (partial << 1) | (partial_negative == divisor_negative);
+				}
+				m_dvdnth = uint32_t(partial >> 32);
+				if (m_divu_ovfie)
+					m_dvdntl = uint32_t(partial);
+			}
 			sh2_recalc_irq();
 			// TODO: 6 cycles, plenty of these in saturn:vkyoute2
 		}
