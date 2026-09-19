@@ -3775,3 +3775,102 @@ IMPL-0050 checks below were run after alignment, against that current tree.
   request pacing remain separate. Native reset/standby/save handling and
   actual acknowledgments remain unqualified. No new fields or save-layout
   change; no frozen DMA acknowledgement, IRQ-delay-slot or sound/video edits.
+
+### IMPL-0050 line-reference clarification (append-only)
+
+At `5472ec1b`, the DRCR reset assignment is line 253; the preceding entry's
+250-251 span points at the reset-loop opener, not the assignment itself.
+No contract, implementation identity or state change.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0051 | CPU-03 | 2f6a6e11 | UNVALIDATED | Device reset clears CHCR0/1 and DMAOR and cancels queued DMA callbacks so reset cannot become a late transfer-end event |
+
+### IMPL-0051 — CPU-03 — DMAC reset controls and stale completion cancellation
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `2f6a6e11`,
+  base `da165176`; committed and pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:250-267`, reset loop;
+  `saturn_pending/impl_checks/check_sh7604_dmac_reset.py` (new);
+  declaration-only mock expansions in `check_sh7604_frt_stop.py` and
+  `check_sh7604_module_stop.py`. Existing expectations untouched.
+- contract: completed device reset leaves CHCR0/CHCR1/DMAOR at 00000000
+  and no pre-reset DMA callback scheduled. Existing reset already clears
+  active counts and IRQ-pending bookkeeping; the old timer could otherwise
+  call `sh2_do_dma` with that zero count and spuriously set TE afterward.
+  Cancel both channel deadlines as part of the same reset transition.
+  This is reset handling, not a change to the live transfer, acknowledgment,
+  IRQ-arbitration or delay-slot algorithms. Undefined SAR/DAR/TCR and vector
+  reset contents are not assigned a new value by this change.
+- primary source: SH7604 ADE-602-085C Rev.4 section 9.2.4 p.237 gives
+  CHCR0/1 reset value 00000000, including DE/TE/IE=0; section 9.2.7
+  pp.243-244 gives DMAOR=00000000, including DME/AE/NMIF=0. Section
+  9.3.8 pp.283-284 distinguishes normal transfer completion from stopping
+  transfers. Sections 9.2.1-9.2.3 pp.235-236 describe undefined reset
+  operand/count registers. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. No hardware bus-cycle
+  collision ordering or reset recognition delay is inferred from these
+  register statements.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/DMAC.sv:186-200` resets CHCR and bus-work flags on RST_N;
+  lines 390-410 reset DMAOR on RST_N/RES_N. Package
+  `rtl/SH/SH7604/SH7604_pkg.sv:406,427` gives both zero initial values.
+  Blobs `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`. Divergences: the inspected
+  CHCR reset block has no matching RES_N arm, and simulation-only code
+  overrides DMAOR.DME to one. Neither divergence is treated as a hardware
+  oracle; the primary reset contract governs. No FPGA bus logic imported.
+- provenance: local reset cleared active counts but not timers/control
+  registers; the unchanged completion arm sets TE when invoked with count
+  zero. Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-211`, has the same reset omission.
+  The current fork's reset/start/completion code was inspected before this
+  change. Framework `src/emu/diexec.cpp:415-425` handles CPU suspension
+  release before device reset; no extra HALT release is introduced here.
+- expected observable: after completed reset, CHCR0/1 and DMAOR read zero
+  and remain zero without new software setup, even after the old scheduled
+  DMA deadline. No old callback may set TE, create a completion request or
+  perform a memory access. Units: exact register bits and zero stale events;
+  zero bit/event tolerance after reset completion. Reprogrammed fresh DMA
+  must still run through the existing path. Existing two-clock callback
+  scheduling is only a regression control, not a timing qualification.
+- suggested measurement: native master/slave SH7604 reset during queued
+  transfer work and before a queued completion, then observe beyond the old
+  deadline with no new DMA programming. Capture CHCR/DMAOR and memory bus
+  writes/IRQ requests; separately reset endpoint-stalled channels. Reprogram
+  fresh transfers and repeat across native save/load. Exclude exact reset/
+  bus-cycle collisions until their ordering is independently established.
+- falsifier: CHCR/DMAOR remains nonzero after completed reset, a pre-reset
+  event later raises TE or accesses memory, or fresh transfers cannot start
+  after legal reprogramming. Native reset reintroducing a pending callback
+  through save/load also falsifies the intended cancellation contract.
+- self-check run (method-level, unvalidated): actual reset, CHCR/DMAOR
+  handlers, start/check, transfer and timer-callback methods; mocked memory,
+  scheduler, CPU suspend/resume, peripheral resets and IRQ refresh. Fail-fast
+  UBSan: 72 queued-transfer/queued-completion/seeded-stall reset cases,
+  144 quiet post-reset intervals, 144 fresh-transfer controls, 72 state-copy
+  replays, eight no-reset completion controls and 16 seeded flag images;
+  exit 0. Seeded TE/AE/NMIF do not assert software-settable status flags.
+  Historical `da165176` fails the reset-control observation (generated
+  line 633). A temporary mutant retaining register clears but deleting
+  deadline cancellation fails after the stale callback sets TE (generated
+  line 637). Neither historical source nor mutant is committed.
+  Prior selected 39-script series: 35 exit 0/four conflicts. Including
+  this new probe: selected 40-script series, 36 exit 0/four unchanged
+  semantic conflicts (frt_stop generated line 474, frt_phase 410,
+  wdt_access 132, bsc_access 98). Expectations/validator assets untouched.
+  Warning-enabled C++20 TU syntax-only and `git diff --check`: exit 0.
+  No full build or native qualification.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: native reset recognition, in-progress physical
+  bus-cycle completion, reset/event timestamp ties, HALT release, interrupt
+  acknowledgement/order, endpoint pacing, whole-chip standby and native
+  save/load. IRQ refresh is mocked, so pending-flag values in the probe
+  are NOT an oracle for native acknowledgment consumption. The stall case
+  seeds the existing stalled state; it does not model a real endpoint.
+  No new device fields or save-layout change; existing timer objects and
+  control-register save registrations remain. No frozen transfer/ack,
+  delay-slot IRQ, sound or video handler changes.
