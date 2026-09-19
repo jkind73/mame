@@ -31,6 +31,7 @@ struct Device : sh2_device {
  bool m_frt_clock_input=false;
  Timer wdtimer; Timer *m_wdtimer=&wdtimer;
  uint8_t m_rstcsr=0;
+ bool m_divu_ovf=false, m_divu_ovfie=false;
  uint8_t m_wdt_read=0;
  uint8_t m_sbycr=0, m_rsr=0, m_sci_rx_vote=0;
  bool m_sci_rx_parity_error=false, m_sci_rx_mp=false;
