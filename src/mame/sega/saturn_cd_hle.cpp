@@ -1409,7 +1409,7 @@ void saturn_cd_hle_device::cmd_get_filter_range() {
   if (fnum >= MAX_FILTERS) {
     LOGWARN("CD: invalid filter number %02x\n", fnum);
     cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ESEL);
+    hirqreg |= CMOK;
     update_hirq();
     return;
   }
@@ -1420,10 +1420,10 @@ void saturn_cd_hle_device::cmd_get_filter_range() {
 
   cr1 = cd_stat | ((filters[fnum].fad >> 16) & 0xff);
   cr2 = filters[fnum].fad & 0xffff;
-  cr3 = (filters[fnum].range >> 16) & 0xff;
+  cr3 = (uint16_t(fnum) << 8) | ((filters[fnum].range >> 16) & 0xff);
   cr4 = filters[fnum].range & 0xffff;
 
-  hirqreg |= (CMOK | ESEL);
+  hirqreg |= CMOK;
   update_hirq();
 }
 
@@ -1463,17 +1463,17 @@ void saturn_cd_hle_device::cmd_get_filter_subheader_conditions() {
   if (fnum >= MAX_FILTERS) {
     LOGWARN("CD: invalid filter number %02x\n", fnum);
     cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ESEL);
+    hirqreg |= CMOK;
     update_hirq();
     return;
   }
 
   cr1 = cd_stat | (filters[fnum].chan & 0xff);
   cr2 = (filters[fnum].smmask << 8) | (filters[fnum].cimask & 0xff);
-  cr3 = filters[fnum].fid;
+  cr3 = (uint16_t(fnum) << 8) | filters[fnum].fid;
   cr4 = (filters[fnum].smval << 8) | (filters[fnum].cival & 0xff);
 
-  hirqreg |= (CMOK | ESEL);
+  hirqreg |= CMOK;
   update_hirq();
 }
 
@@ -1521,17 +1521,17 @@ void saturn_cd_hle_device::cmd_get_filter_mode() {
   if (fnum >= MAX_FILTERS) {
     LOGWARN("CD: invalid filter number %02x\n", fnum);
     cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ESEL);
+    hirqreg |= CMOK;
     update_hirq();
     return;
   }
 
   cr1 = cd_stat | (filters[fnum].mode & 0xff);
   cr2 = 0;
-  cr3 = 0;
+  cr3 = uint16_t(fnum) << 8;
   cr4 = 0;
 
-  hirqreg |= (CMOK | ESEL);
+  hirqreg |= CMOK;
   update_hirq();
 }
 
