@@ -1922,6 +1922,11 @@ uint16_t sh7604_device::rstcsr_r()
 
 void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
+	// Section 12.2.4 pp.324-325: the key and payload must arrive in
+	// one word write. Byte writes cannot reuse or assemble a prior key.
+	if (mem_mask != 0xffff)
+		return;
+
 	COMBINE_DATA(&m_wtcw[0]);
 	switch (m_wtcw[0] & 0xff00)
 	{
@@ -1956,6 +1961,11 @@ void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 void sh7604_device::rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
+	// Section 12.2.4 pp.324-325: the key and payload must arrive in
+	// one word write. Byte writes cannot reuse or assemble a prior key.
+	if (mem_mask != 0xffff)
+		return;
+
 	COMBINE_DATA(&m_wtcw[1]);
 	switch (m_wtcw[1] & 0xff00)
 	{
