@@ -4018,3 +4018,119 @@ correct template but omitted its numeric line span. No contract/state change.
   active-module stop restrictions, watchdog interlocks and native save/load.
   No interfaces or configured peripherals added; the supported/not-supported
   inventory is unchanged. No frozen DMA/IRQ-delay-slot/sound/video edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0054 | CPU-03 | f0296ade | UNVALIDATED | Strict finite 64/32 overflow exposes the three-step intermediate remainder and, with OVFIE=1, intermediate quotient |
+
+### IMPL-0054 — CPU-03 — strict-overflow DIVU intermediate register image
+
+- branch/commit/base: `arena/01a0b897-mame` @ **f0296ade2e1956cf14c1c9a271ad5a3857c20584**;
+  base **a1345bb9b0f54630564bcd90633fa89f82a494ef**. Production and probe
+  committed/pushed separately from this append-only handoff.
+- files: `src/devices/cpu/sh/sh7604.cpp:1894-1955`, specifically the new
+  arithmetic/result block at 1913-1936;
+  `saturn_pending/impl_checks/check_sh7604_divu_partial.py:1-105`.
+- contract: for a nonzero divisor and a host-representable mathematical
+  signed-64 quotient strictly below -2^31 or strictly above +2^31, retain
+  the existing overflow classification and sticky OVF handling, but replace
+  the constant DVDNTH placeholder with the intermediate divide image after
+  three arithmetic steps. OVFIE=1 exposes that image's low word in DVDNTL;
+  OVFIE=0 retains the signed saturation quotient from IMPL-0044. The
+  pre-shift sum sign, not the shifted register sign, controls the next
+  add/subtract step. All intermediate add/subtract/shift operations use
+  unsigned modulo-2^64 arithmetic. The exact +2^31 quotient explicitly
+  retains its legacy output/classification; this is a scope guard, NOT a
+  proposed hardware exception. In-range arithmetic, divisor-zero and
+  INT64_MIN/-1 branches are untouched, as are all IRQ-recalculation calls.
+- primary source: SH7604 ADE-602-085C Rev.4, section 10.3.3 p.293 specifies
+  the six-cycle overflow result point (three flag-setting cycles then three
+  division cycles), intermediate DVDNTH for either OVFIE setting, and
+  intermediate versus saturated DVDNTL according to OVFIE. Section 10.4.2
+  p.294/Table 10.2 specifies sticky OVF and retained DVSR/VCRDIV. Sections
+  10.3.1 p.292 and 10.4.1 p.293 specify the signed 64/32 start sequence and
+  longword accesses. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+  The manual defines the result point, but does not spell out the internal
+  bit recurrence: the candidate's precise recurrence is reference-derived
+  and still requires a hardware comparison, not represented as a captured
+  silicon result.
+- cross-checks/provenance:
+  - Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:208-237` (blob
+    `6b31b7d029449d63f68ef281dc04958d17d74339`) performs three partial
+    steps with the pre-shift sign, then selects intermediate low word or
+    signed saturation and always returns the intermediate high word.
+    Its broader overflow detection/exact-boundary exceptions are not
+    imported. This implementation uses unsigned shifts/arithmetic rather
+    than relying on the reference's signed-shift expressions.
+  - Saturn_MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/SH/SH7604/DIVU.sv:49-50,97-107,115-117,196-205` (blob
+    `09b259b5f91888dc0363884fd3b2c5d81644c118`): SUM64/T64 recurrence,
+    steps 3 through 5, and R64 high/low overflow output selection agree.
+    Its detection, scheduler and register-alias logic are not imported.
+  - Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+    `src/devices/cpu/sh/sh7604.cpp:1178-1209`, still uses constant
+    7FFFFFFF overflow placeholders. Fork history inspected with
+    `git log --all -S 'OVFIE=1 intermediate results'`: published 760ef54e
+    supplied disabled-interrupt signed saturation only. Base a1345bb9
+    retains that result and the signed-64 safety guard. No reference file
+    copied into the tree; the new local arithmetic block implements the
+    cross-checked recurrence without importing reference schedulers/state.
+- expected observable: exact 32-bit register words, zero bit tolerance.
+  Reference-derived examples (NOT hardware captures), shown as
+  dividend / divisor -> DVDNTH, DVDNTL with OVFIE=1:
+  - 0000000100000000 / 00000001 -> FFFFFFFE, 00000004;
+  - FFFFFFFF00000000 / 00000001 -> FFFFFFFE, 00000004;
+  - 0000000080000001 / FFFFFFFF -> FFFFFFFE, 0000000D;
+  - 8000000000000000 / 00000001 -> 0000000A, 00000003.
+  With OVFIE=0 the same high words remain, while the low words are
+  respectively 7FFFFFFF, 80000000, 80000000, 80000000. OVF becomes 1;
+  DVSR/OVFIE remain unchanged. Ordinary in-range division preserves
+  quotient/remainder and old OVF. This candidate changes the register
+  image only: execution is still immediate, NOT six-cycle timed.
+- suggested method: on SH7604 hardware and the native device, use legal
+  longword DVSR/DVDNTH/DVDNTL writes, both OVFIE values and both initial OVF
+  states. Mask CPU interrupt acceptance while comparing enabled-overflow
+  data; qualify interrupt delivery separately. Place non-DIVU instructions
+  after the start write and wait at least the documented 39 cycles before
+  sampling DVCR/DVDNTH/DVDNTL (and aliases separately). Capture all four
+  operand-sign combinations and low-word carry/sign-transition examples,
+  including the listed words. Compare disabled-overflow saturation and
+  intermediate remainder independently. Use separate measurements for
+  actual six-cycle availability/busy extension, then native save/load.
+- falsifier: a captured strict finite overflow produces different high
+  words or enabled low words from this recurrence; a disabled quotient
+  loses signed saturation; in-range results, sticky OVF, operands or
+  existing IRQ-refresh count change; or host arithmetic UB occurs. A
+  trace showing a different partial-step/sign convention rejects the
+  candidate despite agreement between software/FPGA references.
+- self-check run (method-level, unvalidated): fail-fast UBSan exit 0;
+  7 reference-pattern examples, **98,524 enabled-overflow partial images,
+  98,524 disabled-overflow remainder/saturation images, 65,628 in-range
+  results, 262,676 operand-state-copy replays** (98,720 positive and
+  98,328 negative overflow observations). The partial oracle is an
+  independently expressed paired-32-bit high/low/carry recurrence;
+  signed-128 arithmetic supplies ordinary division/range controls. It is
+  not an independent hardware oracle. Historical a1345bb9 exits 1 at
+  generated line 85 on the first intermediate-result example. Two-step
+  and post-shift-sign mutants exit 1 at generated lines 110 and 111.
+  Selected **43-script** series: **39 exit 0 / four unchanged conflicts**
+  (frt_stop generated line 475, frt_phase 410, wdt_access 132,
+  bsc_access 98); `check_sh7604_sci.py` is not in that selected series.
+  Warning-enabled C++20 TU syntax-only (`-Wall -Werror
+  -Wno-sign-compare`, session include paths) and `git diff --check` exit 0.
+  No full build. No validator assets or fixture expectations changed.
+- state: **UNVALIDATED** — qualification and milestone status remain with
+  the validation agent.
+- not covered/known doubts: exact-limit overflow classification (including
+  the explicit +2^31 exclusion and maximum-quotient/nonzero-remainder
+  cases), divisor zero, INT64_MIN/-1 partial image, signed-32 minimum/-1,
+  32-bit-start overflow images, 39/6-cycle timing, bus stalls, native IRQ
+  delivery/acknowledgement, aliases and native save-manager/DRC/MinGW
+  behavior. No new fields or save-layout change; mock copies are not
+  native save/load. The four old fixture conflicts remain unresolved.
+  No frozen DMA/IRQ-delay-slot/sound/video path edits, peripheral additions
+  or inventory/status changes. The ongoing peripheral audit has not yet
+  established a separate defensible behavioral change.
