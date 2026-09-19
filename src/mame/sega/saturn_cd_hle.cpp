@@ -192,6 +192,10 @@ void saturn_cd_hle_device::device_start() {
   // Save ownership by indices, never process-local pointers.
   save_item(NAME(m_saved_transpart));
   save_item(NAME(m_saved_cddevice));
+  save_item(NAME(m_put_filter));
+  save_item(STRUCT_MEMBER(m_put_partition, size));
+  save_item(STRUCT_MEMBER(m_put_partition, numblks));
+  save_item(STRUCT_MEMBER(m_put_partition, bnum));
   save_item(STRUCT_MEMBER(filters, mode));
   save_item(STRUCT_MEMBER(filters, chan));
   save_item(STRUCT_MEMBER(filters, smmask));
@@ -225,7 +229,8 @@ void saturn_cd_hle_device::device_start() {
 }
 
 void saturn_cd_hle_device::device_pre_save() {
-  m_saved_transpart = m_saved_cddevice = -1;
+  m_saved_transpart = transpart == &m_put_partition ? MAX_FILTERS : -1;
+  m_saved_cddevice = -1;
   for (unsigned i = 0; i < MAX_FILTERS; ++i) {
     if (transpart == &partitions[i])
       m_saved_transpart = i;
@@ -238,7 +243,11 @@ void saturn_cd_hle_device::device_post_load() {
   for (partitionT &part : partitions)
     for (unsigned i = 0; i < MAX_BLOCKS; ++i)
       part.blocks[i] = part.bnum[i] < MAX_BLOCKS ? &blocks[part.bnum[i]] : nullptr;
-  transpart = m_saved_transpart >= 0 && m_saved_transpart < MAX_FILTERS ?
+  for (unsigned i = 0; i < MAX_BLOCKS; ++i)
+    m_put_partition.blocks[i] = m_put_partition.bnum[i] < MAX_BLOCKS ?
+                                   &blocks[m_put_partition.bnum[i]] : nullptr;
+  transpart = m_saved_transpart == MAX_FILTERS ? &m_put_partition :
+              m_saved_transpart >= 0 && m_saved_transpart < MAX_FILTERS ?
                   &partitions[m_saved_transpart] : nullptr;
   cddevice = m_saved_cddevice >= 0 && m_saved_cddevice < MAX_FILTERS ?
                  &filters[m_saved_cddevice] : nullptr;
@@ -291,6 +300,10 @@ void saturn_cd_hle_device::device_reset() {
   transpart = nullptr;
   m_saved_transpart = m_saved_cddevice = -1;
   curblock = {};
+  m_put_partition = {};
+  m_put_partition.size = -1;
+  std::fill(std::begin(m_put_partition.bnum), std::end(m_put_partition.bnum), 0xff);
+  m_put_filter = 0xff;
   m_xfer_raw_offset = m_xfer_raw_size = 0;
   m_xfer_raw_sector = 0xffffffff;
 
@@ -492,10 +505,26 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
         xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
       blockT *const blk = transpart->blocks[xfersectpos + xfersect];
 
+      int32_t payload_size = blk ? blk->size : 0;
+      uint32_t payload_offset = 0;
+      if (blk && blk->raw_data) {
+        // Writing length is independent of fetching length and of the mode
+        // byte being written. Latch it once per logical input sector.
+        if (m_xfer_raw_sector != xfersect) {
+          m_xfer_raw_offset = sectlenout == 2048 ? 24 : 2352 - sectlenout;
+          m_xfer_raw_size = sectlenout;
+          m_xfer_raw_sector = xfersect;
+        }
+        payload_size = m_xfer_raw_size;
+        payload_offset = m_xfer_raw_offset;
+      }
+
       // as above: skip anything we cannot safely write into
       if (blk == nullptr || blk->size < 4 ||
-          uint32_t(blk->size) > sizeof(blk->data) ||
-          xferoffs > uint32_t(blk->size) - 4) {
+          uint32_t(blk->size) > sizeof(blk->data) || payload_size < 4 ||
+          payload_offset > sizeof(blk->data) ||
+          uint32_t(payload_size) > sizeof(blk->data) - payload_offset ||
+          xferoffs > uint32_t(payload_size) - 4) {
         LOGWARN("CD: Put Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -505,13 +534,13 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
       }
 
       // get next longword
-      put_u32be(&blk->data[xferoffs], data);
+      put_u32be(&blk->data[payload_offset + xferoffs], data);
 
       xferdnum += 4;
       xferoffs += 4;
 
       // did we run out of sector?
-      if (xferoffs >= blk->size) {
+      if (xferoffs >= payload_size) {
         LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
 
         xferoffs = 0;
@@ -1021,7 +1050,8 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
   // clear the "transfer" flag
   cd_stat &= ~CD_STAT_TRANS;
 
-  if (xferdnum) {
+  const bool pending_put = m_put_filter != 0xff;
+  if (xferdnum || pending_put) {
     cr1 = (cd_stat) | ((xferdnum >> 17) & 0xff);
     cr2 = (xferdnum >> 1) & 0xffff;
     cr3 = 0;
@@ -1032,6 +1062,11 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
     cr2 = 0xffff;
     cr3 = 0;
     cr4 = 0;
+  }
+
+  if (pending_put) {
+    finish_put();
+    hirqreg |= EHST;
   }
 
   // try to clean up any transfers still in progress
@@ -2020,64 +2055,108 @@ void saturn_cd_hle_device::cmd_get_and_delete_sector_data() {
 }
 
 void saturn_cd_hle_device::cmd_put_sector_data() {
-  // aburner2, outrun, fantzone and dmastnx needs this
-  // TODO: transfer shouldn't be here
-
-  uint32_t sectnum = cr4 & 0xff;
-  uint32_t sectofs = cr2;
-  uint32_t bufnum = cr3 >> 8;
-
-  LOGCMD("%s: Put sector data (SN %d SO %d BN %d)\n",
-         machine().describe_context(), sectnum, sectofs, bufnum);
-
-  if (bufnum >= MAX_FILTERS) {
-    LOGWARN("CD: invalid buffer number\n");
-    cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | EHST);
+  const uint8_t input = cr3 >> 8;
+  const uint32_t count = cr4;
+  auto const respond = [this](uint16_t status, bool ready) {
+    cr_standard_return(status);
+    hirqreg |= CMOK | (ready ? DRDY : 0);
     update_hirq();
+  };
+
+  if (input >= MAX_FILTERS) {
+    respond(CD_STAT_REJECT, false);
+    return;
+  }
+  if (xfertype != XFERTYPE_INVALID || xfertype32 != XFERTYPE32_INVALID ||
+      m_put_partition.numblks || !count || count > MAX_BLOCKS || count > freeblocks) {
+    respond(cd_stat | CD_STAT_WAIT, false);
     return;
   }
 
-  xfertype32 = XFERTYPE32_PUTSECTOR;
-
-  /*TODO: eventual errors? */
-
-  cd_getsectoroffsetnum(bufnum, &sectofs, &sectnum);
-
-  cd_stat |= CD_STAT_TRANS;
-
-  xferoffs = 0;
-  xfersect = 0;
-  xferdnum = 0;
-  xfersectpos = sectofs;
-  xfersectnum = sectnum;
-  transpart = &partitions[bufnum];
-
-  // allocate the blocks
-  for (int i = xfersectpos; i < xfersectpos + xfersectnum; i++) {
-    transpart->blocks[i] = cd_alloc_block(&transpart->bnum[i]);
-
-    /* cd_alloc_block() returns null once every block is in use. Both the host
-       transfer and the deallocation that follows it walk xfersectnum blocks, so
-       shorten the transfer instead of dereferencing it - cd_filterdata() gives
-       up the same way when the buffer fills up while the disc is being read */
-    if (transpart->blocks[i] == nullptr) {
-      transpart->bnum[i] = 0xff;
-      xfersectnum = i - xfersectpos;
-      LOGWARN("CD: put sector data, buffer full after %d sectors\n",
-              xfersectnum);
-      break;
+  // PUT names a filter, not a partition/sector offset. Reserve the complete
+  // request privately so existing sectors cannot be overwritten and newly
+  // written sectors do not become visible before DataEnd filters them.
+  m_put_partition = {};
+  std::fill(std::begin(m_put_partition.bnum), std::end(m_put_partition.bnum), 0xff);
+  for (unsigned i = 0; i < count; ++i) {
+    blockT *const sector = cd_alloc_block(&m_put_partition.bnum[i]);
+    if (!sector) {
+      // Counter/pool inconsistency: release only our own reservations.
+      for (unsigned j = 0; j < m_put_partition.numblks; ++j)
+        cd_free_block(m_put_partition.blocks[j]);
+      m_put_partition = {};
+      m_put_partition.size = -1;
+      std::fill(std::begin(m_put_partition.bnum), std::end(m_put_partition.bnum), 0xff);
+      respond(cd_stat | CD_STAT_WAIT, false);
+      return;
     }
-
-    if (transpart->size == -1)
-      transpart->size = 0;
-    transpart->size += transpart->blocks[i]->size;
-    transpart->numblks++;
+    // ST-162 section5.4: the absent header of host user data is zero.
+    // Unwritten bytes are unspecified; zeroing them is deterministic.
+    *sector = {};
+    sector->size = cdrom_file::MAX_SECTOR_DATA;
+    sector->raw_data = true;
+    m_put_partition.blocks[i] = sector;
+    ++m_put_partition.numblks;
+    m_put_partition.size += sector->size;
   }
 
-  hirqreg |= (CMOK | DRDY);
-  update_hirq();
-  cr_standard_return(cd_stat);
+  m_put_filter = input;
+  cd_disconnect_filter_input(input);
+  transpart = &m_put_partition;
+  xfertype32 = XFERTYPE32_PUTSECTOR;
+  xferoffs = xfersect = xferdnum = xfersectpos = 0;
+  xfersectnum = count;
+  m_xfer_raw_offset = sectlenout == 2048 ? 24 : 2352 - sectlenout;
+  m_xfer_raw_size = sectlenout;
+  m_xfer_raw_sector = 0;
+  cd_stat |= CD_STAT_TRANS;
+  respond(cd_stat, true);
+}
+
+// All reserved sectors go through the designated filter at DataEnd, even
+// after an interrupted/zero-byte PUT (ST-162 p.97, function7.5).
+void saturn_cd_hle_device::finish_put() {
+  if (m_put_filter >= MAX_FILTERS)
+    return;
+
+  cd_disconnect_filter_input(m_put_filter);
+  for (unsigned i = 0; i < m_put_partition.numblks && i < MAX_BLOCKS; ++i) {
+    blockT *const sector = m_put_partition.blocks[i];
+    const uint8_t id = m_put_partition.bnum[i];
+    m_put_partition.blocks[i] = nullptr;
+    m_put_partition.bnum[i] = 0xff;
+    if (id >= MAX_BLOCKS || sector != &blocks[id])
+      continue;
+
+    sector->FAD = (bcd_2_dec(sector->data[12]) * 60 +
+                   bcd_2_dec(sector->data[13])) * 75 + bcd_2_dec(sector->data[14]);
+    sector->fnum = sector->chan = sector->subm = sector->cinf = 0;
+    if (sector->data[15] == 2) {
+      sector->fnum = sector->data[16];
+      sector->chan = sector->data[17];
+      sector->subm = sector->data[18];
+      sector->cinf = sector->data[19];
+    }
+
+    const uint8_t destination = cd_filter_destination(m_put_filter, *sector);
+    if (destination == 0xff || partitions[destination].numblks >= MAX_BLOCKS) {
+      cd_free_block(sector);
+      continue;
+    }
+    partitionT &dst = partitions[destination];
+    dst.blocks[dst.numblks] = sector;
+    dst.bnum[dst.numblks++] = id;
+    if (dst.size < 0)
+      dst.size = 0;
+    dst.size += sector->size;
+  }
+  m_put_partition.numblks = 0;
+  m_put_partition.size = -1;
+  m_put_filter = 0xff;
+  if (transpart == &m_put_partition)
+    transpart = nullptr;
+  if (freeblocks == MAX_BLOCKS)
+    sectorstore = 0;
 }
 
 void saturn_cd_hle_device::cmd_move_sector_data() {

@@ -39,6 +39,7 @@ struct saturn_cd_hle_device {
  u32 xfercount=0,xferdnum=0;
  transT xfertype=XFERTYPE_INVALID;trans32T xfertype32=XFERTYPE32_INVALID;
  unsigned irqs=0;void update_hirq(){++irqs;}
+ uint8_t m_put_filter=0xff;void finish_put(){CHECK(false);}
  void finish_get_delete(){CHECK(false);}
  void cmd_get_target_file_info();void cmd_end_data_transfer();u16 dataxfer_word_r();
 };

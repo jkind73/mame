@@ -10,9 +10,9 @@ scope={'__file__':str(fixture),'__name__':'raw_sector_scaffold'}
 exec(compile(setup,str(fixture),'exec'),scope)
 source,head,functions,extract=(scope[k] for k in ('source','head','functions','extract'))
 head=head.replace(' void device_pre_save();',r'''
- int sectlenout=2048;uint32_t calcsize=0;
+ uint32_t calcsize=0;
  void cmd_set_sector_length();void cmd_calculate_actual_data_size();
- void cmd_copy_sector_data();void cmd_move_sector_data();void cd_copy_move_sector_data(bool);void cd_disconnect_filter_input(uint8_t);
+ void cmd_copy_sector_data();void cmd_move_sector_data();void cd_copy_move_sector_data(bool);
  void cmd_get_sector_data();void cmd_get_and_delete_sector_data();
  void cd_getsectoroffsetnum(uint32_t,uint32_t*,uint32_t*);
  void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
@@ -22,7 +22,6 @@ functions+='\n'+'\n'.join(extract(source,s) for s in (
  'saturn_cd_hle_device::blockT *\nsaturn_cd_hle_device::cd_alloc_block(',
  'saturn_cd_hle_device::partitionT *\nsaturn_cd_hle_device::cd_filterdata(',
  'saturn_cd_hle_device::partitionT *\nsaturn_cd_hle_device::cd_read_filtered_sector(',
- 'uint8_t saturn_cd_hle_device::cd_filter_destination(',
  'void saturn_cd_hle_device::cmd_set_sector_length()',
  'void saturn_cd_hle_device::cmd_calculate_actual_data_size()',
  'void saturn_cd_hle_device::cmd_get_sector_data()',
@@ -30,8 +29,7 @@ functions+='\n'+'\n'.join(extract(source,s) for s in (
  'void saturn_cd_hle_device::cd_getsectoroffsetnum(',
  'void saturn_cd_hle_device::cmd_copy_sector_data()',
  'void saturn_cd_hle_device::cmd_move_sector_data()',
- 'void saturn_cd_hle_device::cd_copy_move_sector_data(',
- 'void saturn_cd_hle_device::cd_disconnect_filter_input('))
+ 'void saturn_cd_hle_device::cd_copy_move_sector_data('))
 tail=r'''
 using D=saturn_cd_hle_device;using Raw=std::array<uint8_t,2352>;
 unsigned size(unsigned kind,unsigned format){return format==0?(kind==2?2324:2048):format==1?2336:format==2?2340:2352;}

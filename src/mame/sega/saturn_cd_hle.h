@@ -245,6 +245,8 @@ private:
 
   // local variables
   partitionT partitions[MAX_FILTERS];
+  partitionT m_put_partition{}; // reserved host sectors, not yet filter output
+  uint8_t m_put_filter = 0xff;
 
   mpegT mpeg; // MPEG (Video CD) cartridge state
   partitionT *transpart;
@@ -314,6 +316,7 @@ private:
   void cmd_init_cdsystem();
   void cmd_end_data_transfer();
   void finish_get_delete();
+  void finish_put();
   // 0x10
   void cmd_play_disc();
   void cmd_seek_disc();
