@@ -23,7 +23,9 @@ head = head.replace('struct Device {', '''
 using offs_t = unsigned;
 struct sh2_device { void device_reset() {} };
 struct Device : sh2_device {
- struct { uint8_t drcr=0; } m_dmac[2];
+ struct { uint8_t drcr=0; uint32_t sar=0, dar=0, tcr=0, chcr=0; } m_dmac[2];
+ uint8_t m_dmaor=0;
+ Timer dma_timer[2]; Timer *m_dma_current_active_timer[2]={&dma_timer[0],&dma_timer[1]};
  uint8_t m_ccr=0;
  // FRT implementation is covered separately; these are declaration-only
  // stubs for the unrelated branches of the shared SBYCR/reset methods.

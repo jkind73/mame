@@ -247,8 +247,13 @@ void sh7604_device::device_reset()
 	frt_reset();
 	sh2_timer_activate();
 
+	// Reset disables DMAC and clears its control/status (sections 9.2.4/9.2.7).
+	m_dmaor = 0;
 	for (int i = 0; i < 2; i++)
 	{
+		// A queued callback must not turn the reset count into a false TE event.
+		m_dma_current_active_timer[i]->adjust(attotime::never);
+		m_dmac[i].chcr = 0;
 		// DRCR resets to external DREQ selection (section 9.2.6).
 		m_dmac[i].drcr = 0;
 		m_dma_timer_active[i] = 0;
