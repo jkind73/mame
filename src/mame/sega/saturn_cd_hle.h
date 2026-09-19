@@ -33,6 +33,8 @@ protected:
   virtual void device_start() override ATTR_COLD;
   virtual void device_reset() override ATTR_COLD;
   virtual void device_stop() override ATTR_COLD;
+  virtual void device_pre_save() override;
+  virtual void device_post_load() override;
 
 private:
   required_device<cdrom_image_device> m_cdrom_image;
@@ -225,6 +227,8 @@ private:
 
   mpegT mpeg; // MPEG (Video CD) cartridge state
   partitionT *transpart;
+  int m_saved_transpart = -1;
+  int m_saved_cddevice = -1;
 
   blockT blocks[MAX_BLOCKS];
   blockT curblock;

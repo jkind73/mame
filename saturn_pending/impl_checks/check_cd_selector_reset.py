@@ -20,6 +20,7 @@ head=head.replace('#include <cstdint>','#include <cstdint>\n#include <vector>\nu
 head=head.replace('int get_track(int lba)', 'bool inserted=false;bool exists(){return inserted;}\n  int get_track(int lba)')
 head=head[:head.rfind('};')]+r'''
  uint16_t hirqmask=0,hirqreg=0,cr1=0,cr2=0,cr3=0,cr4=0,cd_seek_stat=0,cd_stat=0;
+ int m_saved_transpart=-1,m_saved_cddevice=-1;
  int playtype=0,cur_track=0,calcsize=0,sectorstore=0,sectlenout=0,cddevicenum=0xff;
  bool buffull_temp_pause=false,m_status_change_in_progress=false,m_seek_in_progress=false;
  int m_seek_ticks_left=0;std::vector<int>curdir;

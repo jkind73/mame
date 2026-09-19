@@ -175,6 +175,59 @@ void saturn_cd_hle_device::device_start() {
   // their meaning, so it has to travel with them
   save_item(NAME(xfertype));
   save_item(NAME(xfertype32));
+
+  // Save ownership by indices, never process-local pointers.
+  save_item(NAME(m_saved_transpart));
+  save_item(NAME(m_saved_cddevice));
+  save_item(STRUCT_MEMBER(filters, mode));
+  save_item(STRUCT_MEMBER(filters, chan));
+  save_item(STRUCT_MEMBER(filters, smmask));
+  save_item(STRUCT_MEMBER(filters, cimask));
+  save_item(STRUCT_MEMBER(filters, fid));
+  save_item(STRUCT_MEMBER(filters, smval));
+  save_item(STRUCT_MEMBER(filters, cival));
+  save_item(STRUCT_MEMBER(filters, condtrue));
+  save_item(STRUCT_MEMBER(filters, condfalse));
+  save_item(STRUCT_MEMBER(filters, fad));
+  save_item(STRUCT_MEMBER(filters, range));
+  save_item(STRUCT_MEMBER(partitions, size));
+  save_item(STRUCT_MEMBER(partitions, bnum));
+  save_item(STRUCT_MEMBER(partitions, numblks));
+  save_item(STRUCT_MEMBER(blocks, size));
+  save_item(STRUCT_MEMBER(blocks, FAD));
+  save_item(STRUCT_MEMBER(blocks, data));
+  save_item(STRUCT_MEMBER(blocks, chan));
+  save_item(STRUCT_MEMBER(blocks, fnum));
+  save_item(STRUCT_MEMBER(blocks, subm));
+  save_item(STRUCT_MEMBER(blocks, cinf));
+  save_item(STRUCT_MEMBER(curblock, size));
+  save_item(STRUCT_MEMBER(curblock, FAD));
+  save_item(STRUCT_MEMBER(curblock, data));
+  save_item(STRUCT_MEMBER(curblock, chan));
+  save_item(STRUCT_MEMBER(curblock, fnum));
+  save_item(STRUCT_MEMBER(curblock, subm));
+  save_item(STRUCT_MEMBER(curblock, cinf));
+}
+
+void saturn_cd_hle_device::device_pre_save() {
+  m_saved_transpart = m_saved_cddevice = -1;
+  for (unsigned i = 0; i < MAX_FILTERS; ++i) {
+    if (transpart == &partitions[i])
+      m_saved_transpart = i;
+    if (cddevice == &filters[i])
+      m_saved_cddevice = i;
+  }
+}
+
+void saturn_cd_hle_device::device_post_load() {
+  for (partitionT &part : partitions)
+    for (unsigned i = 0; i < MAX_BLOCKS; ++i)
+      part.blocks[i] = part.bnum[i] < MAX_BLOCKS ? &blocks[part.bnum[i]] : nullptr;
+  transpart = m_saved_transpart >= 0 && m_saved_transpart < MAX_FILTERS ?
+                  &partitions[m_saved_transpart] : nullptr;
+  cddevice = m_saved_cddevice >= 0 && m_saved_cddevice < MAX_FILTERS ?
+                 &filters[m_saved_cddevice] : nullptr;
+  // Pointer repair neither reruns a transfer nor produces a new HIRQ edge.
 }
 
 void saturn_cd_hle_device::device_reset() {
@@ -221,6 +274,8 @@ void saturn_cd_hle_device::device_reset() {
   cddevice = nullptr;
   cddevicenum = 0xff;
   transpart = nullptr;
+  m_saved_transpart = m_saved_cddevice = -1;
+  curblock = {};
 
   // reset buffer partitions
   for (i = 0; i < MAX_FILTERS; i++) {
@@ -240,8 +295,8 @@ void saturn_cd_hle_device::device_reset() {
 
   // reset blocks
   for (i = 0; i < MAX_BLOCKS; i++) {
+    blocks[i] = {};
     blocks[i].size = -1;
-    memset(&blocks[i].data, 0, cdrom_file::MAX_SECTOR_DATA);
   }
 
   // open device
@@ -259,8 +314,8 @@ void saturn_cd_hle_device::device_reset() {
   cd_speed = 2;
   cdda_repeat_count = 0;
 
-  // the MPEG state is not registered for save states, following the convention
-  // of the filter, partition and block arrays above; reset re-establishes it
+  // MPEG state is still not registered for save states; reset re-establishes
+  // it independently of the saved selector/sector-buffer state.
   mpeg_reset();
 
   m_sector_timer->adjust(
