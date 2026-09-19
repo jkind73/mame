@@ -231,7 +231,7 @@ private:
 	devcb_write_line m_write_sck;
 
 	// FRT / FRC
-	uint8_t m_tier, m_ftcsr, m_frc_tcr, m_tocr;
+	uint8_t m_tier, m_ftcsr, m_ftcsr_read, m_frc_tcr, m_tocr;
 	uint16_t m_frc;
 	uint16_t m_ocra, m_ocrb, m_frc_icr;
 

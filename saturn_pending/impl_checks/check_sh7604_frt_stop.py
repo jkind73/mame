@@ -57,6 +57,9 @@ struct Callback { bool isnull() const { return true; } void operator()(uint32_t)
 struct sh2_device { void device_reset() {} };
 struct Device : sh2_device {
  static constexpr uint8_t ICF=0x80, OCFA=8, OCFB=4, OVF=2, CCLRA=1;
+ uint8_t m_ftcsr_read=0;
+ Device &machine() { return *this; }
+ bool side_effects_disabled() const { return false; }
  uint8_t m_sbycr=0, m_tier=0, m_ftcsr=0, m_frc_tcr=0, m_tocr=0;
  uint16_t m_frc=0, m_ocra=0, m_ocrb=0, m_frc_icr=0;
  uint64_t m_frc_base=0; int m_frt_input=0;
@@ -182,4 +185,4 @@ with tempfile.TemporaryDirectory(prefix='impl-frt-stop-') as directory:
     subprocess.run([str(exe)], check=True)
 for field in ('m_sbycr','m_tier','m_ftcsr','m_frc_tcr','m_tocr','m_frc','m_ocra','m_ocrb','m_frc_icr','m_frc_base','m_frt_input'):
     assert f'save_item(NAME({field}));' in source
-print('method-level, unvalidated: existing FRT/SBYCR save registrations retained; no new state fields')
+print('method-level, unvalidated: legacy FRT/SBYCR save registrations retained; newer state is covered by its own fixture')
