@@ -239,6 +239,11 @@ void sh7604_device::device_reset()
 		m_active_dma_count[i] = 0;
 	}
 
+	// DVCR is initialized by power-on/manual reset, not module standby
+	// (section 10.2.3). Dividend/divisor registers have undefined reset values.
+	m_divu_ovf = false;
+	m_divu_ovfie = false;
+
 	// RES-style device reset initializes WDT control/status and cancels
 	// any old deadline. A WDT-generated internal reset must preserve
 	// RSTCSR instead (section 12.2.3); its delivery remains separate.
