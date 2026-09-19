@@ -652,26 +652,6 @@ void saturn_scu_device::trigger_dma_indirect(uint8_t level) {
   m_dma_tick_timer->adjust(attotime::from_ticks(2 * 4, m_dma_clock_ref));
 }
 
-// TODO: reimplement me
-inline void saturn_scu_device::dma_single_transfer(uint32_t src, uint32_t dst,
-                                                   uint8_t *src_shift) {
-  uint32_t src_data;
-
-  if (src & 1) {
-    // tstrmrbl:cdrom2 (Road Blaster) does a work ram h to color ram with
-    // offsetted source address, do some data rotation
-    src_data = ((m_hostspace->read_dword(src & 0x07fffffc) & 0x00ffffff) << 8);
-    src_data |=
-        ((m_hostspace->read_dword((src & 0x07fffffc) + 4) & 0xff000000) >> 24);
-    src_data >>= (*src_shift) * 16;
-  } else
-    src_data = m_hostspace->read_dword(src & 0x07fffffc) >> (*src_shift) * 16;
-
-  m_hostspace->write_word(dst, src_data);
-
-  *src_shift ^= 1;
-}
-
 std::tuple<int, int> saturn_scu_device::check_dma_level_round_robin() {
   int move_level = -1, wait_level = -1;
   // this returns the highest move/wait level currently set
@@ -923,7 +903,42 @@ uint16_t saturn_scu_device::dma_read_word(dma_channel_t &ch) {
   return result;
 }
 
+uint8_t saturn_scu_device::dma_read_byte(dma_channel_t &ch) {
+  // Same longword-buffer discipline as dma_read_word, one byte per call
+  // (ST-097 p.16: byte-unit accesses at the region head/tail).
+  if (!ch.read_buffer_valid) {
+    ch.read_address = ch.live_src & 0x07ff'fffc;
+    ch.read_offset = ch.live_src & 3;
+    ch.read_buffer = m_hostspace->read_dword(ch.read_address);
+    ch.read_buffer_valid = true;
+  }
+
+  if (ch.read_offset == 4) {
+    ch.read_address = (ch.read_address + ch.src_add) & 0x07ff'ffff;
+    ch.read_buffer = m_hostspace->read_dword(ch.read_address);
+    ch.read_offset = 0;
+  }
+  uint8_t const result = (ch.read_buffer >> (24 - 8 * ch.read_offset)) & 0xff;
+  ++ch.read_offset;
+  ch.live_src = (ch.read_address + ch.read_offset) & 0x07ff'ffff;
+  return result;
+}
+
 void saturn_scu_device::dma_transfer_direct_default(dma_channel_t &ch) {
+  // ST-097 p.16: "DMA is basically long word access through the DMA
+  // controller buffer, but if the start address and end address are not
+  // in long word boundaries, reads and writes are made in byte units"
+  // (Figure 2.1). This engine moves a 16-bit unit per tick; a byte unit
+  // is moved when the remaining count is odd (tail beyond the last
+  // full unit) or the destination cursor is not halfword-aligned (head
+  // /odd destination, which must not clobber the neighbouring byte).
+  if ((ch.live_size - ch.live_count) < 2 || (ch.live_dst & 1)) {
+    m_hostspace->write_byte(ch.live_dst & 0x07ff'ffff, dma_read_byte(ch));
+    ch.live_dst += ch.dst_add ? (ch.dst_add >> 1) : 0;
+    ch.live_count += 1;
+    return;
+  }
+
   const u32 dst_address = ch.live_dst & 0x07ff'fffe;
   m_hostspace->write_word(dst_address, dma_read_word(ch));
   ch.live_dst += ch.dst_add;
@@ -931,6 +946,15 @@ void saturn_scu_device::dma_transfer_direct_default(dma_channel_t &ch) {
 }
 
 void saturn_scu_device::dma_transfer_direct_cbus_write(dma_channel_t &ch) {
+  // Same byte-unit head/tail rule as dma_transfer_direct_default; the
+  // Work RAM-H destination streams by halfwords (dst_add fixed at 2).
+  if ((ch.live_size - ch.live_count) < 2 || (ch.live_dst & 1)) {
+    m_hostspace->write_byte(ch.live_dst & 0x07ff'ffff, dma_read_byte(ch));
+    ch.live_dst += 1;
+    ch.live_count += 1;
+    return;
+  }
+
   const u32 dst_address = ch.live_dst & 0x07ff'fffe;
   m_hostspace->write_word(dst_address, dma_read_word(ch));
   ch.live_dst += 2;
