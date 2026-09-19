@@ -2277,18 +2277,16 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
 void saturn_cd_hle_device::cmd_read_file() {
   // Read File
   LOGCMD("%s: Read File\n", machine().describe_context());
-  uint16_t file_offset, file_filter, file_id, file_size;
-
-  file_offset = ((cr1 & 0xff) << 8) | (cr2 & 0xff); /* correct? */
-  file_filter = cr3 >> 8;
-  file_id = ((cr3 & 0xff) << 16) | (cr4);
+  const uint32_t file_offset = (uint32_t(cr1 & 0xff) << 16) | cr2;
+  const uint8_t file_filter = cr3 >> 8;
+  const uint32_t file_id = (uint32_t(cr3 & 0xff) << 16) | cr4;
 
   /* curdir is only ever sized by make_dir_current(), so a Read File issued
      before a directory has been parsed - the vector is cleared on reset and
      on stop - or with a file ID beyond the parsed one has no entry to read.
      The index comes straight from CR3/CR4 and curdir is read with unchecked
-     operator[], so validate it here; file_filter is validated the same way
-     just below.  Acknowledge the command either way, so that software
+     operator[], so validate the full 24-bit identifier here.
+     Acknowledge the command either way, so that software
      waiting on HIRQ is not left hanging, but start no bogus playback. */
   if (size_t(file_id) >= curdir.size()) {
     LOGWARN("CD: Read File %04x beyond directory (%u entries)\n", file_id,
@@ -2299,11 +2297,16 @@ void saturn_cd_hle_device::cmd_read_file() {
     return;
   }
 
-  file_size =
-      ((curdir[file_id].length + sectlenin - 1) / sectlenin) - file_offset;
+  // File offsets are logical (2048-byte) sectors, independent of the host's
+  // Get Sector Length selection. Widen the byte-size rounding before adding
+  // so neither large files nor a range exceeding 65535 sectors is truncated.
+  const uint32_t file_size =
+      (uint64_t(curdir[file_id].length) + 2047) / 2048 - file_offset;
+  // The beyond-EOF command error policy still needs hardware evidence;
+  // this retains the reference's unsigned arithmetic for that invalid case.
 
   cd_change_status(CD_STAT_PLAY | 0x80); // set "cd-rom" bit
-  cd_curfad = (curdir[file_id].firstfad + file_offset);
+  cd_curfad = (curdir[file_id].firstfad + file_offset) & 0xffffff;
   fadstoplay = file_size;
   if (file_filter < MAX_FILTERS)
     cddevice = &filters[file_filter];
