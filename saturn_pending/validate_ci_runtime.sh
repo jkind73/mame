@@ -289,6 +289,17 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP FM: 26 modulation-depth cases match ST-077 Table 4.17' "$LOG_DIR/$phase.log"
 done
+phase=scsp-mvol
+python3 saturn_pending/test_scsp_mvol_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP MVOL: PASS' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-mvol-$system-drc"
+    python3 saturn_pending/test_scsp_mvol_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP MVOL: PASS' "$LOG_DIR/$phase.log"
+done
 phase=scsp-dma-save
 python3 saturn_pending/test_scsp_dma_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
