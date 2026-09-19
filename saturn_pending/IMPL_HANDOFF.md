@@ -2036,3 +2036,80 @@
   delivery and FTO outputs remain separate. The two old timing expectation
   conflicts remain visible. Frozen DMA, delay-slot, sound and game paths
   and validator assets were not edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0026 | CPU-03/IO-02 | 1168e29a | UNVALIDATED | FTOA/FTOB take their selected OLVL levels on compare, independently of latched flags, and reset low |
+
+### IMPL-0026 — CPU-03/IO-02 — FRT compare output pins
+
+- branch/commit: `arena/01a0b897-mame` @ **1168e29a** (base: d187958c).
+- files: `src/devices/cpu/sh/sh7604.cpp:44-45,144-145,422-425` (output
+  state/callback lifecycle), `:461-468,513-540` (scheduling/compare);
+  `src/devices/cpu/sh/sh7604.h:40-41,240-241` (binders/state);
+  `saturn_pending/impl_checks/check_sh7604_frt_output.py`.
+  Existing FRT mock declarations gained the output fields/callback stubs;
+  no existing expected values changed.
+- contract: FTOA takes TOCR.OLVLA on compare A; FTOB takes OLVLB on
+  compare B. TOCR writes do not immediately change a pin, and compare
+  does not automatically toggle it. OCFA/OCFB acknowledgement is not
+  required for a subsequent pending output change. The scheduler retains
+  such matches even if the status flag is already set, while unchanged
+  levels can skip redundant callbacks. Reset/module stop drives both low.
+  Both internal and external clocks use the shared compare handler.
+- primary source: SH7604 ADE-602-085C Rev.4, section 11.2.2 p.298
+  (compare output, reset low), section 11.2.7 p.303 (OLVLA/B selection),
+  section 11.4.2 p.308/Figure 11.6 (output on match), section 11.6
+  p.312/Figure 11.13 (software-inverted levels, not hardware auto-toggle),
+  section 14.5.1 p.393 and Table A.1 p.564 (module/reset pin state).
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/FRT.sv:91-99`, assigns the selected level on every
+  matching count edge independently of the flag's prior state; it is not
+  an oracle for this callback model's reset notifications. Ymir pinned
+  `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:327-348`, describes the
+  OLVL fields but supplies no corresponding pin-waveform implementation.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:967-972`, leaves output levels as a TODO;
+  fork base `d187958c` retained it. No reference code imported.
+- expected observable: select OLVLA=1 while FTOA=0; the pin stays low
+  until compare A, then goes high. Leaving OCFA set and selecting OLVLA=0
+  produces a low transition at the next compare, not at the write. Same
+  for B. A/B can change together when their compares coincide. State and
+  edge counts are exact logical observations; no physical propagation
+  delay/electrical tolerance is claimed. Reset callbacks explicitly
+  publish zero even if the old logical level was already zero.
+- suggested method: bind both callbacks to a timestamped logical probe,
+  vary OLVL between count edges under all clock selections, with CCLRA
+  enabled/disabled and flags left latched. Include simultaneous A/B,
+  unreachable B beyond an A-clear point, pending-level save/load and
+  reset/module stop. Native board wiring is a separate deliverable.
+- falsifier: a TOCR write immediately moving a pin, automatic toggling,
+  latched status preventing a selected-level change at the next compare,
+  lost pending changes across save/load or reset not driving low rejects
+  this candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `20480 scalar-oracle output streams; 1024 pending-output state-copy
+  replays; 8 reset/module-stop output cases`.
+  Same script against pre-change `d187958c` methods exits 1:
+  `line 395: (d.m_frt_out_a|(d.m_frt_out_b<<1))==o.levels && d.wave==o.wave`.
+  Sixteen prior scripts exit 0. The two previously documented timing
+  conflicts still exit 1 with unchanged expectations: `frt_stop` at old
+  `release+65535*8` deadline (generated line 429), `frt_phase` at old
+  37/53 deadline expression (line 365). New binary uses UBSan. Full TU
+  syntax with session includes and `-std=c++20 -Wall -Werror -Wno-sign-compare`
+  and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: **save-state layout break**, new saved/reset
+  `m_frt_out_a` and `m_frt_out_b`. Native peer/save-manager restoration
+  is not established by state-copy replay. Logical output levels and
+  counter clear are committed before callbacks; simultaneous notifications
+  are delivered A then B, not a silicon propagation-order assertion.
+  Physical drive strength, loading, pin contention, whole-chip standby/HIZ,
+  register/event contention and native CPU/IRQ scheduling remain open.
+  No FTO callback peer is configured for Saturn/ST-V. The two legacy
+  timing conflicts remain visible. Frozen DMA, delay-slot, sound, game
+  paths and validator assets were not edited.
