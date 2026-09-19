@@ -53,30 +53,38 @@ needs no code: in noise mode the output ignores the accumulator entirely.
 `(u32)(256 * LFOFreq[LFOF] * 256 / rate)`. At 44.1 kHz that is
 `LFOFreq * 1.4861`, so Table 4.21's slowest eight settings truncate to **zero**:
 
-| LFOF | Hz | old increment | new increment (8.24) |
+| LFOF | Hz | old increment (8.8) | new increment (8.24, 2^32 wrap) |
 | --- | --- | --- | --- |
-| 00H | 0.17 | 0 | 65 |
-| 01H | 0.19 | 0 | 72 |
-| 02H | 0.23 | 0 | 87 |
-| 03H | 0.27 | 0 | 103 |
-| 04H | 0.34 | 0 | 129 |
-| 05H | 0.39 | 0 | 148 |
-| 06H | 0.45 | 0 | 171 |
-| 07H | 0.55 | 0 | 209 |
-| 08H | 0.68 | 1 | 258 |
+| 00H | 0.17 | 0 | 16557 |
+| 01H | 0.19 | 0 | 18504 |
+| 02H | 0.23 | 0 | 22400 |
+| 03H | 0.27 | 0 | 26296 |
+| 04H | 0.34 | 0 | 33113 |
+| 05H | 0.39 | 0 | 37983 |
+| 06H | 0.45 | 0 | 43826 |
+| 07H | 0.55 | 0 | 53565 |
+| 08H | 0.68 | 1 | 66226 |
 
 A zero increment freezes the phase, so slow vibrato/tremolo never happened.
 Beetle (`LFOTimeCounter = (((8 - (LFOFreq & 3)) << 7) >> (LFOFreq >> 2)) - 4`,
 i.e. ~1020 samples per phase step at LFOF=0) and MiSTer (`LFOFreqDiv`, a 10-bit
 divider) both reach the slow end; MAME did not.
 
-Fix: the phase accumulator is now 8.24 (`u32 phase`, one wrap = one cycle,
-index = `phase >> LFO_PHASE_SHIFT`), and the increment is rounded to nearest
-with `std::llround`, so every Table 4.21 setting oscillates within 1% of its
-documented frequency (asserted in the harness for all 32 settings). The rate
-still derives from `clock()/SAMPLE_CLOCKS`, preserving the earlier ST-V/clock
-correction. Residual error is the accumulator's rounding, ≤0.5 unit per sample
-(≈0.5% at 0.17 Hz), not an exact integer divider.
+Fix: the phase accumulator is now 8.24 (`u32 phase`, one wrap = one cycle, and
+the 8-bit table index is the top byte, `phase >> LFO_PHASE_SHIFT`), so one cycle
+is 2^32 phase units and the per-sample increment is `frequency * 2^32 / rate`,
+rounded to nearest with `std::llround`. Every Table 4.21 setting then oscillates
+within 0.1% of its documented frequency (asserted in the harness and measured
+natively, see below). The rate still derives from `clock()/SAMPLE_CLOCKS`,
+preserving the earlier ST-V/clock correction; residual error is the rounding,
+≤0.5 unit per sample (≈0.003% at 0.17 Hz).
+
+> A first draft used `frequency * 2^24 / rate` (256× too small, i.e. the old
+> 8-bit index shift retained while the accumulator widened to 32 bits). It made
+> every rate run 256× slow — 172.3 Hz became ~0.67 Hz and the slow end sat at the
+> reset phase. The method harness encoded the same wrong scale, so it passed.
+> Native audio capture (below) exposed it; both the code and the harness are now
+> pinned to `frequency * 2^32 / rate`.
 
 `LFO_SHIFT` (output scaling, `p << (SHIFT - LFO_SHIFT)`) is unchanged, and the
 dead `#if LFO_SHIFT != 8` masking is gone because the u32 accumulator wraps
@@ -132,25 +140,50 @@ Full-translation-unit `g++ -fsyntax-only` on `scsp.cpp` passes, and the whole
 local regression batch passes with this harness included (`regressions.log`:
 72 scripts, "All Saturn regression scripts passed").
 
-## Blocked native qualification
+## Native qualification (audio capture)
 
-GitHub authentication in this sandbox expired (`gh auth status`: "The
-github.com token in GH_TOKEN is no longer valid"), so commit `969da1a6` could
-not be pushed, no CI build/export could be started and no artifact could be
-fetched. Native qualification of this change is therefore **BLOCKED**, not
-done: the required cycle is push → `saturn-integration.yml` build →
-draft-release export → `saturn_pending/validate_ci_runtime.sh` (which re-runs
-every prior gate plus the four BIOS/background replay configurations). A local
-build is not an option here (2 CPUs / 3 GB RAM).
+The Saturn/ST-V drivers previously exposed no audio capture path, so the change
+was originally method-level only. A native path was added for this work: the
+per-device Lua sound hook (`emu.register_sound_update`, driven by the `:scsp`
+device's own output stream) captures the real mixer values without any OSD audio
+device or private-state patching, and works with `-sound none`.
+
+`saturn_pending/test_scsp_lfo_runtime.py` keys one slot on a constant (DC)
+carrier and measures the amplitude envelope the slot ALFO applies, plus a sine
+carrier to measure the pitch swing the PLFO applies:
+
+- **all 32 Table 4.21 rates** (square ALFO, depth 7): each oscillates within
+  0.1% of the printed manual value (e.g. 0.1700 vs 0.17, 172.2918 vs 172.3 Hz),
+  and within 1% of the quantized `round(f * 2^32 / rate)` step;
+- **LFORE hold** (square and saw): flat at the reset-phase level (index 0), a
+  −24 dB attenuation of the unmodulated level;
+- **noise exemption** (p.37): with ALFOWS=3 the output keeps fluctuating under
+  LFORE=1, and runs under LFORE=0;
+- **depth 0**: constant full level, no modulation;
+- **phase LFO** (square PLFO, depth 7 = ±494 cents, sine carrier): the
+  windowed zero-crossing rate alternates between the two pitch bands at the
+  documented rate for LFOF 00H and 07H (both previously dead).
+
+The same fixture is a differential control: the pre-fix binary (build
+`35409599120`, commit `7a86f4b7`) reports **no modulation** for LFOF ≤ 07H,
+**continues modulating under LFORE=1**, and measures the mid-range rates 256×
+slow — exactly the three defects above — while the fixed build
+(`803be0ad`, build `35411489296`) passes all 39 cases × 4 profiles
+(saturnjp interpreter + saturnjp/saturneu/stvbios DRC). A result-parser
+negative-control harness rejects malformed/truncated/inconsistent transcripts.
+
+Full consumer: `saturn_pending/validate_ci_runtime.sh` re-runs every prior gate
+plus the four BIOS/background replay configurations with the `scsp-lfo` phase
+added. Save states from before this change are not loadable: `SCSP_LFO_t::phase`
+widened from u16 to u32 (as with the MIDI arrays in `ea928158`, MAME reports the
+mismatch rather than mis-restoring).
 
 ## What this is not
 
-LFO state is not readable through any SCSP register and the Saturn/ST-V drivers
-expose no audio capture path, so this is **method-level evidence only** — there
-is no native or waveform qualification, and no claim that any specific game's
-audio is now correct. The change alters audible output wherever software uses
-LFORE or an LFOF below 08H, so the full native consumer (BIOS/background
-replays and every prior gate) is still required to show nothing else regressed.
-Save states from before this change are not loadable: `SCSP_LFO_t::phase`
-widened from u16 to u32 (as with the MIDI arrays in `ea928158`, MAME reports the
-mismatch rather than mis-restoring).
+This qualifies the LFO block's *oscillation* (rate, reset hold, noise
+exemption, depth gating) against the documented register model. It is not a
+claim that any specific game's audio is now correct: per-game timing, the DSP
+effect chain and the overall mix are still exercised only through the existing
+BIOS/background replay gates, and no game waveform has been captured. LFORE is
+write-only and the LFO phase is not register-readable, so the reset-phase
+*level* (not the internal phase) is what is observed natively.
