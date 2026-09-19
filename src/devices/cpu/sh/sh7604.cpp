@@ -37,6 +37,8 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	: sh2_device(mconfig, SH7604, tag, owner, clock, CPU_TYPE_SH2, address_map_constructor(FUNC(sh7604_device::sh7604_map), this), 32, 0xc7ffffff)
 	, m_test_irq(0), m_internal_irq_vector(0)
 	, m_smr(0), m_brr(0), m_scr(0), m_tdr(0), m_ssr(0)
+	, m_write_txd(*this)
+	, m_read_rxd(*this, 1)
 	, m_tier(0), m_ftcsr(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
@@ -50,8 +52,6 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_dma_kludge_cb(*this)
 	, m_dma_fifo_data_available_cb(*this)
 	, m_ftcsr_read_cb(*this)
-	, m_write_txd(*this)
-	, m_read_rxd(*this, 1)
 {
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
