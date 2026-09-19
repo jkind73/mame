@@ -1478,6 +1478,16 @@ void saturn_cd_hle_device::cmd_get_filter_subheader_conditions() {
   update_hirq();
 }
 
+// Initializing conditions is distinct from initializing connectors (ST-162
+// functions 5.5 and 5.9). Preserve the selector graph in both command forms.
+void saturn_cd_hle_device::cd_reset_filter_conditions(filterT &filter) {
+  const uint8_t true_output = filter.condtrue;
+  const uint8_t false_output = filter.condfalse;
+  filter = {};
+  filter.condtrue = true_output;
+  filter.condfalse = false_output;
+}
+
 void saturn_cd_hle_device::cmd_set_filter_mode() {
   // Set Filter Mode
   uint8_t fnum = (cr3 >> 8) & 0xff;
@@ -1493,7 +1503,7 @@ void saturn_cd_hle_device::cmd_set_filter_mode() {
 
   // initialize filter?
   if (mode & 0x80) {
-    memset(&filters[fnum], 0, sizeof(filterT));
+    cd_reset_filter_conditions(filters[fnum]);
   } else {
     filters[fnum].mode = mode;
   }
@@ -1611,17 +1621,8 @@ void saturn_cd_hle_device::cmd_reset_selector() {
 
   // reset all filter conditions
   if (BIT(cr1, 4)) {
-    for (i = 0; i < MAX_FILTERS; i++) {
-      filters[i].fad = 0;
-      filters[i].range = 0xffffffff;
-      filters[i].mode = 0;
-      filters[i].chan = 0;
-      filters[i].smmask = 0;
-      filters[i].cimask = 0;
-      filters[i].fid = 0;
-      filters[i].smval = 0;
-      filters[i].cival = 0;
-    }
+    for (i = 0; i < MAX_FILTERS; i++)
+      cd_reset_filter_conditions(filters[i]);
   }
 
   // reset all filter input connectors

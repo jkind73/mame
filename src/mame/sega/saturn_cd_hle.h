@@ -199,6 +199,7 @@ private:
   void cd_free_block(blockT *blktofree);
   void cd_defragblocks(partitionT *part);
   void cd_copy_move_sector_data(bool move);
+  void cd_reset_filter_conditions(filterT &filter);
   void cd_getsectoroffsetnum(uint32_t bufnum, uint32_t *sectoffs,
                              uint32_t *sectnum);
 
