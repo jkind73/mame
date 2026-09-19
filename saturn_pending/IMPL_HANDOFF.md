@@ -4880,3 +4880,65 @@ are unchanged. No code or contract change.
   Prior pending ESEL is intentionally not acknowledged by reads. No new
   fields/additional save-layout changes, validator asset/fixture expectation
   edits or frozen CPU/sound/video changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0065 | CD-01 | aef4ff30 | UNVALIDATED | Sector-information query honors full 16-bit position and END, returns stored metadata, and does not generate ESEL |
+
+### IMPL-0065 — CD-01 — sector-information position/query semantics
+
+- branch/commit/base: `arena/01a0b897-mame` @ **aef4ff30**; base **0e840253**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` cmd_get_sector_information;
+  `saturn_pending/impl_checks/check_cd_sector_information.py`.
+- contract: command54 consumes the complete CR2 sector position; FFFF means
+  the selected partition's last sector. Only positions within that
+  partition's count (and physical array capacity) are addressable; empty,
+  invalid-selector and null-storage requests use standard REJECT instead
+  of aliasing a low-byte position or dereferencing inaccessible storage.
+  Return FAD and file/channel/submode/coding bytes without changing sectors.
+  Complete query with CMOK, not newly generated ESEL.
+- primary source: ST-162-062094 printed p.93 function 6.5 specifies END and
+  selected-sector header/subheader retrieval; p.30 Table 3.2 does not list
+  this query as an ESEL-setting operation. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3347-3375`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  uses full position/FFFF, rejects unavailable selectors/sectors, and returns
+  matching register packing without ESEL. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2746-2780`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, cross-checks packing/CMOK only;
+  its byte-position decoder/boundary check is not an oracle for ranges.
+  Local history/base and upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d were checked: low-byte masking
+  and ESEL remained in the old handler. No reference code block imported.
+- expected observable: with three sectors, END returns metadata of position2;
+  0100 must not return position0. Each legal query returns the exact selected
+  FAD/subheader bytes and leaves sector count/data unchanged. No extra ESEL;
+  preserve already pending interrupt causes. Zero byte/position tolerance.
+- suggested method: query all positions and END in partitions with
+  0/1/3/199/200 sectors, using noncontiguous pool IDs and distinct metadata;
+  compare native register responses/HIRQ and re-read stored data. Run raw/
+  cooked Mode1/Mode2 ingestion separately; this change does not create raw
+  PUT metadata that the existing ingestion path does not retain.
+- falsifier: byte-wrapped position accepted, missing/wrong END selection,
+  response from beyond the partition count, wrong metadata packing,
+  out-of-bounds/null access, changed sector state or query-generated ESEL.
+- self-check run (method-level, unvalidated): all 65,536 positions across
+  24 partitions/five lengths, 9,768 metadata/END responses, 7,854,784 invalid/
+  unavailable controls plus null-pointer diagnostic; ASan/fail-fast UBSan
+  exit 0. Historical 0e840253 fails HIRQ at generated line109; low-byte
+  position mutant fails reject at line108 and no-END mutant fails response
+  at line105. Warning-enabled CD C++20 syntax/diff checks exit 0.
+- state: **UNVALIDATED**.
+- not covered/known doubts: no native transport/scheduling/game/IRQ or
+  media-present standard-response qualification. The shared standard-return
+  helper currently ignores its supplied status when no image is mounted;
+  that separate existing defect can mask REJECT in empty-media native runs
+  and is not concealed by the mocked helper used here. REJECT selection for
+  invalid requests follows the specific pinned command handler, not a claim
+  that all unavailable CD stream ranges reject rather than WAIT. Raw PUT
+  metadata, unrelated full-width offset decoders and FAD search remain
+  separate. No new state/layout change, validator or frozen-path edits.
