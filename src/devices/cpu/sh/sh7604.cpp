@@ -2112,8 +2112,8 @@ void sh7604_device::ccr_w(uint8_t data)
 	m_ccr = data;
 }
 
-// BCR1/BCR2 are really 16-bit wide, when accessed as dword the upper part is used as unlock
-// method (0xa55axxxx) and reads back 0.
+// BSC registers permit 16-bit reads, but writes require a complete 32-bit
+// access with A55A in the upper half (section 7.1.4, Table 7.2).
 uint32_t sh7604_device::bcr1_r()
 {
 	return (m_bcr1 & ~0xe008) | (m_is_slave ? 0x8000 : 0);
@@ -2121,16 +2121,11 @@ uint32_t sh7604_device::bcr1_r()
 
 void sh7604_device::bcr1_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	if (ACCESSING_BITS_0_31)
-	{
-		if ((data & 0xffff0000) == 0xa55a0000)
-		{
-			COMBINE_DATA(&m_bcr1);
-			m_bcr1 &= 0xffff;
-		}
-	}
-	else if (ACCESSING_BITS_0_15)
-		COMBINE_DATA(&m_bcr1);
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
+	COMBINE_DATA(&m_bcr1);
+	m_bcr1 &= 0xffff;
 }
 
 uint32_t sh7604_device::bcr2_r()
@@ -2140,16 +2135,11 @@ uint32_t sh7604_device::bcr2_r()
 
 void sh7604_device::bcr2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	if (ACCESSING_BITS_0_31)
-	{
-		if ((data & 0xffff0000) == 0xa55a0000)
-		{
-			COMBINE_DATA(&m_bcr2);
-			m_bcr2 &= 0xffff;
-		}
-	}
-	else if (ACCESSING_BITS_0_15)
-		COMBINE_DATA(&m_bcr2);
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
+	COMBINE_DATA(&m_bcr2);
+	m_bcr2 &= 0xffff;
 }
 
 uint32_t sh7604_device::wcr_r()
@@ -2159,6 +2149,9 @@ uint32_t sh7604_device::wcr_r()
 
 void sh7604_device::wcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
 	COMBINE_DATA(&m_wcr);
 }
 
@@ -2169,6 +2162,9 @@ uint32_t sh7604_device::mcr_r()
 
 void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
 	COMBINE_DATA(&m_mcr);
 }
 
@@ -2179,6 +2175,9 @@ uint32_t sh7604_device::rtcsr_r()
 
 void sh7604_device::rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
 	COMBINE_DATA(&m_rtcsr);
 }
 
@@ -2189,6 +2188,9 @@ uint32_t sh7604_device::rtcnt_r()
 
 void sh7604_device::rtcnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
 	COMBINE_DATA(&m_rtcnt);
 	m_rtcnt &= 0xff;
 }
@@ -2200,6 +2202,9 @@ uint32_t sh7604_device::rtcor_r()
 
 void sh7604_device::rtcor_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
+		return;
+
 	COMBINE_DATA(&m_rtcor);
 	m_rtcor &= 0xff;
 }
