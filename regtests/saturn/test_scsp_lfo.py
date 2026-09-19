@@ -106,8 +106,8 @@ if mutant == 'lfo-noise-flag':
     methods = methods.replace('LFO->noise = (LFOWS == 3);', 'LFO->noise = (LFOWS == 2);')
 if mutant == 'lfo-lowfreq-truncate':
     methods = methods.replace('''  double const rate = double(clock()) / SAMPLE_CLOCKS;
-  LFO->phase_step =
-      (u32)std::llround(double(LFOFreq[LFOF]) * double(1u << LFO_PHASE_SHIFT) / rate);''',
+  LFO->phase_step = (u32)std::llround(
+      double(LFOFreq[LFOF]) * 4294967296.0 / rate);''',
 '''  float step = (float)LFOFreq[LFOF] * 256.0f / (float)(clock() / SAMPLE_CLOCKS);
   LFO->phase_step = (u32)((float)(1 << LFO_SHIFT) * step);''')
 if mutant == 'lfo-truncate-not-round':
@@ -184,7 +184,7 @@ int main(){
    assert(s.PLFO.phase_step>0);
    {
     double const rate=double(d.clock())/SAMPLE_CLOCKS;
-    double const want=(LFOFreq[lf]*double(1u<<LFO_PHASE_SHIFT))/rate;
+    double const want=(LFOFreq[lf]*4294967296.0)/rate;
     double const err=std::fabs(double(s.PLFO.phase_step)-want)/want;
     assert(err<0.01);                        // within 1% of the manual rate
     assert(double(s.PLFO.phase_step)>=want-0.5&&double(s.PLFO.phase_step)<=want+0.5);
