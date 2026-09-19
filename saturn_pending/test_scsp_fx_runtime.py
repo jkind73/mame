@@ -204,6 +204,12 @@ local function test()
     sp:write_u16(base + 0x400, 0x000f)             -- MVOL 15: unity
 @@WAVE@@
     local want = @@WANT@@
+    -- Stop the 68000 BIOS sound program: it owns the SCSP while it runs and
+    -- rewrites the DSP program, which would race the effect-return setup.
+    ss:write_u16(0x70000, 0x60fe)
+    snd.state["SR"].value = 0x2700
+    snd.state["PC"].value = 0x70000
+    emu.wait(ms(20))
 
     -- Section 1: direct send level.  Slot 0 plays the square at each DISDL
     -- value, the EFSDL bits stay 0 so the effect return contributes nothing.
@@ -223,6 +229,17 @@ local function test()
     w(slot0, 0x16, 0)
     emu.wait(ms(10))
     sp:write_u16(base + 0x402, 0)                  -- RBL/RBP: ring buffer off
+    do                                             -- clear TEMP/ACC/MEMS
+        local clear = blank()                      -- through real steps
+        for i = 0, 127 do
+            clear[i * 4 + 1] = 0x80 | i
+            clear[i * 4 + 2] = 0x2000
+            clear[i * 4 + 3] = 2
+            clear[i * 4 + 4] = 0x200
+        end
+        upload(clear)
+        emu.wait(ms(2))
+    end
     sp:write_u16(base + 0x700, 0x7ff8)             -- COEF: near unity
     sp:write_u16(base + 0x702, 0)
     sp:write_u16(base + 0x780, 0x4000)             -- MADRS[0]: the read address

@@ -11,6 +11,17 @@ path through EFSDL/EFPAN is now measured natively. The *external digital input*
 half (EXTS0/1) is still open: it is fed by the CD device route, so it cannot be
 driven until the CD block exists.
 
+## Fixture hardening (the logs in this directory)
+
+The first version of the fixture did not stop the 68000 BIOS sound program, and
+one run of it measured `efreg=0000` on the very same binary - the BIOS sound
+driver had replaced the DSP microprogram between the fixture's upload and its
+read. The fixture now parks the sound CPU (`0x70000: bra *`, `SR=0x2700`) and
+clears TEMP/ACC/MEMS through 128 real microinstructions before the effect
+program, exactly as the mapped-DSP fixture does. The four logs here are that
+hardened version and measure the same numbers as the original qualification;
+the values below are unchanged.
+
 ## Qualified (measured on the emulator, not assumed)
 
 | claim | measurement |

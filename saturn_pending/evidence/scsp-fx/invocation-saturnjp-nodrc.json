@@ -4,7 +4,7 @@
   "drc": false,
   "binary_sha256": "9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4",
   "bios_sha256": "09c49cd8a17018064bf486fbbfb5736a26decf467387abd57a56db9f21ba9371",
-  "lua_sha256": "92c3f077a05e2abea74fdd656f603537003a870860cd52fbef72f1f7c60ae493",
+  "lua_sha256": "5d35c879125562d4ee4d282733523f6472ca91257d8047d7ebeb98367020e0d4",
   "command": [
     "/home/user/saturn-ci-bins/saturn",
     "saturnjp",
@@ -23,14 +23,14 @@
     "-autoboot_delay",
     "0",
     "-autoboot_script",
-    "/tmp/fx-saturnjp-nodrc/test.lua",
+    "/tmp/fxq-saturnjp-nodrc/test.lua",
     "-nvram_directory",
-    "/tmp/fx-saturnjp-nodrc/nvram",
+    "/tmp/fxq-saturnjp-nodrc/nvram",
     "-cfg_directory",
-    "/tmp/fx-saturnjp-nodrc/cfg",
+    "/tmp/fxq-saturnjp-nodrc/cfg",
     "-state_directory",
-    "/tmp/fx-saturnjp-nodrc/state",
+    "/tmp/fxq-saturnjp-nodrc/state",
     "-snapshot_directory",
-    "/tmp/fx-saturnjp-nodrc/snapshot"
+    "/tmp/fxq-saturnjp-nodrc/snapshot"
   ]
 }
