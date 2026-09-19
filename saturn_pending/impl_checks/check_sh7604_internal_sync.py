@@ -60,6 +60,8 @@ struct Device {
  Device *peer=nullptr;
  int txd=1; unsigned reads=0; std::vector<uint8_t> incoming{0x5a};
  std::vector<std::pair<ticks,int>> wire, clocks, irqs;
+ // External asynchronous receive is exercised by its own pin-clock fixture.
+ void sci_rx_tick(int) {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
  unsigned clock() const { return 1; } // mock attotime retains phi ticks
