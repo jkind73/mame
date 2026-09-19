@@ -1776,3 +1776,104 @@
   qualification. Frozen DMA acknowledgement, delay-slot, sound and game
   paths were not edited. No milestone status or external-device inventory
   claim changes; validation remains with the separate agent.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0023 | CPU-03 | 463278aa | UNVALIDATED | Shared FRT TEMP stages high-byte writes and snapshots low-byte reads; OCR reads bypass the latch |
+
+### IMPL-0023 — CPU-03 — shared FRT TEMP byte-access latch
+
+- branch/commit: `arena/01a0b897-mame` @ **463278aa** (base: 646965b8).
+- files: `src/devices/cpu/sh/sh7604.cpp:43,137,409` (TEMP constructor,
+  save and reset), `:1496-1544` (FRC and OCR accesses), `:1577-1584`
+  (ICR reads); `src/devices/cpu/sh/sh7604.h:102,112,234` (masked-read
+  signatures and state); `saturn_pending/impl_checks/check_sh7604_frt_temp.py:1-171`.
+  The FRT stop/phase fixtures gained the mock field and default parameters
+  for the new read signatures; all prior expected values are unchanged.
+- contract: FRC and OCRA/OCRB high-byte writes stage an 8-bit TEMP value,
+  without updating the destination or its compare deadline. The following
+  low-byte write commits `(TEMP << 8) | low` to FRC or the currently
+  selected OCR. FRC/ICR high-byte reads return the high byte and snapshot
+  the low byte in TEMP; subsequent low-byte reads use that snapshot even
+  if counting/capture changes the live register in between. There is one
+  shared TEMP, not separate read/write or per-register latches. OCR reads
+  bypass TEMP. Debugger reads return live register values without changing
+  TEMP. Full-width handler accesses retain compatibility by performing
+  the high/low steps together; the hardware contract is byte access only.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 11.3 p.304 (shared TEMP CPU interface, high-before-low writes
+  and reads, OCR read exception, byte access requirement including DMAC),
+  Figure 11.2 p.305 (FRC write staging/commit), Figure 11.3 p.306 (read
+  snapshot). Table 11.2 p.297 gives register byte addresses; section
+  11.2.7 p.303 defines OCRS selection. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:209-242,245-280,369-389,404,409-432`
+  implements shared TEMP, direct OCR reads, peek bypass and TEMP save/load.
+  Blob `22868cc7792ede743d834dca5624c6cb5102f04e`.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:919-951,976-979`, reads live words and
+  combines partial writes directly, without TEMP. Fork history through
+  `646965b8` retains those access paths despite the earlier timer fixes.
+  This changes the inline handlers, not an unused standalone peripheral;
+  no reference code imported.
+- expected observable: writing H'AA to FRC H leaves the running counter
+  unchanged until writing H'55 to FRC L commits H'AA55. Likewise an OCR
+  high-byte write leaves the previous compare active until low-byte
+  commit. Reading FRC H at H'12FF, letting FRC advance to H'1300, then
+  reading FRC L returns H'FF: the byte pair reconstructs H'12FF, not
+  H'1200. ICR has the same stability across a later capture. Reading OCR
+  or inspecting FRC/ICR in the debugger does not destroy staged TEMP.
+  Values and callback counts are exact; no new pin/bus-cycle latency or
+  timing tolerance is asserted by this byte-interface candidate.
+- suggested method: use actual SH-2 byte accesses at H'FFFFFE12/13,
+  H'FFFFFE14/15 and H'FFFFFE18/19. Separate write bytes while an existing
+  compare is pending; separate read bytes across counter rollover or a
+  new capture. Exercise both OCRS choices and its selection at low-byte
+  commit. Check that intervening OCR reads do not change TEMP, whereas
+  another TEMP-using access does; software must protect its paired
+  accesses from such interference. Inspect through the debugger between
+  bytes, and save/load between the high and low accesses. Validate native
+  big-endian byte-mask dispatch separately from extracted method calls.
+- falsifier: an isolated high-byte write changing FRC/OCR or its timer
+  deadline, a low read returning a later live value instead of the high-
+  read snapshot, OCR reads or debugger inspection overwriting TEMP, a
+  distinct per-register latch preventing documented shared-latch behavior,
+  or save/load losing staged data contradicts this candidate. Qualifying
+  word accesses as equivalent physical SH7604 bus cycles would require
+  evidence beyond the compatibility path provided here.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 196608 byte-pair writes; 131072 changing-register read snapshots; 327680 state-copy replays; 512 shared-latch/OCR-read cases; 1536 debugger inspections; 512 reset cases
+  method-level, unvalidated: 65536 full-width compatibility controls and eight between-byte timer-event probes; native byte-lane dispatch and save-manager not qualified
+  method-level, unvalidated: TEMP constructor/reset/save registration present; save layout changed
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_frt_temp.py`.
+  Same new script against pre-change `646965b8` source, adapting only
+  the old read signatures (not method bodies), exits 1:
+  `line 326: d.value(target)==before && d.timer.due==due && d.irqs.size()==irqs`.
+  All fifteen preceding focused SCI/FRT scripts rerun with unchanged
+  expected values: exit 0. Extracted binaries use UBSan. Full
+  `sh7604.cpp` syntax with session includes and
+  `-std=c++20 -Wall -Werror -Wno-sign-compare`: exit 0, no diagnostics,
+  reorder enabled. `git diff --check`: exit 0. No full build run.
+- state: UNVALIDATED
+- not covered / known doubts: **save-state layout break** — new byte
+  `m_frt_temp` is initialized in the constructor/shared FRT reset and
+  registered with `save_item` in this change. Old saves are not assumed
+  compatible. Zeroing TEMP on reset/module stop is a deterministic internal
+  convention, consistent with Ymir, not a silicon claim about a low-only
+  first access. The manual requires ordered byte pairs; interference probes
+  illustrate the shared latch, not a recommended software access protocol.
+  Full-width handler compatibility is not hardware word-access acceptance.
+  Native address-space masks, CPU/DRC/DMA byte-access sequencing, debugger
+  behavior and on-disk save replay remain unqualified. FRC-write count
+  inhibition and the extra capture delay for coincident ICR-high reads
+  (section 11.4.4 p.309/Figure 11.9) are not implemented here. Existing
+  compare/clear-on-match timing limitations, external FTCI and FTOA/FTOB
+  pins remain separate work. Frozen DMA acknowledgement, delay-slot,
+  sound and game paths and validator assets were not edited. This adds
+  no external peripheral and changes no milestone status; IO-02's
+  supported/not-supported inventory remains unchanged.
