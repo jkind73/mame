@@ -586,7 +586,16 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_wdtimer_callback)
 	else // watchdog mode
 	{
 		m_rstcsr |= 0x80;
-		// TODO reset and /WDTOVF out
+		if (!(m_rstcsr & 0x40))
+		{
+			// With RSTE=0, only WTCNT/WTCSR reset on watchdog overflow
+			// (section 12.4.5). RSTCSR, including WOVF, is preserved.
+			m_wtcsr = 0;
+			m_wdt_read &= ~1;
+			m_wdtimer->adjust(attotime::never);
+			sh2_recalc_irq();
+		}
+		// TODO RSTE=1 internal reset and /WDTOVF out
 	}
 }
 

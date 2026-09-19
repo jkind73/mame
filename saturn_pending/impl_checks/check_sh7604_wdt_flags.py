@@ -96,6 +96,9 @@ int main() {
  CHECK(wd.m_rstcsr&0x80); wd.rstcsr_r(0,0xff); wd.rstcsr_w(0,0x5a1f,0xffff);
  CHECK((wd.m_rstcsr&0x80) && (wd.m_wdt_read&2));
  wd.rstcsr_w(0,0xa500,0xffff); CHECK(!(wd.m_rstcsr&0x80) && !(wd.m_wdt_read&2));
+ // RSTE=0 overflow resets WTCSR; explicitly re-enable before producing
+ // another watchdog event. A stopped timer cannot supply that event.
+ wd.wtcnt_w(0,0xa578,0xffff);
  wd.sh2_wdtimer_callback(0); wd.rstcsr_w(0,0xa500,0xffff); CHECK(wd.m_rstcsr&0x80);
  // The word-access guard also preserves qualification on rejected writes.
  for (unsigned mask : {0U,0xff00U,0xffU}) {
