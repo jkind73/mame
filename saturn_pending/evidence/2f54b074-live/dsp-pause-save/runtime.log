@@ -1,0 +1,6 @@
+DSP_PAUSE_SAVE armed
+DSP_PAUSE_SAVE saved
+DSP_PAUSE_SAVE mutated
+DSP_PAUSE_SAVE loaded
+DSP_PAUSE_SAVE PASS words=256 paused=1 busy=1 phase=odd replay=exact
+Average speed: 124.33% (2 seconds)

@@ -1,0 +1,7 @@
+test: /tmp/scudsp-dma-1s8gofph/test.cpp:366: int main(): Assertion `s.reads[i*2]==addr&&s.reads[i*2+1]==addr+2' failed.
+Traceback (most recent call last):
+  File "/home/user/dsp-read-candidate/regtests/saturn/test_scudsp_dma.py", line 192, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-dma-1s8gofph/test']' died with <Signals.SIGABRT: 6>.

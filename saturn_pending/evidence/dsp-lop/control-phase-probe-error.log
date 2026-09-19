@@ -1,0 +1,3 @@
+DSP_LOP_SAVE armed
+DSP_LOP_SAVE FAIL /tmp/smpc-save-asm12ocl/test.lua:92: not an observed in-flight loop
+Average speed: 264.58% (2 seconds)

@@ -1,0 +1,7 @@
+{
+  "binary_sha256": "c890bbc8a8b591f85b41ef4548764dac7671d880ed8c1eef4f671112310072d5",
+  "bios_sha256": "09c49cd8a17018064bf486fbbfb5736a26decf467387abd57a56db9f21ba9371",
+  "lua_sha256": "8aea3f5f3ae9fd80833a6d040f18a63bc3f5fa3a1955dfa2aa2c794e6fe6d2fe",
+  "engine": "interpreter",
+  "debugger": "none"
+}

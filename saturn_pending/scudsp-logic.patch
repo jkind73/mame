@@ -1,0 +1,101 @@
+diff --git a/src/devices/cpu/scudsp/scudsp.cpp b/src/devices/cpu/scudsp/scudsp.cpp
+index 473651fc..8908cfa2 100644
+--- a/src/devices/cpu/scudsp/scudsp.cpp
++++ b/src/devices/cpu/scudsp/scudsp.cpp
+@@ -463,10 +463,6 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
+ 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
+ 			SET_C(0);
+ 			SET_S(i3 < 0);
+-			/* TODO: Croc and some early Psygnosis games wants Z to be 1 when the result of this one is negative.
+-			         Needs HW tests ... */
+-			if(i3 < 0)
+-				i3 = 0;
+ 			SET_Z(i3 == 0);
+ 			break;
+ 
+diff --git a/regtests/saturn/test_scudsp_alu.py b/regtests/saturn/test_scudsp_alu.py
+index 67d6d389..ed4f2684 100644
+--- a/regtests/saturn/test_scudsp_alu.py
++++ b/regtests/saturn/test_scudsp_alu.py
+@@ -57,7 +57,12 @@ void check(unsigned op,uint64_t a,uint64_t b,bool prior_v){
+  d.m_alu=0xa55a12345678;d.m_flags=0x10812345|(prior_v?V:0);
+  uint32_t original=d.m_flags;
+  uint64_t result;bool carry,overflow=false;
+- if(op==8){result=(a/2)|(a&0x80000000);carry=a%2;}
++ if(op<=3){result=op==1?a&b:op==2?a|b:a^b;carry=false;}
++ else if(op==8){result=(a/2)|(a&0x80000000);carry=a%2;}
++ else if(op==9){result=std::rotr(uint32_t(a),1);carry=a%2;}
++ else if(op==10){result=(a<<1)&mask;carry=(a>>31)&1;}
++ else if(op==11){result=std::rotl(uint32_t(a),1);carry=(a>>31)&1;}
++ else if(op==15){result=std::rotl(uint32_t(a),8);carry=(a>>24)&1;}
+  else {
+   __int128 math=op==5?__int128(signed_value(a,bits))-signed_value(b,bits):__int128(signed_value(a,bits))+signed_value(b,bits);
+   overflow=math<-(__int128(1)<<(bits-1))||math>((__int128(1)<<(bits-1))-1);
+@@ -79,7 +84,7 @@ void check(unsigned op,uint64_t a,uint64_t b,bool prior_v){
+ int main(){
+ // PROBE
+  unsigned cases=0;
+- for(unsigned op:{4u,5u,6u,8u}){
++ for(unsigned op:{1u,2u,3u,4u,5u,6u,8u,9u,10u,11u,15u}){
+   unsigned bits=op==6?48:32;uint64_t sign=1ull<<(bits-1),mask=(1ull<<bits)-1;
+   uint64_t values[]={0,1,2,sign-2,sign-1,sign,sign+1,mask-1,mask,0x55555555,0xaaaaaaaa};
+   for(auto a:values)for(auto b:values)for(bool sticky:{false,true}){check(op,a,b,sticky);++cases;}
+diff --git a/saturn_pending/test_scudsp_alu_runtime.py b/saturn_pending/test_scudsp_alu_runtime.py
+index 16c7f047..337be23f 100644
+--- a/saturn_pending/test_scudsp_alu_runtime.py
++++ b/saturn_pending/test_scudsp_alu_runtime.py
+@@ -43,7 +43,16 @@ local function test()
+         local flags=sp:read_u32(control)
+         check('finished'..case,flags&0x810000,0)
+         local result,carry,overflow,negative
+-        if op==8 then
++        if op<=3 then
++            result=op==1 and (a&b) or (op==2 and (a|b) or (a~b));carry=false;overflow=false
++            negative=(result&0x80000000)~=0
++        elseif op==9 or op==10 or op==11 or op==15 then
++            if op==9 then result=((a>>1)|(a<<31))&0xffffffff;carry=(a&1)~=0
++            elseif op==10 then result=(a<<1)&0xffffffff;carry=(a&0x80000000)~=0
++            elseif op==11 then result=((a<<1)|(a>>31))&0xffffffff;carry=(a&0x80000000)~=0
++            else result=((a<<8)|(a>>24))&0xffffffff;carry=(a&0x01000000)~=0 end
++            overflow=false;negative=(result&0x80000000)~=0
++        elseif op==8 then
+             result=(a>>1)|(a&0x80000000);carry=(a&1)~=0;overflow=false
+             negative=(result&0x80000000)~=0
+         elseif op==6 then
+@@ -70,11 +79,11 @@ local function test()
+         if op==6 then check('result48'..case,sp:read_u32(data),(result>>16)&0xffffffff) end
+         if #fails==before then print(string.format('DSP_ALU case=%d PASS',case)) end
+     end
+-    for _,op in ipairs({4,5,6}) do for _,a in ipairs(values) do for _,b in ipairs(values) do
++    for _,op in ipairs({1,2,3,4,5,6}) do for _,a in ipairs(values) do for _,b in ipairs(values) do
+         run(op,a,b,false)
+     end end end
+-    for _,a in ipairs(values) do run(8,a,0,false) end
+-    for _,op in ipairs({4,5,6}) do run(op,0x7fffffff,1,true) end
++    for _,op in ipairs({8,9,10,11,15}) do for _,a in ipairs(values) do run(op,a,0,false) end end
++    for _,op in ipairs({1,2,3,4,5,6}) do run(op,0x7fffffff,1,true) end
+     for _,a in ipairs({0,0xffff,0x10000,0xffffffff}) do run(6,a,0,false,0x7fffffff,0x10000) end
+     for _,a in ipairs({0,1,0xffffffff,0xffff0000}) do run(6,a,0,false,0x80000000,0x10000) end
+ end
+@@ -84,7 +93,7 @@ emu.register_frame_done(function()
+     if frames==180 then coroutine.wrap(function()
+         local ok,err=pcall(test)
+         if not ok then fails[#fails+1]=tostring(err) end
+-        if #fails==0 then print('DSP_ALU PASS cases=211')
++        if #fails==0 then print('DSP_ALU PASS cases=438')
+         else for _,f in ipairs(fails) do print('DSP_ALU FAIL '..f) end end
+         m:exit()
+     end)() end
+@@ -92,9 +101,9 @@ end)
+ '''
+ def validate_output(text,returncode):
+     if (returncode or 'DSP_ALU FAIL' in text or 'LUA ERROR' in text or
+-            [int(n) for n in re.findall(r'^DSP_ALU case=(\d+) PASS$',text,re.M)]!=list(range(1,212)) or
+-            len(re.findall(r'^DSP_ALU PASS cases=211$',text,re.M))!=1):
++            [int(n) for n in re.findall(r'^DSP_ALU case=(\d+) PASS$',text,re.M)]!=list(range(1,439)) or
++            len(re.findall(r'^DSP_ALU PASS cases=438$',text,re.M))!=1):
+         raise RuntimeError('DSP arithmetic fixture failed:\n'+text[-16000:])
+ runner.validate_output=validate_output
+ if __name__=='__main__':
+-    runner.main('DSP ALU: 211 arithmetic/flag/read-clear programs passed live')
++    runner.main('DSP ALU: 438 arithmetic/flag/read-clear programs passed live')

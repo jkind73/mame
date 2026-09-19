@@ -1,0 +1,708 @@
+# Saturn/ST-V game-blocker implementation plan
+
+## User-verified results — 2026-09-15
+
+The user confirms that **969cc3ae fixes After Burner II explosion transparency
+and the Power Drift car rendering issue**. These are now runtime-accepted
+results, not pending visual checks. After Burner II boot remains accepted with
+the earlier SH DRC correction. This does not establish full gameplay or save/load
+acceptance, nor resolution of the separately reported logo/title placement bugs.
+
+The common fix preserves ECD-controlled END-pixel rejection during HSS reduction
+while bypassing two-END row termination. No game-specific workaround was used.
+The recorded validation remains 22 regression scripts and eleven object builds;
+this acceptance update changes documentation only.
+
+
+## Latest: captured HSS/LUT END-pixel defect corrected (3c31f363)
+
+The live video capture locates opaque 8000 pixels in the explosion framebuffer.
+LUT index F maps to that black value; the corresponding reduced commands use
+PMOD=1808 (HSS=1, ECD=0). The renderer incorrectly forced ECD during reduction.
+Keep ECD unchanged: bypass two-END row termination for HSS but reject individual
+END pixels. Ymir and MiSTer agree on this distinction; the Sega p.86 HSS table
+has conflicting wording, documented rather than presented as proof.
+
+Corrected synchronous/queued scaled and native texture paths. Four synthetic
+LUT marker/cutoff cases plus existing HSS/EOS/quad images pass; restoring the
+old behavior fails a C++ pixel assertion. All 22 scripts and eleven objects
+pass. Rebuild/game visual acceptance is pending; boot remains confirmed.
+See `regtests/saturn/visual_followup_3c31f363.md` for exact capture evidence,
+reference code and limitations. Logo/title displacement is still separate.
+
+
+## Latest: explosion rectangles still present (d0166ac6)
+
+User confirms the 94cc6b24 RGB correction did **not** resolve After Burner II's
+explosion transparency. The new archive contains 670,624 scaled command records;
+every one uses color mode 1 (4-bit lookup table), not RGB texture mode 5. That
+rules out describing the preceding RGB fix as this symptom's solution. The boot
+fix remains user-confirmed. No new emulation change is justified from these
+records alone: texture/LUT contents and framebuffer words are not logged.
+
+Added `regtests/saturn/video_capture.lua`: on F12, capture the visible image,
+VDP1 texture/LUT/command RAM, both framebuffer banks, VDP2 RAM/CRAM/registers
+and small VDP1 state together. No rebuild or verbose log is needed. Standalone
+Lua mocks pass (schema, byte bounds, cap, collisions, missing-item failure);
+live MAME capture delivery is not yet tested. Instructions and binary format:
+`regtests/saturn/video_capture.md`. Geometry and explosion artifacts remain open.
+
+
+## Current: boot confirmed; visual follow-up (d402162b)
+
+The user confirms After Burner II boots with d68770ea. Startup is no longer an
+open blocker. New screenshots show effect rectangles and displaced/clipped
+artwork. Corrected VDP1 RGB transparency: ECD/HSS must not make MSB-clear 7FFF
+opaque with SPD=0 (MiSTer/Ymir agree). 262,144 RGB gate cases pass; the old
+behavior fails a normal-sprite image assertion. All 22 regression scripts and
+eleven objects pass. Screenshot-level improvement needs a rebuilt game run.
+
+Geometry remains unresolved, not fixed by an arbitrary anchor adjustment.
+The verbose trace now includes VDP2 sprite-rotation/normal-layer scroll/zoom
+state and command COLR. Keep each game's log separately; the sound probe is
+not needed for graphics checks. Details and source limits:
+`regtests/saturn/visual_followup_d402162b.md`.
+
+
+## After Burner II follow-up — sound ready, later DMA-related wait
+
+Latest captures `cc8a7db8`/`3e4b4384` show sound initialization completed:
+RAM 04FC=0007F000, A5=00100000, A0=000BF000 and sound code intact. The main CPU
+now waits at 0607BBC4 on software flag 06004E64=1, in a routine programming SCU
+DMA. This is not the old sound wait and not yet a confirmed DMA/IRQ root cause.
+
+Extended the existing Lua probe with read-only SCU DMA/IRQ state and main-RAM
+operand/vector/handler snapshots; no executable rebuild is needed. Updated Lua
+mock-binding tests pass. No new C++ emulation fix or successful game-boot claim.
+See `regtests/saturn/afterburner2_boot_analysis.md` for evidence and command.
+
+## After Burner II latest probe — false sound-CPU RAM mirror corrected
+
+New uploads `d05617ff`/`faa4291a` show the SCSP reset correction clears the old
+IRQ. A second blocker is now visible: the sound driver's clear loop writes beyond
+07FFFF, and the 68000 map wrongly aliases the uninstalled expansion area onto its
+own code. The snapshot's A0=0806BC and erased opcode at 06BA exactly match a
+store through this false alias. Removed the CPU-side mirror for Saturn/ST-V;
+Sega ST-077 Figure 1.3, MiSTer RAM chip select and Ymir CPU mapping agree.
+
+Thirteen map/store cases include the historical corruption fingerprint; the old
+alias mutation fails. **21 scripts/ten objects pass**, plus updated Lua fixture
+checks. DSP/sample address wrapping is unchanged. No game boot acceptance claim:
+rebuild/retest needed. See `regtests/saturn/afterburner2_boot_analysis.md`.
+OutRun flashing is user-confirmed fixed; Power Drift geometry remains separate.
+
+## After Burner II SOUNDPROBE — clock-change SCSP reset correction
+
+The supplied three snapshots identify an old Timer B IRQ preempting startup
+before A5 becomes the SCSP base. A5=00009CC0 sends acknowledgement writes to RAM;
+the sound driver never reaches its ready-pointer write at 06F0 to RAM 04FC.
+CKCHG320 had called SCSP reset, but that routine retained BIOS interrupt masks,
+pending state and running timers. Sega ST-169 pp.30–31 require power-on defaults.
+
+Fixed the SCSP interrupt/timer reset domain, including physical IRQ release and
+replacement of old timer deadlines. No SNDON IRQ suppression, ready-flag patch or
+68000 RESET-opcode change. New production-code reset regressions pass and reject
+the old partial reset; **20 scripts/ten objects pass**, now including SCSP itself.
+Game boot still needs runtime confirmation; broader SCSP reset fidelity is not
+claimed complete. Details: `regtests/saturn/afterburner2_boot_analysis.md`.
+
+## After Burner II follow-up 366ac068 — still hangs
+
+User confirms `436988f9` did not fix boot. Decoded the new BOOTCPU capture: SH-2
+loops on a zero longword at sound RAM 04FC (R1=25A004FC). The running sound CPU
+repeatedly samples its level-2 handler at 07E6, with intended Timer B/SCIRE accesses
+through A5. Missing sound A5 and SCSP enable/pending state prevent an exact cause
+claim; no new interrupt suppression or game workaround is applied.
+
+Added a read-only Lua snapshot probe that runs on the existing executable, without
+a rebuild, plus a passing standalone mock-binding test. See
+`regtests/saturn/afterburner2_boot_analysis.md` for decoded instructions and the
+command. The earlier IRQ/reset correction remains separately tested, not an
+After Burner II boot fix. OutRun flashing remains user-confirmed resolved.
+
+## After Burner II instrumented follow-up — sound-startup wait
+
+Analyzed and preserved user commit `629e6569`: the first CD read completes and
+boot progresses through 2,351 CD commands. The persistent wait begins after
+SNDON near 17.56 s; main PC remains 06010276/06010278 through 155 s. No new VDP1
+lists are submitted; no pending CD transfer/command remains.
+
+Corrected a source-backed sound IRQ/reset defect: SCSP level changes must reach
+the 68000 even during SNDOFF/reset, otherwise change-only callbacks can lose an
+assertion or leave a stale IRQ at SNDON. Sega SMPC, MiSTer wiring and Ymir were
+cross-checked. Added bounded BOOTCPU instruction/register/sound-state diagnostics.
+64 reset/IRQ transition tests pass; the old-gate mutation fails. All 19 scripts
+and nine production objects pass. **Game boot is not yet confirmed fixed.**
+See `regtests/saturn/afterburner2_boot_analysis.md` for evidence and acceptance.
+OutRun flashing stays user-confirmed fixed; size/offset status stays unconfirmed.
+
+## After Burner II boot stall — active investigation
+
+The user clarifies that the `822d45ac` capture intentionally shows After Burner II
+failing to boot. It is not a replacement OutRun scaling test. Analysis finds the
+same 18-sector Read File/PAUSE sequence twice, separated by a long interval without
+further logged CD commands and a soft reset. VDP1 continues completing lists.
+Existing logging cannot distinguish a CD completion/polling issue from a CPU stall.
+
+Added opt-in, rate-limited `CDBOOT` status/CPU-PC/host-read diagnostics without
+changing emulation behavior. Diagnostic checks and 336 CD transfer cases pass;
+all 18 scripts/nine production objects passed with the instrumentation. See
+`regtests/saturn/afterburner2_boot_analysis.md` for timestamps, limits and the
+focused next capture. No After Burner II boot fix is claimed. OutRun flashing
+remains user-confirmed resolved; the reported size/offset issue remains open.
+
+## Runtime follow-up: OutRun flashing confirmed resolved
+
+The user confirms the flashing sprites are gone following the manual display-erase
+ordering fix. This is user-run validation, not a local game boot or full VDP1
+acceptance. The size/offset issue has not been confirmed resolved.
+
+Reviewed upload `822d45ac`: its console includes OutRun followed by After Burner
+II. `newerror.log` appears to contain the later ~92-second run, with 2,336 normal
+sprite records and no scaled records. Logged normal source/destination dimensions
+match; the file cannot establish an OutRun scaling cause. The earlier trace and
+new upload remain preserved. See `regtests/saturn/outrun_trace_analysis.md` for
+provenance and single-game capture instructions. No rendering changes or new
+regression-test claims were made in this documentation-only follow-up.
+
+## OutRun log received: manual erase presentation ordering
+
+Analyzed the user's `c4ae255c` upload: Saturn Japan/OutRun, 44,945 scaled commands,
+2,265 completed lists and 1,647 idle bank swaps. No busy swaps or mode-dependent
+sprite doubling occur in the capture. A car-sized command maps 88x41 source to
+88x41 destination. These findings supersede the unconfirmed hypotheses below.
+
+The trace alternates manual erase/change. The existing manual-erase path blanked
+the displayed bank at the start of its presentation field. It now captures the
+erase and commits after that field, before the following bank exchange, retaining
+the visible image for both fields. Pending bank/data/bounds are saved and canceled
+on reset. This is coarse read-before-erase ordering, not a per-HBlank bus model.
+24 new presentation/restore cases pass; early-erase and wrong-bank mutations fail.
+All 18 regression scripts and nine production objects pass.
+
+See `regtests/saturn/outrun_trace_analysis.md` for exact timestamps, provenance,
+primary/reference support and acceptance limits. Normal-sprite trace records were
+added to investigate the earlier logo scene. **The flashing fix needs a game rerun;
+the size/displacement defect remains unresolved.** No wholesale X/Y swap was made.
+
+## OutRun visual regression report — investigation, not fixed
+
+The user reports sprites flashing on/off and an oversized, off-center image,
+suspecting reversed scaling coordinates. Exact game variant, running commit and
+scene have not yet been confirmed. Treat this as unresolved runtime evidence;
+passing extracted tests do not establish that OutRun renders correctly.
+
+Review of ST-013 pp.73–76/120–123 agrees with the current register roles: XA/YA
+is the anchor, XB/YB the display extent in zoom-point mode, and XC/YC the opposite
+corner in two-coordinate mode. No X/Y reversal has been demonstrated. The VDP2
+compositor also has separate mode-dependent horizontal/vertical doubling, while
+framebuffer scheduling may independently explain flashing. These are investigation
+paths, not established causes; no coordinate swap or timing workaround was applied.
+
+Added observational `VDP1TRACE` logging, enabled with `-verbose -log`. Rebuild this
+branch, append those flags to the **same launch command that reproduces the bug**,
+and capture a short section showing the failure. Preserve `error.log` (it can grow
+quickly and be overwritten by the next run), the launch command/build revision,
+and a screenshot or short video. The trace records raw scaled-sprite coordinates,
+source/destination dimensions and computed bounds; TVMR/FBCR/PTMR, HRESO/LSMD;
+framebuffer ownership, busy state, COPR/LOPR and raster cursor; register writes,
+starts/aborts/END and bank changes. It introduces no emulated-state fields and is
+disabled without verbose logging. No game-specific hack was added.
+
+All 18 regression scripts and nine production object compilations pass after the
+instrumentation. The extracted renderer fixture stubs the trace sink; object
+compilation checks the production logging implementation. No linked OutRun run,
+trace capture, root-cause confirmation or visual fix is claimed here.
+
+## Pre-clipping disabled traversal — 2026-09-14
+
+Pclp=1 now preserves normal/scaled row traversal and native line/quad spans instead
+of applying advance clipping/rejection. Pixel writers continue enforcing system,
+user, mesh and physical framebuffer bounds. Normal sprites consequently count END
+markers encountered before the visible window; those markers can terminate a row
+without drawing any pixels. Queued offscreen work remains interruptible and cannot
+prematurely fetch END. Scaled synchronous sampling now indexes temporary source
+coordinates relative to the span, safely handling negative/offscreen X.
+
+The queue allows 8192 spans (416 KiB of descriptors): two signed 13-bit scaled
+endpoints can be that far apart with clipping disabled. Native quad traversal is
+still bounded by its 4096-row recurrence. Reset retains the constant-time active
+index/cursor reset, not a bulk descriptor clear. No new persistent cursor fields
+were necessary; fetched PMOD, coordinates and normal END count were already saved.
+
+Validation adds **10,681 cases**: 10,560 literal normal-sprite images across texture
+formats, packed storage, direction, END enable, mesh, user clipping and offscreen
+origins; eight offscreen cursor/END-count state copies, with CPU edits to a future
+END marker and pending ENDR, also using Gouraud; 112 scaled/native images and one
+8192-row interruption/capacity case. Physical packed words are checked independently
+of derived line pointers. Three forced-preclip mutations fail queue assertions;
+a hidden-END-skipping mutation fails the image oracle. All 18 regression scripts
+and nine production object compilations pass.
+
+Primary [ST-013-R3](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf)
+p.83 explicitly distinguishes disabled pre-clipping from per-dot clipping, and
+pp.86–87 describes END termination/read direction. Cross-checks: pinned
+[MiSTer](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP1/VDP1.sv)
+gates separated-line rejection and boundary stopping on `!PCLP`, separately from
+END detection; pinned [Mednafen](https://github.com/jkind73/mednafen-git/blob/f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc/src/ss/vdp1.cpp)
+likewise distinguishes `PCD` in `SetupDrawLine`. No reference renderer was imported.
+
+This does **not** complete pre-clipping: Pclp=0 horizontal/vertical start reversal
+and its END ordering, exact setup/VRAM costs, extreme/degenerate qualification and
+native/scaled source-prefetch timing remain open. Existing texture cutoff caches
+are not a hardware FIFO model. Active-display erase and linked game/save-manager
+acceptance also remain unfinished; the prior dependency-fetch blocker is unchanged.
+
+## Rectangular Gouraud endpoint and interpolation correction — 2026-09-14
+
+Normal/scaled sprites now prepare integer edge-then-row Gouraud values, matching
+this core's native primitive model. Scaled rectangles include the final row and
+both destination endpoints; normal rectangle endpoints use character size minus
+one. Clipped or reversed coordinates retain their original gradient position.
+This removes stale shading on scaled final rows, including one-row rectangles.
+A saved per-row representation tag distinguishes integer data from the retained
+legacy fallback. The legacy helper also swaps its stored X origin with endpoint
+colors when the input endpoints are reversed.
+
+2640 independent queued Gouraud images cover normal/scaled sprites, one-dot and
+short dimensions, reversed axes, all texture directions, clipping, and Gouraud
+modes 4/6/7. Three legacy-origin probes pass. Existing rectangle interruption and
+state-copy/Gouraud-table-edit tests still pass. Missing final row, reversed origin,
+wrong interpolation length and legacy-origin mutations all fail assertions.
+All 18 regression scripts and nine production object compilations pass; the final
+standalone run additionally includes the three legacy probes.
+
+Primary [ST-013-R3](https://github.com/jkind73/saturnsdk/blob/0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73/ST-013-R3-061694.pdf)
+pp.64–65/106 assigns correction values to A/B/C/D, then interpolates and saturates;
+pp.118–123 defines normal character extents and inclusive scaled endpoints, with
+independent coordinate inversion. Exact integer ties follow the existing native
+model cross-checked against [Ymir GouraudChannelStepper/Edge](https://github.com/jkind73/Ymir/blob/6d779960127ced72087a418c1daefc637d0aaa80/libs/ymir-core/include/ymir/hw/vdp/renderer/common/vdp1_steppers.hpp).
+The pinned [MiSTer RTL](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/a95b085038ace57fa621558d60a7adc7a3c53f78/rtl/Saturn/VDP1/VDP1.sv)
+uses fractional division for Gouraud setup (`GRD_DIV_*`), so exact rounding is not
+claimed to have three-way agreement or hardware-trace proof. No external renderer
+code was imported. Preclip/degenerate qualification, exact timing, active-display
+erase, linked BIOS/game execution and real save-manager acceptance remain open.
+
+### Linked-build attempt after the Gouraud correction
+
+Retried dependency installation rather than treating the earlier missing tools as
+permanent. This workspace allows passwordless package installation, but Debian
+package indexes could not be fetched: HTTP connections failed and HTTPS terminated
+during TLS, including alternate mirror probes. Consequently `pkg-config`, SDL2 and
+SDL2_ttf development files remain unavailable. `validate_build.py --full` stops at
+its missing-`pkg-config` preflight. No linked binary, game boot or real save-manager
+round trip was produced. This is an environment blocker for linked acceptance,
+not evidence that the remaining VDP1 behavior is complete. Downloaded references
+and failed build/dependency logs remain outside Git.
+
+## Interruptible normal/scaled sprites — 2026-09-14
+
+Normal and scaled sprite commands now enqueue rectangle rows and share the saved
+raster worker. Normal sprites retain their fetched END count within a row; scaled
+sprites retain integer sampling, direction/HSS/EOS and source-row END cutoffs.
+Prepared rectangular Gouraud scanline coefficients are save-registered, rather
+than reconstructed from a potentially modified VRAM table after loading.
+
+**1040 queued rectangle cases pass**: 1024 texture/format/direction/HSS/EOS images
+and 16 normal/scaled interruption and state-copy sequences, including Gouraud,
+blending, source END and a mid-command Gouraud-table edit. Completed lifecycle
+images also match synchronous rendering. Reset-END-count and replayed-texture
+cursor mutations fail assertions. All 18 scripts and nine production objects pass.
+The command harness now actually executes both rectangle pixel paths when enabled;
+geometry-only dispatch fixtures remain explicitly separate.
+
+All ordinary primitive families now yield within commands. The unspecified scaled
+zero-height fallback remains atomic. Timing is still batched/nominal: early normal
+END detection can leave unused clocks in an already-scheduled quantum, coverage
+pairs can produce two writes per position, and fetch/setup/VRAM arbitration is not
+measured. Active-display erase, preclip/degenerate qualification, linked BIOS/game
+execution and actual MAME save-manager tests remain open. **VDP1 completion is not
+claimed.** This supersedes the atomic-normal/scaled limitation in older entries.
+
+## Interruptible native polygons/distorted sprites — 2026-09-14
+
+The saved raster queue now also handles commands 2/3/4, retaining span texture
+coordinates, Gouraud endpoints, the signed line-error cursor, pending coverage
+and the texture-row END cutoff cache. Up to 4096 spans are bounded by the native
+12-bit outer-edge length. Reset clears active indices, not the entire 208 KiB
+span array. Pixel writes are evaluated when their slice executes, not pre-rendered
+or replayed. END fetch waits for the raster queue; ENDR discards pending work.
+
+**4362 additional queued-quad cases pass**: 3840 native-image comparisons, 512
+texture/packed-format/HSS/EOS/direction combinations, eight mid-span state-copy
+and ENDR sequences, maximum capacity and wholly clipped completion. Texture tests
+use the actual VRAM writer and command decoder. Restored END cutoffs survive a
+source edit; this establishes model consistency, not hardware prefetch behavior.
+Lost-coverage and wrong-texture-row mutations both fail image assertions. All
+18 regression scripts and nine production object compilations pass.
+
+Primary constraints remain ST-013-R3 pp.20, 51–56 (progression/termination/END);
+geometry reuses the integer recurrence cross-checked against pinned Ymir steppers,
+not imported renderer/scheduler code. A slice processes up to 16 raster positions
+and their paired coverage dots (potentially 32 writes). This is nominal timing,
+not measured bus arbitration or single-dot visibility. **Normal/scaled sprites
+remain atomic**. Active-display erase, exact timing, preclip/degenerate cases and
+linked BIOS/game/actual save-manager acceptance remain unfinished. Older progress
+entries below describe their checkpoints, not the current primitive coverage.
+
+## Interruptible VDP1 lines/polylines — 2026-09-14
+
+Added saved, bounded pixel slices for line/polyline commands, ENDR cancellation,
+fetch/END ordering, short-slice scheduling and restart handling. 748 image/lifecycle
+cases pass; unlimited-quantum and lost-cursor mutations fail. All 18 scripts/nine
+objects pass. Sprite/polygon paths remain atomic; bus timing, hardware pre-clipping
+and linked runtime/save-manager validation remain unfinished. Details are in
+`regtests/saturn/vdp1_completion.md` and `regtests/saturn/official_specs.md`.
+
+
+## Bounded VBlank erase — 2026-09-14
+
+Implemented Sega's field-limited erase capacity, captured erase ownership/data,
+blank-only rotation/HDTV erase scheduling and save/reset handling. All 12 primary
+table capacities and 154 erase/lifecycle cases pass; three mutation controls fail.
+All 18 scripts/nine objects pass. Erase commits coarsely at blank end; per-clock
+arbitration, active-display erase, interruptible primitives and real runtime/save
+validation remain unfinished. See `regtests/saturn/vdp1_completion.md` and
+`regtests/saturn/official_specs.md` for the current evidence and acceptance limits.
+
+
+## Framebuffer field control and register latches — 2026-09-14
+
+- Bank changes and automatic PTMR drawing now occur at screen field start
+  (VDP2 VBlank OUT), not VBlank IN. This is scanline-resolution scheduling,
+  not the final HBlank-edge timing model.
+- Manual erase is consumed in the next field without requiring a later manual
+  change. VBE erases the displayed bank after the first blank line and repeats
+  while enabled, even without a fresh FBCR change request. Erase is still atomic;
+  per-line/blank-budget truncation and scanout interaction remain unfinished.
+- TVM changes no longer reset bank ownership. DIE, DIL, EOS, erase data and erase
+  bounds latch on bank change, rather than being read live by rendering/erase.
+  New latch state is save-registered; postload reconstructs views without latching
+  pending writes. Zero-mask register accesses cannot submit requests.
+- Removed the obsolete deferred-clear flag and debug-dependent automatic start.
+
+Evidence: ST-013-R3 p.35 register switch timing, pp.38–40 manual modes and VBE,
+p.43 DIL; MiSTer a95b085 FRAME_CHANGE/VBOUT and DIE/DIL latches; Mednafen f0ee9d5
+field-boundary erase-parameter latching; Ymir 6d77996 VDP1SwapFramebuffer and its
+explicit pending-latch TODO. No wholesale reference code was imported.
+
+Tests execute production scanline, register-write, bank-change and erase helpers
+through two multi-field sequences, one per bank. They cover no-op writes,
+manual erase without a later swap, one-shot requests, persistent VBE, automatic
+start phase, preserved ownership, and delayed DIE/EOS/erase settings. Wrong field
+phase and wrong erase latch mutations fail assertions. All 18 scripts/nine object
+compilations pass. No linked game/BIOS or actual save-manager round trip is claimed.
+
+VDP1 remains incomplete: raster primitives are still atomic, so ENDR cannot stop
+inside one; pixel/VRAM arbitration, erase budgets, hardware pre-clipping and exact
+boundary timing still need implementation and runtime qualification.
+
+
+## Native line and quad coverage — 2026-09-14
+
+Lines/polylines now use a signed 13-bit integer line-error datapath with directional
+ties, inclusive endpoints and per-dot Gouraud progression. Polygon/distorted
+commands now walk A–D and B–C edges, resampling the shorter edge before drawing
+each connecting line. They no longer use the affine quad filler. Coverage pixels
+share the current texel/shade and can blend the destination again; they are not
+filtered antialiasing. Distorted spans now use integer texture stepping, HSS/EOS,
+per-source-row END limits and per-edge/per-span Gouraud colors. Safe host-only
+out-of-bounds rejection retains a margin for coverage pixels; this is not a model
+of the hardware pre-clipping optimization.
+
+Validation adds 2,500 complete line images (all small octants, mesh, clipping and
+Gouraud) and 3,840 complete quad images (regular/skewed/reversed/twisted/degenerate
+geometry, texture flips, HSS/EOS, END, clipping modes, mesh, translucency and
+Gouraud). The quad tests execute the actual distorted-command entry point. The
+pixel oracles use closed-form geometric rounding rather than the implementation's
+iterative edge/line accumulators. Removing coverage pixels or changing edge phase
+fails assertions; line direction and vertex-pair controls also fail. Full 18-script/
+nine-object validation passes, with no linked BIOS/game or real save/load run.
+
+Primary: ST-013 §§7.6–7.9 (distortion, polygons, line/polyline semantics), §§6.3/6.8
+(texture/color controls and Gouraud tables). Pinned Ymir 6d77996 line/edge/quad
+steppers and per-edge gradients cross-check the implemented integer model;
+MiSTer a95b085 supplies a separate texture-error datapath cross-check. This is
+not a claim that all their precision/timing choices agree with hardware.
+
+Still unfinished: interruptible pixel execution, pixel/VRAM timing, automatic
+swap/erase/transfer timing and latch qualification, hardware pre-clipping behavior,
+scaled/normal Gouraud precision qualification, and linked runtime/save-manager
+acceptance. The older affine filler survives only as the explicitly unqualified
+zero-height scaled-pattern fallback; its remaining presence is not the normal
+polygon/distorted rendering path.
+
+
+## Scaled integer texture stepping / HSS / EOS — 2026-09-14
+
+Scaled sprites now use a dedicated integer texture walker instead of the affine
+quad sampler. A closed-form error accumulator preserves reduction/enlargement
+and directional tie behavior; horizontal coordinates are computed once and reused
+across rows. HSS decimates the source before sampling and EOS selects original
+source-X parity, independently of texture flips and geometry direction. Clipping
+does not restart the sampling phase. Source-row END limits still apply outside
+HSS reduction, including HSS-enabled enlargement. Zero-width patterns repeat their
+first texel; the zero-height legacy fallback remains explicitly unqualified.
+
+Added 593,920 recurrence/pixel cases covering both directions, source/destination
+sizes, vertical scaling, all six texture modes, ECD, HSS/EOS, clipping, 16-bit and
+both packed 8-bit layouts. The iterative oracle is separate from the production
+closed-form calculation. Wrong texture phase and ignored EOS mutations fail.
+All 18 scripts/nine objects pass; no linked runtime or save-manager proof.
+
+Primary: ST-013 pp.81–82 (HSS/EOS and sampling diagrams), p.86 HSS/ECD table.
+MiSTer a95b085 TEXT_ERROR and Ymir 6d77996 TextureStepper agree on the tested
+integer recurrence. **Disagreement:** primary p.86 says HSS-reduced end codes
+become colors even with ECD clear; the inspected Ymir/MiSTer pixel gates suppress
+them. This implementation follows the primary table, not a claimed three-way
+agreement. Sega recommends ECD=1 for HSS reduction. The blanket HSS wording on
+pp.81/159 also conflicts with the enlargement row of that table.
+
+Distorted sprites still use the affine fallback: their HSS/EOS/edge stepping,
+polygon/line coverage, precise Gouraud interpolation, pre-clipping, automatic
+swap/erase timing and a resumable pixel pipeline remain unfinished.
+
+
+## Scaled traversal and line shading follow-up — 2026-09-14
+
+- Scaled-sprite endpoints now decode signed fields before anchor arithmetic,
+  preserving independent geometry inversion and texture direction. Zero extents
+  describe one dot; odd centered extents retain the correct endpoint distance.
+- The affine scaled/distorted path now applies second-END source-row termination
+  with HSS disabled. Each referenced row is scanned at most once per primitive;
+  reduction cannot skip the terminators and repeated enlarged samples cannot
+  count one terminator twice. Both span paths share the same implementation.
+  This does **not** implement HSS/EOS decimation or hardware edge walking.
+- Lines now initialize their own Gouraud data using A/B only. Every polyline
+  edge initializes the appropriate pair (A/B, B/C, C/D, D/A), instead of using
+  stale data for the first three edges and a mis-mapped table for the last.
+- New tests: 12,000 scaled endpoint/anchor/direction cases; 2,924 source-END and
+  actual affine-span cases; 160 line/polyline Gouraud endpoint cases using the
+  production table reader and shading setup. Three new mutations fail assertions.
+  The complete 18-script/nine-object validator passes; no linked runtime proof.
+
+Evidence: ST-013-R3 pp.86–87 (horizontal source END), pp.120–123 (scaled
+coordinates/anchors and zero extents), §§7.8–7.9 (polyline vertex colors, line A/B
+colors only); pinned Ymir renderer scaled endpoints and per-edge Gouraud pairs.
+The p.86 HSS/ECD table distinguishes enlargement from reduction, unlike the
+blanket HSS wording on p.159. HSS is explicitly left to a proper fetch stepper,
+not guessed from the presence of the flag. Affine edge coverage, interpolation
+precision, pre-clipping, pixel timing and real save/load remain unfinished.
+
+
+## Rotation, interlace and delayed ENDR — 2026-09-14
+
+Implemented six-parameter-A sprite framebuffer readout in both rotated formats,
+with signed Q9 accumulation, parameter-table masking/VRAM-size selection and
+transparent out-of-plane samples. All three sprite compositor paths use it.
+Double-interlace drawing selects the latched DIL parity and halves physical Y;
+full-frame display weaves completed-field snapshots, not a bank being redrawn.
+Physical banks are now 256 KiB, including CPU-window mirroring, physical erase
+rows and wrapped line views. Both physical payloads and field snapshots are
+save-registered. **Correction:** the old framebuffer payloads were not registered;
+previous pointer/postload tests did not establish framebuffer-content saving.
+
+ENDR now schedules termination after 30 modeled SH-2/VDP1 clocks instead of
+aborting immediately. Reset/restart/END cancels pending termination. Primitives
+remain atomic: this is not a completed pixel pipeline or measured bus timing.
+
+Validation: 18 scripts/nine objects pass; VDP1 has 92,420 color/shading, 2,689
+normal-END, 974 rotation, 32,832 command, 532 framebuffer, 24,500 clipping cases
+and two multi-step interlace lifecycle sequences (16-bit/high-resolution 8-bit).
+Rotation/parameter-B mutations and all four previous render mutations fail
+assertions. Field tests cover DIL latching, parity, snapshots during redraw,
+postload pointer reconstruction, physical erase rows and CPU mirroring.
+No linked BIOS/game run or actual save-manager round trip is claimed.
+
+Primary: ST-013-R3 pp.15,43,47–51; ST-58-R2 pp.159–160. Cross-checks: pinned
+MiSTer a95b085 (rotation datapath/physical banks), Ymir 6d77996 (affine readout),
+Mednafen f0ee9d5 (field parity/physical Y). MiSTer confirms Q9 truncation before
+accumulation; Ymir's Q10 differs. Rotation-8 byte selection follows transformed
+source X; MiSTer's output-X byte mux remains an unresolved reference difference.
+
+
+## VDP1 rendering/status audit — 2026-09-14
+
+Implemented destination-preserving MON, coordinate-based Gouraud evaluation
+(which does not stall on skipped mesh/transparent/clipped dots), explicit
+component-wise color calculations, bounded color-lookup fetches, and two-end-code
+row termination in the production normal-sprite loop. BEF now latches on an actual
+framebuffer change rather than every VBlank in manual mode. This does not complete
+scaled/distorted texture traversal, interlace, rotated scanout or pixel timing.
+
+Tests pass: 92,420 color/shading cases, 2,689 normal-texture/boundary cases,
+32,816 command/lifecycle cases, 532 framebuffer cases and 24,500 clipping cases.
+Four independent render mutations (MON source replacement, dropped odd carry,
+fixed Gouraud coordinate, disabled second-END termination) fail their assertions.
+All 18 scripts/nine objects pass. Shader tests do not establish polygon edge or
+interpolation precision on silicon; callbacks use recording timer/CPU endpoints.
+Full chip completion and BIOS/game/runtime/save-manager proof are not claimed.
+
+
+## VDP1 sequencer and packed framebuffer implementation — 2026-09-14
+
+Replaced whole-list synchronous dispatch with saved, timer-driven command
+execution. Lists no longer stop at a host iteration cap; CPU edits to looping
+lists are seen on subsequent fetches. ENDR cancels at command boundaries, reset
+cancels pending work, and a new PTMR start restarts at command zero. COPR tracks
+the fetched command; LOPR latches on framebuffer changes; read-only status
+register writes are ignored. Legal jump/skip/CALL/RETURN controls are tested;
+nested CALLs and main-routine RETURNs are prohibited by Sega, not legal features.
+
+Packed 8-bit drawing now shares CPU-visible words with scanout and erase, with
+neighbor-byte preservation and correct word stride for high-resolution and
+rotation-8 storage. All five pixel writers use shared pixel accessors. Postload
+rebuilds line pointers without resetting the restored drawing bank/geometry.
+
+18 scripts/nine object compilations pass. VDP1 coverage is now 32,814 command/
+lifecycle, 532 framebuffer and 24,500 clipping scenarios. Pre-sequencer and
+pre-packed-rendering substitutions fail independently, as do the older baseline
+controls. Timer/CPU/raster endpoints and copied state are not runtime proof.
+Primitive rendering remains synchronous; the sequencer uses a 16-cycle fetch
+allowance without pixel/bus costs. ENDR's ~30-clock pipeline behavior, interlace
+fields, rotated VDP2 readout, texture end-code traversal and raster/color accuracy
+remain open. See `regtests/saturn/vdp1_completion.md` for the updated audit.
+
+
+## VDP1 implementation pass — 2026-09-14
+
+Fixed END-bit recognition, VRAM command wrap, completion-driven SCU IRQs (removed
+periodic scanline IRQ workaround), 8-bit CPU framebuffer byte lanes, and outside
+user clipping across fast/generic pixel writers. 32,775 command, 288 framebuffer
+and 24,500 clipping cases pass; three independent baseline substitutions fail.
+All 18 scripts/nine object builds pass. This is **not complete VDP1**: synchronous
+drawing, ENDR, exact draw/erase/swap timing, BEF/pointer details, full framebuffer
+formats, rasterization/texture/color edge cases and real save/load/runtime proof
+remain. See `regtests/saturn/vdp1_completion.md` for evidence and acceptance gates.
+
+
+Goal: implement missing behavior that can prevent games from starting or progressing,
+with reproducible failures, primary-document evidence and regression tests. This is
+not a claim to enumerate every remaining compatibility issue. No particular game
+has been shown fixed by the changes below in a linked runtime yet.
+
+## Delivery requirements
+
+1. Reproduce the failure in the real emulator when an executable/image is available,
+   or identify a concrete missing control with a standalone regression.
+2. Compare Sega documentation and pinned reference implementations; document any
+   disagreements rather than choosing whichever implementation is convenient.
+3. Implement the smallest general fix, without title-specific bypasses or invented
+   successful responses. Preserve meaningful error conditions.
+4. Run regressions/object checks, then link/configuration/BIOS/game/save-load checks
+   where available. Keep compile/test evidence separate from runtime claims.
+5. Push source, tests and documentation on the session branch.
+
+## Four-priority pass — 2026-09-14
+
+This is a bounded implementation in all four requested areas, **not completion
+of all Saturn compatibility work and not a demonstrated game fix**.
+
+1. **DMA width/fixed source:** buffer 32-bit source reads and deliver halfwords,
+   advancing the source longword base by 0 or 4, rather than repeating one
+   halfword for fixed-source fills. Save/reset/invalidate the buffer state at
+   starts, descriptor changes and forced stop. 1,152 new ASan/UBSan cases cover
+   all three channels, both ordinary writers, offsets, strides and continuation.
+   The old implementation fails the source-read-count assertion. Odd transfer
+   counts, destination alignment and detailed B-Bus timing remain unresolved;
+   the special CD DMA path is unchanged.
+2. **CD ports/completion:** inactive/wrong-direction long reads no longer throw
+   emulator-fatal errors. Null partitions, array indices, invalid block sizes
+   and remaining longword space are checked. Get-and-Delete accounts for whole
+   deleted sectors even after a partial read, preserving block/index compaction.
+   Existing first-excess-read deletion timing is retained, but DataEnd still
+   receives the active command and signals EHST without deleting twice. DataEnd
+   invalidates both transfer interfaces, including GET/PUT. 336 sanitizer cases
+   pass. The existing all-ones idle/dummy value is not hardware-verified; partial
+   GET prefetch/count reporting, zero-data count/error semantics, command range
+   rejection and exact IRQ timing still need work. No successful payload is
+   fabricated by invalid port reads.
+3. **Reset/save-load/shared HALT:** Saturn/ST-V now OR independent SMPC, SCU
+   main/slave and SCU sound HALT ownership. Reset releases SCU-owned stalls
+   without releasing SMPC's halt. Driver reset clears ownership; three latches
+   are saved and a postload callback reapplies the combined levels. 1,296 event
+   sequences pass. DMA/HALT snapshot tests copy stand-in state and statically
+   check registrations; they do **not** exercise MAME's save manager. CD save
+   coverage remains incomplete (sector payloads, filter/partition pointers,
+   directory and MPEG state). The ISO directory parser also needs bounds and
+   subdirectory-length repairs; no untested large serialization rewrite was made.
+4. **SMPC/dual CPU:** CONTINUE detects either reversal of IREG0 bit 7, not a
+   high level. BREAK cancels queued continuation, acknowledges SF and prevents
+   stale callbacks from producing data/IRQs. IOSEL/EXLE reset to zero. 1,173
+   sanitizer cases pass; old handlers fail the handshake assertion. Simultaneous
+   CONTINUE/BREAK is excluded as prohibited by Sega. The existing 700us delay
+   is unchanged, not newly validated; VBlank timeout remains open. DCC width
+   filtering and synchronized FRT delivery were inspected, not retimed; paired
+   SH-2/DRC runtime traces are still required.
+
+Validation: **17 regression scripts and nine object compilations pass**. The
+ninth object is SMPC; adding it exposed and fixed its `emu.h` include ordering.
+No linked executable, MAME save/load round trip or BIOS/game boot was validated;
+the SDL/pkg-config dependency blocker remains. Source, tests and evidence are
+kept in Git; downloaded PDFs and temporary build products stay outside it.
+
+## Previous confirmed implementation gap addressed
+
+**SCU DMA forced stop — implemented, standalone-tested.** DSTP at $05FE0060 was
+unmapped. A masked write of bit 0 now cancels all three CPU-programmed DMA channels,
+including waiting/background transfers and held restarts, without manufacturing
+completion IRQs or changing programmed registers/enables. Tests cover 2,321 cases,
+including restarting after cancellation. Sega ST-097 §3.2 and Ymir/Mednafen support
+this control. Exact stop latency and actual game impact still need runtime tests.
+
+## Prioritized remaining work
+
+| Priority | Candidate / evidence | Required next evidence or implementation |
+|---|---|---|
+| P0 | Runtime validation is unavailable: pkg-config and SDL development files remain missing; previous package downloads failed. | Build on an environment with the documented dependencies, link the focused executable, run `-validate`, then BIOS boot and a representative Saturn/ST-V smoke matrix. Nine standalone objects are not a substitute. |
+| P1 | DMA B-Bus read width/fixed-source handling: ordinary writers now buffer longword reads, with 1,152 new cases; odd counts/alignment remain open. | Validate source readback, odd counts and bus-specific destination alignment against hardware/runtime traces. Some configurations are prohibited by Sega and must not be treated as valid requirements. |
+| P1 | CD data-port failure path: invalid long reads are nonfatal and bounded; exact idle/dummy value is not verified. | Reproduce which commands/reads reach it. Establish real idle/overread/rejection behavior before replacing the exception; do not simply return fake success. Audit transfer bounds and completion state alongside this. |
+| P1 | Pending work across reset/save-load and shared CPU halt lines. | Boot/reset traces and save/load round trips during direct/indirect/held DMA. Existing halt callbacks are an approximation and interact with SMPC; do not unconditionally release another component's halted CPU. |
+| P1 | CD command/sector-transfer completion and timing TODOs. | Reproduce load/progression failures, compare documented command/status sequences and test complete transfers. Compilation of CD components does not validate protocol behavior. |
+| P2 | DCC/SMPC handshakes, input/control timing and slave CPU synchronization. | Paired CPU traces and representative software; current DCC object compilation is not behavioral coverage. |
+| P2 | VDP1 draw-completion/erase timing, VDP2 combinations. | Prioritize status/interrupt waits that stall software, then graphical defects. Do not equate a visual TODO with a game-start blocker. |
+| P2 | External interrupt acknowledgement and sampling edge cases. | Hardware/ref comparison plus CD/runtime traces; IMS polarity is fixed, but the whole external acknowledgement bus is not validated. |
+| P3 | MPEG cartridge-specific support. | Relevant hardware documentation, firmware and reproducible titles. This is not required for ordinary non-MPEG Saturn software. |
+
+The CD block's disabled low-level SH-1 is not by itself proof that all games require
+an LLE rewrite: CD HLE is the existing execution path. Likewise, unimplemented
+refresh timing is not automatically a demonstrated boot blocker.
+
+## Runtime test matrix to establish
+
+- Saturn BIOS boot, reset and CD menu; ST-V BIOS startup.
+- Supplied, legally available representative titles covering disc loading, CD audio,
+  SCU DSP use, DMA streaming, slave-CPU synchronization and ST-V protection paths.
+- For each failure: set name/region, image identification, reproducible steps, log,
+  interpreter/DRC setting, first divergent event and a narrowly justified fix.
+- Reset/save-load during transfer, progression beyond menus and bounded runs with
+  no debugger/fatal stops. Frame/audio correctness and performance are separate checks.
+
+**Current validation:** thirteen regression scripts and eight object compilations
+pass. No linked executable, BIOS boot, game progression or hardware measurement
+has been established. Completion of “all game blockers” cannot be certified yet.
+
+
+### After Burner II masked DMA completion (29b70a92 capture)
+
+DMA0 has completed; IST=289f holds DMA0-end pending while IMS=bfff masks it.
+The CPU waits inside an interrupt callback. Do not remove the documented
+acknowledgement mask reset or force the game flag. The no-rebuild sound probe
+now adds bounded register-write/vector-read history and BIOS mask/dispatch
+RAM snapshots to distinguish mask restoration from a later acknowledgement.
+Sound startup is fixed; game boot remains unverified. See
+`regtests/saturn/afterburner2_boot_analysis.md` for evidence and trace caveats.
+
+
+### After Burner II / SH DRC delay-slot IRQ correction (2f84a960 evidence)
+
+The new trace shows VBlank delivery after software has masked all interrupts
+again. The shared SH DRC discarded `checkints` set by an SR load in a branch
+delay slot; Saturn BIOS ChangeSCUMask restores SR in the RTS delay slot.
+Propagate that compiler state so the caller checks interrupts after the slot.
+SCU latch/mask reset and DMA timing remain unchanged (Ymir/MiSTer corroborate
+the latch). Regression: 72 cases pass, old-state mutation fails; all 22 Python
+scripts and eleven objects pass, including the modified SH core. This is a
+concrete code correction, not confirmed game-boot acceptance. A rebuilt
+executable is now required; the existing probe needs no further change.
+See `regtests/saturn/afterburner2_boot_analysis.md` for ordering and limits.

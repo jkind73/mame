@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-xrku8one/test.cpp:39: void scsp_device::verify(u16, u16): Assertion `read(0x420/2)==sound' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 97, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-xrku8one/test']' died with <Signals.SIGABRT: 6>.

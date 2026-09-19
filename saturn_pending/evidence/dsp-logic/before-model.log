@@ -1,0 +1,7 @@
+test: /tmp/scudsp-alu-txrov_vn/test.cpp:337: void check(unsigned int, uint64_t, uint64_t, bool): Assertion `d.m_flags==flags' failed.
+Traceback (most recent call last):
+  File "/home/user/logic-probe/test_scudsp_alu.py", line 108, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-alu-txrov_vn/test']' died with <Signals.SIGABRT: 6>.

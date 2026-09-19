@@ -1,0 +1,9 @@
+SMPC_MULTITAP armed
+SMPC_MULTITAP case=1 bytes=38 pages=2 PASS
+SMPC_MULTITAP case=2 bytes=38 pages=2 PASS
+SMPC_MULTITAP case=3 bytes=19 pages=1 PASS
+SMPC_MULTITAP case=4 bytes=19 pages=1 PASS
+SMPC_MULTITAP case=5 bytes=19 pages=1 PASS
+SMPC_MULTITAP case=6 bytes=19 pages=1 PASS
+SMPC_MULTITAP PASS cases=6
+Average speed: 128.23% (2 seconds)

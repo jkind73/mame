@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-it9fh7rb/test.cpp:55: u16 scsp_device::read_word(u32): Assertion `a<=0xffffe&&!(a&1)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 400, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-it9fh7rb/test']' died with <Signals.SIGABRT: 6>.

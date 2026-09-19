@@ -1,0 +1,7 @@
+DSP_PARALLEL_SAVE armed
+DSP_PARALLEL_SAVE observed partial loop
+DSP_PARALLEL_SAVE saved
+DSP_PARALLEL_SAVE mutated
+DSP_PARALLEL_SAVE loaded
+DSP_PARALLEL_SAVE PASS words=64 replay=exact
+Average speed: 242.12% (2 seconds)

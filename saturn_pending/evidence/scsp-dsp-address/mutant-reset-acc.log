@@ -1,0 +1,7 @@
+test: /tmp/scsp-dsp-skfelhr9/test.cpp:377: int main(): Assertion `d.ACC==expected&&d.EFREG[0]==effect(entry)&&d.EFREG[1]==123' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_dsp.py", line 106, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-dsp-skfelhr9/test']' died with <Signals.SIGABRT: 6>.

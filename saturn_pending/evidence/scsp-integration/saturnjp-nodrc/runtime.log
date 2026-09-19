@@ -1,0 +1,5 @@
+SCSP_INT armed
+SCSP_INT ist_before=00002804 ist_after=00003804
+SCSP_INT masked counter=5 scipd=05c0
+SCSP_INT PASS cases=84
+Average speed: 126.42% (3 seconds)

@@ -1,0 +1,36 @@
+{
+  "date": "2026-09-16",
+  "production_source_commit": "03a20495856ed54fc2881a5610ad64ebb658b79f",
+  "test_sha256": "b6f7d5bb6e216dd93b67841bcf89cef8aac6da89c8dd4d966464f9ac11921426",
+  "regression_scripts": 47,
+  "stateful_writes": 4096,
+  "mirror_only_changes": 234,
+  "redundant_writes": 790,
+  "existing_cram_cases": 9216,
+  "coefficient_bank_cases": 40960,
+  "compiler_instrumentation": [
+    "ASan",
+    "UBSan"
+  ],
+  "mutations": {
+    "mirror-preserve": {
+      "result": "compiled; C++ assertion rejected",
+      "log_sha256": "a374b8cb020ca1a201d7780c01b52dd9eb5547489565c1be5eb2a2df2a8dbf1e"
+    },
+    "redundant-preserve": {
+      "result": "compiled; C++ assertion rejected",
+      "log_sha256": "1783e3570926a6c87dda6f1cda164cf6c9c6a4375126ad3ccc42a43224aac57a"
+    },
+    "late-preserve": {
+      "result": "compiled; C++ assertion rejected",
+      "log_sha256": "a264612d15e24f7a92bc582c1649060fe40828cc44465f8e3346e177acba7bf4"
+    }
+  },
+  "limits": [
+    "Extracted production functions with recording callbacks, not linked MAME execution.",
+    "Mode transitions explicitly rebuild palettes; RAMCTL dispatch is not exercised.",
+    "CPU operations are legal word/longword lanes; byte-array oracle does not imply legal byte bus writes.",
+    "No fresh linked executable, BIOS replay, -validate or hardware timing acceptance after workspace restoration."
+  ],
+  "suite_log_sha256": "afb31cfb1ce2be6fb09722dd09224cc6564f2635dd0428fbe44fba82684df514"
+}

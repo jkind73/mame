@@ -1,0 +1,1078 @@
+DSP_CBUS armed
+DSP_CBUS case=1 PASS
+DSP_CBUS case=2 PASS
+DSP_CBUS case=3 PASS
+DSP_CBUS case=4 PASS
+DSP_CBUS case=5 PASS
+DSP_CBUS case=6 PASS
+DSP_CBUS case=7 PASS
+DSP_CBUS case=8 PASS
+DSP_CBUS case=9 PASS
+DSP_CBUS case=10 PASS
+DSP_CBUS case=11 PASS
+DSP_CBUS case=12 PASS
+DSP_CBUS case=13 PASS
+DSP_CBUS case=14 PASS
+DSP_CBUS case=15 PASS
+DSP_CBUS case=16 PASS
+DSP_CBUS case=17 PASS
+DSP_CBUS case=18 FAIL errors=2
+DSP_CBUS case=19 FAIL errors=2
+DSP_CBUS case=20 FAIL errors=2
+DSP_CBUS case=21 PASS
+DSP_CBUS case=22 FAIL errors=2
+DSP_CBUS case=23 FAIL errors=2
+DSP_CBUS case=24 FAIL errors=2
+DSP_CBUS case=25 PASS
+DSP_CBUS case=26 FAIL errors=2
+DSP_CBUS case=27 FAIL errors=2
+DSP_CBUS case=28 FAIL errors=2
+DSP_CBUS case=29 PASS
+DSP_CBUS case=30 FAIL errors=2
+DSP_CBUS case=31 FAIL errors=2
+DSP_CBUS case=32 FAIL errors=2
+DSP_CBUS case=33 PASS
+DSP_CBUS case=34 PASS
+DSP_CBUS case=35 PASS
+DSP_CBUS case=36 PASS
+DSP_CBUS case=37 PASS
+DSP_CBUS case=38 PASS
+DSP_CBUS case=39 PASS
+DSP_CBUS case=40 PASS
+DSP_CBUS case=41 PASS
+DSP_CBUS case=42 PASS
+DSP_CBUS case=43 PASS
+DSP_CBUS case=44 PASS
+DSP_CBUS case=45 PASS
+DSP_CBUS case=46 PASS
+DSP_CBUS case=47 PASS
+DSP_CBUS case=48 PASS
+DSP_CBUS case=49 FAIL errors=1
+DSP_CBUS case=50 FAIL errors=2
+DSP_CBUS case=51 FAIL errors=2
+DSP_CBUS case=52 FAIL errors=2
+DSP_CBUS case=53 PASS
+DSP_CBUS case=54 FAIL errors=2
+DSP_CBUS case=55 FAIL errors=2
+DSP_CBUS case=56 FAIL errors=2
+DSP_CBUS case=57 FAIL errors=1
+DSP_CBUS case=58 FAIL errors=2
+DSP_CBUS case=59 FAIL errors=2
+DSP_CBUS case=60 FAIL errors=2
+DSP_CBUS case=61 PASS
+DSP_CBUS case=62 FAIL errors=2
+DSP_CBUS case=63 FAIL errors=2
+DSP_CBUS case=64 FAIL errors=2
+DSP_CBUS case=65 PASS
+DSP_CBUS case=66 PASS
+DSP_CBUS case=67 PASS
+DSP_CBUS case=68 PASS
+DSP_CBUS case=69 PASS
+DSP_CBUS case=70 PASS
+DSP_CBUS case=71 PASS
+DSP_CBUS case=72 PASS
+DSP_CBUS case=73 FAIL errors=1
+DSP_CBUS case=74 FAIL errors=2
+DSP_CBUS case=75 FAIL errors=2
+DSP_CBUS case=76 FAIL errors=2
+DSP_CBUS case=77 PASS
+DSP_CBUS case=78 FAIL errors=2
+DSP_CBUS case=79 FAIL errors=2
+DSP_CBUS case=80 FAIL errors=2
+DSP_CBUS case=81 FAIL errors=1
+DSP_CBUS case=82 FAIL errors=2
+DSP_CBUS case=83 FAIL errors=2
+DSP_CBUS case=84 FAIL errors=2
+DSP_CBUS case=85 PASS
+DSP_CBUS case=86 FAIL errors=2
+DSP_CBUS case=87 FAIL errors=2
+DSP_CBUS case=88 FAIL errors=2
+DSP_CBUS case=89 FAIL errors=1
+DSP_CBUS case=90 FAIL errors=2
+DSP_CBUS case=91 FAIL errors=2
+DSP_CBUS case=92 FAIL errors=2
+DSP_CBUS case=93 PASS
+DSP_CBUS case=94 FAIL errors=2
+DSP_CBUS case=95 FAIL errors=2
+DSP_CBUS case=96 FAIL errors=2
+DSP_CBUS case=97 FAIL errors=1
+DSP_CBUS case=98 FAIL errors=2
+DSP_CBUS case=99 FAIL errors=2
+DSP_CBUS case=100 FAIL errors=2
+DSP_CBUS case=101 PASS
+DSP_CBUS case=102 FAIL errors=2
+DSP_CBUS case=103 FAIL errors=2
+DSP_CBUS case=104 FAIL errors=2
+DSP_CBUS case=105 FAIL errors=1
+DSP_CBUS case=106 FAIL errors=2
+DSP_CBUS case=107 FAIL errors=2
+DSP_CBUS case=108 FAIL errors=2
+DSP_CBUS case=109 PASS
+DSP_CBUS case=110 FAIL errors=2
+DSP_CBUS case=111 FAIL errors=2
+DSP_CBUS case=112 FAIL errors=2
+DSP_CBUS case=113 FAIL errors=1
+DSP_CBUS case=114 FAIL errors=2
+DSP_CBUS case=115 FAIL errors=2
+DSP_CBUS case=116 FAIL errors=2
+DSP_CBUS case=117 PASS
+DSP_CBUS case=118 FAIL errors=2
+DSP_CBUS case=119 FAIL errors=2
+DSP_CBUS case=120 FAIL errors=2
+DSP_CBUS case=121 FAIL errors=1
+DSP_CBUS case=122 FAIL errors=2
+DSP_CBUS case=123 FAIL errors=2
+DSP_CBUS case=124 FAIL errors=2
+DSP_CBUS case=125 PASS
+DSP_CBUS case=126 FAIL errors=2
+DSP_CBUS case=127 FAIL errors=2
+DSP_CBUS case=128 FAIL errors=2
+DSP_CBUS case=129 PASS
+DSP_CBUS case=130 PASS
+DSP_CBUS case=131 PASS
+DSP_CBUS case=132 PASS
+DSP_CBUS case=133 PASS
+DSP_CBUS case=134 PASS
+DSP_CBUS case=135 PASS
+DSP_CBUS case=136 PASS
+DSP_CBUS case=137 PASS
+DSP_CBUS case=138 PASS
+DSP_CBUS case=139 PASS
+DSP_CBUS case=140 PASS
+DSP_CBUS case=141 PASS
+DSP_CBUS case=142 PASS
+DSP_CBUS case=143 PASS
+DSP_CBUS case=144 PASS
+DSP_CBUS case=145 PASS
+DSP_CBUS case=146 FAIL errors=2
+DSP_CBUS case=147 FAIL errors=2
+DSP_CBUS case=148 FAIL errors=2
+DSP_CBUS case=149 PASS
+DSP_CBUS case=150 FAIL errors=2
+DSP_CBUS case=151 FAIL errors=2
+DSP_CBUS case=152 FAIL errors=2
+DSP_CBUS case=153 PASS
+DSP_CBUS case=154 FAIL errors=2
+DSP_CBUS case=155 FAIL errors=2
+DSP_CBUS case=156 FAIL errors=2
+DSP_CBUS case=157 PASS
+DSP_CBUS case=158 FAIL errors=2
+DSP_CBUS case=159 FAIL errors=2
+DSP_CBUS case=160 FAIL errors=2
+DSP_CBUS case=161 PASS
+DSP_CBUS case=162 PASS
+DSP_CBUS case=163 PASS
+DSP_CBUS case=164 PASS
+DSP_CBUS case=165 PASS
+DSP_CBUS case=166 PASS
+DSP_CBUS case=167 PASS
+DSP_CBUS case=168 PASS
+DSP_CBUS case=169 PASS
+DSP_CBUS case=170 PASS
+DSP_CBUS case=171 PASS
+DSP_CBUS case=172 PASS
+DSP_CBUS case=173 PASS
+DSP_CBUS case=174 PASS
+DSP_CBUS case=175 PASS
+DSP_CBUS case=176 PASS
+DSP_CBUS case=177 FAIL errors=1
+DSP_CBUS case=178 FAIL errors=2
+DSP_CBUS case=179 FAIL errors=2
+DSP_CBUS case=180 FAIL errors=2
+DSP_CBUS case=181 PASS
+DSP_CBUS case=182 FAIL errors=2
+DSP_CBUS case=183 FAIL errors=2
+DSP_CBUS case=184 FAIL errors=2
+DSP_CBUS case=185 FAIL errors=1
+DSP_CBUS case=186 FAIL errors=2
+DSP_CBUS case=187 FAIL errors=2
+DSP_CBUS case=188 FAIL errors=2
+DSP_CBUS case=189 PASS
+DSP_CBUS case=190 FAIL errors=2
+DSP_CBUS case=191 FAIL errors=2
+DSP_CBUS case=192 FAIL errors=2
+DSP_CBUS case=193 PASS
+DSP_CBUS case=194 PASS
+DSP_CBUS case=195 PASS
+DSP_CBUS case=196 PASS
+DSP_CBUS case=197 PASS
+DSP_CBUS case=198 PASS
+DSP_CBUS case=199 PASS
+DSP_CBUS case=200 PASS
+DSP_CBUS case=201 FAIL errors=1
+DSP_CBUS case=202 FAIL errors=2
+DSP_CBUS case=203 FAIL errors=2
+DSP_CBUS case=204 FAIL errors=2
+DSP_CBUS case=205 PASS
+DSP_CBUS case=206 FAIL errors=2
+DSP_CBUS case=207 FAIL errors=2
+DSP_CBUS case=208 FAIL errors=2
+DSP_CBUS case=209 FAIL errors=1
+DSP_CBUS case=210 FAIL errors=2
+DSP_CBUS case=211 FAIL errors=2
+DSP_CBUS case=212 FAIL errors=2
+DSP_CBUS case=213 PASS
+DSP_CBUS case=214 FAIL errors=2
+DSP_CBUS case=215 FAIL errors=2
+DSP_CBUS case=216 FAIL errors=2
+DSP_CBUS case=217 FAIL errors=1
+DSP_CBUS case=218 FAIL errors=2
+DSP_CBUS case=219 FAIL errors=2
+DSP_CBUS case=220 FAIL errors=2
+DSP_CBUS case=221 PASS
+DSP_CBUS case=222 FAIL errors=2
+DSP_CBUS case=223 FAIL errors=2
+DSP_CBUS case=224 FAIL errors=2
+DSP_CBUS case=225 FAIL errors=1
+DSP_CBUS case=226 FAIL errors=2
+DSP_CBUS case=227 FAIL errors=2
+DSP_CBUS case=228 FAIL errors=2
+DSP_CBUS case=229 PASS
+DSP_CBUS case=230 FAIL errors=2
+DSP_CBUS case=231 FAIL errors=2
+DSP_CBUS case=232 FAIL errors=2
+DSP_CBUS case=233 FAIL errors=1
+DSP_CBUS case=234 FAIL errors=2
+DSP_CBUS case=235 FAIL errors=2
+DSP_CBUS case=236 FAIL errors=2
+DSP_CBUS case=237 PASS
+DSP_CBUS case=238 FAIL errors=2
+DSP_CBUS case=239 FAIL errors=2
+DSP_CBUS case=240 FAIL errors=2
+DSP_CBUS case=241 FAIL errors=1
+DSP_CBUS case=242 FAIL errors=2
+DSP_CBUS case=243 FAIL errors=2
+DSP_CBUS case=244 FAIL errors=2
+DSP_CBUS case=245 PASS
+DSP_CBUS case=246 FAIL errors=2
+DSP_CBUS case=247 FAIL errors=2
+DSP_CBUS case=248 FAIL errors=2
+DSP_CBUS case=249 FAIL errors=1
+DSP_CBUS case=250 FAIL errors=2
+DSP_CBUS case=251 FAIL errors=2
+DSP_CBUS case=252 FAIL errors=2
+DSP_CBUS case=253 PASS
+DSP_CBUS case=254 FAIL errors=2
+DSP_CBUS case=255 FAIL errors=2
+DSP_CBUS case=256 FAIL errors=2
+DSP_CBUS case=257 PASS
+DSP_CBUS case=258 PASS
+DSP_CBUS case=259 PASS
+DSP_CBUS case=260 PASS
+DSP_CBUS case=261 PASS
+DSP_CBUS case=262 PASS
+DSP_CBUS case=263 PASS
+DSP_CBUS case=264 PASS
+DSP_CBUS case=265 PASS
+DSP_CBUS case=266 PASS
+DSP_CBUS case=267 PASS
+DSP_CBUS case=268 PASS
+DSP_CBUS case=269 PASS
+DSP_CBUS case=270 PASS
+DSP_CBUS case=271 PASS
+DSP_CBUS case=272 PASS
+DSP_CBUS case=273 PASS
+DSP_CBUS case=274 FAIL errors=2
+DSP_CBUS case=275 FAIL errors=2
+DSP_CBUS case=276 FAIL errors=2
+DSP_CBUS case=277 PASS
+DSP_CBUS case=278 FAIL errors=2
+DSP_CBUS case=279 FAIL errors=2
+DSP_CBUS case=280 FAIL errors=2
+DSP_CBUS case=281 PASS
+DSP_CBUS case=282 FAIL errors=2
+DSP_CBUS case=283 FAIL errors=2
+DSP_CBUS case=284 FAIL errors=2
+DSP_CBUS case=285 PASS
+DSP_CBUS case=286 FAIL errors=2
+DSP_CBUS case=287 FAIL errors=2
+DSP_CBUS case=288 FAIL errors=2
+DSP_CBUS case=289 PASS
+DSP_CBUS case=290 PASS
+DSP_CBUS case=291 PASS
+DSP_CBUS case=292 PASS
+DSP_CBUS case=293 PASS
+DSP_CBUS case=294 PASS
+DSP_CBUS case=295 PASS
+DSP_CBUS case=296 PASS
+DSP_CBUS case=297 PASS
+DSP_CBUS case=298 PASS
+DSP_CBUS case=299 PASS
+DSP_CBUS case=300 PASS
+DSP_CBUS case=301 PASS
+DSP_CBUS case=302 PASS
+DSP_CBUS case=303 PASS
+DSP_CBUS case=304 PASS
+DSP_CBUS case=305 FAIL errors=1
+DSP_CBUS case=306 FAIL errors=2
+DSP_CBUS case=307 FAIL errors=2
+DSP_CBUS case=308 FAIL errors=2
+DSP_CBUS case=309 PASS
+DSP_CBUS case=310 FAIL errors=2
+DSP_CBUS case=311 FAIL errors=2
+DSP_CBUS case=312 FAIL errors=2
+DSP_CBUS case=313 FAIL errors=1
+DSP_CBUS case=314 FAIL errors=2
+DSP_CBUS case=315 FAIL errors=2
+DSP_CBUS case=316 FAIL errors=2
+DSP_CBUS case=317 PASS
+DSP_CBUS case=318 FAIL errors=2
+DSP_CBUS case=319 FAIL errors=2
+DSP_CBUS case=320 FAIL errors=2
+DSP_CBUS case=321 PASS
+DSP_CBUS case=322 PASS
+DSP_CBUS case=323 PASS
+DSP_CBUS case=324 PASS
+DSP_CBUS case=325 PASS
+DSP_CBUS case=326 PASS
+DSP_CBUS case=327 PASS
+DSP_CBUS case=328 PASS
+DSP_CBUS case=329 FAIL errors=1
+DSP_CBUS case=330 FAIL errors=2
+DSP_CBUS case=331 FAIL errors=2
+DSP_CBUS case=332 FAIL errors=2
+DSP_CBUS case=333 PASS
+DSP_CBUS case=334 FAIL errors=2
+DSP_CBUS case=335 FAIL errors=2
+DSP_CBUS case=336 FAIL errors=2
+DSP_CBUS case=337 FAIL errors=1
+DSP_CBUS case=338 FAIL errors=2
+DSP_CBUS case=339 FAIL errors=2
+DSP_CBUS case=340 FAIL errors=2
+DSP_CBUS case=341 PASS
+DSP_CBUS case=342 FAIL errors=2
+DSP_CBUS case=343 FAIL errors=2
+DSP_CBUS case=344 FAIL errors=2
+DSP_CBUS case=345 FAIL errors=1
+DSP_CBUS case=346 FAIL errors=2
+DSP_CBUS case=347 FAIL errors=2
+DSP_CBUS case=348 FAIL errors=2
+DSP_CBUS case=349 PASS
+DSP_CBUS case=350 FAIL errors=2
+DSP_CBUS case=351 FAIL errors=2
+DSP_CBUS case=352 FAIL errors=2
+DSP_CBUS case=353 FAIL errors=1
+DSP_CBUS case=354 FAIL errors=2
+DSP_CBUS case=355 FAIL errors=2
+DSP_CBUS case=356 FAIL errors=2
+DSP_CBUS case=357 PASS
+DSP_CBUS case=358 FAIL errors=2
+DSP_CBUS case=359 FAIL errors=2
+DSP_CBUS case=360 FAIL errors=2
+DSP_CBUS case=361 FAIL errors=1
+DSP_CBUS case=362 FAIL errors=2
+DSP_CBUS case=363 FAIL errors=2
+DSP_CBUS case=364 FAIL errors=2
+DSP_CBUS case=365 PASS
+DSP_CBUS case=366 FAIL errors=2
+DSP_CBUS case=367 FAIL errors=2
+DSP_CBUS case=368 FAIL errors=2
+DSP_CBUS case=369 FAIL errors=1
+DSP_CBUS case=370 FAIL errors=2
+DSP_CBUS case=371 FAIL errors=2
+DSP_CBUS case=372 FAIL errors=2
+DSP_CBUS case=373 PASS
+DSP_CBUS case=374 FAIL errors=2
+DSP_CBUS case=375 FAIL errors=2
+DSP_CBUS case=376 FAIL errors=2
+DSP_CBUS case=377 FAIL errors=1
+DSP_CBUS case=378 FAIL errors=2
+DSP_CBUS case=379 FAIL errors=2
+DSP_CBUS case=380 FAIL errors=2
+DSP_CBUS case=381 PASS
+DSP_CBUS case=382 FAIL errors=2
+DSP_CBUS case=383 FAIL errors=2
+DSP_CBUS case=384 FAIL errors=2
+DSP_CBUS case=385 PASS
+DSP_CBUS case=386 PASS
+DSP_CBUS case=387 PASS
+DSP_CBUS case=388 PASS
+DSP_CBUS case=389 PASS
+DSP_CBUS case=390 PASS
+DSP_CBUS case=391 PASS
+DSP_CBUS case=392 PASS
+DSP_CBUS case=393 PASS
+DSP_CBUS case=394 PASS
+DSP_CBUS case=395 PASS
+DSP_CBUS case=396 PASS
+DSP_CBUS case=397 PASS
+DSP_CBUS case=398 PASS
+DSP_CBUS case=399 PASS
+DSP_CBUS case=400 PASS
+DSP_CBUS case=401 PASS
+DSP_CBUS case=402 FAIL errors=2
+DSP_CBUS case=403 FAIL errors=2
+DSP_CBUS case=404 FAIL errors=2
+DSP_CBUS case=405 PASS
+DSP_CBUS case=406 FAIL errors=2
+DSP_CBUS case=407 FAIL errors=2
+DSP_CBUS case=408 FAIL errors=2
+DSP_CBUS case=409 PASS
+DSP_CBUS case=410 FAIL errors=2
+DSP_CBUS case=411 FAIL errors=2
+DSP_CBUS case=412 FAIL errors=2
+DSP_CBUS case=413 PASS
+DSP_CBUS case=414 FAIL errors=2
+DSP_CBUS case=415 FAIL errors=2
+DSP_CBUS case=416 FAIL errors=2
+DSP_CBUS case=417 PASS
+DSP_CBUS case=418 PASS
+DSP_CBUS case=419 PASS
+DSP_CBUS case=420 PASS
+DSP_CBUS case=421 PASS
+DSP_CBUS case=422 PASS
+DSP_CBUS case=423 PASS
+DSP_CBUS case=424 PASS
+DSP_CBUS case=425 PASS
+DSP_CBUS case=426 PASS
+DSP_CBUS case=427 PASS
+DSP_CBUS case=428 PASS
+DSP_CBUS case=429 PASS
+DSP_CBUS case=430 PASS
+DSP_CBUS case=431 PASS
+DSP_CBUS case=432 PASS
+DSP_CBUS case=433 FAIL errors=1
+DSP_CBUS case=434 FAIL errors=2
+DSP_CBUS case=435 FAIL errors=2
+DSP_CBUS case=436 FAIL errors=2
+DSP_CBUS case=437 PASS
+DSP_CBUS case=438 FAIL errors=2
+DSP_CBUS case=439 FAIL errors=2
+DSP_CBUS case=440 FAIL errors=2
+DSP_CBUS case=441 FAIL errors=1
+DSP_CBUS case=442 FAIL errors=2
+DSP_CBUS case=443 FAIL errors=2
+DSP_CBUS case=444 FAIL errors=2
+DSP_CBUS case=445 PASS
+DSP_CBUS case=446 FAIL errors=2
+DSP_CBUS case=447 FAIL errors=2
+DSP_CBUS case=448 FAIL errors=2
+DSP_CBUS case=449 PASS
+DSP_CBUS case=450 PASS
+DSP_CBUS case=451 PASS
+DSP_CBUS case=452 PASS
+DSP_CBUS case=453 PASS
+DSP_CBUS case=454 PASS
+DSP_CBUS case=455 PASS
+DSP_CBUS case=456 PASS
+DSP_CBUS case=457 FAIL errors=1
+DSP_CBUS case=458 FAIL errors=2
+DSP_CBUS case=459 FAIL errors=2
+DSP_CBUS case=460 FAIL errors=2
+DSP_CBUS case=461 PASS
+DSP_CBUS case=462 FAIL errors=2
+DSP_CBUS case=463 FAIL errors=2
+DSP_CBUS case=464 FAIL errors=2
+DSP_CBUS case=465 FAIL errors=1
+DSP_CBUS case=466 FAIL errors=2
+DSP_CBUS case=467 FAIL errors=2
+DSP_CBUS case=468 FAIL errors=2
+DSP_CBUS case=469 PASS
+DSP_CBUS case=470 FAIL errors=2
+DSP_CBUS case=471 FAIL errors=2
+DSP_CBUS case=472 FAIL errors=2
+DSP_CBUS case=473 FAIL errors=1
+DSP_CBUS case=474 FAIL errors=2
+DSP_CBUS case=475 FAIL errors=2
+DSP_CBUS case=476 FAIL errors=2
+DSP_CBUS case=477 PASS
+DSP_CBUS case=478 FAIL errors=2
+DSP_CBUS case=479 FAIL errors=2
+DSP_CBUS case=480 FAIL errors=2
+DSP_CBUS case=481 FAIL errors=1
+DSP_CBUS case=482 FAIL errors=2
+DSP_CBUS case=483 FAIL errors=2
+DSP_CBUS case=484 FAIL errors=2
+DSP_CBUS case=485 PASS
+DSP_CBUS case=486 FAIL errors=2
+DSP_CBUS case=487 FAIL errors=2
+DSP_CBUS case=488 FAIL errors=2
+DSP_CBUS case=489 FAIL errors=1
+DSP_CBUS case=490 FAIL errors=2
+DSP_CBUS case=491 FAIL errors=2
+DSP_CBUS case=492 FAIL errors=2
+DSP_CBUS case=493 PASS
+DSP_CBUS case=494 FAIL errors=2
+DSP_CBUS case=495 FAIL errors=2
+DSP_CBUS case=496 FAIL errors=2
+DSP_CBUS case=497 FAIL errors=1
+DSP_CBUS case=498 FAIL errors=2
+DSP_CBUS case=499 FAIL errors=2
+DSP_CBUS case=500 FAIL errors=2
+DSP_CBUS case=501 PASS
+DSP_CBUS case=502 FAIL errors=2
+DSP_CBUS case=503 FAIL errors=2
+DSP_CBUS case=504 FAIL errors=2
+DSP_CBUS case=505 FAIL errors=1
+DSP_CBUS case=506 FAIL errors=2
+DSP_CBUS case=507 FAIL errors=2
+DSP_CBUS case=508 FAIL errors=2
+DSP_CBUS case=509 PASS
+DSP_CBUS case=510 FAIL errors=2
+DSP_CBUS case=511 FAIL errors=2
+DSP_CBUS case=512 FAIL errors=2
+DSP_CBUS FAIL image18 got=2 want=0
+DSP_CBUS FAIL continuation18 got=3 want=0
+DSP_CBUS FAIL image19 got=3 want=0
+DSP_CBUS FAIL continuation19 got=4 want=0
+DSP_CBUS FAIL image20 got=8 want=0
+DSP_CBUS FAIL continuation20 got=9 want=0
+DSP_CBUS FAIL image22 got=2 want=0
+DSP_CBUS FAIL continuation22 got=1 want=0
+DSP_CBUS FAIL image23 got=3 want=0
+DSP_CBUS FAIL continuation23 got=2 want=0
+DSP_CBUS FAIL image24 got=8 want=0
+DSP_CBUS FAIL continuation24 got=7 want=0
+DSP_CBUS FAIL image26 got=2 want=0
+DSP_CBUS FAIL continuation26 got=3 want=0
+DSP_CBUS FAIL image27 got=3 want=0
+DSP_CBUS FAIL continuation27 got=4 want=0
+DSP_CBUS FAIL image28 got=8 want=0
+DSP_CBUS FAIL continuation28 got=9 want=0
+DSP_CBUS FAIL image30 got=2 want=0
+DSP_CBUS FAIL continuation30 got=1 want=0
+DSP_CBUS FAIL image31 got=3 want=0
+DSP_CBUS FAIL continuation31 got=2 want=0
+DSP_CBUS FAIL image32 got=8 want=0
+DSP_CBUS FAIL continuation32 got=7 want=0
+DSP_CBUS FAIL continuation49 got=2 want=0
+DSP_CBUS FAIL image50 got=2 want=0
+DSP_CBUS FAIL continuation50 got=3 want=0
+DSP_CBUS FAIL image51 got=3 want=0
+DSP_CBUS FAIL continuation51 got=5 want=0
+DSP_CBUS FAIL image52 got=b want=0
+DSP_CBUS FAIL continuation52 got=c want=0
+DSP_CBUS FAIL image54 got=2 want=0
+DSP_CBUS FAIL continuation54 got=2 want=0
+DSP_CBUS FAIL image55 got=3 want=0
+DSP_CBUS FAIL continuation55 got=3 want=0
+DSP_CBUS FAIL image56 got=b want=0
+DSP_CBUS FAIL continuation56 got=b want=0
+DSP_CBUS FAIL continuation57 got=2 want=0
+DSP_CBUS FAIL image58 got=2 want=0
+DSP_CBUS FAIL continuation58 got=3 want=0
+DSP_CBUS FAIL image59 got=3 want=0
+DSP_CBUS FAIL continuation59 got=5 want=0
+DSP_CBUS FAIL image60 got=b want=0
+DSP_CBUS FAIL continuation60 got=c want=0
+DSP_CBUS FAIL image62 got=2 want=0
+DSP_CBUS FAIL continuation62 got=2 want=0
+DSP_CBUS FAIL image63 got=3 want=0
+DSP_CBUS FAIL continuation63 got=3 want=0
+DSP_CBUS FAIL image64 got=b want=0
+DSP_CBUS FAIL continuation64 got=b want=0
+DSP_CBUS FAIL continuation73 got=2 want=0
+DSP_CBUS FAIL image74 got=2 want=0
+DSP_CBUS FAIL continuation74 got=4 want=0
+DSP_CBUS FAIL image75 got=4 want=0
+DSP_CBUS FAIL continuation75 got=6 want=0
+DSP_CBUS FAIL image76 got=d want=0
+DSP_CBUS FAIL continuation76 got=e want=0
+DSP_CBUS FAIL image78 got=2 want=0
+DSP_CBUS FAIL continuation78 got=2 want=0
+DSP_CBUS FAIL image79 got=4 want=0
+DSP_CBUS FAIL continuation79 got=4 want=0
+DSP_CBUS FAIL image80 got=d want=0
+DSP_CBUS FAIL continuation80 got=d want=0
+DSP_CBUS FAIL continuation81 got=2 want=0
+DSP_CBUS FAIL image82 got=2 want=0
+DSP_CBUS FAIL continuation82 got=3 want=0
+DSP_CBUS FAIL image83 got=3 want=0
+DSP_CBUS FAIL continuation83 got=5 want=0
+DSP_CBUS FAIL image84 got=b want=0
+DSP_CBUS FAIL continuation84 got=c want=0
+DSP_CBUS FAIL image86 got=2 want=0
+DSP_CBUS FAIL continuation86 got=2 want=0
+DSP_CBUS FAIL image87 got=3 want=0
+DSP_CBUS FAIL continuation87 got=3 want=0
+DSP_CBUS FAIL image88 got=b want=0
+DSP_CBUS FAIL continuation88 got=b want=0
+DSP_CBUS FAIL continuation89 got=2 want=0
+DSP_CBUS FAIL image90 got=2 want=0
+DSP_CBUS FAIL continuation90 got=4 want=0
+DSP_CBUS FAIL image91 got=4 want=0
+DSP_CBUS FAIL continuation91 got=6 want=0
+DSP_CBUS FAIL image92 got=e want=0
+DSP_CBUS FAIL continuation92 got=f want=0
+DSP_CBUS FAIL image94 got=2 want=0
+DSP_CBUS FAIL continuation94 got=2 want=0
+DSP_CBUS FAIL image95 got=4 want=0
+DSP_CBUS FAIL continuation95 got=4 want=0
+DSP_CBUS FAIL image96 got=e want=0
+DSP_CBUS FAIL continuation96 got=e want=0
+DSP_CBUS FAIL continuation97 got=2 want=0
+DSP_CBUS FAIL image98 got=2 want=0
+DSP_CBUS FAIL continuation98 got=3 want=0
+DSP_CBUS FAIL image99 got=3 want=0
+DSP_CBUS FAIL continuation99 got=5 want=0
+DSP_CBUS FAIL image100 got=b want=0
+DSP_CBUS FAIL continuation100 got=c want=0
+DSP_CBUS FAIL image102 got=2 want=0
+DSP_CBUS FAIL continuation102 got=2 want=0
+DSP_CBUS FAIL image103 got=3 want=0
+DSP_CBUS FAIL continuation103 got=3 want=0
+DSP_CBUS FAIL image104 got=b want=0
+DSP_CBUS FAIL continuation104 got=b want=0
+DSP_CBUS FAIL continuation105 got=2 want=0
+DSP_CBUS FAIL image106 got=2 want=0
+DSP_CBUS FAIL continuation106 got=4 want=0
+DSP_CBUS FAIL image107 got=4 want=0
+DSP_CBUS FAIL continuation107 got=6 want=0
+DSP_CBUS FAIL image108 got=e want=0
+DSP_CBUS FAIL continuation108 got=10 want=0
+DSP_CBUS FAIL image110 got=2 want=0
+DSP_CBUS FAIL continuation110 got=2 want=0
+DSP_CBUS FAIL image111 got=4 want=0
+DSP_CBUS FAIL continuation111 got=4 want=0
+DSP_CBUS FAIL image112 got=e want=0
+DSP_CBUS FAIL continuation112 got=e want=0
+DSP_CBUS FAIL continuation113 got=2 want=0
+DSP_CBUS FAIL image114 got=2 want=0
+DSP_CBUS FAIL continuation114 got=3 want=0
+DSP_CBUS FAIL image115 got=3 want=0
+DSP_CBUS FAIL continuation115 got=5 want=0
+DSP_CBUS FAIL image116 got=b want=0
+DSP_CBUS FAIL continuation116 got=c want=0
+DSP_CBUS FAIL image118 got=2 want=0
+DSP_CBUS FAIL continuation118 got=2 want=0
+DSP_CBUS FAIL image119 got=3 want=0
+DSP_CBUS FAIL continuation119 got=3 want=0
+DSP_CBUS FAIL image120 got=b want=0
+DSP_CBUS FAIL continuation120 got=b want=0
+DSP_CBUS FAIL continuation121 got=2 want=0
+DSP_CBUS FAIL image122 got=2 want=0
+DSP_CBUS FAIL continuation122 got=4 want=0
+DSP_CBUS FAIL image123 got=4 want=0
+DSP_CBUS FAIL continuation123 got=6 want=0
+DSP_CBUS FAIL image124 got=e want=0
+DSP_CBUS FAIL continuation124 got=10 want=0
+DSP_CBUS FAIL image126 got=2 want=0
+DSP_CBUS FAIL continuation126 got=2 want=0
+DSP_CBUS FAIL image127 got=4 want=0
+DSP_CBUS FAIL continuation127 got=4 want=0
+DSP_CBUS FAIL image128 got=e want=0
+DSP_CBUS FAIL continuation128 got=e want=0
+DSP_CBUS FAIL image146 got=2 want=0
+DSP_CBUS FAIL continuation146 got=3 want=0
+DSP_CBUS FAIL image147 got=3 want=0
+DSP_CBUS FAIL continuation147 got=4 want=0
+DSP_CBUS FAIL image148 got=8 want=0
+DSP_CBUS FAIL continuation148 got=9 want=0
+DSP_CBUS FAIL image150 got=2 want=0
+DSP_CBUS FAIL continuation150 got=1 want=0
+DSP_CBUS FAIL image151 got=3 want=0
+DSP_CBUS FAIL continuation151 got=2 want=0
+DSP_CBUS FAIL image152 got=8 want=0
+DSP_CBUS FAIL continuation152 got=7 want=0
+DSP_CBUS FAIL image154 got=2 want=0
+DSP_CBUS FAIL continuation154 got=3 want=0
+DSP_CBUS FAIL image155 got=3 want=0
+DSP_CBUS FAIL continuation155 got=4 want=0
+DSP_CBUS FAIL image156 got=8 want=0
+DSP_CBUS FAIL continuation156 got=9 want=0
+DSP_CBUS FAIL image158 got=2 want=0
+DSP_CBUS FAIL continuation158 got=1 want=0
+DSP_CBUS FAIL image159 got=3 want=0
+DSP_CBUS FAIL continuation159 got=2 want=0
+DSP_CBUS FAIL image160 got=8 want=0
+DSP_CBUS FAIL continuation160 got=7 want=0
+DSP_CBUS FAIL continuation177 got=2 want=0
+DSP_CBUS FAIL image178 got=2 want=0
+DSP_CBUS FAIL continuation178 got=3 want=0
+DSP_CBUS FAIL image179 got=3 want=0
+DSP_CBUS FAIL continuation179 got=5 want=0
+DSP_CBUS FAIL image180 got=b want=0
+DSP_CBUS FAIL continuation180 got=c want=0
+DSP_CBUS FAIL image182 got=2 want=0
+DSP_CBUS FAIL continuation182 got=2 want=0
+DSP_CBUS FAIL image183 got=3 want=0
+DSP_CBUS FAIL continuation183 got=3 want=0
+DSP_CBUS FAIL image184 got=b want=0
+DSP_CBUS FAIL continuation184 got=b want=0
+DSP_CBUS FAIL continuation185 got=2 want=0
+DSP_CBUS FAIL image186 got=2 want=0
+DSP_CBUS FAIL continuation186 got=3 want=0
+DSP_CBUS FAIL image187 got=3 want=0
+DSP_CBUS FAIL continuation187 got=5 want=0
+DSP_CBUS FAIL image188 got=b want=0
+DSP_CBUS FAIL continuation188 got=c want=0
+DSP_CBUS FAIL image190 got=2 want=0
+DSP_CBUS FAIL continuation190 got=2 want=0
+DSP_CBUS FAIL image191 got=3 want=0
+DSP_CBUS FAIL continuation191 got=3 want=0
+DSP_CBUS FAIL image192 got=b want=0
+DSP_CBUS FAIL continuation192 got=b want=0
+DSP_CBUS FAIL continuation201 got=2 want=0
+DSP_CBUS FAIL image202 got=2 want=0
+DSP_CBUS FAIL continuation202 got=4 want=0
+DSP_CBUS FAIL image203 got=4 want=0
+DSP_CBUS FAIL continuation203 got=6 want=0
+DSP_CBUS FAIL image204 got=d want=0
+DSP_CBUS FAIL continuation204 got=e want=0
+DSP_CBUS FAIL image206 got=2 want=0
+DSP_CBUS FAIL continuation206 got=2 want=0
+DSP_CBUS FAIL image207 got=4 want=0
+DSP_CBUS FAIL continuation207 got=4 want=0
+DSP_CBUS FAIL image208 got=d want=0
+DSP_CBUS FAIL continuation208 got=d want=0
+DSP_CBUS FAIL continuation209 got=2 want=0
+DSP_CBUS FAIL image210 got=2 want=0
+DSP_CBUS FAIL continuation210 got=3 want=0
+DSP_CBUS FAIL image211 got=3 want=0
+DSP_CBUS FAIL continuation211 got=5 want=0
+DSP_CBUS FAIL image212 got=b want=0
+DSP_CBUS FAIL continuation212 got=c want=0
+DSP_CBUS FAIL image214 got=2 want=0
+DSP_CBUS FAIL continuation214 got=2 want=0
+DSP_CBUS FAIL image215 got=3 want=0
+DSP_CBUS FAIL continuation215 got=3 want=0
+DSP_CBUS FAIL image216 got=b want=0
+DSP_CBUS FAIL continuation216 got=b want=0
+DSP_CBUS FAIL continuation217 got=2 want=0
+DSP_CBUS FAIL image218 got=2 want=0
+DSP_CBUS FAIL continuation218 got=4 want=0
+DSP_CBUS FAIL image219 got=4 want=0
+DSP_CBUS FAIL continuation219 got=6 want=0
+DSP_CBUS FAIL image220 got=e want=0
+DSP_CBUS FAIL continuation220 got=f want=0
+DSP_CBUS FAIL image222 got=2 want=0
+DSP_CBUS FAIL continuation222 got=2 want=0
+DSP_CBUS FAIL image223 got=4 want=0
+DSP_CBUS FAIL continuation223 got=4 want=0
+DSP_CBUS FAIL image224 got=e want=0
+DSP_CBUS FAIL continuation224 got=e want=0
+DSP_CBUS FAIL continuation225 got=2 want=0
+DSP_CBUS FAIL image226 got=2 want=0
+DSP_CBUS FAIL continuation226 got=3 want=0
+DSP_CBUS FAIL image227 got=3 want=0
+DSP_CBUS FAIL continuation227 got=5 want=0
+DSP_CBUS FAIL image228 got=b want=0
+DSP_CBUS FAIL continuation228 got=c want=0
+DSP_CBUS FAIL image230 got=2 want=0
+DSP_CBUS FAIL continuation230 got=2 want=0
+DSP_CBUS FAIL image231 got=3 want=0
+DSP_CBUS FAIL continuation231 got=3 want=0
+DSP_CBUS FAIL image232 got=b want=0
+DSP_CBUS FAIL continuation232 got=b want=0
+DSP_CBUS FAIL continuation233 got=2 want=0
+DSP_CBUS FAIL image234 got=2 want=0
+DSP_CBUS FAIL continuation234 got=4 want=0
+DSP_CBUS FAIL image235 got=4 want=0
+DSP_CBUS FAIL continuation235 got=6 want=0
+DSP_CBUS FAIL image236 got=e want=0
+DSP_CBUS FAIL continuation236 got=10 want=0
+DSP_CBUS FAIL image238 got=2 want=0
+DSP_CBUS FAIL continuation238 got=2 want=0
+DSP_CBUS FAIL image239 got=4 want=0
+DSP_CBUS FAIL continuation239 got=4 want=0
+DSP_CBUS FAIL image240 got=e want=0
+DSP_CBUS FAIL continuation240 got=e want=0
+DSP_CBUS FAIL continuation241 got=2 want=0
+DSP_CBUS FAIL image242 got=2 want=0
+DSP_CBUS FAIL continuation242 got=3 want=0
+DSP_CBUS FAIL image243 got=3 want=0
+DSP_CBUS FAIL continuation243 got=5 want=0
+DSP_CBUS FAIL image244 got=b want=0
+DSP_CBUS FAIL continuation244 got=c want=0
+DSP_CBUS FAIL image246 got=2 want=0
+DSP_CBUS FAIL continuation246 got=2 want=0
+DSP_CBUS FAIL image247 got=3 want=0
+DSP_CBUS FAIL continuation247 got=3 want=0
+DSP_CBUS FAIL image248 got=b want=0
+DSP_CBUS FAIL continuation248 got=b want=0
+DSP_CBUS FAIL continuation249 got=2 want=0
+DSP_CBUS FAIL image250 got=2 want=0
+DSP_CBUS FAIL continuation250 got=4 want=0
+DSP_CBUS FAIL image251 got=4 want=0
+DSP_CBUS FAIL continuation251 got=6 want=0
+DSP_CBUS FAIL image252 got=e want=0
+DSP_CBUS FAIL continuation252 got=10 want=0
+DSP_CBUS FAIL image254 got=2 want=0
+DSP_CBUS FAIL continuation254 got=2 want=0
+DSP_CBUS FAIL image255 got=4 want=0
+DSP_CBUS FAIL continuation255 got=4 want=0
+DSP_CBUS FAIL image256 got=e want=0
+DSP_CBUS FAIL continuation256 got=e want=0
+DSP_CBUS FAIL image274 got=2 want=0
+DSP_CBUS FAIL continuation274 got=3 want=0
+DSP_CBUS FAIL image275 got=3 want=0
+DSP_CBUS FAIL continuation275 got=4 want=0
+DSP_CBUS FAIL image276 got=8 want=0
+DSP_CBUS FAIL continuation276 got=9 want=0
+DSP_CBUS FAIL image278 got=2 want=0
+DSP_CBUS FAIL continuation278 got=1 want=0
+DSP_CBUS FAIL image279 got=3 want=0
+DSP_CBUS FAIL continuation279 got=2 want=0
+DSP_CBUS FAIL image280 got=8 want=0
+DSP_CBUS FAIL continuation280 got=7 want=0
+DSP_CBUS FAIL image282 got=2 want=0
+DSP_CBUS FAIL continuation282 got=3 want=0
+DSP_CBUS FAIL image283 got=3 want=0
+DSP_CBUS FAIL continuation283 got=4 want=0
+DSP_CBUS FAIL image284 got=8 want=0
+DSP_CBUS FAIL continuation284 got=9 want=0
+DSP_CBUS FAIL image286 got=2 want=0
+DSP_CBUS FAIL continuation286 got=1 want=0
+DSP_CBUS FAIL image287 got=3 want=0
+DSP_CBUS FAIL continuation287 got=2 want=0
+DSP_CBUS FAIL image288 got=8 want=0
+DSP_CBUS FAIL continuation288 got=7 want=0
+DSP_CBUS FAIL continuation305 got=2 want=0
+DSP_CBUS FAIL image306 got=2 want=0
+DSP_CBUS FAIL continuation306 got=3 want=0
+DSP_CBUS FAIL image307 got=3 want=0
+DSP_CBUS FAIL continuation307 got=5 want=0
+DSP_CBUS FAIL image308 got=b want=0
+DSP_CBUS FAIL continuation308 got=c want=0
+DSP_CBUS FAIL image310 got=2 want=0
+DSP_CBUS FAIL continuation310 got=2 want=0
+DSP_CBUS FAIL image311 got=3 want=0
+DSP_CBUS FAIL continuation311 got=3 want=0
+DSP_CBUS FAIL image312 got=b want=0
+DSP_CBUS FAIL continuation312 got=b want=0
+DSP_CBUS FAIL continuation313 got=2 want=0
+DSP_CBUS FAIL image314 got=2 want=0
+DSP_CBUS FAIL continuation314 got=3 want=0
+DSP_CBUS FAIL image315 got=3 want=0
+DSP_CBUS FAIL continuation315 got=5 want=0
+DSP_CBUS FAIL image316 got=b want=0
+DSP_CBUS FAIL continuation316 got=c want=0
+DSP_CBUS FAIL image318 got=2 want=0
+DSP_CBUS FAIL continuation318 got=2 want=0
+DSP_CBUS FAIL image319 got=3 want=0
+DSP_CBUS FAIL continuation319 got=3 want=0
+DSP_CBUS FAIL image320 got=b want=0
+DSP_CBUS FAIL continuation320 got=b want=0
+DSP_CBUS FAIL continuation329 got=2 want=0
+DSP_CBUS FAIL image330 got=2 want=0
+DSP_CBUS FAIL continuation330 got=4 want=0
+DSP_CBUS FAIL image331 got=4 want=0
+DSP_CBUS FAIL continuation331 got=6 want=0
+DSP_CBUS FAIL image332 got=d want=0
+DSP_CBUS FAIL continuation332 got=e want=0
+DSP_CBUS FAIL image334 got=2 want=0
+DSP_CBUS FAIL continuation334 got=2 want=0
+DSP_CBUS FAIL image335 got=4 want=0
+DSP_CBUS FAIL continuation335 got=4 want=0
+DSP_CBUS FAIL image336 got=d want=0
+DSP_CBUS FAIL continuation336 got=d want=0
+DSP_CBUS FAIL continuation337 got=2 want=0
+DSP_CBUS FAIL image338 got=2 want=0
+DSP_CBUS FAIL continuation338 got=3 want=0
+DSP_CBUS FAIL image339 got=3 want=0
+DSP_CBUS FAIL continuation339 got=5 want=0
+DSP_CBUS FAIL image340 got=b want=0
+DSP_CBUS FAIL continuation340 got=c want=0
+DSP_CBUS FAIL image342 got=2 want=0
+DSP_CBUS FAIL continuation342 got=2 want=0
+DSP_CBUS FAIL image343 got=3 want=0
+DSP_CBUS FAIL continuation343 got=3 want=0
+DSP_CBUS FAIL image344 got=b want=0
+DSP_CBUS FAIL continuation344 got=b want=0
+DSP_CBUS FAIL continuation345 got=2 want=0
+DSP_CBUS FAIL image346 got=2 want=0
+DSP_CBUS FAIL continuation346 got=4 want=0
+DSP_CBUS FAIL image347 got=4 want=0
+DSP_CBUS FAIL continuation347 got=6 want=0
+DSP_CBUS FAIL image348 got=e want=0
+DSP_CBUS FAIL continuation348 got=f want=0
+DSP_CBUS FAIL image350 got=2 want=0
+DSP_CBUS FAIL continuation350 got=2 want=0
+DSP_CBUS FAIL image351 got=4 want=0
+DSP_CBUS FAIL continuation351 got=4 want=0
+DSP_CBUS FAIL image352 got=e want=0
+DSP_CBUS FAIL continuation352 got=e want=0
+DSP_CBUS FAIL continuation353 got=2 want=0
+DSP_CBUS FAIL image354 got=2 want=0
+DSP_CBUS FAIL continuation354 got=3 want=0
+DSP_CBUS FAIL image355 got=3 want=0
+DSP_CBUS FAIL continuation355 got=5 want=0
+DSP_CBUS FAIL image356 got=b want=0
+DSP_CBUS FAIL continuation356 got=c want=0
+DSP_CBUS FAIL image358 got=2 want=0
+DSP_CBUS FAIL continuation358 got=2 want=0
+DSP_CBUS FAIL image359 got=3 want=0
+DSP_CBUS FAIL continuation359 got=3 want=0
+DSP_CBUS FAIL image360 got=b want=0
+DSP_CBUS FAIL continuation360 got=b want=0
+DSP_CBUS FAIL continuation361 got=2 want=0
+DSP_CBUS FAIL image362 got=2 want=0
+DSP_CBUS FAIL continuation362 got=4 want=0
+DSP_CBUS FAIL image363 got=4 want=0
+DSP_CBUS FAIL continuation363 got=6 want=0
+DSP_CBUS FAIL image364 got=e want=0
+DSP_CBUS FAIL continuation364 got=10 want=0
+DSP_CBUS FAIL image366 got=2 want=0
+DSP_CBUS FAIL continuation366 got=2 want=0
+DSP_CBUS FAIL image367 got=4 want=0
+DSP_CBUS FAIL continuation367 got=4 want=0
+DSP_CBUS FAIL image368 got=e want=0
+DSP_CBUS FAIL continuation368 got=e want=0
+DSP_CBUS FAIL continuation369 got=2 want=0
+DSP_CBUS FAIL image370 got=2 want=0
+DSP_CBUS FAIL continuation370 got=3 want=0
+DSP_CBUS FAIL image371 got=3 want=0
+DSP_CBUS FAIL continuation371 got=5 want=0
+DSP_CBUS FAIL image372 got=b want=0
+DSP_CBUS FAIL continuation372 got=c want=0
+DSP_CBUS FAIL image374 got=2 want=0
+DSP_CBUS FAIL continuation374 got=2 want=0
+DSP_CBUS FAIL image375 got=3 want=0
+DSP_CBUS FAIL continuation375 got=3 want=0
+DSP_CBUS FAIL image376 got=b want=0
+DSP_CBUS FAIL continuation376 got=b want=0
+DSP_CBUS FAIL continuation377 got=2 want=0
+DSP_CBUS FAIL image378 got=2 want=0
+DSP_CBUS FAIL continuation378 got=4 want=0
+DSP_CBUS FAIL image379 got=4 want=0
+DSP_CBUS FAIL continuation379 got=6 want=0
+DSP_CBUS FAIL image380 got=e want=0
+DSP_CBUS FAIL continuation380 got=10 want=0
+DSP_CBUS FAIL image382 got=2 want=0
+DSP_CBUS FAIL continuation382 got=2 want=0
+DSP_CBUS FAIL image383 got=4 want=0
+DSP_CBUS FAIL continuation383 got=4 want=0
+DSP_CBUS FAIL image384 got=e want=0
+DSP_CBUS FAIL continuation384 got=e want=0
+DSP_CBUS FAIL image402 got=2 want=0
+DSP_CBUS FAIL continuation402 got=3 want=0
+DSP_CBUS FAIL image403 got=3 want=0
+DSP_CBUS FAIL continuation403 got=4 want=0
+DSP_CBUS FAIL image404 got=8 want=0
+DSP_CBUS FAIL continuation404 got=9 want=0
+DSP_CBUS FAIL image406 got=2 want=0
+DSP_CBUS FAIL continuation406 got=1 want=0
+DSP_CBUS FAIL image407 got=3 want=0
+DSP_CBUS FAIL continuation407 got=2 want=0
+DSP_CBUS FAIL image408 got=8 want=0
+DSP_CBUS FAIL continuation408 got=7 want=0
+DSP_CBUS FAIL image410 got=2 want=0
+DSP_CBUS FAIL continuation410 got=3 want=0
+DSP_CBUS FAIL image411 got=3 want=0
+DSP_CBUS FAIL continuation411 got=4 want=0
+DSP_CBUS FAIL image412 got=8 want=0
+DSP_CBUS FAIL continuation412 got=9 want=0
+DSP_CBUS FAIL image414 got=2 want=0
+DSP_CBUS FAIL continuation414 got=1 want=0
+DSP_CBUS FAIL image415 got=3 want=0
+DSP_CBUS FAIL continuation415 got=2 want=0
+DSP_CBUS FAIL image416 got=8 want=0
+DSP_CBUS FAIL continuation416 got=7 want=0
+DSP_CBUS FAIL continuation433 got=2 want=0
+DSP_CBUS FAIL image434 got=2 want=0
+DSP_CBUS FAIL continuation434 got=3 want=0
+DSP_CBUS FAIL image435 got=3 want=0
+DSP_CBUS FAIL continuation435 got=5 want=0
+DSP_CBUS FAIL image436 got=b want=0
+DSP_CBUS FAIL continuation436 got=c want=0
+DSP_CBUS FAIL image438 got=2 want=0
+DSP_CBUS FAIL continuation438 got=2 want=0
+DSP_CBUS FAIL image439 got=3 want=0
+DSP_CBUS FAIL continuation439 got=3 want=0
+DSP_CBUS FAIL image440 got=b want=0
+DSP_CBUS FAIL continuation440 got=b want=0
+DSP_CBUS FAIL continuation441 got=2 want=0
+DSP_CBUS FAIL image442 got=2 want=0
+DSP_CBUS FAIL continuation442 got=3 want=0
+DSP_CBUS FAIL image443 got=3 want=0
+DSP_CBUS FAIL continuation443 got=5 want=0
+DSP_CBUS FAIL image444 got=b want=0
+DSP_CBUS FAIL continuation444 got=c want=0
+DSP_CBUS FAIL image446 got=2 want=0
+DSP_CBUS FAIL continuation446 got=2 want=0
+DSP_CBUS FAIL image447 got=3 want=0
+DSP_CBUS FAIL continuation447 got=3 want=0
+DSP_CBUS FAIL image448 got=b want=0
+DSP_CBUS FAIL continuation448 got=b want=0
+DSP_CBUS FAIL continuation457 got=2 want=0
+DSP_CBUS FAIL image458 got=2 want=0
+DSP_CBUS FAIL continuation458 got=4 want=0
+DSP_CBUS FAIL image459 got=4 want=0
+DSP_CBUS FAIL continuation459 got=6 want=0
+DSP_CBUS FAIL image460 got=d want=0
+DSP_CBUS FAIL continuation460 got=e want=0
+DSP_CBUS FAIL image462 got=2 want=0
+DSP_CBUS FAIL continuation462 got=2 want=0
+DSP_CBUS FAIL image463 got=4 want=0
+DSP_CBUS FAIL continuation463 got=4 want=0
+DSP_CBUS FAIL image464 got=d want=0
+DSP_CBUS FAIL continuation464 got=d want=0
+DSP_CBUS FAIL continuation465 got=2 want=0
+DSP_CBUS FAIL image466 got=2 want=0
+DSP_CBUS FAIL continuation466 got=3 want=0
+DSP_CBUS FAIL image467 got=3 want=0
+DSP_CBUS FAIL continuation467 got=5 want=0
+DSP_CBUS FAIL image468 got=b want=0
+DSP_CBUS FAIL continuation468 got=c want=0
+DSP_CBUS FAIL image470 got=2 want=0
+DSP_CBUS FAIL continuation470 got=2 want=0
+DSP_CBUS FAIL image471 got=3 want=0
+DSP_CBUS FAIL continuation471 got=3 want=0
+DSP_CBUS FAIL image472 got=b want=0
+DSP_CBUS FAIL continuation472 got=b want=0
+DSP_CBUS FAIL continuation473 got=2 want=0
+DSP_CBUS FAIL image474 got=2 want=0
+DSP_CBUS FAIL continuation474 got=4 want=0
+DSP_CBUS FAIL image475 got=4 want=0
+DSP_CBUS FAIL continuation475 got=6 want=0
+DSP_CBUS FAIL image476 got=e want=0
+DSP_CBUS FAIL continuation476 got=f want=0
+DSP_CBUS FAIL image478 got=2 want=0
+DSP_CBUS FAIL continuation478 got=2 want=0
+DSP_CBUS FAIL image479 got=4 want=0
+DSP_CBUS FAIL continuation479 got=4 want=0
+DSP_CBUS FAIL image480 got=e want=0
+DSP_CBUS FAIL continuation480 got=e want=0
+DSP_CBUS FAIL continuation481 got=2 want=0
+DSP_CBUS FAIL image482 got=2 want=0
+DSP_CBUS FAIL continuation482 got=3 want=0
+DSP_CBUS FAIL image483 got=3 want=0
+DSP_CBUS FAIL continuation483 got=5 want=0
+DSP_CBUS FAIL image484 got=b want=0
+DSP_CBUS FAIL continuation484 got=c want=0
+DSP_CBUS FAIL image486 got=2 want=0
+DSP_CBUS FAIL continuation486 got=2 want=0
+DSP_CBUS FAIL image487 got=3 want=0
+DSP_CBUS FAIL continuation487 got=3 want=0
+DSP_CBUS FAIL image488 got=b want=0
+DSP_CBUS FAIL continuation488 got=b want=0
+DSP_CBUS FAIL continuation489 got=2 want=0
+DSP_CBUS FAIL image490 got=2 want=0
+DSP_CBUS FAIL continuation490 got=4 want=0
+DSP_CBUS FAIL image491 got=4 want=0
+DSP_CBUS FAIL continuation491 got=6 want=0
+DSP_CBUS FAIL image492 got=e want=0
+DSP_CBUS FAIL continuation492 got=10 want=0
+DSP_CBUS FAIL image494 got=2 want=0
+DSP_CBUS FAIL continuation494 got=2 want=0
+DSP_CBUS FAIL image495 got=4 want=0
+DSP_CBUS FAIL continuation495 got=4 want=0
+DSP_CBUS FAIL image496 got=e want=0
+DSP_CBUS FAIL continuation496 got=e want=0
+DSP_CBUS FAIL continuation497 got=2 want=0
+DSP_CBUS FAIL image498 got=2 want=0
+DSP_CBUS FAIL continuation498 got=3 want=0
+DSP_CBUS FAIL image499 got=3 want=0
+DSP_CBUS FAIL continuation499 got=5 want=0
+DSP_CBUS FAIL image500 got=b want=0
+DSP_CBUS FAIL continuation500 got=c want=0
+DSP_CBUS FAIL image502 got=2 want=0
+DSP_CBUS FAIL continuation502 got=2 want=0
+DSP_CBUS FAIL image503 got=3 want=0
+DSP_CBUS FAIL continuation503 got=3 want=0
+DSP_CBUS FAIL image504 got=b want=0
+DSP_CBUS FAIL continuation504 got=b want=0
+DSP_CBUS FAIL continuation505 got=2 want=0
+DSP_CBUS FAIL image506 got=2 want=0
+DSP_CBUS FAIL continuation506 got=4 want=0
+DSP_CBUS FAIL image507 got=4 want=0
+DSP_CBUS FAIL continuation507 got=6 want=0
+DSP_CBUS FAIL image508 got=e want=0
+DSP_CBUS FAIL continuation508 got=10 want=0
+DSP_CBUS FAIL image510 got=2 want=0
+DSP_CBUS FAIL continuation510 got=2 want=0
+DSP_CBUS FAIL image511 got=4 want=0
+DSP_CBUS FAIL continuation511 got=4 want=0
+DSP_CBUS FAIL image512 got=e want=0
+DSP_CBUS FAIL continuation512 got=e want=0
+Average speed: 221.07% (2 seconds)

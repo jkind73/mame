@@ -1,0 +1,25 @@
+SCSP timers: 24 timer/divisor rates and three clear/reassert paths verified live
+  PRESCALE 0 0 dt=0.050196770 predicted= 2213 measured(mod256)=166 window= 2213
+  PRESCALE 0 1 dt=0.050196770 predicted= 1106 measured(mod256)= 82 window= 1106
+  PRESCALE 0 2 dt=0.050196770 predicted=  553 measured(mod256)= 42 window=  553
+  PRESCALE 0 3 dt=0.050196770 predicted=  276 measured(mod256)= 21 window=  276
+  PRESCALE 0 4 dt=0.050196770 predicted=  138 measured(mod256)=138 window=  138
+  PRESCALE 0 5 dt=0.050196770 predicted=   69 measured(mod256)= 69 window=   69
+  PRESCALE 0 6 dt=0.050196770 predicted=   34 measured(mod256)= 35 window=   34
+  PRESCALE 0 7 dt=0.050196770 predicted=   17 measured(mod256)= 18 window=   17
+  PRESCALE 1 0 dt=0.050196770 predicted= 2213 measured(mod256)=165 window= 2213
+  PRESCALE 1 1 dt=0.050196770 predicted= 1106 measured(mod256)= 83 window= 1106
+  PRESCALE 1 2 dt=0.050196770 predicted=  553 measured(mod256)= 41 window=  553
+  PRESCALE 1 3 dt=0.050196770 predicted=  276 measured(mod256)= 21 window=  276
+  PRESCALE 1 4 dt=0.050196770 predicted=  138 measured(mod256)=138 window=  138
+  PRESCALE 1 5 dt=0.050196770 predicted=   69 measured(mod256)= 69 window=   69
+  PRESCALE 1 6 dt=0.050196770 predicted=   34 measured(mod256)= 35 window=   34
+  PRESCALE 1 7 dt=0.050196770 predicted=   17 measured(mod256)= 18 window=   17
+  PRESCALE 2 0 dt=0.050196770 predicted= 2213 measured(mod256)=166 window= 2213
+  PRESCALE 2 1 dt=0.050196770 predicted= 1106 measured(mod256)= 83 window= 1106
+  PRESCALE 2 2 dt=0.050196770 predicted=  553 measured(mod256)= 42 window=  553
+  PRESCALE 2 3 dt=0.050196770 predicted=  276 measured(mod256)= 21 window=  276
+  PRESCALE 2 4 dt=0.050196770 predicted=  138 measured(mod256)=138 window=  138
+  PRESCALE 2 5 dt=0.050196770 predicted=   69 measured(mod256)= 69 window=   69
+  PRESCALE 2 6 dt=0.050196770 predicted=   34 measured(mod256)= 35 window=   34
+  PRESCALE 2 7 dt=0.050196770 predicted=   17 measured(mod256)= 18 window=   17

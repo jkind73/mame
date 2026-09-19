@@ -1,0 +1,29 @@
+DSP_PIPELINE armed
+DSP_PIPELINE case=1 PASS
+DSP_PIPELINE case=2 PASS
+DSP_PIPELINE case=3 PASS
+DSP_PIPELINE case=4 PASS
+DSP_PIPELINE case=5 PASS
+DSP_PIPELINE case=6 PASS
+DSP_PIPELINE case=7 PASS
+DSP_PIPELINE case=8 PASS
+DSP_PIPELINE case=9 PASS
+DSP_PIPELINE case=10 PASS
+DSP_PIPELINE case=11 PASS
+DSP_PIPELINE case=12 PASS
+DSP_PIPELINE FAIL latched_slot13 got=34 want=12
+DSP_PIPELINE FAIL latched_slot14 got=34 want=12
+DSP_PIPELINE FAIL latched_slot15 got=34 want=12
+DSP_PIPELINE FAIL latched_slot16 got=34 want=12
+DSP_PIPELINE FAIL latched_slot17 got=34 want=12
+DSP_PIPELINE FAIL latched_slot18 got=34 want=12
+DSP_PIPELINE FAIL latched_slot19 got=34 want=12
+DSP_PIPELINE FAIL latched_slot20 got=34 want=12
+DSP_PIPELINE FAIL latched_slot21 got=34 want=12
+DSP_PIPELINE FAIL latched_slot22 got=34 want=12
+DSP_PIPELINE FAIL latched_slot23 got=34 want=12
+DSP_PIPELINE FAIL latched_slot24 got=34 want=12
+DSP_PIPELINE FAIL latched_slot25 got=34 want=12
+DSP_PIPELINE FAIL latched_slot26 got=34 want=12
+DSP_PIPELINE FAIL latched_slot27 got=34 want=12
+Average speed: 206.32% (2 seconds)

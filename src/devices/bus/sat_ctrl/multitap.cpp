@@ -50,3 +50,8 @@ uint8_t saturn_multitap_device::read_id(int idx)
 {
 	return m_subctrl_port[idx < 6 ? idx : 0]->read_id(0);
 }
+
+uint8_t saturn_multitap_device::read_ctrl_slot(unsigned index, uint8_t offset)
+{
+	return index < m_subctrl_port.size() ? m_subctrl_port[index]->read_ctrl_slot(0, offset) : 0xff;
+}

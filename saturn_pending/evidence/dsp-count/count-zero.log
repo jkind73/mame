@@ -1,0 +1,7 @@
+test: /tmp/scudsp-dma-5_qybrek/test.cpp:346: int main(): Assertion `s.m_dma.size==expected' failed.
+Traceback (most recent call last):
+  File "/home/user/dsp-count-candidate/regtests/saturn/test_scudsp_dma.py", line 271, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-dma-5_qybrek/test']' died with <Signals.SIGABRT: 6>.

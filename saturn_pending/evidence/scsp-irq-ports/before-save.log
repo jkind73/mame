@@ -1,0 +1,10 @@
+SCSP_IRQ_SAVE armed
+SCSP_IRQ_SAVE saved
+SCSP_IRQ_SAVE mutated
+SCSP_IRQ_SAVE loaded
+SCSP_IRQ_SAVE FAIL original_independent_ack1 got=120 want=520
+SCSP_IRQ_SAVE FAIL original_independent_ack2 got=5f0 want=5e0
+SCSP_IRQ_SAVE FAIL poisoned_pending2 got=10 want=0
+SCSP_IRQ_SAVE FAIL replayed_independent_ack1 got=120 want=520
+SCSP_IRQ_SAVE FAIL replayed_independent_ack2 got=5f0 want=5e0
+Average speed: 123.19% (2 seconds)

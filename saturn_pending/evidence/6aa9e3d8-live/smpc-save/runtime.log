@@ -1,0 +1,7 @@
+SMPC_SAVE armed
+SMPC_SAVE saved
+SMPC_SAVE mutated
+SMPC_SAVE loaded
+SMPC_SAVE RESB restored=10 input=0 next_edge=0
+SMPC_SAVE PASS bytes=38 cursor=32 tail=6
+Average speed: 119.85% (2 seconds)

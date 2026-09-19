@@ -1,0 +1,7 @@
+{
+  "system": "saturnjp",
+  "engine": "interpreter",
+  "binary_sha256": "9839b2e0e91ea7165f60851640431ff52201d77890eadf65481fa6c65a516efa",
+  "bios_sha256": "09c49cd8a17018064bf486fbbfb5736a26decf467387abd57a56db9f21ba9371",
+  "lua_sha256": "2ea664934533e9ff1e34bcf4c10fc6c0513b379a7073265273ab27a2bf7f3fe3"
+}
