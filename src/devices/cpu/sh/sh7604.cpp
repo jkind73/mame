@@ -226,6 +226,11 @@ void sh7604_device::device_reset()
 	m_ipra = m_iprb = 0;
 	m_irq_level.frc = m_irq_level.sci = m_irq_level.divu = m_irq_level.dmac = m_irq_level.wdt = 0;
 
+	// Only the INTC vectors in sections 5.3.3-5.3.7 have a zero reset value.
+	// DIVU/DMAC vector registers have undefined reset values; leave them alone.
+	m_vcra = m_vcrb = m_vcrc = m_vcrd = m_vcrwdt = 0;
+	m_irq_vector.fic = m_irq_vector.foc = m_irq_vector.fov = 0;
+
 	// Reset releases module standby before starting the free-running timer.
 	m_sbycr = 0;
 	m_frt_input = 0;
