@@ -3939,3 +3939,82 @@ No contract, implementation identity or state change.
   clearing, live transfer timing, IRQ acknowledgement and save-manager
   behavior. No DMA consumer, arbitration or completion path changed; no
   frozen DMA acknowledgement, delay-slot IRQ, sound or video handler edits.
+
+### IMPL-0052 source line anchor (append-only)
+
+At implementation `63d1bf91`, `chcr_r` is at
+`src/devices/cpu/sh/sh7604.cpp:2438-2442`. The preceding entry names the
+correct template but omitted its numeric line span. No contract/state change.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0053 | CPU-03 | f6b5d3d1 | UNVALIDATED | SBYCR bit 5 reads zero while meaningful control bits and existing write routing remain unchanged |
+
+### IMPL-0053 — CPU-03 — SBYCR reserved read bit
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `f6b5d3d1`,
+  base `d1149c2e`; committed and pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:2078-2082`, `fmr_sbycr_r`;
+  `saturn_pending/impl_checks/check_sh7604_sbycr_reserved.py` (new).
+- contract: mask reserved bit 5 from SBYCR readback, preserving SBY, HIZ
+  and MSTP4-0. The getter does not mutate raw storage or call peripheral
+  helpers. Write handling, FMR compatibility routing and reset behavior
+  are unchanged. No new state field or save-layout change.
+- primary source: SH7604 ADE-602-085C Rev.4 section 14.2.1 p.387 states
+  bit 5 always reads zero and should be written zero; bits 7,6,4-0 are
+  controls. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+  Document caveat: Table 14.2 p.386 prints initial value 60, while the
+  following section/bit diagram says reset value 00. This candidate follows
+  the explicit reserved-bit read rule and does not change or qualify the
+  reset image. Whole-chip standby and module-clock behavior are separate.
+- pinned cross-checks: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/MSBY.sv:65-67` masks reads with SBYCR_RMASK;
+  `rtl/SH/SH7604/SH7604_pkg.sv:493-502` defines the fields and DF mask.
+  Blobs `706ffd2c60b392c1b87df129cf6af09137e2e3e4` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`.
+  Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1117,1451` reads its stored
+  byte and masks writes with DF; blob
+  `9746b438b8a71de63ff65cd2d4325bc582a5114b`. This change only masks
+  readback, without importing either reference's broader power-down model.
+- provenance: local getter and upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1323-1326`, return the raw byte. Local
+  history reviewed; no external source implementation imported.
+- expected observable: bit 5 is zero on every SBYCR read; all seven
+  meaningful stored bits are unchanged. Raw backing 20 returns 00 and FF
+  returns DF in an instrumented method probe. Reserved-one injections are
+  diagnostics, not supported software programming. Units: exact 8-bit
+  register image, zero bit tolerance; no clock/pin timing result claimed.
+- suggested measurement: native byte readback at FFFFFE91 after supported
+  programming with WDT stopped and affected modules halted, without
+  executing SLEEP. Check meaningful controls and reserved read bit; use
+  instrumentation for nonzero reserved backing. Qualify pin/high-impedance,
+  clock gating, whole-chip standby and native save/load independently.
+- falsifier: masking loses a meaningful control bit, changes backing state
+  or invokes peripheral side effects; or attributable hardware/erratum
+  evidence establishes bit 5 as readable/meaningful under the applicable
+  contract. Illegal-write diagnostics alone do not legalize reserved writes.
+- self-check run (method-level, unvalidated): actual getter/writer with
+  peripheral helpers mocked, fail-fast UBSan; 256 raw-storage masks,
+  256 state-copy replays, 256 byte-write/read cases (128 reserved-zero
+  controls, 128 reserved-one diagnostics) and 4,096 legacy FMR routing
+  controls; exit 0. The latter preserve the existing high-byte/full-word
+  branches, not native FMR timing or access-width qualification. Historical
+  `d1149c2e` source fails the first reserved-bit observation (generated
+  line 69).
+  Prior selected 41-script series: 37 exit 0/four conflicts. Including
+  this new probe: selected 42-script series, 38 exit 0/four unchanged
+  semantic conflicts (frt_stop generated line 475, frt_phase 410,
+  wdt_access 132, bsc_access 98). Expectations/validator assets untouched.
+  Warning-enabled C++20 TU syntax-only and `git diff --check`: exit 0.
+  No full build or native qualification.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: reset-image discrepancy, native bus lanes,
+  SBY/SLEEP entry and wake, HIZ drive states, MULT/DIVU/DMAC clock gating,
+  active-module stop restrictions, watchdog interlocks and native save/load.
+  No interfaces or configured peripherals added; the supported/not-supported
+  inventory is unchanged. No frozen DMA/IRQ-delay-slot/sound/video edits.
