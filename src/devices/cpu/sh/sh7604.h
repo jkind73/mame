@@ -176,6 +176,7 @@ private:
 	void dmaor_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 
 	// WTC
+	void wdt_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	uint16_t wtcnt_r(offs_t offset = 0, uint16_t mem_mask = ~0);
 	void wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 	uint16_t rstcsr_r(offs_t offset = 0, uint16_t mem_mask = ~0);
