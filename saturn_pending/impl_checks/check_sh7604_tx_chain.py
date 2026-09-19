@@ -50,6 +50,7 @@ struct Timer {
 };
 struct Device {
  static constexpr uint8_t SSR_TDRE=0x80, SSR_TEND=4, SSR_MPB=2;
+ static constexpr uint8_t SSR_ORER=0x20, SSR_FER=0x10, SSR_PER=8;
  uint8_t m_scr=0, m_smr=0, m_brr=0, m_ssr=0x84, m_sci_ssr_read=0, m_tsr=0, m_tdr=0xff;
  uint8_t m_sci_tx_bit=0, m_sci_rx_state=0, m_sci_rx_phase=0;
  bool m_sci_tx_active=false, m_sci_tx_loaded=false, m_sci_rx_enabled=false;
