@@ -26,6 +26,7 @@
 | IMPL-0012 | CPU-03/IO-02 | 7f895a95 | UNVALIDATED | SCI callback constructor initializers follow declaration order without suppressing reorder diagnostics |
 | IMPL-0013 | CPU-03/IO-02 | ef6a191e | UNVALIDATED | External SCK clocks synchronous SCI receive: eight LSB-first rising-edge samples per character |
 | IMPL-0014 | CPU-03/IO-02 | 5a128134 | UNVALIDATED | External synchronous SCI TX changes on falling SCK, chains at MSB and supports concurrent RX |
+| IMPL-0015 | CPU-03/IO-02 | 01374a7d | UNVALIDATED | Internal synchronous SCI emits baud-derived SCK pulses, idles high and clocks TX/RX together |
 
 ---
 
@@ -1000,3 +1001,99 @@
   SCI DMA, and actual cable/modem/peer devices remain absent. Inventory
   updated separately to avoid continuing to describe all sync operation
   as absent; this is not optional-device acceptance.
+
+
+### IMPL-0015 — CPU-03/IO-02 — internal synchronous SCI clock output
+
+- branch/commit: `arena/01a0b897-mame` @ **01374a7d** (base: a64e7847;
+  builds on IMPL-0013/0014's synchronous edge/transfer semantics).
+- files: `src/devices/cpu/sh/sh7604.cpp:42,89-90,127-128,258-265`
+  (callback/timer/save/reset), `:920-961,997-1012` (register triggers),
+  `:1031-1083` (shared edge engine), `:1085-1170` (clock/start control),
+  `src/devices/cpu/sh/sh7604.h:37,91-93,220-229` (API/state),
+  `saturn_pending/impl_checks/check_sh7604_internal_sync.py`.
+- contract: C/A=1 and CKE1=0 generate SCK on `sck_wr_callback()`;
+  CKE0 is ignored in synchronous mode. With BRR=N and CKS=n the bit
+  period is (N+1)*2^(4+2n) CPU phi ticks, divided into low/high halves.
+  SCK idles high, emits eight pulses per transmitted/received character,
+  and preserves the final rising edge after TX has raised TEND at MSB
+  output. Queued TX characters continue without an inserted idle pulse.
+  Receive-only RE=1 starts the shared clock; full duplex waits for TX
+  data and completes its paired RX character. An overrun stops clocks
+  high; acknowledging errors permits pending work to restart. Disabling
+  both TE/RE cancels the clock. Interrupt-enable-only writes do not
+  restart an active half-period. External pin transitions do not clock
+  the internal-mode engine.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.2.6 pp.341-342 (CKE table), section 13.2.8 p.349 Table
+  13.4/formula, section 13.3.4 pp.372-378/Figures 13.14-13.20 (eight
+  clocks, high idle, receive-only procedure, simultaneous transfer),
+  section 13.5 p.381 (error inhibition). SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+  Citation clarification for IMPL-0013: the CKE table is in section
+  13.2.6 p.342; **Table 13.9** is the SMR format table on p.353,
+  not that clock-selection table.
+- cross-checks: MAME upstream pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:132-136,457-489,517-535,702,626-637`
+  supplies a related implementation of receive-only restart, shared-clock
+  duplex start and alternating SCK. MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:83-103,347` corroborates BRR/CKS division and
+  high idle but gates SCKO with TX_RUN; its receiver-only coverage is not
+  a corroboration of the primary receive procedure. No reference code
+  imported. Upstream SH7604 still has no clock engine to port.
+- expected observable: for N=1,n=0, SCK low/high widths are each 16 phi
+  ticks (bit period 32). One TX byte emits exactly 8 falling plus 8
+  rising edges, with data bit0..7 on falling edges and receive samples
+  on rising edges. The final low half-period is not discarded at TEND.
+  Two queued bytes emit 16 pulses; without further work SCK stays high.
+  Receive-only mode with unread first RDR emits a second byte's clocks,
+  then sets ORER, retains old RDR and stops high. Tolerance: exact pulse
+  count and phi-tick periods in the model; native attotime rounding may
+  accumulate one attosecond per half-period. Absolute phase from the
+  initiating register write is explicitly outside the hardware claim.
+- suggested method: linked two-device fixture connects internal master's
+  SCK output to external slave's `sck_w`, cross-connects TxD/RxD and
+  drives real mapped registers; also independent receive-only data.
+  Capture SCK/TxD and status/IRQ edge times, BRR/CKS changes while
+  disabled, CKE0 equivalence, queueing at MSB, RX overrun/recovery and
+  disabling during a low half-period. Save/load with the final rising
+  edge pending and with both TSR/TDR occupied. Use legal rates/formats.
+- falsifier: incorrect pulse width/count, SCK stopping low or dropping
+  the last rising edge, RX-only not clocking, TX/RX clocks diverging,
+  an extra pulse between queued bytes, external input advancing internal
+  mode, or interrupt-enable writes stretching the current half-period
+  contradicts this candidate. A hardware trace requiring a different
+  receive-only/full-duplex start rule would reject that gating model.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 8192 rate/clock-select/TX cases; 3072 two-device duplex streams; 4096 half-edge state-copy replays
+  method-level, unvalidated: receive-only, eight-pulse termination, error recovery, cancellation and no-retime controls exercised
+  method-level, unvalidated: clock level/running reset/save registration present
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_internal_sync.py`.
+  Extracts actual clock, edge, register and transfer methods, uses UBSan
+  and a virtual phi clock. Seven prior focused SCI scripts rerun with
+  unchanged expected values: exit 0. Their mock declarations/extraction
+  lists were adapted to the shared helper; they stub internal-clock
+  scheduling and do not test that behavior. This new script extracts
+  the real helper instead. TU syntax with
+  `-std=c++20 -Wall -Werror -Wno-sign-compare` and session includes:
+  exit 0, no diagnostics; reorder enabled. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: first SCK edge is scheduled one half-bit
+  after an idle engine starts; divider reset/free-running phase versus
+  the CPU clock needs a trace and is not a silicon timing assertion.
+  Table 13.4 marks the highest-rate N=0,n=0 setting as unsuitable for
+  continuous transmission/reception; the broad method-level sweep also
+  includes that setting, but those continuous-stream cases are software
+  consistency probes, not legal hardware expectations. No workaround or
+  invented silicon failure mode is added for prohibited operation.
+  Mid-transfer BRR/SMR/CKE changes, CPU clock changes, module standby,
+  native IRQ/save-manager behavior and physical pin delay remain open.
+  New fields `m_sci_sck_out` and `m_sci_clock_running` are saved/reset
+  with the implementation; the new emu_timer owns its scheduled event.
+  Old save files are incompatible. Externally clocked asynchronous mode,
+  asynchronous SCK output, SCI DMA and configured modem/cable/peer devices
+  remain absent. Frozen accepted paths and validator assets are untouched.
