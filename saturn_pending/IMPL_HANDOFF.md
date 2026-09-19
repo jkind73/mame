@@ -4747,3 +4747,72 @@ correct template but omitted its numeric line span. No contract/state change.
   scheduler, native IRQ/firmware/gameplay and save-manager behavior. No new
   fields/additional save-layout change; no modifications to existing data
   transfer/HIRQ handlers or frozen SH/sound/video paths.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0063 | CD-01 | 4725d0c2 | UNVALIDATED | Taking a filter input displaces its old CD/false-output producer while true-output fan-in remains legal |
+
+### IMPL-0063 — CD-01 — selector connection ownership
+
+- branch/commit/base: `arena/01a0b897-mame` @ **4725d0c2**; base **e28aeea2**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1330-1357,1537-1559,1638-1643,2092-2094`,
+  matching private helper declaration in `saturn_cd_hle.h`;
+  `saturn_pending/impl_checks/check_cd_connection_ownership.py`;
+  COPY/MOVE probe extraction/declaration adapter (no expectation changes).
+- contract: explicit CD and false-output connector setters disconnect prior
+  producers of their destination filter input before attaching their new
+  producer. True-output connectors are unaffected by this exclusive-input
+  rule because multiple filters can feed one partition. FF disconnects only
+  the selected producer. Selected endpoints must be 0..23 or FF; reject
+  invalid source/selected endpoints before any graph change, while ignoring
+  unselected parameter bytes. COPY/MOVE reuses the same input-detachment
+  helper after its existing preflight. Reset Selector bit5 disconnects both
+  actual CD input and reported CD number, and all false-output producers.
+- primary source: ST-162-062094 printed p.46 Table 5.1 single-producer filter
+  input versus multi-producer partition input, pp.83-84 device connection
+  functions 4.1/4.2, p.90 function 5.7's individually enabled connector
+  changes/disconnected sentinel, p.91 function 5.9 input initialization.
+  SDK blob `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:843-850,863-889,2979-2999,3145-3171`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e: exclusive input disconnection,
+  CD connector assignment and selected-endpoint preflight. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:1646-1680,2230-2249,2483-2515`,
+  blob e8fedadb2d7374db35667bd064bb47fdc14b41a8, cross-checks connection
+  reassignment but is not the oracle for CD displacement/invalid outputs.
+  Local/upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d setters were
+  reviewed: direct assignment, no exclusive-producer handling and CD invalid
+  parameter popmessage rather than rejection. Existing local COPY/MOVE had
+  a narrower inline disconnector. No reference block imported.
+- expected observable: after CD->7, setting filter3 false->7 leaves CD
+  disconnected/number FF and filter3 owning input7. CD->7 then disconnects
+  filter3's false output. Other true-output producers to partition7 remain.
+  A rejected two-output update leaves both outputs and CD state unchanged.
+  Input reset reads back CD number FF. Exact bytes/links, zero tolerance.
+- suggested method: program all producer transitions through mapped command
+  registers, query via commands31/47, route tagged sectors and repeat around
+  accepted versus WAIT COPY/MOVE. Check native IRQ timing separately.
+- falsifier: two remaining producers for a taken input, loss of independent
+  true-output fan-in, changed unselected fields, partial rejected update,
+  stale reported CD connection after input reset, or disconnecting an actual
+  unrelated CD pointer because a legacy reported number disagrees with it.
+- self-check run (method-level, unvalidated): 15,625 CD connector cases,
+  10,800 false-output ownership cases, 8,423 selected-byte/bounds controls,
+  24 input resets, actual-pointer/stale-number controls; fail-fast UBSan
+  exit 0. Historical e28aeea2 fails graph preservation/ownership comparison
+  at generated line 248. Existing COPY/MOVE ASan/UBSan and condition-reset
+  probes exit 0; warning-enabled CD C++20 syntax/diff checks exit 0.
+- state: **UNVALIDATED**.
+- not covered/known doubts: file/directory commands still assign CD pointers
+  directly and can leave visible connection numbers stale; the helper uses
+  actual pointers so those states do not detach an unrelated active input.
+  File-command complete topology/condition/partition initialization remains
+  separate. Existing invalid-command ESEL convention is retained, not claimed
+  as newly measured reject timing. Read File/drive-phase timing, stream
+  collisions, actual command scheduler, native IRQ/save/game behavior are
+  excluded. Duplicate-input/cyclic combinations are storage diagnostics, not
+  claims that such graphs are legal running streams. No new state fields or
+  extra layout break; no validator asset/expectation/frozen-path changes.
