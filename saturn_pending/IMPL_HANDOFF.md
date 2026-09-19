@@ -16,6 +16,8 @@
 | IMPL-0002 | CPU-03/IO-02 | 5a03df1d | UNVALIDATED | SH7604 SCI runs the documented async engine: (N+1)·2^(7+2n)·φ bit clock, TDRE/TEND/RDRF flow, TXI/RXI/ERI/TEI on VCRA/VCRB vectors |
 | IMPL-0003 | DSP-02 | — | BLOCKED(pacing contract) | DSP DMA longword pacing follows the external data-ready signal (ST-097 pp.87-88); needs the BUS-01/02 grant/backpressure contract first |
 | IMPL-0004 | CD-03 | — | BLOCKED(artifacts) | hardware-faithful CD block needs the cdb firmware dump + YGR019B register information before the SH-1 subsystem can be implemented |
+| IMPL-0005 | SCU-03/BUS-01 | 13845208 | UNVALIDATED | SCU DMA head/tail bytes outside longword boundaries move in byte units: odd destinations don't clobber neighbours, odd sizes move exactly the programmed count |
+| IMPL-0006 | STV-03/STV-04 | d6043a22 | UNVALIDATED | 315-5649 PORT-G counter reset latches a difference base; counter inputs wired to PORTG.0-3 ioports (patocar trackball path) |
 
 ---
 
@@ -267,3 +269,137 @@
    syntax-only checks were run for every touched TU with the documented
    include set. `stv.cpp` additionally needs generated `.lh` layout
    headers that are absent from the checkout (pre-existing).
+
+### IMPL-0005 — SCU-03/BUS-01 — SCU DMA byte-unit head/tail transfers
+
+- branch/commit: `arena/01a0b897-mame` @ **13845208** (base: 0cd84e36)
+- files: `src/mame/sega/saturn_scu.cpp:900-930 (dma_read_byte, dma_transfer_direct_default), 932-952 (dma_transfer_direct_cbus_write)`, `src/mame/sega/saturn_scu.h:214-219`; deleted dead `dma_single_transfer` (was cpp:655-675, header:223-224)
+- contract: ST-097 p.16: "This DMA is basically long word access through the
+  DMA controller buffer, but if the start address and end address are not in
+  long word boundaries, reads and writes are made in byte units" — Figure 2.1
+  works the example src 1H-50H → dst 6H-55H with head bytes (dst 6H-7H, src
+  1H-3H) and tail bytes (src 50H, dst 54H-55H) in byte units. In this engine's
+  pre-existing 16-bit-per-tick cadence: a byte unit is moved when (a) the
+  remaining count is odd (tail: exactly the programmed byte count moves) or
+  (b) the destination cursor is not halfword-aligned (head/odd destination:
+  single byte writes, the byte before the region is never touched). The
+  source side already streamed from an offset longword buffer
+  (dma_read_word, src & 3 honored); dma_read_byte shares that buffer
+  discipline. Byte-unit destination cursor advance is dst_add>>1 for
+  streaming adds (2→1), 0 for fixed (dst_add=0). Even aligned transfers are
+  unchanged: same memory result, still exactly one 16-bit write per tick.
+  The dead `dma_single_transfer()` shifted-byte hack ("TODO: reimplement
+  me", Road Blaster workaround, unreferenced by the dispatch table) is
+  removed.
+- primary source: ST-097-R5-072694 (pinned blob
+  `ffa8932249634ebd98947dad123621cebe3f24fa`) p.16 "Basic Operation of DMA"
+  + Figure 2.1 (PDF text extracted verbatim this session).
+- cross-checks: Ymir `libs/ymir-core/src/ymir/hw/scu/scu.cpp:797-811` (8-bit
+  write when destination offset & 1), `:813-833` (16-bit realignment when
+  offset & 2), `:847-861` (final 16-bit when count & 2), `:864-882` (final
+  8-bit when count & 1) — same head-realignment + count-driven tail-unit
+  rule; Ymir uses 32-bit ticks vs this engine's 16-bit ticks (pre-existing
+  cadence, not changed here).
+- expected observable: direct/indirect word-mode DMA (all three levels) on
+  any Saturn/ST-V config: (1) even-size, halfword-aligned transfers:
+  byte-identical memory to the previous engine and identical word-write
+  granularity; (2) odd destination (DxW & 1 == 1): the byte at dst-1 reads
+  back unchanged after the transfer and the stream lands at dst, dst+1...
+  (3) odd size (DxC = 2n+1): exactly 2n+1 bytes move, one byte per tail
+  tick (+1 DMA tick ≈ 4 SCU clocks vs the old over-move), completion IRQ
+  after the last byte.
+  Tolerance: exact memory values; tick count ±0 for odd tails (one extra
+  tick vs old behaviour is part of the contract).
+- suggested method: scripted DMA setup via the SCU registers (D0R/D0W/D0C/
+  D0AD/D0MD + enable) with probe buffers in Work RAM-L at odd/even
+  addresses and odd/even sizes, comparing memory images before/after and
+  counting completion IRQ ticks; save/load replay mid-transfer (read-buffer
+  state was already saved).
+- falsifier: a hardware measurement showing odd-destination DMA clobbering
+  dst-1 (i.e. hardware really does a read-modify-write word at dst&~1), or
+  moving size+1 bytes for odd counts, or byte-unit reads at unaligned
+  *source* behaving differently from the longword-buffer stream (all three
+  would falsify the change). Ymir/Beetle disagreement on B-Bus write
+  quirks is out of this entry's scope (see not-covered).
+- self-check run: `python3 saturn_pending/impl_checks/check_scu_dma_bytetail.py`
+  → `sweep 1: 6x6x17x2 byte-stream cases passed / sweep 2: aligned 16-byte
+  case passed (8 word writes) / sweep 3: fixed-destination case passed /
+  all checks passed` (extracted dma_read_word/dma_read_byte/both word-mode
+  transfer functions on a fake big-endian space: 1,224 size/offset/
+  cbus-streaming cases vs a reference byte-stream model, pre/post guards
+  untouched, exact-count termination, aligned case still exactly 8 word
+  writes; method-level, unvalidated). TU syntax: saturn_scu.cpp and
+  saturn.cpp both exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: CD-mode transfers
+  (dma_transfer_direct_cd*, xfertype32) intentionally unchanged — CD block
+  transfer is its own documented mode and needs CD-01/CD-02 acceptance;
+  B-Bus-specific write quirks (Ymir scu.cpp:884+ "B-Bus writes are
+  incredibly buggy... only +2 increments produce useful write patterns")
+  are NOT modelled — if the validator can measure B-Bus DMA write patterns
+  on hardware, that is a separate entry against BUS-01/BUS-02; dst_add
+  values ≥4 (strided) in a byte-unit tick advance dst_add>>1 — no primary
+  or cross-check defines strided byte units (Figure 2.10's strided example
+  is aligned); DMA-illegal/ack/round-robin paths untouched (frozen DMA
+  acknowledgement handling preserved).
+
+### IMPL-0006 — STV-03/STV-04 — 315-5649 PORT-G counter reset latch + counter input wiring
+
+- branch/commit: `arena/01a0b897-mame` @ **d6043a22** (base: 13845208)
+- files: `src/mame/sega/315_5649.cpp:160-172 (counter read), 226-242 (counter reset latch on write), 46-90 (ctor/save/reset)`, `src/mame/sega/315_5649.h:87-91 (m_cnt_base)`, `src/mame/sega/stv.cpp:1371-1375 (in_counter_callback wiring)`
+- contract: port G counter mode (mode register bit 7): four 16-bit
+  external counter inputs; a port G write with bit 7 == 0 resets the
+  counters, i.e. latches the current input values as the difference base
+  (in-source register documentation `315_5649.cpp` old write case 0x06
+  comment "bit 7 - 0 reset counters (not implemented)"; legacy ST-V
+  handler `stv.cpp:196-202` snapshots all four on the same condition).
+  Counter reads return (input − base) with the high/low byte selected by
+  port G bit 0, and the port-G cursor auto-increments through the four
+  counters (sel = bits 1-2, advance every read). Previously the device
+  returned the raw input (and its input callbacks were unwired → 0), so
+  any machine routed through the device read constant 0 in counter mode;
+  the legacy three machines kept their own duplicate state.
+- primary source: in-source register documentation only (as IMPL-0001);
+  the counter-mode semantics live in the legacy handler
+  `src/mame/sega/stv.cpp:146-156, 196-202` and the device comment. No
+  primary document for the 315-5649 register block is available; the ST-V
+  service manual's PORT-G/CN20 description (quoted at stv.cpp:93-97
+  "PORT-G I/O 3 CN20 ... EXTENSION INPUT 8bit") is the nearest public
+  text. **Flagged limitation:** same provenance caveat as IMPL-0001.
+- cross-checks: formula-level equivalence with the legacy handler verified
+  exhaustively (see self-check); trackball usage: patocar input mapping
+  `stv.cpp:2237-2241` (PORTG.0/1 = IPT_TRACKBALL_X/Y, "sense/delta values
+  seems wrong" note) is the only in-tree counter-mode consumer.
+- expected observable: patocar (or any counter-mode title) with the IOGA
+  device map: (1) writing port G = 0x00 (counter reset, cursor 0) then
+  reading 0x0040000c four times returns bytes {high,input-base(counter0)},
+  {low,...}, {high,input-base(counter1)}, {low,...} — i.e. the accumulated
+  trackball delta since the reset write, instead of 0; (2) a further port G
+  write with bit 7 == 0 re-latches: subsequent reads restart from the new
+  base; (3) cursor sequence cycles (c0 high, c0 low, c1 high, c1 low, ...).
+  Values exact; trackball sensitivity vs hardware remains the pre-existing
+  open note.
+- suggested method: machine fixture on patocar driving the IOGA registers
+  at 0x00400000 with the trackball ioport forced to known values between
+  reset-write and reads; save/load replay between reset and read
+  (m_cnt_base is save-stated).
+- falsifier: hardware/service-manual evidence that counter reads return
+  the raw external counter (no difference base) or that the reset write
+  clears an internal accumulator instead of latching a base would falsify
+  the latch model; a patocar attract-mode regression where the trackball
+  stops responding (delta reads stuck) would falsify the wiring.
+- self-check run: `python3 saturn_pending/impl_checks/check_3155649_counter.py`
+  → `all checks passed (formula equivalence, 8 cursor states, wiring)`
+  (source-level formula comparison against the legacy handler, exhaustive
+  8-state cursor table, wiring presence; method-level, unvalidated). TU
+  syntax: 315_5649.cpp exit 0; stv.cpp not fully checkable here
+  (pre-existing missing generated .lh headers; its change is four
+  set_ioport lines mirroring the adjacent lines).
+- state: UNVALIDATED
+- not covered / known doubts: the legacy stv_state handler and its
+  duplicated state remain for the critcrsh/stvmp/hop machines —
+  consolidating them onto the device is the follow-up stage (regression
+  surface: their lightgun/mahjong/hopper overrides); the counter *input*
+  rate/timing (how fast the external counter increments per trackball
+  tick) is ioport-driven and unqualified; counter-mode + satellite-mode
+  bit interaction unmodelled.
