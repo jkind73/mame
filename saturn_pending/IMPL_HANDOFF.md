@@ -2542,3 +2542,74 @@
   This does not add WDTOVF output, RSTE=1 reset or longword rejection.
   No validator assets, expected values, frozen DMA acknowledgement,
   delay-slot IRQ, sound-reset/clock or game paths changed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0033 | CPU-03 | 5393c38a | UNVALIDATED | Watchdog native 32-bit write mapping accepts exactly one full word lane and rejects longword/byte writes before decomposition |
+
+### IMPL-0033 — CPU-03 — watchdog transaction-width gate
+
+- branch/commit: `arena/01a0b897-mame` @ **5393c38a** (base: 352d8ea3).
+- files: `src/devices/cpu/sh/sh7604.cpp:299-301,1963-1973`;
+  `src/devices/cpu/sh/sh7604.h:179`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_width.py`.
+- contract: WDT register writes require a single keyed word. At the native
+  32-bit, big-endian program-space map boundary, FFFF0000 dispatches the
+  high word to WTCNT/WTCSR at FE80; 0000FFFF dispatches the low word to
+  RSTCSR at FE82. FFFFFFFF is a longword and executes neither command.
+  Byte, empty and other partial masks execute neither command. Existing
+  read handlers and per-word key/flag rules remain unchanged. This adds
+  the map-level width information unavailable to IMPL-0027's 16-bit guard.
+- primary source: SH7604 ADE-602-085C Rev.4, Table 12.2 p.321 note 1,
+  section 12.2.4 pp.324-325/Figures 12.2/12.3: write by word, not byte
+  or longword, using the appropriate upper-byte key. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Saturn_MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/WDT.sv:171-187`, accepts only the two word-wide byte-enable
+  patterns before keyed register dispatch, not all four enabled bytes.
+  Blob `fc0d4d397dd42e2a37313e7a91919006cca0f4da`. Local SH-2 configuration
+  at base `352d8ea3:src/devices/cpu/sh/sh2.cpp:35` is 32-bit big-endian.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp` WDT map entries, and fork base
+  `352d8ea3:src/devices/cpu/sh/sh7604.cpp:299-300` install separate 16-bit
+  write handlers, losing the original longword mask through decomposition.
+  No reference code imported.
+- expected observable: native MOV.L of 5A12A500 at FE80 must neither set
+  WTCNT to 12 nor clear WOVF, even after a qualifying RSTCSR read. Native
+  MOV.W of 5A12 at FE80 still writes WTCNT; a qualifying MOV.W A500 at
+  FE82 still clears WOVF. MOV.B sequences cannot assemble either command.
+  Exact register, timer and IRQ-state comparisons; no added latency claim.
+- suggested method: execute native aligned SH-2 MOV.B/MOV.W/MOV.L stores
+  with independently valid commands in both halves. Probe both word
+  addresses, ensure inactive data lanes have no effect, and compare CPU
+  interpreter/DRC and supported DMA access paths. Also qualify unchanged
+  byte-read routing after splitting read/write mappings by direction.
+- falsifier: a longword executing either half-command, byte writes changing
+  watchdog state, a word reaching the wrong register, or a valid word
+  being blocked solely by this width gate rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `524288 rejected native/partial-mask writes;
+  131072 exact word-lane dispatch controls; split-byte assembly rejected`.
+  It extracts the actual new selector and real keyed word handlers and
+  inspects map/space declarations, but does not instantiate address_space.
+  Pre-change `352d8ea3` negative explicitly uses a 32-to-16 lane-decomposition
+  shim for its original two 16-bit mapping entries; it exits 1 at line 96,
+  `both.m_wtcnt==0x56 && both.m_rstcsr==0xe0 && both.m_wdt_read==3`.
+  This is not a native old-map execution claim. UBSan enabled. Twenty-two
+  prior scripts exit 0; the unchanged `frt_stop`, `frt_phase`, `wdt_access`
+  expectation conflicts remain at lines 438, 374, 132. Current total 26
+  SH7604 scripts: 23 exit 0, 3 exit 1. Warning-enabled TU syntax
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes) and
+  `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new state fields or save-layout change.
+  Native address-map construction and CPU/DRC/DMA lane routing still need
+  validator qualification. This replaces the earlier inability to reject
+  longwords at the write-map boundary; it does not retroactively qualify
+  IMPL-0027 or claim its 16-bit handlers can identify original width.
+  Illegal word/longword reads, undocumented address aliases/open-bus data,
+  exact non-A500 command decoding, WDTOVF and RSTE=1 internal reset remain
+  separate. DMA acknowledgement machinery, delay-slot IRQ, sound/game
+  paths, validator assets and existing expected values were not edited.
