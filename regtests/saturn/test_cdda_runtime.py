@@ -375,7 +375,7 @@ local function test()
     -- DRDY clear, and the buffer left as it was found (ST-162-062094 p.32).
     do
         cmd(0x0000, 0, 0, 0)                -- settle into a known state
-        cmd(0x0100, 0, 0, 0)                -- Get Buffer Size reports free blocks
+        cmd(0x5000, 0, 0, 0)                -- Get Buffer Size reports free blocks
         local free_before = sp:read_u16(CR2)
         sp:write_u16(HIRQ, 0xffff)          -- clear everything, including DRDY
         sp:write_u16(CR1, 0x6400)

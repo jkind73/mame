@@ -2185,14 +2185,13 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
      what this attempt took so the buffer is left as it was found. */
   partitionT &part = partitions[bufnum];
   uint32_t reserved = 0;
-  uint8_t reserved_bnum[MAX_BLOCKS];
   blockT *reserved_blocks[MAX_BLOCKS];
 
   for (uint32_t i = sectofs; i < sectofs + sectnum; i++) {
     if (i >= MAX_BLOCKS)
       break;
 
-    uint8_t bnum = 0xff;
+    uint8_t bnum;
     blockT *const blk = cd_alloc_block(&bnum);
     if (blk == nullptr) {
       for (uint32_t j = 0; j < reserved; j++) {
@@ -2209,9 +2208,7 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
       return;
     }
 
-    reserved_blocks[reserved] = blk;
-    reserved_bnum[reserved] = bnum;
-    reserved++;
+    reserved_blocks[reserved++] = blk;
     part.blocks[i] = blk;
     part.bnum[i] = bnum;
     if (part.size == -1)
