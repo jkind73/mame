@@ -2114,9 +2114,10 @@ void sh7604_device::ccr_w(uint8_t data)
 
 // BSC registers permit 16-bit reads, but writes require a complete 32-bit
 // access with A55A in the upper half (section 7.1.4, Table 7.2).
+// Longword reads return zero in the upper half.
 uint32_t sh7604_device::bcr1_r()
 {
-	return (m_bcr1 & ~0xe008) | (m_is_slave ? 0x8000 : 0);
+	return (m_bcr1 & 0x1ff7) | (m_is_slave ? 0x8000 : 0);
 }
 
 void sh7604_device::bcr1_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -2130,7 +2131,7 @@ void sh7604_device::bcr1_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::bcr2_r()
 {
-	return m_bcr2;
+	return m_bcr2 & 0xffff;
 }
 
 void sh7604_device::bcr2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -2144,7 +2145,7 @@ void sh7604_device::bcr2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::wcr_r()
 {
-	return m_wcr;
+	return m_wcr & 0xffff;
 }
 
 void sh7604_device::wcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -2157,7 +2158,7 @@ void sh7604_device::wcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::mcr_r()
 {
-	return m_mcr & ~0x103;
+	return m_mcr & 0xfefc;
 }
 
 void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
