@@ -2198,13 +2198,13 @@ void saturn_cd_hle_device::cmd_read_directory() {
 void saturn_cd_hle_device::cmd_get_file_scope() {
   // Get file system scope
   LOGCMD("%s: Get file system scope\n", machine().describe_context());
-  hirqreg |= (CMOK | EFLS);
-  update_hirq();
   cr1 = cd_stat;
   cr2 = numfiles;  // # of files in directory
   cr3 = 0x0100;    // report directory held
   cr4 = firstfile; // first file id
-  LOGWARN("%04x %04x %04x %04x\n", cr1, cr2, cr3, cr4);
+  // A scope query reports state; it does not complete a filesystem operation.
+  hirqreg |= CMOK;
+  update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_get_target_file_info() {
