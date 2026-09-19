@@ -5534,3 +5534,56 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   The sector latch models logical HLE boundaries, not Mednafen's prefetched
   FIFO boundary. No validator expectations, frozen CPU/sound/video paths
   or milestone status changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0075 | CD-01 | 1ca56e77 | UNVALIDATED | Only Mode1 places the 2048-byte user-data view at byte16; other mode bytes use byte24 |
+
+### IMPL-0075 — CD-01 — default user-data position
+
+- branch/commit/base: `arena/01a0b897-mame` @ **1ca56e77**; base **7a8051fd**.
+- files: `src/mame/sega/saturn_cd_hle.h:99-108`;
+  `saturn_pending/impl_checks/check_cd_mode_fallback.py`.
+- contract: when a raw block is fetched with selection2048, place user data
+  at byte16 only when header byte15 is01. Otherwise use byte24. Retain the
+  Form2 size exception only for Mode2 with submode bit5; no change to the
+  three larger views or the legacy cooked representation. This extends0074
+  beyond its ordinary Mode1/Mode2 scope without treating reserved modes as
+  legal disc formats.
+- primary source: ST-162-062094 printed p.48 section5.4(2)(a)-(c), Figure5.8:
+  only Mode1 has user data immediately after the header; otherwise it is at
+  the Mode2Form1 position. Non-Mode2 subheaders are interpreted as zero;
+  non-CD user-data storage has a zero24-byte prefix. p.95/function7.1 gives
+  the Form2-only length exception. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1345-1363`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  likewise distinguishes Mode1 from all others for the offset. Its GET size
+  fallback also examines raw submode for non-Mode2 headers; that extension
+  is not adopted, following the primary's zero interpreted subheader and
+  Form2-only rule (its actual-size path3307-3321 is Mode2-specific).
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d,
+  `src/mame/sega/saturn_cd_hle.cpp:2717-2730`, and local base use the inverse
+  Mode2/otherwise test. No reference block imported.
+- expected observable: a raw buffer with mode byte00 and fetching selection0
+  returns2048 bytes starting at24, not16, regardless of uninterpreted byte18;
+  actual size remains1024 words. Ordinary Mode1/Form1/Form2 and larger views
+  retain0074 geometry. Exact byte offsets/counts, zero tolerance.
+- suggested method: native raw buffers with zero/nonstandard header modes,
+  distinct bytes at16 and24, compare the2048 view to the raw2352 view and
+  command52/53. Treat malformed header patterns as storage diagnostics,
+  not evidence of legal media modes or error-correction behavior.
+- falsifier: non-01 header uses byte16, non-02 header spuriously extends to
+ 2324 because of uninterpreted byte18, or an ordinary/larger view changes.
+- self-check run (method-level, unvalidated):262144 raw header/submode/view
+  images and20 cooked controls exit0 with fail-fast UBSan. Historical
+  7a8051fd header fails offset predicate at generated line39. Existing raw
+  media/view/replay/copy probe, warning-enabled CD TU syntax and diff checks
+  exit0. No native media, firmware or save-file acceptance claimed.
+- state: **UNVALIDATED**.
+- not covered/known doubts: raw PUT construction and routing, invalid media
+  acceptance/ECC and FIFO timing remain open; no new state/layout change.
+  The0074 validator mock compilation limitation is unchanged. No validator
+  asset/expectation, frozen-path or milestone-status edits.
