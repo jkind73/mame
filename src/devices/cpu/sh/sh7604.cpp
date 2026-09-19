@@ -23,6 +23,8 @@ TODO: Test and use sh7604_wdt_device, sh7604_sci_device, and sh7604_bus_device a
 //#define VERBOSE 1
 #include "logmacro.h"
 
+#include <bit>
+
 
 static constexpr int div_tab[4] = { 3, 5, 7, 0 };
 static constexpr int wdtclk_tab[8] = { 1, 6, 7, 8, 9, 10, 12, 13 };
@@ -48,6 +50,8 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_dma_kludge_cb(*this)
 	, m_dma_fifo_data_available_cb(*this)
 	, m_ftcsr_read_cb(*this)
+	, m_write_txd(*this)
+	, m_read_rxd(*this, 1)
 {
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
@@ -79,6 +83,10 @@ void sh7604_device::device_start()
 	m_timer->adjust(attotime::never);
 	m_wdtimer = timer_alloc(FUNC(sh7604_device::sh2_wdtimer_callback), this);
 	m_wdtimer->adjust(attotime::never);
+	m_sci_tx_timer = timer_alloc(FUNC(sh7604_device::sci_tx_tick), this);
+	m_sci_tx_timer->adjust(attotime::never);
+	m_sci_rx_timer = timer_alloc(FUNC(sh7604_device::sci_rx_tick), this);
+	m_sci_rx_timer->adjust(attotime::never);
 
 	m_dma_current_active_timer[0] = timer_alloc(FUNC(sh7604_device::sh2_dma_current_active_callback), this);
 	m_dma_current_active_timer[0]->adjust(attotime::never);
@@ -97,6 +105,17 @@ void sh7604_device::device_start()
 	save_item(NAME(m_scr));
 	save_item(NAME(m_tdr));
 	save_item(NAME(m_ssr));
+	save_item(NAME(m_rdr));
+	save_item(NAME(m_tsr));
+	save_item(NAME(m_rsr));
+	save_item(NAME(m_sci_tx_bit));
+	save_item(NAME(m_sci_tx_active));
+	save_item(NAME(m_sci_rx_enabled));
+	save_item(NAME(m_sci_rx_state));
+	save_item(NAME(m_sci_rx_shift));
+	save_item(NAME(m_sci_rx_bitcnt));
+	save_item(NAME(m_sci_rx_phase));
+	save_item(NAME(m_sci_rx_vote));
 
 	// FRT / FRC
 	save_item(NAME(m_tier));
@@ -203,6 +222,28 @@ void sh7604_device::device_reset()
 
 	m_wtcnt = 0;
 	m_wtcsr = 0;
+
+	// SCI: H'FFFFFE00 SMR=0, BRR=H'FF, SCR=0, TDR=H'FF, SSR=H'84, RDR=0
+	// (SH7604 Hardware Manual Table 13.2)
+	m_smr = 0;
+	m_brr = 0xff;
+	m_scr = 0;
+	m_tdr = 0xff;
+	m_ssr = SSR_TDRE | SSR_TEND;
+	m_rdr = 0;
+	m_tsr = 0;
+	m_rsr = 0;
+	m_sci_tx_bit = 0;
+	m_sci_tx_active = false;
+	m_sci_rx_enabled = false;
+	m_sci_rx_state = 0;
+	m_sci_rx_shift = 0;
+	m_sci_rx_bitcnt = 0;
+	m_sci_rx_phase = 0;
+	m_sci_rx_vote = 0;
+	m_sci_tx_timer->adjust(attotime::never);
+	m_sci_rx_timer->adjust(attotime::never);
+	m_write_txd(1); // TxD idles high
 
 	m_barah = 0;
 	m_baral = 0;
@@ -819,8 +860,14 @@ void sh7604_device::sh2_dmac_check(int dmach)
 
 /*
  * SCI
+ *
+ * Register behaviour and the transfer engine follow the SH7604 Hardware
+ * Manual (ADE-602-085C) section 13: SMR/BRR/SCR/TDR/SSR/RDR at H'FFFFFE00-05
+ * (p.335 Table 13.2), bit-rate generator formulas (p.349), interrupt sources
+ * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
+ * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: identical to H8 counterpart
+// TODO: clocked synchronous mode and external (SCK) clock are not implemented
 
 uint8_t sh7604_device::smr_r()
 {
@@ -830,6 +877,7 @@ uint8_t sh7604_device::smr_r()
 void sh7604_device::smr_w(uint8_t data)
 {
 	m_smr = data;
+	sci_recalc_rates();
 }
 
 uint8_t sh7604_device::brr_r()
@@ -840,6 +888,7 @@ uint8_t sh7604_device::brr_r()
 void sh7604_device::brr_w(uint8_t data)
 {
 	m_brr = data;
+	sci_recalc_rates();
 }
 
 uint8_t sh7604_device::scr_r()
@@ -849,7 +898,39 @@ uint8_t sh7604_device::scr_r()
 
 void sh7604_device::scr_w(uint8_t data)
 {
+	bool const old_re = BIT(m_scr, 4);
 	m_scr = data;
+
+	// TE=0 locks TDRE at 1, sets TEND and initializes TSR; TE=1 alone does
+	// not start a transfer, only the TDRE clear does (pp.340, 345, 372-373)
+	if (!BIT(m_scr, 5))
+	{
+		m_ssr |= SSR_TDRE;
+		m_ssr |= SSR_TEND;
+		m_sci_tx_active = false;
+		m_sci_tx_timer->adjust(attotime::never);
+		m_write_txd(1);
+	}
+	if (!BIT(m_scr, 4))
+	{
+		m_sci_rx_enabled = false;
+		m_sci_rx_timer->adjust(attotime::never);
+		// clearing RE does not affect RDRF/FER/PER/ORER (p.340)
+	}
+	else if (!old_re)
+	{
+		// receiver enable: start oversampling (internal clock only)
+		if (!BIT(m_scr, 1) && !BIT(m_smr, 7))
+		{
+			m_sci_rx_enabled = true;
+			m_sci_rx_state = 0;
+			m_sci_rx_phase = 0;
+			m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+		}
+	}
+
+	sci_recalc_rates();
+	sh2_recalc_irq();
 }
 
 uint8_t sh7604_device::tdr_r()
@@ -859,24 +940,256 @@ uint8_t sh7604_device::tdr_r()
 
 void sh7604_device::tdr_w(uint8_t data)
 {
+	// TDR write alone does not start a transfer: the SCI watches TDRE
+	// (Figure 13.15 step 1, p.372)
 	m_tdr = data;
-	//printf("%c", data & 0xff);
 }
 
 uint8_t sh7604_device::ssr_r()
 {
-	// 0x84 is needed by EGWord on Saturn to make it to boot for some reason.
-	return m_ssr | 0x84;
+	return m_ssr;
 }
 
 void sh7604_device::ssr_w(uint8_t data)
 {
-	m_ssr = data;
+	// SSR is write-1-to-keep / write-0-to-clear for flags 7-2; MPB (bit 1)
+	// is read-only and MPBT (bit 0) is read/write (pp.344-345). TDRE is
+	// locked at 1 while TE is 0 (p.340), so only flags 6-2 are clearable.
+	uint8_t const clearable = BIT(m_scr, 5) ? 0xfc : 0x7c;
+	bool const tdre_clear = BIT(m_ssr, 7) && !BIT(data, 7) && BIT(m_scr, 5);
+	m_ssr = (m_ssr & (data | (uint8_t)~clearable)) | (m_ssr & SSR_MPB) | (data & 0x01);
+
+	// "When TDRE is cleared to 0 the SCI recognizes that TDR contains new
+	// data and loads this data from TDR into TSR", then sets TDRE again
+	// (p.372 step 1-2)
+	if (tdre_clear && !m_sci_tx_active && !BIT(m_smr, 7))
+	{
+		m_tsr = m_tdr;
+		m_ssr |= SSR_TDRE;
+		sci_transmit_start();
+	}
+	sh2_recalc_irq();
 }
 
 uint8_t sh7604_device::rdr_r()
 {
-	return 0;
+	return m_rdr;
+}
+
+attotime sh7604_device::sci_bit_period() const
+{
+	// B = phi / ((N+1) * 2^(7+2n)) in asynchronous mode and
+	// B = phi / ((N+1) * 2^(4+2n)) in clocked synchronous mode.
+	// Verified against Tables 13.3/13.4/13.6 (pp.347-350): f=4MHz n=0 N=0
+	// async gives 31250 baud, f=14.7456MHz n=0 N=0 gives 115200, and the
+	// per-row N values of Tables 13.3/13.4 reproduce with these divisors.
+	uint32_t const ticks = (uint32_t)(m_brr + 1)
+		<< (((m_smr & 0x80) ? 4 : 7) + 2 * (m_smr & 3));
+	return attotime::from_ticks(ticks, clock());
+}
+
+void sh7604_device::sci_recalc_rates()
+{
+	// keep a running transmitter on the new rate (C/A=1 unsupported here)
+	if (BIT(m_smr, 7))
+		return;
+	if (m_sci_tx_active && BIT(m_scr, 5))
+		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
+	if (m_sci_rx_enabled)
+		m_sci_rx_timer->adjust(sci_bit_period() / 16, m_sci_rx_phase);
+}
+
+void sh7604_device::sci_transmit_start()
+{
+	// TDR has already been loaded into TSR by the TDRE-clear trigger;
+	// start shifting the frame LSB first from the start bit
+	m_sci_tx_bit = 0;
+	m_sci_tx_active = true;
+	if (!BIT(m_smr, 7) && BIT(m_scr, 5))
+	{
+		m_write_txd(0); // start bit
+		m_sci_tx_timer->adjust(sci_bit_period(), 1);
+	}
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
+{
+	if (!m_sci_tx_active || !BIT(m_scr, 5) || BIT(m_smr, 7))
+		return;
+
+	uint8_t const data_bits = BIT(m_smr, 6) ? 7 : 8;
+	bool const parity_enable = BIT(m_smr, 5) && !BIT(m_smr, 2);
+	bool const mp_mode = BIT(m_smr, 2);
+	uint8_t const stop_bits = BIT(m_smr, 3) ? 2 : 1;
+	// bit positions after the start bit: data + (parity|MP) + stop
+	uint8_t const frame_bits = data_bits
+		+ (mp_mode ? 1 : (parity_enable ? 1 : 0))
+		+ stop_bits;
+
+	int bit;
+	if (param <= data_bits)
+	{
+		// data bits, LSB first; 7-bit characters do not transmit the MSB
+		bit = (m_tsr >> (param - 1)) & 1;
+	}
+	else if (mp_mode && param == data_bits + 1)
+	{
+		bit = BIT(m_ssr, 0); // MPBT
+	}
+	else if (parity_enable && param == data_bits + 1)
+	{
+		uint8_t const mask = (1 << data_bits) - 1;
+		bit = (std::popcount(unsigned(m_tsr & mask)) & 1) ^ BIT(m_smr, 4);
+	}
+	else
+	{
+		bit = 1; // stop bit(s)
+	}
+
+	m_write_txd(bit);
+
+	// "The SCI checks the TDRE bit when it outputs the MSB": an already
+	// loaded TDR chains into the next frame (p.373 step 3)
+	if (param == data_bits && !BIT(m_ssr, 7))
+	{
+		m_tsr = m_tdr;
+		m_ssr |= SSR_TDRE;
+		m_sci_tx_bit = param;
+		m_sci_tx_timer->adjust(sci_bit_period(), param + 1);
+		return;
+	}
+
+	if (param < frame_bits)
+	{
+		m_sci_tx_bit = param;
+		m_sci_tx_timer->adjust(sci_bit_period(), param + 1);
+		return;
+	}
+
+	// frame complete without chained data: TEND. In asynchronous mode the
+	// line returns to the mark state (p.354); the MSB-hold of p.373 step 3
+	// applies to clocked synchronous mode, which is not implemented here.
+	m_sci_tx_active = false;
+	m_ssr |= SSR_TEND;
+	sh2_recalc_irq();
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
+{
+	if (!m_sci_rx_enabled || !BIT(m_scr, 4))
+		return;
+
+	// a latched error stops reception until the flag is cleared (pp.344-345)
+	if (m_ssr & (SSR_ORER | SSR_FER | SSR_PER))
+	{
+		m_sci_rx_timer->adjust(sci_bit_period() / 16, m_sci_rx_phase);
+		return;
+	}
+
+	bool const line = m_read_rxd(0) != 0;
+
+	switch (m_sci_rx_state)
+	{
+	case 0: // idle: look for a start bit edge
+		if (!line)
+		{
+			m_sci_rx_state = 1;
+			m_sci_rx_phase = 0;
+			m_sci_rx_shift = 0;
+			m_sci_rx_bitcnt = 0;
+		}
+		break;
+
+	case 1: // inside a frame, oversampling at 16x the bit rate
+		{
+			uint8_t const data_bits = BIT(m_smr, 6) ? 7 : 8;
+			bool const parity_enable = BIT(m_smr, 5) && !BIT(m_smr, 2);
+			bool const mp_mode = BIT(m_smr, 2);
+			uint8_t const total_bits = data_bits
+				+ (mp_mode || parity_enable ? 1 : 0)
+				+ 1; // first stop bit
+
+			if (m_sci_rx_phase == 8)
+			{
+				// "The SCI samples each data bit on the eighth pulse of a
+				// clock with a frequency 16 times the bit rate" (p.354)
+				bool const bit = line;
+
+				if (m_sci_rx_bitcnt == 0 && bit == 0)
+				{
+					// start bit confirmed
+				}
+				else if (m_sci_rx_bitcnt == 0 && bit == 1)
+				{
+					// false start: back to idle
+					m_sci_rx_state = 0;
+				}
+				else if (m_sci_rx_bitcnt <= data_bits)
+				{
+					m_sci_rx_shift |= bit << (m_sci_rx_bitcnt - 1);
+				}
+				else if (m_sci_rx_bitcnt == data_bits + 1 && mp_mode)
+				{
+					// MPB latches into SSR.MPB (not modelled as wake filter)
+					if (bit)
+						m_ssr |= SSR_MPB;
+				}
+				else if (m_sci_rx_bitcnt == data_bits + 1 && parity_enable)
+				{
+					uint8_t const mask = (1 << data_bits) - 1;
+					bool const parity_error =
+						((std::popcount(unsigned(m_sci_rx_shift & mask)) & 1) ^ BIT(m_smr, 4)) != bit;
+					if (parity_error)
+					{
+						sci_rx_complete(m_sci_rx_shift, true, false);
+						m_sci_rx_state = 0;
+						m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+						return;
+					}
+				}
+				else if (m_sci_rx_bitcnt == total_bits)
+				{
+					// first stop bit must be 1 (only the first is checked, p.338)
+					sci_rx_complete(m_sci_rx_shift, false, !bit);
+					m_sci_rx_state = 0;
+					m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+					return;
+				}
+				m_sci_rx_bitcnt++;
+			}
+
+			m_sci_rx_phase = (m_sci_rx_phase + 1) & 15;
+		}
+		break;
+	}
+
+	m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+}
+
+void sh7604_device::sci_rx_complete(uint8_t data, bool parity_error, bool framing_error)
+{
+	if (framing_error)
+	{
+		// data is transferred to RDR but RDRF is not set (p.344)
+		m_rdr = data;
+		m_ssr |= SSR_FER;
+	}
+	else if (parity_error)
+	{
+		m_rdr = data;
+		m_ssr |= SSR_PER;
+	}
+	else if (m_ssr & SSR_RDRF)
+	{
+		// overrun: RSR content is lost, ORER stops reception (p.344)
+		m_ssr |= SSR_ORER;
+	}
+	else
+	{
+		m_rdr = data;
+		m_ssr |= SSR_RDRF;
+	}
+	sh2_recalc_irq();
 }
 
 /*
@@ -1533,6 +1846,33 @@ void sh7604_device::sh2_recalc_irq()
 			irq = level;
 			m_dma_irq[1] &= ~1;
 			vector = m_irq_vector.dmac[1] & 0x7f;
+		}
+	}
+
+	// SCI irqs: ERI > RXI > TXI > TEI, vectors in VCRA/VCRB, level in IPRB
+	// (SH7604 Hardware Manual pp.91-92, Table 13.13)
+	level = m_irq_level.sci & 15;
+	if (level > irq)
+	{
+		if ((m_ssr & (SSR_ORER | SSR_FER | SSR_PER)) && (m_scr & 0x40))
+		{
+			irq = level;
+			vector = m_vcra & 0x7f; // SERV: ERI
+		}
+		else if ((m_ssr & SSR_RDRF) && (m_scr & 0x40))
+		{
+			irq = level;
+			vector = (m_vcra >> 8) & 0x7f; // SRXV: RXI
+		}
+		else if ((m_ssr & SSR_TDRE) && (m_scr & 0x80))
+		{
+			irq = level;
+			vector = m_vcrb & 0x7f; // STXV: TXI
+		}
+		else if ((m_ssr & SSR_TEND) && (m_scr & 0x04))
+		{
+			irq = level;
+			vector = (m_vcrb >> 8) & 0x7f; // STEV: TEI
 		}
 	}
 
