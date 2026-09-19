@@ -28,6 +28,7 @@ using offs_t=unsigned;
 struct attotime { static constexpr int never=-1; };
 struct Timer { int due=123; unsigned adjustments=0; void adjust(int t) { due=t; ++adjustments; } };
 struct Device {
+ uint8_t m_wdt_read=0;
  uint8_t m_wtcnt=0x56,m_wtcsr=0xb9,m_rstcsr=0xe0;
  uint16_t m_wtcw[2]{0xa538,0xa500}; Timer timer; Timer *m_wdtimer=&timer;
  unsigned syncs=0,starts=0,irqs=0;

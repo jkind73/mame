@@ -176,9 +176,9 @@ private:
 	void dmaor_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 
 	// WTC
-	uint16_t wtcnt_r();
+	uint16_t wtcnt_r(offs_t offset = 0, uint16_t mem_mask = ~0);
 	void wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
-	uint16_t rstcsr_r();
+	uint16_t rstcsr_r(offs_t offset = 0, uint16_t mem_mask = ~0);
 	void rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
 	// misc
@@ -270,6 +270,7 @@ private:
 	// WTC
 	uint8_t m_wtcnt, m_wtcsr;
 	uint8_t m_rstcsr;
+	uint8_t m_wdt_read; // bit 0: OVF read as one; bit 1: WOVF read as one
 	uint16_t m_wtcw[2];
 
 	// UBC

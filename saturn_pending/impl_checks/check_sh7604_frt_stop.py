@@ -65,6 +65,7 @@ struct Device : sh2_device {
  void m_write_ftoa(int) {}
  void m_write_ftob(int) {}
  bool m_frt_clock_input=false;
+ uint8_t m_wdt_read=0;
  uint8_t m_frt_temp=0;
  uint8_t m_ftcsr_read=0;
  Device &machine() { return *this; }
