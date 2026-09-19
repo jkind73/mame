@@ -3303,3 +3303,65 @@
   positive result; it is a regression control, not this correction's target.
   Operand-object copies are not native save-manager tests. No frozen DMA,
   delay-slot, sound, video or title-specific paths changed.
+
+### IMPL-0044 metadata correction (append-only)
+
+The parent printed as CPU-02 in the preceding IMPL-0044 table/heading is
+an indexing error: DIVU belongs to **CPU-03**, consistent with IMPL-0035
+and IMPL-0037. IMPL-0044, its implementation commit `ef70c104`, contract
+and UNVALIDATED status are unchanged. No milestone ID is renamed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0045 | CPU-03 | — | BLOCKED(SH7604 VCRDIV bits 15-7 readback capture or erratum) | Resolve documented reserved-zero readback versus deliberately retained word readback |
+
+### IMPL-0045 — CPU-03 — VCRDIV reserved readback disagreement
+
+- branch/base: `arena/01a0b897-mame` @ `921f938f`; no production edit.
+- files: `src/devices/cpu/sh/sh7604.cpp:1777-1790`, VCRDIV handlers.
+- contract in dispute: primary SH7604 ADE-602-085C Rev.4 section 10.2.4
+  p.291 explicitly says bits 31-7 always read zero and writes should be
+  zero. However, the same section depicts bits 15-0 as undefined-initial,
+  read/write and says values can be set in all 16 bits, with only bits 6-0
+  valid as a vector. Table 10.1 p.289 also labels the low 16 reset bits
+  undefined. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- upstream/fork provenance: upstream MAME commit
+  `661381746bf01462df2c40f3567918293a70a379`, titled
+  `cpu/sh/sh7604.cpp: fix BCR1/BCR2 and VCRDIV accessing`, deliberately
+  changed the read mask from 007F to FFFF and added the word-readback
+  comment. Its fetched commit message/patch does not identify a hardware
+  capture or erratum. Pinned upstream `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1087-1099`, and the fork's baseline retain
+  this behavior. Do not silently undo that deliberate change as a cleanup.
+- pinned cross-checks: Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:66,113` defines uint16
+  storage; `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1211,1661` reads/writes
+  that word. Blobs `6b31b7d029449d63f68ef281dc04958d17d74339` and
+  `9746b438b8a71de63ff65cd2d4325bc582a5114b`.
+  Saturn_MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/DIVU.sv:178-179,234`, uses 16-bit VCRDIV readback;
+  `rtl/SH/SH7604/SH7604_pkg.sv:366-369` has FFFF read/write masks.
+  Blobs `09b259b5f91888dc0363884fd3b2c5d81644c118` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`. Agreement among these
+  implementations does not prove silicon behavior or legalize reserved writes.
+- expected observable to resolve: exact VCRDIV longword and low-word
+  readback, especially bits 15-7, with vector extraction measured separately.
+  Units: register bits; zero bit tolerance once the artifact establishes
+  the contract. Valid writes with reserved bits zero cannot distinguish
+  the two models after initialization.
+- suggested measurement: attributable silicon readback capture including
+  cold-start observations and a diagnostic reserved-bit sweep, both access
+  widths, and accompanying chip/document revision. Reserved-bit injections
+  are diagnostics only, not supported software programming sequences.
+  Prefer an official correction specifying the readback mask if available.
+- falsifier for a future candidate: retained bits 15-7 on hardware falsify
+  an unconditional 007F read mask; consistently forced-zero behavior under
+  an established applicable contract falsifies unconditional word readback.
+- self-check run: primary, source and upstream-history inspection only;
+  no new probe or production change and no native validation claim.
+- state: **BLOCKED(SH7604 VCRDIV bits 15-7 readback capture or erratum)**.
+- not covered: vector delivery, DIVU latency/overflow and reset value
+  qualification. Existing 7-bit vector extraction and 16-bit readback are
+  left intact; this is not a claim that either is verified.
