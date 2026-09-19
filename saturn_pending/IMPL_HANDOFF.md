@@ -3041,3 +3041,57 @@
 - The authentication delivery blocker above is resolved; its historical
   failure record is retained. Implementation resumes on the same branch.
   No hardware validation state changes are implied.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0041 | CPU-02 | 9005dcb1 | UNVALIDATED | BCR2 returns only A3SZ/A2SZ/A1SZ; reserved bits 15–8 and 1–0 read zero |
+
+### IMPL-0041 — CPU-02 — BCR2 reserved read bits
+
+- branch/commit: `arena/01a0b897-mame` @ **9005dcb1** (base: 78d631ee).
+- files: `src/devices/cpu/sh/sh7604.cpp`, `bcr2_r`;
+  `saturn_pending/impl_checks/check_sh7604_bcr2_reserved.py`.
+- contract: BCR2 exposes only its three two-bit area bus-size fields in
+  bits 7–2. Reserved bits 15–8 and 1–0 always read zero, independently of
+  retained internal storage. The read does not mutate stored data or
+  alter the existing keyed-write gate.
+- primary source: SH7604 ADE-602-085C Rev.4, section 7.2.2 pp.138–139,
+  BCR2 bit layout and reserved-bit descriptions; section 7.1.4 p.134
+  supplies the upper-half-zero rule already implemented by IMPL-0039.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1733-1736`, masks BCR2 writes
+  to FC and returns the resulting storage at `:1241`. Blob
+  `9746b438b8a71de63ff65cd2d4325bc582a5114b`. This candidate instead
+  masks at the getter, preserving the existing saved representation.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1387-1403`, returns raw BCR2; fork base
+  `78d631ee` only narrows it to 16 bits. No reference code imported.
+- expected observable: a getter over stored FFFF returns 000000FC,
+  while each legal A1SZ/A2SZ/A3SZ encoding remains readable unchanged.
+  Exact bits, not a claim that the selected bus widths/timings are modeled.
+- suggested method: check native word/longword BCR2 reads after legal
+  initialization; use controlled saved-state/debugger perturbation for
+  reserved storage bits. Do not treat the robustness sweeps as permission
+  to write reserved encodings or reprogram BCR2 after initialization.
+- falsifier: any reserved bit reading as one, any legal size field being
+  masked incorrectly, or a read changing storage rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `262144 raw-storage masks; 65536 keyed-write/read cases;
+  262144 state-copy replays; 27 legal bus-size field combinations`.
+  Pre-change `78d631ee` methods exit 1 at line 26,
+  `polluted.bcr2_r()==0xfc`. UBSan enabled. Twenty-eight prior scripts
+  exit 0; unchanged `frt_stop`, `frt_phase`, `wdt_access` expectation
+  conflicts remain at lines 444, 380, 132. Current working series:
+  32 SH7604 scripts, 29 exit 0 and 3 exit 1. Warning-enabled TU syntax
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes) and
+  `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new state fields or save-layout change.
+  Raw storage is intentionally unchanged. Native read-lane routing,
+  bus-size execution, BSC reset causes and memory-grant timing remain
+  unqualified. Reserved encodings and prohibited reconfiguration are
+  not declared supported. Frozen DMA, delay-slot IRQ, sound/game paths,
+  validator assets and existing expected values untouched.
