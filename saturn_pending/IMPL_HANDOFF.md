@@ -3365,3 +3365,82 @@ and UNVALIDATED status are unchanged. No milestone ID is renamed.
 - not covered: vector delivery, DIVU latency/overflow and reset value
   qualification. Existing 7-bit vector extraction and 16-bit readback are
   left intact; this is not a claim that either is verified.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0046 | CPU-03 | 27072eb9 + 7ad836e5 | UNVALIDATED | Device reset clears IPRA/IPRB and all five decoded interrupt-priority levels |
+
+### IMPL-0046 — CPU-03 — INTC priority reset image
+
+- branch/commit/base: `arena/01a0b897-mame`; production and new probe
+  `27072eb9`, additional declaration-only mock adapter `7ad836e5`;
+  base `7f2026e5`. Both commits pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:220-229`, `device_reset`;
+  `saturn_pending/impl_checks/check_sh7604_intc_priority_reset.py` (new);
+  existing `check_sh7604_frt_stop.py` and `check_sh7604_module_stop.py`
+  gain declarations for IPRA and the decoded-priority struct only.
+- contract: RES-style device reset writes IPRA=IPRB=0000 and clears all
+  five cached priorities (DIVU, DMAC, WDT, SCI, FRT) before peripheral
+  reset helpers run. Priority writers/getters and peripheral module-stop
+  retention are unchanged. No new arbiter call, IRQ selection policy,
+  acknowledgement rule or delay-slot path is added or changed.
+- primary source: SH7604 ADE-602-085C Rev.4 sections 5.3.1-5.3.2
+  pp.88-90, Table 5.5 p.90; SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. Both registers initialize
+  to 0000 on power-on and manual reset; standby does not initialize them.
+  IPRA fields decode DIVU/DMAC/WDT and IPRB fields decode SCI/FRT.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/INTC.sv:251-267` resets IPRA/IPRB on RST_N and RES_N;
+  `rtl/SH/SH7604/SH7604_pkg.sv:13,23` defines both initial values as zero.
+  Blobs `3018e750e3ff0c10b1bad5e7ca3f12ba67461301` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`. INTC.sv:154-170 uses
+  these registers in priority selection. This supports reset values, not
+  native MAME ordering/interrupt equivalence.
+- provenance: existing local IPRA/IPRB writer decoding and constructor
+  initializers; upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-211`, omits INTC priority reset.
+  Inspected upstream file history contains no replacement reset engine.
+  No external implementation was imported.
+- expected observable: after programming IPRA=FED0 and IPRB=CB00, a
+  device reset yields both reads 0000 and decoded priorities all zero.
+  Units: exact 16-bit words and 4-bit priority fields; zero bit tolerance
+  once reset is complete. Subsequent legal writes restore their decoded
+  levels. Entering/releasing SCI/FRT module stop without reset retains
+  the programmed priorities. No cycle-accurate reset-edge tolerance claimed.
+- suggested measurement: native master/slave SH7604 register probe using
+  legal INTC accesses, external reset assertion/release and reprogramming;
+  repeat across save/load with nonzero priorities. Qualify delivery with
+  isolated source flags and SR masks separately. Check system standby
+  separately from the method probe's peripheral module-stop controls.
+- falsifier: IPRA/IPRB or any derived priority retains a nonzero value
+  after completed power-on/manual reset; a later write fails to restore
+  the matching field; or module-stop entry unexpectedly clears them.
+- self-check run (method-level, unvalidated): actual device-reset,
+  IPRA/IPRB read/write and SBYCR methods, mocked base reset/peripheral
+  helpers/IRQ refresh, fail-fast UBSan: 262,144 reset images, 524,288
+  module-stop retention controls, 524,288 reprogramming controls and
+  262,144 operand-state-copy replays; exit 0. Existing save registrations
+  checked for both registers and all five derived fields. Historical
+  `7f2026e5` source fails the first reset observation (generated line 318).
+  Warning-enabled C++20 TU syntax-only check and diff whitespace check:
+  exit 0. No full build or native qualification.
+  Selected prior 34-script series initially reported 29 exit 0, four
+  expectation conflicts and one module-stop mock compilation failure:
+  missing IPRA/decoded-priority declarations. Commit `7ad836e5` adds only
+  those declarations; module_stop then exits 0 with its expectations
+  untouched. Resulting selected series including this new probe: 35
+  scripts, 31 exit 0, four unchanged semantic conflicts (frt_stop now
+  generated line 449, frt_phase 385, wdt_access 132, bsc_access 98).
+  No existing assertion/expected value or validator asset changed.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: native reset-cause delivery, WDT-generated
+  internal reset, system standby, live native save/load, INTC vector/ICR
+  reset images, NMI edge selection and actual interrupt arrival/order.
+  No new saved fields or save-layout change. Clearing the already-saved
+  priority cache avoids stale nonzero levels; it is not a claim that the
+  overall interrupt controller or DMA behavior is qualified. Frozen DMA
+  acknowledgements and delay-slot IRQ implementation remain untouched.
