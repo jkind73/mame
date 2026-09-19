@@ -1,0 +1,68 @@
+=== saturnjp-nodrc (saturnjp, interpreter)
+  SCSP_CONT hooked=true
+  SCSP_CONT armed
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT env before=0.492665 after=0.491443 ratio=0.99752 eg_after=011f
+  SCSP_CONT wave slope_before=0.0001241 slope_after=0.0001196 tail=0.250000 head=0.250000 delta=0.000000 pitch_poisoned=7800 pitch_after=7000 control_after=0830
+  SCSP_CONT irq pending_before=true pending_cleared=true pending_restored=true med_before=23.0 med_after=23.0 gaps_before=24.0,23.0,23.0,23.0,24.0,23.0 gaps_after=23.0,23.0,1.0,23.0,23.0,23.0
+  SCSP_CONT PASS cases=3
+  result: PASS
+  binary_sha256: 9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4
+=== saturnjp-drc (saturnjp, DRC)
+  SCSP_CONT hooked=true
+  SCSP_CONT armed
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT env before=0.492665 after=0.491443 ratio=0.99752 eg_after=011f
+  SCSP_CONT wave slope_before=0.0001241 slope_after=0.0001196 tail=0.250000 head=0.250000 delta=0.000000 pitch_poisoned=7800 pitch_after=7000 control_after=0830
+  SCSP_CONT irq pending_before=true pending_cleared=true pending_restored=true med_before=23.0 med_after=23.0 gaps_before=24.0,23.0,23.0,23.0,24.0,23.0 gaps_after=23.0,23.0,1.0,23.0,23.0,23.0
+  SCSP_CONT PASS cases=3
+  result: PASS
+  binary_sha256: 9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4
+=== saturneu-drc (saturneu, DRC)
+  SCSP_CONT hooked=true
+  SCSP_CONT armed
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT env before=0.491667 after=0.492665 ratio=1.00203 eg_after=011f
+  SCSP_CONT wave slope_before=0.0001208 slope_after=0.0001219 tail=0.251953 head=0.253906 delta=0.001953 pitch_poisoned=7800 pitch_after=7000 control_after=0830
+  SCSP_CONT irq pending_before=true pending_cleared=true pending_restored=true med_before=23.0 med_after=23.0 gaps_before=24.0,23.0,23.0,23.0,24.0,23.0 gaps_after=23.0,23.0,1.0,23.0,23.0,23.0
+  SCSP_CONT PASS cases=3
+  result: PASS
+  binary_sha256: 9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4
+=== stvbios-drc (stvbios, DRC)
+  SCSP_CONT hooked=true
+  SCSP_CONT armed
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT saved
+  SCSP_CONT loaded
+  SCSP_CONT env before=0.491443 after=0.492665 ratio=1.00249 eg_after=011f
+  SCSP_CONT wave slope_before=0.0001196 slope_after=0.0001241 tail=0.273438 head=0.273438 delta=0.000000 pitch_poisoned=7800 pitch_after=7000 control_after=0830
+  SCSP_CONT irq pending_before=true pending_cleared=true pending_restored=true med_before=23.0 med_after=23.0 gaps_before=24.0,23.0,23.0,23.0,24.0,23.0 gaps_after=23.0,23.0,1.0,23.0,23.0,23.0
+  SCSP_CONT PASS cases=3
+  result: PASS
+  binary_sha256: 9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4
