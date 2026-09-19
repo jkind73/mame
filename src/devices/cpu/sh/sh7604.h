@@ -32,6 +32,9 @@ public:
 
 	template <typename... T> void set_ftcsr_read_callback(T &&... args) { m_ftcsr_read_cb.set(std::forward<T>(args)...); }
 
+	auto txd_wr_callback() { return m_write_txd.bind(); }
+	auto rxd_rd_callback() { return m_read_rxd.bind(); }
+
 	void sh2_notify_dma_data_available();
 
 protected:
@@ -60,6 +63,14 @@ private:
 	uint32_t sh2_internal_a5();
 
 	// SCI
+	static constexpr uint8_t SSR_TDRE = 0x80;
+	static constexpr uint8_t SSR_RDRF = 0x40;
+	static constexpr uint8_t SSR_ORER = 0x20;
+	static constexpr uint8_t SSR_FER  = 0x10;
+	static constexpr uint8_t SSR_PER  = 0x08;
+	static constexpr uint8_t SSR_TEND = 0x04;
+	static constexpr uint8_t SSR_MPB  = 0x02;
+
 	uint8_t smr_r();
 	void smr_w(uint8_t data);
 	uint8_t brr_r();
@@ -71,6 +82,14 @@ private:
 	uint8_t ssr_r();
 	void ssr_w(uint8_t data);
 	uint8_t rdr_r();
+
+	// SCI transfer engine (internal-clock asynchronous mode)
+	attotime sci_bit_period() const;
+	void sci_recalc_rates();
+	void sci_transmit_start();
+	TIMER_CALLBACK_MEMBER(sci_tx_tick);
+	TIMER_CALLBACK_MEMBER(sci_rx_tick);
+	void sci_rx_complete(uint8_t data, bool parity_error, bool framing_error);
 
 	// FRT / FRC
 	uint8_t tier_r();
@@ -179,6 +198,21 @@ private:
 
 	// SCI
 	uint8_t m_smr, m_brr, m_scr, m_tdr, m_ssr;
+	uint8_t m_rdr, m_tsr, m_rsr;
+	uint8_t m_sci_tx_bit;       // bit index within the transmit frame
+	bool m_sci_tx_active;       // a character is being shifted out
+	bool m_sci_rx_enabled;      // oversampling run flag
+	uint8_t m_sci_rx_state;     // receive oversample state
+	uint8_t m_sci_rx_shift;     // data bits collected so far
+	uint8_t m_sci_rx_bitcnt;    // data bits collected count
+	uint8_t m_sci_rx_phase;     // oversample phase 0-15 within a bit
+	uint8_t m_sci_rx_vote;      // majority-vote accumulator
+	emu_timer *m_sci_tx_timer;
+	emu_timer *m_sci_rx_timer;
+
+	// SCI pin-level interface (unbound = TxD not connected, RxD idle)
+	devcb_write_line m_write_txd;
+	devcb_read_line m_read_rxd;
 
 	// FRT / FRC
 	uint8_t m_tier, m_ftcsr, m_frc_tcr, m_tocr;
