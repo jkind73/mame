@@ -1363,3 +1363,106 @@
   asynchronous clock-output engine to adopt. The H8 phase relation and
   MiSTer TX_RUN gate cited above were inspected directly; neither
   establishes native SH7604 startup phase or save-state behavior.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0019 | CPU-03/IO-02 | 20c1e822 | UNVALIDATED | SBYCR.MSTP0 initializes SCI registers/engine without clearing its INTC vectors; reset releases module standby |
+
+### IMPL-0019 — CPU-03/IO-02 — SCI module-stop initialization
+
+- branch/commit: `arena/01a0b897-mame` @ **20c1e822** (base: c101ca5a).
+- files: `src/devices/cpu/sh/sh7604.cpp:237-239` (device-reset release),
+  `:865-898` (shared SCI reset), `:1869-1896` (SBYCR byte-write handler);
+  `src/devices/cpu/sh/sh7604.h:89` (helper declaration);
+  `saturn_pending/impl_checks/check_sh7604_module_stop.py:1-180`.
+- contract: a byte write taking SBYCR.MSTP0 from zero to one initializes
+  the SCI registers and internal transfer bookkeeping, cancels its three
+  timers, and clears its interrupt enables/requests through IRQ
+  recalculation. SCI vectors in VCRA/VCRB and IPRB remain unchanged.
+  Clearing MSTP0 leaves the SCI in its initial state, not a paused-frame
+  state: software must initialize it again. Device reset clears SBYCR
+  and uses the same SCI initialization. No new saved state is introduced;
+  existing `m_sbycr` save registration and all SCI registrations remain.
+  Existing FMR byte/word routing is unchanged. The scope is legal,
+  halted-module entry and release, not whole-chip standby or sleep.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 14.2.1 pp.387-389 (SBYCR reset value H'00; MSTP0 initializes
+  SCI but preserves its INTC vectors; clearing it starts from initial
+  state); sections 14.5.1/14.5.2 p.393 (module-stop entry and release by
+  bit clear or power/manual reset; no SCI reads/writes while stopped;
+  do not switch a running module to standby). Section 13.2/Table 13.2
+  p.335 and register descriptions pp.335-345 give reset values. Table
+  A.1 p.564 gives reset TXD=high and SCK=high impedance; **the latter is
+  not represented by the current one-bit callbacks**. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_power.hpp:8-26` documents
+  MSTP0 as halt-and-reset, while
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:379,1451` resets/stores SBYCR
+  without implementing SCI module reset. This is a register-description
+  cross-check, not an independent functioning engine. Blobs:
+  `e8526b57f8f8ecad0282e11d3d53d8be1c1d642f` and
+  `9746b438b8a71de63ff65cd2d4325bc582a5114b`.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1328-1345`, merely stores/logs module
+  stop. Inspected fork history through `c101ca5a`: the existing SCI
+  reset was inline in `device_reset`; SBYCR still had that upstream
+  store/log path. Reused the fork's initialization verbatim except for
+  the clarified SCK callback comment; no outside code imported.
+- expected observable: after legal stop/release, read SMR=H'00,
+  BRR=H'FF, SCR=H'00, TDR=H'FF, SSR=H'84, RDR=H'00. VCRA/VCRB/IPRB
+  retain their pre-stop values. With no new initialization, advancing
+  simulated time or providing external SCK edges produces no new SCI
+  transmission/reception/interrupt request. Device reset yields
+  SBYCR=H'00 even if MSTP0 was previously set. Register comparisons and
+  event counts are exact, with no time tolerance or silicon propagation
+  latency asserted. TxD callback reports logical high; SCK logical idle
+  is not an electrical high-impedance measurement.
+- suggested method: finish a transfer, disable TX/RX and deselect clock
+  output, leaving unread RDR/errors and a prior SSR-read qualification;
+  record vectors/priority, set MSTP0 via H'FFFFFE91 byte access, advance
+  time and external SCK, then clear MSTP0 before reading SCI registers.
+  Reinitialize and exchange a fresh byte in each internal/external
+  async/sync mode. Repeat with a saved stopped-state snapshot and with
+  manual/power reset. Confirm FMR accesses and unrelated SBYCR bits do
+  not trigger SCI reset. Use a native peer/IRQ probe for delivery and a
+  pin-direction-capable model for electrical reset claims.
+- falsifier: residual RDR/error flags after legal release, changed
+  VCRA/VCRB/IPRB, stale SSR-read qualification acknowledging a fresh
+  flag, a pre-stop timer/character resuming without reinitialization,
+  or MSTP0 remaining set after reset contradicts this candidate.
+  A reset caused solely by FMR access or another module-stop bit also
+  contradicts its scope. Forbidden SCI access while stopped or active
+  module entry is not a hardware acceptance scenario.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 16384 halted-entry cases; 194 access-width/other-bit controls; 2048 fresh transfers and 2048 state-copy replays; 128 reset-release cases
+  method-level, unvalidated: 384 forbidden-active-entry cleanup probes (software robustness only)
+  method-level, unvalidated: register/read-latch reset, vector preservation, timer cancellation and no stale resume exercised; no native IRQ/save or high-impedance model
+  method-level, unvalidated: existing SBYCR save registration retained; no new state fields
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_module_stop.py`.
+  Same script against pre-change `c101ca5a` source, without rewriting
+  method bodies, exits 1 at the reset-register assertion:
+  `line 655: m_smr==0 && m_brr==0xff && m_scr==0 && m_tdr==0xff && m_ssr==0x84 && m_rdr==0`.
+  All eleven preceding SCI scripts rerun unchanged: exit 0. Method
+  binaries use UBSan. Full `sh7604.cpp` syntax check with session include
+  paths and `-std=c++20 -Wall -Werror -Wno-sign-compare`: exit 0,
+  no diagnostics, reorder enabled. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: native scheduler, CPU reset, IRQ arbitration,
+  and save-manager behavior are not qualified by mock method checks.
+  State-copy replay is not an on-disk save test. No new save fields or
+  timer callbacks were added; cross-version snapshot compatibility is
+  not established. Existing boolean TxD/SCK callbacks cannot represent
+  SCK high impedance or pin contention; no electrical reset completion
+  claim. Prohibited reads/writes during module stop remain unsupported
+  (not newly defined as ignored writes or specified read values).
+  Active-entry cleanup probes only constrain deterministic software
+  cleanup and do not invent a hardware abort protocol. SBY/HIZ, MSTP1-4,
+  reserved-bit access semantics, and whole-chip sleep/standby are not
+  implemented here. SCI DMA request/ack routing and actual external
+  peripherals remain absent. Frozen DMA, delay-slot, sound and game
+  paths and validator assets/expectations are untouched.
