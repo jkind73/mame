@@ -1,9 +1,10 @@
 SCSP_INT hooked=true
 SCSP_INT armed
-SCSP_INT vectors 1:000016a8 2:0000139c 3:000016a8 4:000016a8 5:000016a8 6:00007000 7:00007300 v0=0007fff0 v4=00007100
+SCSP_INT vectors 1:00001606 2:00001368 3:00001606 4:00001606 5:00001606 6:00007000 7:00007300 v0=0007fff0 v4=00007100
 SCSP_INT unmasked=1 scipd=0580 scieb=0040 scilv=0000/0040/0040
 SCSP_INT ack addr=00100422
 SCSP_INT ist before=2807 after=3807
 SCSP_INT irq first=9 later=111 end=215 liveness=4096 masked_counter=0 nmi=0 pc_after=00007120 ssp_after=0007fff0 unmasked=1
 SCSP_INT dma status=00000000 after_second=00000000
 SCSP_INT PASS cases=49
+Average speed: 349.72% (3 seconds)

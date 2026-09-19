@@ -1,81 +1,53 @@
-#!/usr/bin/env python3
-# license:BSD-3-Clause
-# copyright-holders:MAMEdev Team
-"""Native SCSP/SCU/sound-CPU integration measurement (SND-01).
 
-SND-01 asks for the sound subsystem's *integration*: sound RAM and register
-lanes as seen from both CPUs, the SCU's DMA path into and out of sound RAM, and
-the SCSP's interrupt reaching the sound 68000 through its real exception path.
-This fixture measures those with SH-2 debugger accesses, the 68000 debugger
-accesses, the SCU's own DMA registers and a running 68000 program, and reports
-each case with its numbers:
+local m = manager.machine
+local sp = m.devices[":maincpu"].spaces["program"]
+local screen = m.screens[":screen"]
+local C = 0x00100000
+local I0,I1,I2,COM,OREG,SR,SF = C+1,C+3,C+5,C+0x1f,C+0x21,C+0x61,C+0x63
+local fails, pads = {}, {}
+local function check(label, got, want)
+    if got ~= want then fails[#fails+1] = string.format("%s got=%x want=%x",label,got,want) end
+end
+local function ready()
+    for n=1,80 do
+        if (sp:read_u8(SF)&1)==0 then return end
+        emu.wait(emu.attotime.from_usec(50))
+    end
+    error("SMPC SF timeout")
+end
+local function park()
+    sp:write_u32(0x06000000,0xaffe0009)
+    for _,tag in ipairs({":maincpu",":slave"}) do
+        local cpu=m.devices[tag]
+        cpu.state["SR"].value=0xf0;cpu.state["PC"].value=0x06000000
+    end
+end
+local function wait_vblank()
+    -- Observe the device/SCU edge, not screen blank (one scanline earlier).
+    -- Both SH-2s are parked with IRQs masked, so they cannot acknowledge it.
+    sp:write_u32(0x05fe00a4,0xfffffffe)
+    for n=1,800 do
+        if (sp:read_u32(0x05fe00a4)&1)~=0 then return end
+        emu.wait(emu.attotime.from_usec(50))
+    end
+    error("SCU VBlank-IN timeout")
+end
+local buttons={{"A",0x0400},{"B",0x0100},{"X",0x0040},{"Y",0x0020}}
+local function set_pad(index, pattern)
+    local word=0xffff
+    for bit,entry in ipairs(buttons) do
+        local pressed=(pattern>>(bit-1))&1
+        pads[index].fields[entry[1]]:set_value(pressed)
+        if pressed==1 then word=word & ~entry[2] end
+    end
+    return word
+end
 
-  lanes    the same sound RAM bytes through the SH-2 window (0x05a00000) and the
-           68000 window (0x000000): byte, word and long writes from each side
-           must read back identically through the other side, and a long word
-           written from one side must present the same big endian byte image to
-           the other;
-  regs     the same SCSP slot registers through the SH-2 window (0x05b00000)
-           and the 68000 window (0x00100000): slot 3 pitch and mixer words are
-           written from each side and read back through the other;
-  dma      SCU DMA level 0 copies a work RAM H pattern into sound RAM and back,
-           with the destination verified through *both* windows, the DMA status
-           returning to idle, and a same-bus transfer as the control that must
-           set IST DMAILL and move nothing;
-  irq      the SCSP asks for level 6 through SCILV1/SCILV2, the sound 68000 is
-           released from reset and runs a level 6 autovector handler that counts
-           entries in sound RAM and acknowledges the SCSP through SCIRE.  With
-           the 68000's mask closed the request is pending and the counter stays
-           put; with the mask open the handler runs, the count advances at the
-           timer's own rate, every request is cleared by the guest's SCIRE, the
-           level stays below 7 (the level 7 counter must stay zero) and the
-           supervisor stack is restored - the whole chain SCSP -> IPL -> vector
-           -> handler -> RAM -> SCIRE.
-
-Debugger trap this fixture hit, and the check that now rejects it: a nil
-address argument to `space:write_*` lands on address **0** instead of failing.
-`ssp:write_u32(COUNTER, 0)` with an undeclared Lua global therefore zeroed the
-initial-SSP vector, and `read_counter()` read address 0, so the handler's real
-increments were invisible and the run looked like "the request never reaches
-the guest handler".  Every Lua value the fixture uses is declared, the initial
-SSP is re-checked before the reset is released, and the counter is only read
-through its declared address.
-
-Missing binary or BIOS is a skip, never a native pass.
-"""
-import argparse
-import hashlib
-import json
-import os
-from pathlib import Path
-import re
-import subprocess
-import tempfile
-
-from test_smpc_multitap_runtime import COMMON_LUA, ROOT
-
-BOOT_FRAMES = 180
-
-BASE = 0x05b00000            # SCSP registers in the SH-2 space
-RAM = 0x05a00000             # sound RAM in the SH-2 space
-SCU = 0x05fe0000             # SCU registers in the SH-2 space
-REG68 = 0x00100000           # SCSP registers in the 68000 space
-HANDLER = 0x00007000         # 68000 level 6 handler
-MAINLOOP = 0x00007100        # 68000 idle loop
-COUNTER = 0x00007200         # handler entry counter
-LIVENESS = 0x00007210        # idle loop counter (CPU liveness)
-UNMASKED = 0x00007208        # set once when the program opens the mask
-NMIHANDLER = 0x00007300      # level 7 handler: must never run
-NMICOUNT = 0x00007310
-STACK = 0x0007fff0
-DELIVER_MS = 300             # delivery window after the mask opens
-
-LUA = COMMON_LUA + r'''
-local base, ram, scu = @@BASE@@, @@RAM@@, @@SCU@@
-local reg68 = @@REG68@@
-local HANDLER, MAINLOOP, STACK = @@HANDLER@@, @@MAINLOOP@@, @@STACK@@
-local LIVENESS, NMIHANDLER, NMICOUNT = @@LIVENESS@@, @@NMIHANDLER@@, @@NMICOUNT@@
-local COUNTER, UNMASKED = @@COUNTER@@, @@UNMASKED@@
+local base, ram, scu = 0x5b00000, 0x5a00000, 0x5fe0000
+local reg68 = 0x100000
+local HANDLER, MAINLOOP, STACK = 0x7000, 0x7100, 0x7fff0
+local LIVENESS, NMIHANDLER, NMICOUNT = 0x7210, 0x7300, 0x7310
+local COUNTER, UNMASKED = 0x7200, 0x7208
 local snd = nil
 local ssp = nil
 local hooked = false
@@ -90,7 +62,7 @@ local function r16(a) return sp:read_u16(a) end
 local function ms(t) return emu.attotime.from_msec(t) end
 
 local SMPC = 0x00100000
-local STV = @@STV@@
+local STV = true
 local function smpc_ready()
     for _ = 1, 200 do
         if (sp:read_u8(SMPC + 0x63) & 1) == 0 then return true end
@@ -158,7 +130,7 @@ local function upload_sound_program()
     ssp:write_u32(NMICOUNT, 0)
     -- handler: counter++, acknowledge the SCSP source, return
     ssp:write_u16(HANDLER + 0x00, 0x52b9)     -- addq.l #1,($00007200).l
-    ssp:write_u32(HANDLER + 0x02, @@COUNTER@@)
+    ssp:write_u32(HANDLER + 0x02, 0x7200)
     ssp:write_u16(HANDLER + 0x06, 0x33fc)     -- move.w #$0040,($00100422).l
     ssp:write_u16(HANDLER + 0x08, 0x0040)     -- SCIRE: clear the timer A request
     ssp:write_u32(HANDLER + 0x0a, reg68 + 0x422)
@@ -352,7 +324,7 @@ local function test()
     results.liveness_end = liveness_end
     check('program_delay_completed', liveness_end >= 0x1000, true)
     local first = read_counter()
-    emu.wait(ms(@@DELIVER_MS@@))
+    emu.wait(ms(300))
     local later = read_counter()
     results.counter_first = first
     results.counter_later = later
@@ -372,7 +344,7 @@ local function test()
     check('irq_request_cleared_by_handler', cleared, true)
     -- the timer requests again at its own rate, so the count must advance over
     -- another full delivery window after the acknowledgement was observed
-    emu.wait(ms(@@DELIVER_MS@@))
+    emu.wait(ms(300))
     local grown = read_counter()
     results.counter_end = grown
     check('irq_counter_keeps_growing', grown > later, true)
@@ -423,7 +395,7 @@ local frames = 0
 local started = false
 emu.register_frame_done(function()
     frames = frames + 1
-    if started or frames < @@FRAMES@@ then return end
+    if started or frames < 180 then return end
     started = true
     coroutine.wrap(function()
         local ok, err = pcall(test)
@@ -431,111 +403,3 @@ emu.register_frame_done(function()
     end)()
 end)
 print("SCSP_INT armed")
-'''
-
-
-def validate_output(stdout, rc):
-    if rc != 0:
-        raise RuntimeError('SCSP integration emulator run failed with rc=%d' % rc)
-    for marker in ('SCSP_INT armed', 'SCSP_INT hooked=true'):
-        if marker not in stdout:
-            raise RuntimeError('SCSP integration transcript is missing "%s"' % marker)
-    if 'LUA ERROR' in stdout:
-        raise RuntimeError('SCSP integration transcript reports a Lua failure')
-    failures = re.findall(r'^SCSP_INT FAIL .*$', stdout, re.M)
-    if failures:
-        raise RuntimeError('SCSP integration fixture failed:\n  ' +
-                           '\n  '.join(failures))
-    cases = re.search(r'^SCSP_INT PASS cases=(\d+)$', stdout, re.M)
-    if not cases:
-        raise RuntimeError('SCSP integration transcript has no PASS line')
-    ist = re.search(r'^SCSP_INT ist before=([0-9a-f]+) after=([0-9a-f]+)$',
-                    stdout, re.M)
-    counters = re.search(r'^SCSP_INT irq first=(\d+) later=(\d+) end=(\d+) '
-                         r'liveness=(\d+) masked_counter=(\d+) nmi=(\d+) '
-                         r'pc_after=([0-9a-f]+) ssp_after=([0-9a-f]+) '
-                         r'unmasked=(\d+)$', stdout, re.M)
-    if not ist or not counters:
-        raise RuntimeError('SCSP integration transcript is missing its numbers')
-    return {'cases': int(cases.group(1)),
-            'ist_before': ist.group(1), 'ist_after': ist.group(2),
-            'counter_first': int(counters.group(1)),
-            'counter_later': int(counters.group(2)),
-            'counter_end': int(counters.group(3)),
-            'liveness': int(counters.group(4)),
-            'masked_counter': int(counters.group(5)),
-            'nmi_count': int(counters.group(6)),
-            'ssp_after': counters.group(8)}
-
-
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--executable', type=Path, default=ROOT / 'saturn')
-    ap.add_argument('--rompath', type=Path, default=ROOT / 'regtests')
-    ap.add_argument('--system', default='saturnjp')
-    ap.add_argument('--drc', action='store_true')
-    ap.add_argument('--output', type=Path)
-    args = ap.parse_args()
-
-    exe = args.executable.resolve()
-    if not os.access(exe, os.X_OK):
-        print('SKIP: no runnable emulator at %s' % exe)
-        return 0
-
-    lua = (LUA.replace('@@BASE@@', hex(BASE))
-              .replace('@@RAM@@', hex(RAM))
-              .replace('@@SCU@@', hex(SCU))
-              .replace('@@REG68@@', hex(REG68))
-              .replace('@@COUNTER@@', hex(COUNTER))
-              .replace('@@HANDLER@@', hex(HANDLER))
-              .replace('@@MAINLOOP@@', hex(MAINLOOP))
-              .replace('@@STACK@@', hex(STACK))
-              .replace('@@LIVENESS@@', hex(LIVENESS))
-              .replace('@@DELIVER_MS@@', str(DELIVER_MS))
-              .replace('@@UNMASKED@@', hex(UNMASKED))
-              .replace('@@UNMASKED@@', hex(UNMASKED))
-              .replace('@@NMIHANDLER@@', hex(NMIHANDLER))
-              .replace('@@NMICOUNT@@', hex(NMICOUNT))
-              .replace('@@FRAMES@@', str(BOOT_FRAMES))
-              .replace('@@STV@@', 'true' if args.system.startswith('stv')
-                       else 'false'))
-    out = args.output or Path(tempfile.mkdtemp(prefix='scsp-int-'))
-    out.mkdir(parents=True, exist_ok=True)
-    script_path = out / 'test.lua'
-    script_path.write_text(lua)
-    rom = args.rompath.resolve()
-    cmd = [str(exe), args.system, '-rompath', str(rom), '-noreadconfig',
-           '-skip_gameinfo', ('-drc' if args.drc else '-nodrc'), '-video',
-           'none', '-sound', 'none', '-nothrottle', '-seconds_to_run', '900',
-           '-autoboot_delay', '0', '-autoboot_script', str(script_path)]
-    for kind in ('nvram', 'cfg', 'state', 'snapshot'):
-        cmd += ['-' + kind + '_directory', str(out / kind)]
-    (out / 'invocation.json').write_text(json.dumps({
-        'executable': str(exe), 'system': args.system, 'drc': args.drc,
-        'binary_sha256': hashlib.sha256(exe.read_bytes()).hexdigest(),
-        'bios_sha256': hashlib.sha256(
-            (rom / (args.system + '.zip')).read_bytes()).hexdigest(),
-        'lua_sha256': hashlib.sha256(lua.encode()).hexdigest(),
-        'command': cmd,
-    }, indent=2) + '\n')
-    env = dict(os.environ)
-    env.update(SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
-    with (out / 'runtime.log').open('w') as log:
-        proc = subprocess.run(cmd, cwd=out, env=env, stdout=log,
-                              stderr=subprocess.STDOUT, timeout=1800)
-    text = (out / 'runtime.log').read_text(errors='replace')
-    results = validate_output(text, proc.returncode)
-    for tag in sorted(results):
-        print('  %-18s %s' % (tag, results[tag]))
-    print('SCSP integration: PASS cases=%d' % results['cases'])
-    print('SCSP integration: sound RAM and register lanes agree through both CPU '
-          'windows (including the common page), SCU DMA reaches sound RAM both '
-          'ways with the same-bus control rejected, and the SCSP timer A request '
-          'reaches the sound 68000 through its own level 6 autovector handler, '
-          'which acknowledges it through SCIRE while the count advances and the '
-          'request is held off by the mask')
-    return 0
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())

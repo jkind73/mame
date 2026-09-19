@@ -7,3 +7,4 @@ SCSP_INT ist before=2807 after=3807
 SCSP_INT irq first=9 later=111 end=215 liveness=4096 masked_counter=0 nmi=0 pc_after=00007120 ssp_after=0007fff0 unmasked=1
 SCSP_INT dma status=00000000 after_second=00000000
 SCSP_INT PASS cases=49
+Average speed: 225.93% (3 seconds)

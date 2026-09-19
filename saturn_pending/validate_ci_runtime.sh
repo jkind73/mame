@@ -315,13 +315,13 @@ done
 phase=scsp-snd01
 python3 saturn_pending/test_scsp_snd01_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
-grep -q 'SCSP integration: PASS cases=42' "$LOG_DIR/$phase.log"
+grep -q 'SCSP integration: PASS cases=49' "$LOG_DIR/$phase.log"
 for system in saturnjp saturneu stvbios; do
     phase="scsp-snd01-$system-drc"
     python3 saturn_pending/test_scsp_snd01_runtime.py --executable "$ARTIFACT/saturn" \
         --rompath "$ROOT/regtests" --system "$system" --drc \
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
-    grep -q 'SCSP integration: PASS cases=42' "$LOG_DIR/$phase.log"
+    grep -q 'SCSP integration: PASS cases=49' "$LOG_DIR/$phase.log"
 done
 phase=scsp-continuity
 python3 saturn_pending/test_scsp_continuity_runtime.py --executable "$ARTIFACT/saturn" \
