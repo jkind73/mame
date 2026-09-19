@@ -5059,3 +5059,54 @@ are method-level raw output, not native evidence.
   gameplay/save-manager behavior. State copies are NOT file save/load.
   No new fields/save-layout change, existing fixture expectation changes,
   HIRQ handler changes or frozen CPU/sound/video changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0068 | CD-01 | c726048c | UNVALIDATED | File-information record byte8 is file unit size and byte9 is interleave gap, in both single/all-record paths |
+
+### IMPL-0068 — CD-01 — file-information interleave-field packing
+
+- branch/commit/base: `arena/01a0b897-mame` @ **c726048c**; base **0b15821c**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` dataxfer_word_r FILEINFO_254
+  record staging and cmd_get_target_file_info single-record staging;
+  `saturn_pending/impl_checks/check_cd_file_info_interleave.py`.
+- contract: pack file unit size before gap size in the 12-byte file-information
+  record. Thus host word4 (zero based) is unit<<8|gap, not gap<<8|unit.
+  Apply identically when staging a single file and a full-table record;
+  retain the other existing record fields/count behavior.
+- primary source: ST-162-062094 printed p.72 Data Specification6.8 CdcFile
+  orders FAD, byte size, unit, gap, file number, attributes; p.100 function
+  8.4 specifies its 12-byte transfer. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:908-928`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  has unit/gap in that order in its 12-byte FileInfoS. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:1390-1402`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, explicitly packs unit high/gap
+  low into transfer word4. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d and local history/base had the
+  reverse staging order in both paths, despite the single-file comment
+  listing unit before gap. No reference block imported.
+- expected observable: file unit2/gap3 returns word4=0203, not0302; both
+  selectors of command73 produce the same field order. Exact bytes, zero
+  tolerance; FAD/length/attribute values and transfer count are retained.
+- suggested method: authored legal ISO/XA directory record with unequal
+  unit/gap values, request single file and all held information, read six
+  words and compare the fifth. Repeat on native command/data transport,
+  including partial full-table transfer and DataEnd.
+- falsifier: swapped unit/gap in either path, corrupted other unchanged
+  fields, or changed word count/termination behavior.
+- self-check run (method-level, unvalidated): 131,072 single/all-first-record
+  images across every unit/gap byte pair, checking FAD/length/attribute
+  retention and DataEnd count; fail-fast UBSan exit0. Historical0b15821c
+  fails word4 at generated line282. Previous file-transfer boundary probe
+  ASan/UBSan, warning-enabled CD C++20 syntax and diff checks exit0.
+- state: **UNVALIDATED**.
+- not covered/known doubts: all byte pairs are storage diagnostics, not a
+  claim all describe legal interleave streams. ISO/XA parser validity, XA
+  file number/attribute derivation, file-table window/count, native stream
+  timing/gameplay/save-manager behavior remain separate. No new fields or
+  layout break, validator/fixture or frozen-path edits.
