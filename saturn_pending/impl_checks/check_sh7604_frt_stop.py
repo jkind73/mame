@@ -76,7 +76,7 @@ struct Device : sh2_device {
  uint8_t m_sbycr=0, m_tier=0, m_ftcsr=0, m_frc_tcr=0, m_tocr=0;
  uint16_t m_frc=0, m_ocra=0, m_ocrb=0, m_frc_icr=0;
  uint64_t m_frc_base=0; int m_frt_input=0;
- uint16_t m_iprb=0x8700, m_vcrc=0x1234, m_vcrd=0x5600; uint16_t m_vcra=0, m_vcrb=0, m_vcrwdt=0; uint16_t m_ipra=0; struct { uint8_t frc=0, sci=0, divu=0, dmac=0, wdt=0; } m_irq_level;
+ uint16_t m_iprb=0x8700, m_vcrc=0x1234, m_vcrd=0x5600; uint16_t m_vcra=0, m_vcrb=0, m_vcrwdt=0; uint16_t m_ipra=0; uint16_t m_intc_icr=0; bool m_nmie=false, m_vecmd=false; struct { uint8_t frc=0, sci=0, divu=0, dmac=0, wdt=0; } m_irq_level;
  struct { uint8_t fic=0x12, foc=0x34, fov=0x56; } m_irq_vector;
  Timer timer; Timer *m_timer=&timer; Callback m_ftcsr_read_cb;
  unsigned sci_resets=0; bool irq_requested=false;

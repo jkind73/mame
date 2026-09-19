@@ -221,6 +221,11 @@ void sh7604_device::device_reset()
 {
 	sh2_device::device_reset();
 
+	// ICR control bits reset to falling-edge NMI detection and auto-vector
+	// mode (section 5.3.8). NMIL continues to reflect the external input.
+	m_intc_icr = 0;
+	m_nmie = m_vecmd = false;
+
 	// IPRA/IPRB reset to priority zero on power-on and manual reset
 	// (sections 5.3.1-5.3.2). Clear the decoded levels before peripherals reset.
 	m_ipra = m_iprb = 0;

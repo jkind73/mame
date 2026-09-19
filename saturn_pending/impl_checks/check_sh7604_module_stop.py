@@ -35,7 +35,7 @@ struct Device : sh2_device {
  uint8_t m_wdt_read=0;
  uint8_t m_sbycr=0, m_rsr=0, m_sci_rx_vote=0;
  bool m_sci_rx_parity_error=false, m_sci_rx_mp=false;
- uint16_t m_vcra=0x1234, m_vcrb=0x5678, m_iprb=0xf000; uint16_t m_vcrc=0, m_vcrd=0, m_vcrwdt=0; struct { uint8_t fic=0, foc=0, fov=0; } m_irq_vector; uint16_t m_ipra=0; struct { uint8_t frc=0, sci=0, divu=0, dmac=0, wdt=0; } m_irq_level;
+ uint16_t m_vcra=0x1234, m_vcrb=0x5678, m_iprb=0xf000; uint16_t m_vcrc=0, m_vcrd=0, m_vcrwdt=0; struct { uint8_t fic=0, foc=0, fov=0; } m_irq_vector; uint16_t m_ipra=0; uint16_t m_intc_icr=0; bool m_nmie=false, m_vecmd=false; struct { uint8_t frc=0, sci=0, divu=0, dmac=0, wdt=0; } m_irq_level;
  int m_frc=17, m_ocra=18, m_ocrb=19, m_frc_icr=20, m_frc_base=21, m_frt_input=22;
  int m_dma_timer_active[2]{}, m_dma_irq[2]{}, m_active_dma_incs[2]{}, m_active_dma_incd[2]{};
  int m_active_dma_size[2]{}, m_active_dma_steal[2]{}, m_active_dma_src[2]{}, m_active_dma_dst[2]{}, m_active_dma_count[2]{};
