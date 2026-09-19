@@ -3679,3 +3679,99 @@ pinned GitHub blob identity. No downloaded reference/build files committed.
   DRC/interpreter cache integration, bus contention, DMA visibility,
   whole-chip standby and live save/load. No new state fields or save-layout
   change. Frozen DMA/IRQ-delay-slot/sound/video paths remain unchanged.
+
+### Published-history reconciliation before IMPL-0050
+
+The restored local checkout again had HEAD `82152a8b` and the prior session
+files as working changes. This time the fetched session branch pointed to
+`b6ecabd4`, not the previously recorded `cfdc3e08`; the latter object was
+not available locally after fetching. Published commits have different IDs
+and additional baseline changes outside this task. No cause is inferred.
+All 51 session source/handoff/probe/inventory files compared byte-for-byte
+against `b6ecabd4`: no differences. The 104 paths different from the restored
+base had no added-file content collisions and no validator evidence/consumer
+changes. Non-session differences were in files clean relative to the old
+local base. Aligned those clean baseline paths to the published tree, then
+restored this same session branch/index to `b6ecabd4`; status was clean.
+No force push, published-history rewrite, other branch or validator edit.
+
+Prior entries remain historical records, not rewritten. Current published
+counterparts for the most recent production changes are:
+- IMPL-0044: `760ef54e` (previously recorded `ef70c104`).
+- IMPL-0046: `5c7463f8`, adapter `a924a61a` (previously `27072eb9`, `7ad836e5`).
+- IMPL-0047: `ecf1a846` (previously `4b1e7720`).
+- IMPL-0048: `780c7b65` (previously `663eedba`).
+- IMPL-0049: `fbfcb4ac` (previously `e48a54e9`).
+These associations follow published commit subjects and matching cumulative
+session files, not a new native qualification. Validators should use the
+current published ancestry; do not assume old object IDs are fetchable.
+IMPL-0050 checks below were run after alignment, against that current tree.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0050 | CPU-03 | 5472ec1b | UNVALIDATED | Device reset restores DRCR0/1 to external DREQ selection 00 |
+
+### IMPL-0050 — CPU-03 — DMA request-selection reset
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `5472ec1b`,
+  base `b6ecabd4`; committed and pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:250-251`, reset loop;
+  `saturn_pending/impl_checks/check_sh7604_drcr_reset.py` (new);
+  declaration-only mock additions to `check_sh7604_frt_stop.py` and
+  `check_sh7604_module_stop.py`. No expectations changed.
+- contract: reset writes both DMA request/response selection registers to
+  00 (external DREQ). It does not retain prior RXI/TXI selections. Existing
+  byte read/write handlers and peripheral module-stop retention remain
+  unchanged. No DMA request consumer, transfer, timer, acknowledgment,
+  arbitration or delay-slot handler is modified.
+- primary source: SH7604 ADE-602-085C Rev.4 section 9.2.6 p.242;
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`. DRCR0/1 initialize
+  to 00 on reset and retain values in module standby. RS=00 selects DREQ,
+  01 RXI and 10 TXI; 11 is prohibited. Software changes request source
+  only with CHCR.DE=0. Tests do not exercise the prohibited encoding or
+  programming a live channel.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/DMAC.sv:390-404` resets DRCR0/1 on RST_N and RES_N;
+  `rtl/SH/SH7604/SH7604_pkg.sv:429-436` defines the two-bit field and
+  DRCRx_INIT=00. Blobs `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`. Nearby simulation-only
+  DMAOR.DME overrides are not used as a hardware reset oracle.
+- provenance: local constructor initializes DRCR once, but the reset loop
+  omitted it. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-211`, has the same omission. Current
+  fork reset history reviewed; no reference implementation imported.
+- expected observable: with channels disabled, byte-program DRCR0=01 and
+  DRCR1=02; completed power-on/manual reset yields 00 from both byte reads.
+  Reprogramming either channel must not change the other. Units: exact
+  8-bit register values, zero bit tolerance after reset completion. SCI/FRT
+  module-stop entry/release without reset retains the selections. This
+  does not imply that SCI DMA request delivery is implemented.
+- suggested measurement: native master/slave SH7604 byte-access probe at
+  FFFFFE71/FFFFFE72 with DE=0, reset assertion/release and readback, then
+  per-channel reprogramming. Repeat across native saves; measure live
+  DREQ/RXI/TXI routing and in-flight reset behavior separately.
+- falsifier: either selector retains 01/02 after completed reset, module
+  stop clears it, or writing one idle channel changes the other's selector.
+- self-check run (method-level, unvalidated): actual reset, DRCR template
+  read/write and SBYCR methods, mocked base/peripheral reset and IRQ refresh,
+  fail-fast UBSan; 144 paired reset images, 288 module-stop retention
+  controls, 288 channel-independent reprogramming controls and 144
+  operand-state-copy replays; exit 0. Existing DRCR array-member save
+  registration checked. Historical `b6ecabd4` source fails the first reset
+  observation (generated line 319).
+  Prior selected 38-script series: 34 exit 0/four conflicts. Including
+  this new probe: selected 39-script series, 35 exit 0/four unchanged
+  semantic conflicts (frt_stop generated line 467, frt_phase 403,
+  wdt_access 132, bsc_access 98). Expectations/validator assets untouched.
+  Warning-enabled C++20 TU syntax-only and `git diff --check`: exit 0.
+  No full build or native qualification.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: CHCR/DMAOR reset images, stale DMA deadlines,
+  reset while transferring/stalled, halt release, source routing and SCI
+  request pacing remain separate. Native reset/standby/save handling and
+  actual acknowledgments remain unqualified. No new fields or save-layout
+  change; no frozen DMA acknowledgement, IRQ-delay-slot or sound/video edits.
