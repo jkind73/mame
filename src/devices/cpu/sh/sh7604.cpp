@@ -48,7 +48,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0), m_wdt_read(0)
 	, m_dmaor(0)
 	, m_sbycr(0), m_ccr(0)
-	, m_bcr1(0), m_bcr2(0), m_wcr(0), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
+	, m_bcr1(0x03f0), m_bcr2(0x00fc), m_wcr(0xaaff), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
 	, m_frc_base(0), m_frt_input(0), m_frt_clock_input(false)
 	, m_timer(nullptr), m_wdtimer(nullptr)
 	, m_is_slave(0)
