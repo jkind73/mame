@@ -23,6 +23,7 @@
 | IMPL-0009 | CPU-03/IO-02 | ca0432ea | UNVALIDATED | SCI receives parity/framing/overrun errors together at stop; unread RDR survives every overrun |
 | IMPL-0010 | CPU-03/IO-02 | 3d18666d | UNVALIDATED | SCI MP receive mode discards non-address frames under MPIE and wakes on MPB=1 |
 | IMPL-0011 | CPU-03/IO-02 | 25302858 | UNVALIDATED | SCI async RX samples eight 16x clock pulses after start detection, then every sixteen |
+| IMPL-0012 | CPU-03/IO-02 | 7f895a95 | UNVALIDATED | SCI callback constructor initializers follow declaration order without suppressing reorder diagnostics |
 
 ---
 
@@ -797,3 +798,55 @@
   to that timer, not a new pin-edge device. No state field or save layout
   added by this commit; IMPL-0009/0010 already changed the save layout.
   Freeze rules and validator assets remain untouched.
+
+
+### IMPL-0012 — CPU-03/IO-02 — SCI constructor build correction
+
+- branch/commit: `arena/01a0b897-mame` @ **7f895a95** (base: 08e65756).
+- files: `src/devices/cpu/sh/sh7604.cpp:36-55` (constructor only).
+- contract: place `m_write_txd` and `m_read_rxd` initializers after the
+  SCI register initializers and before FRT initializers, matching their
+  header declaration order. Retain callback arguments and RxD idle=1.
+  No warning suppression or device behavior change is introduced.
+- primary source: user-supplied MinGW `-Werror=reorder` build failure;
+  C++ member initialization rule [class.base.init], which initializes
+  members in declaration order regardless of initializer-list order.
+  No new hardware contract is involved.
+- cross-checks: pinned pre-change `08e65756`,
+  `src/devices/cpu/sh/sh7604.h:217-224,299-301` declares the SCI
+  callbacks before FRT and the FRT read delegate. Constructor lines
+  53-55 previously listed the SCI callbacks after that delegate.
+  `scripts/genie.lua:945` supplies MAME's existing
+  `-Wno-sign-compare`; no build configuration is modified here.
+- expected observable: `sh7604.cpp` compiles with reorder diagnostics
+  treated as errors (zero reorder diagnostics). Callback configuration,
+  register/reset behavior and save layout remain unchanged.
+- suggested method: rerun the reported Windows build; also syntax-check
+  the full translation unit using `-Werror=reorder` without `-w`.
+- falsifier: the reported constructor reorder diagnostic persists,
+  or the patch changes callback constructor arguments/member layout.
+- self-check run (compiler-level, unvalidated):
+  ```text
+  pre-change g++ -fsyntax-only -std=c++20 -Werror=reorder: exit 1
+  m_ftcsr_read_cb will be initialized after m_write_txd [-Werror=reorder]
+  post-change same command: exit 0, no diagnostics
+  post-change -Wall -Werror: exit 1, existing sign-compare diagnostics
+  post-change -Wall -Werror -Wno-sign-compare: exit 0, no diagnostics
+  git diff --check: exit 0
+  ```
+  Include arguments for each compiler invocation:
+  ```text
+  -Isrc -Isrc/emu -Isrc/devices -Isrc/lib -Isrc/lib/util
+  -Isrc/lib/netlist/devices -Isrc/frontend -Isrc/frontend/mame
+  -Isrc/mame -Isrc/osd -Isrc/osd/modules/lib
+  src/devices/cpu/sh/sh7604.cpp
+  ```
+  The plain `-Wall -Werror` errors are in existing signed comparisons
+  in shared headers and `sh2_exception`; the repository already disables
+  that warning. Reorder diagnostics were never disabled in these runs.
+- state: UNVALIDATED
+- not covered / known doubts: no Windows/MinGW compiler or full linked
+  build run here. Earlier syntax checks used `-w`, which hid this defect;
+  future checks must retain reorder diagnostics. This is a build-only
+  correction to the earlier SCI callback addition, not SCI hardware
+  acceptance. No added state, save-layout change or validator asset edit.
