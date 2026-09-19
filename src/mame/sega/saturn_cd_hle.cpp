@@ -3551,21 +3551,32 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
 
   cd_playdata();
 
-  // pickup travel is physical, so a SEEK always ticks at the real sector
-  // rate; only streaming follows the cd_speed multiplier
-  if ((cd_stat & 0x0f00) == CD_STAT_SEEK)
+  /* Periodic response and SCDQ share one cadence: ST-162-062094 printed p.31
+     ("Periodic response update cycle") gives 13.3 ms at standard playing
+     speed, 6.7 ms at double speed and 16.7 ms when not playing, and printed
+     p.39 ties the subcode Q update to the same timing.
+
+     Pickup travel is physical, so a SEEK always ticks at the real sector rate
+     and only streaming follows the cd_speed multiplier; an audio track
+     ignores cd_speed entirely (its 588 samples per sector period are what the
+     converter consumes).  Everything else - pause, standby, a full buffer,
+     the tray states - is "not playing" at 16.7 ms, not a data rate. */
+  uint16_t const state = cd_stat & 0x0f00;
+  if (state == CD_STAT_SEEK)
     m_sector_timer->adjust(attotime::from_hz(75));
-  else if ((cd_stat & 0x0f00) == CD_STAT_SCAN)
+  else if (state == CD_STAT_SCAN)
     // two sectors per sector period is the audible scan rate, so the pickup
     // and the Red Book decoder travel together in every track type
     m_sector_timer->adjust(attotime::from_hz(75));
-  else if (cd_is_audio(cd_curfad))
+  else if (state == CD_STAT_PLAY && cd_is_audio(cd_curfad))
     m_sector_timer->adjust(
         attotime::from_hz(75)); // 75 sectors / second = 150kBytes/second (cdda
                                 // track ignores cd_speed setting)
-  else
+  else if (state == CD_STAT_PLAY)
     m_sector_timer->adjust(attotime::from_hz(
         75 * cd_speed)); // 75 / 150 sectors / second = 150 / 300kBytes/second
+  else
+    m_sector_timer->adjust(attotime::from_hz(60)); // not playing: 16.7 ms
 
   /* The subcode Q buffer is refreshed and SCDQ raised on every periodic
      update, exactly as mednafen's CDB does at the end of its periodic

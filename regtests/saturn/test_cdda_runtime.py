@@ -410,6 +410,50 @@ local function test()
     print(string.format('CDDA data state=%03x rms=%.6f', state(), rms(data)))
     chk('data_silent', rms(data) < 0.005, string.format('%.6f', rms(data)))
 
+    -- ST-162-062094 p.31/p.39: the periodic response (and with it the subcode
+    -- Q update) is 13.3 ms while a disc plays and 16.7 ms when the drive is
+    -- not playing.  Measure the SCDQ request interval in both states.
+    local function scdq_gaps(n)
+        local gaps, last = {}, nil
+        for _ = 1, n * 40 do
+            if (sp:read_u16(HIRQ) & 0x0400) ~= 0 then
+                sp:write_u16(HIRQ, 0xfbff)      -- ack SCDQ only
+                if last then gaps[#gaps + 1] = emu.time() - last end
+                last = emu.time()
+            end
+            emu.wait(ms(1))
+            if #gaps >= n then break end
+        end
+        return gaps
+    end
+    local function median(gaps)
+        if #gaps == 0 then return 0 end
+        table.sort(gaps)
+        local mid = math.floor(#gaps / 2) + 1
+        return gaps[mid] * 1000.0    -- emu.time() is in seconds
+    end
+    chk('periodic_play_accepted', play_track(2, 3), 'no CMOK')
+    for _ = 1, 200 do
+        if state() == STAT.PLAY then break end
+        emu.wait(ms(10))
+    end
+    emu.wait(ms(200))
+    local play_gaps = scdq_gaps(12)
+    local play_ms = median(play_gaps)
+    cmd(0x0400, 0, 0, 0)                       -- Init: drive stops
+    emu.wait(ms(200))
+    local idle_gaps = scdq_gaps(12)
+    local idle_ms = median(idle_gaps)
+    print(string.format('CDDA periodic play_ms=%.2f idle_ms=%.2f '
+                        .. 'play_n=%d idle_n=%d', play_ms, idle_ms,
+                        #play_gaps, #idle_gaps))
+    chk('periodic_play_13ms', play_ms > 11.0 and play_ms < 16.0,
+        string.format('%.2f', play_ms))
+    chk('periodic_idle_17ms', idle_ms > 14.0 and idle_ms < 20.0,
+        string.format('%.2f', idle_ms))
+    chk('periodic_cadence_differs', idle_ms > play_ms,
+        string.format('%.2f vs %.2f', idle_ms, play_ms))
+
     if not hooked then fails[#fails + 1] = 'scsp stream hook missing' end
     if #fails == 0 then print('CDDA PASS')
     else for _, f in ipairs(fails) do print('CDDA FAIL ' .. f) end end
