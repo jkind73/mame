@@ -218,9 +218,17 @@ void saturn_cd_hle_device::device_reset() {
   sectlenin = sectlenout = 2048;
 
   lastbuf = 0xff;
+  cddevice = nullptr;
+  cddevicenum = 0xff;
+  transpart = nullptr;
 
   // reset buffer partitions
   for (i = 0; i < MAX_FILTERS; i++) {
+    // ST-162 sections 5.3/5.5: reset conditions, connect each true output
+    // to its own partition, and disconnect the remaining connectors.
+    filters[i] = {};
+    filters[i].condtrue = i;
+    filters[i].condfalse = 0xff;
     partitions[i].size = -1;
     partitions[i].numblks = 0;
 
