@@ -211,12 +211,11 @@ void sh7604_device::device_reset()
 {
 	sh2_device::device_reset();
 
-	m_frc = 0;
-	m_ocra = 0;
-	m_ocrb = 0;
-	m_frc_icr = 0;
-	m_frc_base = 0;
+	// Reset releases module standby before starting the free-running timer.
+	m_sbycr = 0;
 	m_frt_input = 0;
+	frt_reset();
+	sh2_timer_activate();
 
 	for (int i = 0; i < 2; i++)
 	{
@@ -234,8 +233,6 @@ void sh7604_device::device_reset()
 	m_wtcnt = 0;
 	m_wtcsr = 0;
 
-	// A reset also releases SCI module standby (section 14.5.2).
-	m_sbycr = 0;
 	sci_reset();
 
 	m_barah = 0;
@@ -398,8 +395,27 @@ uint32_t sh7604_device::sh2_internal_a5()
 	return 0xa5a5a5a5;
 }
 
+void sh7604_device::frt_reset()
+{
+	// Table 11.2 (p.297), section 14.2.1 (p.388): reset and MSTP1
+	// initialize the FRT, but module stop leaves its INTC vectors intact.
+	m_tier = 0x01;
+	m_ftcsr = 0;
+	m_frc_tcr = 0;
+	m_tocr = 0xe0;
+	m_frc = 0;
+	m_ocra = 0xffff;
+	m_ocrb = 0xffff;
+	m_frc_icr = 0;
+	m_frc_base = total_cycles();
+	m_timer->adjust(attotime::never);
+}
+
 void sh7604_device::sh2_timer_resync()
 {
+	if (BIT(m_sbycr, 1))
+		return;
+
 	// TODO: setting 3 is "External clock: count on rising edge"
 	int divider = div_tab[m_frc_tcr & 3];
 	uint64_t cur_time = total_cycles();
@@ -419,6 +435,8 @@ void sh7604_device::sh2_timer_activate()
 	int max_delta = 0xfffff;
 
 	m_timer->adjust(attotime::never);
+	if (BIT(m_sbycr, 1))
+		return;
 
 	uint16_t frc = m_frc;
 	if (!(m_ftcsr & OCFA))
@@ -461,6 +479,9 @@ void sh7604_device::sh2_timer_activate()
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sh2_timer_callback)
 {
+	if (BIT(m_sbycr, 1))
+		return;
+
 	sh2_timer_resync();
 	uint16_t frc = m_frc;
 
@@ -1879,19 +1900,34 @@ void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		logerror("SH2 set clock multiplier x%d\n", 1 << (data & 3));
 		break;
 	case 0x00ff: // SBYCR
+	{
+		uint8_t const old_sbycr = m_sbycr;
+		m_sbycr = data;
 		// MSTP0 initializes the SCI, but not its INTC vector registers
 		// (section 14.2.1 p.388). Clearing it leaves SCI at reset state.
 		// Section 14.5 forbids SCI accesses while stopped and switching
 		// a running module to standby; no paused-frame resume is implied.
-		if (BIT(data, 0) && !BIT(m_sbycr, 0))
+		if (BIT(m_sbycr, 0) && !BIT(old_sbycr, 0))
 		{
 			sci_reset();
 			sh2_recalc_irq();
 		}
-		m_sbycr = data;
-		if (data & 0x1e)
+		if (BIT(old_sbycr ^ m_sbycr, 1))
+		{
+			if (BIT(m_sbycr, 1))
+				frt_reset();
+			else
+			{
+				// Do not charge the stopped interval to FRC on release.
+				m_frc_base = total_cycles();
+				sh2_timer_activate();
+			}
+			sh2_recalc_irq();
+		}
+		if (data & 0x1c)
 			logerror("SH2 module stop selected %02x\n", data);
 		break;
+	}
 	}
 }
 
@@ -2011,6 +2047,9 @@ void sh7604_device::set_frt_input(int state)
 		return;
 
 	m_frt_input = state;
+	// Keep pin history, but no input capture is clocked during module stop.
+	if (BIT(m_sbycr, 1))
+		return;
 
 	if (m_frc_tcr & 0x80)
 	{

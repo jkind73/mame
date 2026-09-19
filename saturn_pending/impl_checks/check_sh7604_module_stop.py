@@ -23,6 +23,11 @@ head = head.replace('struct Device {', '''
 using offs_t = unsigned;
 struct sh2_device { void device_reset() {} };
 struct Device : sh2_device {
+ // FRT implementation is covered separately; these are declaration-only
+ // stubs for the unrelated branches of the shared SBYCR/reset methods.
+ void frt_reset() {}
+ void sh2_timer_activate() {}
+ uint64_t total_cycles() const { return now; }
  uint8_t m_sbycr=0, m_rsr=0, m_sci_rx_vote=0;
  bool m_sci_rx_parity_error=false, m_sci_rx_mp=false;
  uint16_t m_vcra=0x1234, m_vcrb=0x5678, m_iprb=0xf000;
