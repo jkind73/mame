@@ -1,0 +1,9 @@
+DSP_PRAM_SAVE armed
+DSP_PRAM_SAVE saved
+DSP_PRAM_SAVE mutated
+DSP_PRAM_SAVE loaded
+DSP_PRAM_SAVE FAIL busy_before_save got=0 want=810000
+DSP_PRAM_SAVE FAIL original_completion got=ff want=0
+DSP_PRAM_SAVE FAIL busy_restored got=0 want=810000
+DSP_PRAM_SAVE FAIL replayed_completion got=ff want=0
+Average speed: 136.64% (2 seconds)

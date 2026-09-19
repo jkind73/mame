@@ -119,9 +119,12 @@ private:
 
 	uint8_t   m_pc;   /* registers */
 	uint32_t  m_flags;  /* flags */
+	bool      m_paused;
 	uint8_t   m_ra;
 	uint8_t   m_ct0,m_ct1,m_ct2,m_ct3;
-	uint8_t   m_delay;                                   /* Delay */
+	uint8_t   m_delay;                                   /* Delay-slot address */
+	uint32_t  m_delay_opcode;                            /* Fetched slot word */
+	bool      m_delay_pending;                           /* Address zero is valid */
 	uint8_t   m_top;                                     /*Jump Command memory*/
 	uint16_t  m_lop;                                    /*Counter Register*/   /*12-bits*/
 	SCUDSPREG32 m_rx;                                /*X-Bus register*/
@@ -135,8 +138,10 @@ private:
 	uint32_t  m_ra0,m_wa0;                                /*DSP DMA registers*/
 	struct{
 		uint32_t src, dst;
-		uint16_t add;
+		uint16_t add, write_stride;
+		uint8_t program_address;
 		uint16_t size, update, ex, dir, count;
+		bool stalled;
 	}m_dma;
 	address_space *m_program;
 	address_space *m_data;
@@ -149,7 +154,7 @@ private:
 		DMA_STATE_WAIT,
 		DMA_STATE_MOVE
 	};
-	dma_state_t m_dma_state;
+	uint8_t m_dma_state;
 	TIMER_CALLBACK_MEMBER(dma_tick_cb);
 
 	uint32_t get_source_mem_reg_value( uint32_t mode );

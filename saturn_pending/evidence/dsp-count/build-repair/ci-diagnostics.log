@@ -1,0 +1,52 @@
+Summary:
+  Hits:             392 /  594 (65.99 %)
+    Direct:         392 /  595 (65.88 %)
+    Preprocessed:     0 /  202 (0.00 %)
+  Misses:           202
+    Direct:         203
+    Preprocessed:   202
+  Uncacheable:        4
+Primary storage:
+  Hits:             784 / 1189 (65.94 %)
+  Misses:           405
+  Cache size (GB): 0.03 / 1.00 (3.48 %)
+
+Use the -v/--verbose option for more details.
+
+   57 |         virtual void override_frame_period(attotime period) = 0;
+      |                                            ^~~~~~~~
+../../../../../src/emu/divo.h:58:17: error: ‘attotime’ does not name a type
+   58 |         virtual attotime frame_period() const = 0;
+      |                 ^~~~~~~~
+../../../../../src/emu/divo.h:65:17: error: ‘rectangle’ does not name a type
+   31 |         device_video_output_interface(const machine_config &mconfig, device_t &device);
+      |                                                                      ^~~~~~~~
+../../../../../src/emu/divo.h:57:44: error: ‘attotime’ has not been declared
+   57 |         virtual void override_frame_period(attotime period) = 0;
+      |                                            ^~~~~~~~
+../../../../../src/emu/divo.h:58:17: error: ‘attotime’ does not name a type
+   31 |         device_video_output_interface(const machine_config &mconfig, device_t &device);
+      |                                             ^~~~~~~~~~~~~~
+../../../../../src/emu/divo.h:31:70: error: ‘device_t’ has not been declared
+   31 |         device_video_output_interface(const machine_config &mconfig, device_t &device);
+      |                                                                      ^~~~~~~~
+../../../../../src/emu/divo.h:57:44: error: ‘attotime’ has not been declared
+   27 | {
+      | ^
+../../../../../src/emu/divo.h:31:45: error: ‘machine_config’ does not name a type
+   31 |         device_video_output_interface(const machine_config &mconfig, device_t &device);
+      |                                             ^~~~~~~~~~~~~~
+../../../../../src/emu/divo.h:31:70: error: ‘device_t’ has not been declared
+   14 | #error Dont include this file directly; include emu.h instead.
+      |  ^~~~~
+../../../../../src/emu/divo.h:27:1: error: expected class-name before ‘{’ token
+   27 | {
+      | ^
+../../../../../src/emu/divo.h:31:45: error: ‘machine_config’ does not name a type
+                 from ../../../../../src/devices/bus/sat_ctrl/analog.h:14,
+                 from ../../../../../src/devices/bus/sat_ctrl/analog.cpp:32:
+../../../../../src/emu/divo.h:14:2: error: #error Dont include this file directly; include emu.h instead.
+   14 | #error Dont include this file directly; include emu.h instead.
+      |  ^~~~~
+../../../../../src/emu/divo.h:27:1: error: expected class-name before ‘{’ token
+Failed build 35347062472, source 5d88f97572207fafac34900115be324f5bae24fa, compiler error lines: 346; not binary acceptance

@@ -1,0 +1,8 @@
+DSP_PRAM_SAVE armed
+DSP_PRAM_SAVE saved
+DSP_PRAM_SAVE mutated
+DSP_PRAM_SAVE loaded
+DSP_PRAM_SAVE FAIL first_word_written got=0 want=f0000001
+DSP_PRAM_SAVE FAIL original_completion got=c0 want=0
+DSP_PRAM_SAVE FAIL replayed_completion got=c0 want=0
+Average speed: 111.67% (2 seconds)

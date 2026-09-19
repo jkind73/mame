@@ -1,0 +1,7 @@
+test: /tmp/scsp-irq-6ab8xbu1/test.cpp:626: int main(): Assertion `s.status()==0x0800&&s.read(0x404/2)==0x0811' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_irq_ports.py", line 400, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-irq-6ab8xbu1/test']' died with <Signals.SIGABRT: 6>.

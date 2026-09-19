@@ -1,0 +1,12 @@
+  cases              49
+  counter_end        215
+  counter_first      9
+  counter_later      111
+  ist_after          3807
+  ist_before         2807
+  liveness           4096
+  masked_counter     0
+  nmi_count          0
+  ssp_after          0007fff0
+SCSP integration: PASS cases=49
+SCSP integration: sound RAM and register lanes agree through both CPU windows (including the common page), SCU DMA reaches sound RAM both ways with the same-bus control rejected, and the SCSP timer A request reaches the sound 68000 through its own level 6 autovector handler, which acknowledges it through SCIRE while the count advances and the request is held off by the mask

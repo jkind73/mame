@@ -1,0 +1,6 @@
+DSP_ALU_SAVE armed
+DSP_ALU_SAVE saved
+DSP_ALU_SAVE mutated
+DSP_ALU_SAVE loaded
+DSP_ALU_SAVE PASS width=48 overflow=1 replay=exact
+Average speed: 130.43% (2 seconds)

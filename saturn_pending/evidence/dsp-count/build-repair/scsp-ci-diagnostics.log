@@ -1,0 +1,38 @@
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830, actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830, actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683, actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+   18 |   u16 MADRS[32];     // offsets (in words), 16 bit
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:19:3: error: ‘u16’ does not name a type
+   19 |   u16 MPRO[128 * 4]; // 128 steps 64 bit
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:20:3: error: ‘s32’ does not name a type
+   17 |   s16 COEF[64];      // 16 bit signed
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:18:3: error: ‘u16’ does not name a type
+   18 |   u16 MADRS[32];     // offsets (in words), 16 bit
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:19:3: error: ‘u16’ does not name a type
+   13 |   u32 RBL; // Delay ram (Ring buffer) size in words
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:17:3: error: ‘s16’ does not name a type
+   17 |   s16 COEF[64];      // 16 bit signed
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:18:3: error: ‘u16’ does not name a type
+   12 |   u32 RBP; // Ring buf pointer
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:13:3: error: ‘u32’ does not name a type
+   13 |   u32 RBL; // Delay ram (Ring buffer) size in words
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:17:3: error: ‘s16’ does not name a type
+   11 |   address_space *space;
+      |   ^~~~~~~~~~~~~
+../../../../../src/devices/sound/scspdsp.h:12:3: error: ‘u32’ does not name a type
+   12 |   u32 RBP; // Ring buf pointer
+      |   ^~~
+../../../../../src/devices/sound/scspdsp.h:13:3: error: ‘u32’ does not name a type
+Compiling src/devices/video/cgapal.cpp...
+In file included from ../../../../../src/devices/sound/scspdsp.cpp:3:
+../../../../../src/devices/sound/scspdsp.h:11:3: error: ‘address_space’ does not name a type
+   11 |   address_space *space;
+      |   ^~~~~~~~~~~~~
+../../../../../src/devices/sound/scspdsp.h:12:3: error: ‘u32’ does not name a type
+Process completed with exit code 1.

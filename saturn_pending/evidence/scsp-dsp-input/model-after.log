@@ -1,0 +1,3 @@
+73728 actual MEMS read-before-write/MAC/YRL/ADRL cases passed
+69632 actual signed-displacement/latch/ring/table/read-write cases passed
+6531 actual SCSP zero-tail/MAC/read/live-program cases plus stopped control passed

@@ -1,0 +1,1398 @@
+DSP_READ armed
+DSP_READ case=1 PASS
+DSP_READ case=2 PASS
+DSP_READ case=3 PASS
+DSP_READ case=4 PASS
+DSP_READ case=5 PASS
+DSP_READ case=6 PASS
+DSP_READ case=7 PASS
+DSP_READ case=8 PASS
+DSP_READ case=9 PASS
+DSP_READ case=10 PASS
+DSP_READ case=11 PASS
+DSP_READ case=12 PASS
+DSP_READ case=13 PASS
+DSP_READ case=14 PASS
+DSP_READ case=15 PASS
+DSP_READ case=16 PASS
+DSP_READ case=17 PASS
+DSP_READ case=18 PASS
+DSP_READ case=19 PASS
+DSP_READ case=20 PASS
+DSP_READ case=21 PASS
+DSP_READ case=22 PASS
+DSP_READ case=23 PASS
+DSP_READ case=24 PASS
+DSP_READ case=25 PASS
+DSP_READ case=26 PASS
+DSP_READ case=27 PASS
+DSP_READ case=28 PASS
+DSP_READ case=29 PASS
+DSP_READ case=30 PASS
+DSP_READ case=31 PASS
+DSP_READ case=32 PASS
+DSP_READ case=33 PASS
+DSP_READ case=34 PASS
+DSP_READ case=35 PASS
+DSP_READ case=36 PASS
+DSP_READ case=37 PASS
+DSP_READ case=38 PASS
+DSP_READ case=39 PASS
+DSP_READ case=40 PASS
+DSP_READ case=41 PASS
+DSP_READ case=42 PASS
+DSP_READ case=43 PASS
+DSP_READ case=44 PASS
+DSP_READ case=45 PASS
+DSP_READ case=46 PASS
+DSP_READ case=47 PASS
+DSP_READ case=48 PASS
+DSP_READ case=49 PASS
+DSP_READ case=50 PASS
+DSP_READ case=51 PASS
+DSP_READ case=52 PASS
+DSP_READ case=53 PASS
+DSP_READ case=54 PASS
+DSP_READ case=55 PASS
+DSP_READ case=56 PASS
+DSP_READ case=57 PASS
+DSP_READ case=58 PASS
+DSP_READ case=59 PASS
+DSP_READ case=60 PASS
+DSP_READ case=61 PASS
+DSP_READ case=62 PASS
+DSP_READ case=63 PASS
+DSP_READ case=64 PASS
+DSP_READ case=65 PASS
+DSP_READ case=66 PASS
+DSP_READ case=67 PASS
+DSP_READ case=68 PASS
+DSP_READ case=69 PASS
+DSP_READ case=70 PASS
+DSP_READ case=71 PASS
+DSP_READ case=72 PASS
+DSP_READ case=73 PASS
+DSP_READ case=74 PASS
+DSP_READ case=75 PASS
+DSP_READ case=76 PASS
+DSP_READ case=77 PASS
+DSP_READ case=78 PASS
+DSP_READ case=79 PASS
+DSP_READ case=80 PASS
+DSP_READ case=81 PASS
+DSP_READ case=82 PASS
+DSP_READ case=83 PASS
+DSP_READ case=84 PASS
+DSP_READ case=85 PASS
+DSP_READ case=86 PASS
+DSP_READ case=87 PASS
+DSP_READ case=88 PASS
+DSP_READ case=89 PASS
+DSP_READ case=90 PASS
+DSP_READ case=91 PASS
+DSP_READ case=92 PASS
+DSP_READ case=93 PASS
+DSP_READ case=94 PASS
+DSP_READ case=95 PASS
+DSP_READ case=96 PASS
+DSP_READ case=97 PASS
+DSP_READ case=98 PASS
+DSP_READ case=99 PASS
+DSP_READ case=100 PASS
+DSP_READ case=101 PASS
+DSP_READ case=102 PASS
+DSP_READ case=103 PASS
+DSP_READ case=104 PASS
+DSP_READ case=105 PASS
+DSP_READ case=106 PASS
+DSP_READ case=107 PASS
+DSP_READ case=108 PASS
+DSP_READ case=109 PASS
+DSP_READ case=110 PASS
+DSP_READ case=111 PASS
+DSP_READ case=112 PASS
+DSP_READ case=113 PASS
+DSP_READ case=114 PASS
+DSP_READ case=115 PASS
+DSP_READ case=116 PASS
+DSP_READ case=117 PASS
+DSP_READ case=118 PASS
+DSP_READ case=119 PASS
+DSP_READ case=120 PASS
+DSP_READ case=121 PASS
+DSP_READ case=122 PASS
+DSP_READ case=123 PASS
+DSP_READ case=124 PASS
+DSP_READ case=125 PASS
+DSP_READ case=126 PASS
+DSP_READ case=127 PASS
+DSP_READ case=128 PASS
+DSP_READ case=129 PASS
+DSP_READ case=130 PASS
+DSP_READ case=131 PASS
+DSP_READ case=132 PASS
+DSP_READ case=133 PASS
+DSP_READ case=134 PASS
+DSP_READ case=135 PASS
+DSP_READ case=136 PASS
+DSP_READ case=137 PASS
+DSP_READ case=138 PASS
+DSP_READ case=139 PASS
+DSP_READ case=140 PASS
+DSP_READ case=141 PASS
+DSP_READ case=142 PASS
+DSP_READ case=143 PASS
+DSP_READ case=144 PASS
+DSP_READ case=145 PASS
+DSP_READ case=146 PASS
+DSP_READ case=147 PASS
+DSP_READ case=148 PASS
+DSP_READ case=149 PASS
+DSP_READ case=150 PASS
+DSP_READ case=151 PASS
+DSP_READ case=152 PASS
+DSP_READ case=153 PASS
+DSP_READ case=154 PASS
+DSP_READ case=155 PASS
+DSP_READ case=156 PASS
+DSP_READ case=157 PASS
+DSP_READ case=158 PASS
+DSP_READ case=159 PASS
+DSP_READ case=160 PASS
+DSP_READ case=161 PASS
+DSP_READ case=162 PASS
+DSP_READ case=163 PASS
+DSP_READ case=164 PASS
+DSP_READ case=165 PASS
+DSP_READ case=166 PASS
+DSP_READ case=167 PASS
+DSP_READ case=168 PASS
+DSP_READ case=169 PASS
+DSP_READ case=170 PASS
+DSP_READ case=171 PASS
+DSP_READ case=172 PASS
+DSP_READ case=173 PASS
+DSP_READ case=174 PASS
+DSP_READ case=175 PASS
+DSP_READ case=176 PASS
+DSP_READ case=177 PASS
+DSP_READ case=178 PASS
+DSP_READ case=179 PASS
+DSP_READ case=180 PASS
+DSP_READ case=181 PASS
+DSP_READ case=182 PASS
+DSP_READ case=183 PASS
+DSP_READ case=184 PASS
+DSP_READ case=185 PASS
+DSP_READ case=186 PASS
+DSP_READ case=187 PASS
+DSP_READ case=188 PASS
+DSP_READ case=189 PASS
+DSP_READ case=190 PASS
+DSP_READ case=191 PASS
+DSP_READ case=192 PASS
+DSP_READ case=193 PASS
+DSP_READ case=194 PASS
+DSP_READ case=195 PASS
+DSP_READ case=196 PASS
+DSP_READ case=197 PASS
+DSP_READ case=198 PASS
+DSP_READ case=199 PASS
+DSP_READ case=200 PASS
+DSP_READ case=201 PASS
+DSP_READ case=202 PASS
+DSP_READ case=203 PASS
+DSP_READ case=204 PASS
+DSP_READ case=205 PASS
+DSP_READ case=206 PASS
+DSP_READ case=207 PASS
+DSP_READ case=208 PASS
+DSP_READ case=209 PASS
+DSP_READ case=210 PASS
+DSP_READ case=211 PASS
+DSP_READ case=212 PASS
+DSP_READ case=213 PASS
+DSP_READ case=214 PASS
+DSP_READ case=215 PASS
+DSP_READ case=216 PASS
+DSP_READ case=217 PASS
+DSP_READ case=218 PASS
+DSP_READ case=219 PASS
+DSP_READ case=220 PASS
+DSP_READ case=221 PASS
+DSP_READ case=222 PASS
+DSP_READ case=223 PASS
+DSP_READ case=224 PASS
+DSP_READ case=225 PASS
+DSP_READ case=226 PASS
+DSP_READ case=227 PASS
+DSP_READ case=228 PASS
+DSP_READ case=229 PASS
+DSP_READ case=230 PASS
+DSP_READ case=231 PASS
+DSP_READ case=232 PASS
+DSP_READ case=233 PASS
+DSP_READ case=234 PASS
+DSP_READ case=235 PASS
+DSP_READ case=236 PASS
+DSP_READ case=237 PASS
+DSP_READ case=238 PASS
+DSP_READ case=239 PASS
+DSP_READ case=240 PASS
+DSP_READ case=241 PASS
+DSP_READ case=242 PASS
+DSP_READ case=243 PASS
+DSP_READ case=244 PASS
+DSP_READ case=245 PASS
+DSP_READ case=246 PASS
+DSP_READ case=247 PASS
+DSP_READ case=248 PASS
+DSP_READ case=249 PASS
+DSP_READ case=250 PASS
+DSP_READ case=251 PASS
+DSP_READ case=252 PASS
+DSP_READ case=253 PASS
+DSP_READ case=254 PASS
+DSP_READ case=255 PASS
+DSP_READ case=256 PASS
+DSP_READ case=257 PASS
+DSP_READ case=258 PASS
+DSP_READ case=259 PASS
+DSP_READ case=260 PASS
+DSP_READ case=261 PASS
+DSP_READ case=262 PASS
+DSP_READ case=263 PASS
+DSP_READ case=264 PASS
+DSP_READ case=265 PASS
+DSP_READ case=266 PASS
+DSP_READ case=267 PASS
+DSP_READ case=268 PASS
+DSP_READ case=269 PASS
+DSP_READ case=270 PASS
+DSP_READ case=271 PASS
+DSP_READ case=272 PASS
+DSP_READ case=273 PASS
+DSP_READ case=274 PASS
+DSP_READ case=275 PASS
+DSP_READ case=276 PASS
+DSP_READ case=277 PASS
+DSP_READ case=278 PASS
+DSP_READ case=279 PASS
+DSP_READ case=280 PASS
+DSP_READ case=281 PASS
+DSP_READ case=282 PASS
+DSP_READ case=283 PASS
+DSP_READ case=284 PASS
+DSP_READ case=285 PASS
+DSP_READ case=286 PASS
+DSP_READ case=287 PASS
+DSP_READ case=288 PASS
+DSP_READ case=289 PASS
+DSP_READ case=290 PASS
+DSP_READ case=291 PASS
+DSP_READ case=292 PASS
+DSP_READ case=293 PASS
+DSP_READ case=294 PASS
+DSP_READ case=295 PASS
+DSP_READ case=296 PASS
+DSP_READ case=297 PASS
+DSP_READ case=298 PASS
+DSP_READ case=299 PASS
+DSP_READ case=300 PASS
+DSP_READ case=301 PASS
+DSP_READ case=302 PASS
+DSP_READ case=303 PASS
+DSP_READ case=304 PASS
+DSP_READ case=305 PASS
+DSP_READ case=306 PASS
+DSP_READ case=307 PASS
+DSP_READ case=308 PASS
+DSP_READ case=309 PASS
+DSP_READ case=310 PASS
+DSP_READ case=311 PASS
+DSP_READ case=312 PASS
+DSP_READ case=313 PASS
+DSP_READ case=314 PASS
+DSP_READ case=315 PASS
+DSP_READ case=316 PASS
+DSP_READ case=317 PASS
+DSP_READ case=318 PASS
+DSP_READ case=319 PASS
+DSP_READ case=320 PASS
+DSP_READ case=329 PASS
+DSP_READ case=330 PASS
+DSP_READ case=331 PASS
+DSP_READ case=332 PASS
+DSP_READ case=333 PASS
+DSP_READ case=334 PASS
+DSP_READ case=335 PASS
+DSP_READ case=336 PASS
+DSP_READ case=345 PASS
+DSP_READ case=346 PASS
+DSP_READ case=347 PASS
+DSP_READ case=348 PASS
+DSP_READ case=349 PASS
+DSP_READ case=350 PASS
+DSP_READ case=351 PASS
+DSP_READ case=352 PASS
+DSP_READ case=361 PASS
+DSP_READ case=362 PASS
+DSP_READ case=363 PASS
+DSP_READ case=364 PASS
+DSP_READ case=365 PASS
+DSP_READ case=366 PASS
+DSP_READ case=367 PASS
+DSP_READ case=368 PASS
+DSP_READ case=377 PASS
+DSP_READ case=378 PASS
+DSP_READ case=379 PASS
+DSP_READ case=380 PASS
+DSP_READ case=381 PASS
+DSP_READ case=382 PASS
+DSP_READ case=383 PASS
+DSP_READ case=384 PASS
+DSP_READ case=393 PASS
+DSP_READ case=394 PASS
+DSP_READ case=395 PASS
+DSP_READ case=396 PASS
+DSP_READ case=397 PASS
+DSP_READ case=398 PASS
+DSP_READ case=399 PASS
+DSP_READ case=400 PASS
+DSP_READ case=409 PASS
+DSP_READ case=410 PASS
+DSP_READ case=411 PASS
+DSP_READ case=412 PASS
+DSP_READ case=413 PASS
+DSP_READ case=414 PASS
+DSP_READ case=415 PASS
+DSP_READ case=416 PASS
+DSP_READ case=425 PASS
+DSP_READ case=426 PASS
+DSP_READ case=427 PASS
+DSP_READ case=428 PASS
+DSP_READ case=429 PASS
+DSP_READ case=430 PASS
+DSP_READ case=431 PASS
+DSP_READ case=432 PASS
+DSP_READ case=441 PASS
+DSP_READ case=442 PASS
+DSP_READ case=443 PASS
+DSP_READ case=444 PASS
+DSP_READ case=445 PASS
+DSP_READ case=446 PASS
+DSP_READ case=447 PASS
+DSP_READ case=448 PASS
+DSP_READ case=457 PASS
+DSP_READ case=458 PASS
+DSP_READ case=459 PASS
+DSP_READ case=460 PASS
+DSP_READ case=461 PASS
+DSP_READ case=462 PASS
+DSP_READ case=463 PASS
+DSP_READ case=464 PASS
+DSP_READ case=473 PASS
+DSP_READ case=474 PASS
+DSP_READ case=475 PASS
+DSP_READ case=476 PASS
+DSP_READ case=477 PASS
+DSP_READ case=478 PASS
+DSP_READ case=479 PASS
+DSP_READ case=480 PASS
+DSP_READ case=489 PASS
+DSP_READ case=490 PASS
+DSP_READ case=491 PASS
+DSP_READ case=492 PASS
+DSP_READ case=493 PASS
+DSP_READ case=494 PASS
+DSP_READ case=495 PASS
+DSP_READ case=496 PASS
+DSP_READ case=505 PASS
+DSP_READ case=506 PASS
+DSP_READ case=507 PASS
+DSP_READ case=508 PASS
+DSP_READ case=509 PASS
+DSP_READ case=510 PASS
+DSP_READ case=511 PASS
+DSP_READ case=512 PASS
+DSP_READ case=513 PASS
+DSP_READ case=514 PASS
+DSP_READ case=515 PASS
+DSP_READ case=516 PASS
+DSP_READ case=521 PASS
+DSP_READ case=522 PASS
+DSP_READ case=523 PASS
+DSP_READ case=524 PASS
+DSP_READ case=527 PASS
+DSP_READ case=528 PASS
+DSP_READ case=539 PASS
+DSP_READ case=540 PASS
+DSP_READ case=543 PASS
+DSP_READ case=544 PASS
+DSP_READ case=545 PASS
+DSP_READ case=546 PASS
+DSP_READ case=547 PASS
+DSP_READ case=548 PASS
+DSP_READ case=553 PASS
+DSP_READ case=554 PASS
+DSP_READ case=555 PASS
+DSP_READ case=556 PASS
+DSP_READ case=559 PASS
+DSP_READ case=560 PASS
+DSP_READ case=571 PASS
+DSP_READ case=572 PASS
+DSP_READ case=575 PASS
+DSP_READ case=576 PASS
+DSP_READ case=577 PASS
+DSP_READ case=578 PASS
+DSP_READ case=579 PASS
+DSP_READ case=580 PASS
+DSP_READ case=585 PASS
+DSP_READ case=586 PASS
+DSP_READ case=587 PASS
+DSP_READ case=588 PASS
+DSP_READ case=591 PASS
+DSP_READ case=592 PASS
+DSP_READ case=603 PASS
+DSP_READ case=604 PASS
+DSP_READ case=607 PASS
+DSP_READ case=608 PASS
+DSP_READ case=609 PASS
+DSP_READ case=610 PASS
+DSP_READ case=611 PASS
+DSP_READ case=612 PASS
+DSP_READ case=617 PASS
+DSP_READ case=618 PASS
+DSP_READ case=619 PASS
+DSP_READ case=620 PASS
+DSP_READ case=623 PASS
+DSP_READ case=624 PASS
+DSP_READ case=635 PASS
+DSP_READ case=636 PASS
+DSP_READ case=639 PASS
+DSP_READ case=640 PASS
+DSP_READ case=641 PASS
+DSP_READ case=642 PASS
+DSP_READ case=643 PASS
+DSP_READ case=644 PASS
+DSP_READ case=649 PASS
+DSP_READ case=650 PASS
+DSP_READ case=651 PASS
+DSP_READ case=652 PASS
+DSP_READ case=655 PASS
+DSP_READ case=656 PASS
+DSP_READ case=667 PASS
+DSP_READ case=668 PASS
+DSP_READ case=671 PASS
+DSP_READ case=672 PASS
+DSP_READ case=673 PASS
+DSP_READ case=674 PASS
+DSP_READ case=675 PASS
+DSP_READ case=676 PASS
+DSP_READ case=681 PASS
+DSP_READ case=682 PASS
+DSP_READ case=683 PASS
+DSP_READ case=684 PASS
+DSP_READ case=687 PASS
+DSP_READ case=688 PASS
+DSP_READ case=699 PASS
+DSP_READ case=700 PASS
+DSP_READ case=703 PASS
+DSP_READ case=704 PASS
+DSP_READ case=705 PASS
+DSP_READ case=706 PASS
+DSP_READ case=707 PASS
+DSP_READ case=708 PASS
+DSP_READ case=713 PASS
+DSP_READ case=714 PASS
+DSP_READ case=715 PASS
+DSP_READ case=716 PASS
+DSP_READ case=719 PASS
+DSP_READ case=720 PASS
+DSP_READ case=731 PASS
+DSP_READ case=732 PASS
+DSP_READ case=735 PASS
+DSP_READ case=736 PASS
+DSP_READ case=737 PASS
+DSP_READ case=738 PASS
+DSP_READ case=739 PASS
+DSP_READ case=740 PASS
+DSP_READ case=745 PASS
+DSP_READ case=746 PASS
+DSP_READ case=747 PASS
+DSP_READ case=748 PASS
+DSP_READ case=751 PASS
+DSP_READ case=752 PASS
+DSP_READ case=763 PASS
+DSP_READ case=764 PASS
+DSP_READ case=767 PASS
+DSP_READ case=768 PASS
+DSP_READ case=769 PASS
+DSP_READ case=770 PASS
+DSP_READ case=771 PASS
+DSP_READ case=772 PASS
+DSP_READ case=777 PASS
+DSP_READ case=778 PASS
+DSP_READ case=779 PASS
+DSP_READ case=780 PASS
+DSP_READ case=783 PASS
+DSP_READ case=784 PASS
+DSP_READ case=795 PASS
+DSP_READ case=796 PASS
+DSP_READ case=799 PASS
+DSP_READ case=800 PASS
+DSP_READ case=801 PASS
+DSP_READ case=802 PASS
+DSP_READ case=803 PASS
+DSP_READ case=804 PASS
+DSP_READ case=809 PASS
+DSP_READ case=810 PASS
+DSP_READ case=811 PASS
+DSP_READ case=812 PASS
+DSP_READ case=815 PASS
+DSP_READ case=816 PASS
+DSP_READ case=827 PASS
+DSP_READ case=828 PASS
+DSP_READ case=831 PASS
+DSP_READ case=832 PASS
+DSP_READ case=841 PASS
+DSP_READ case=842 PASS
+DSP_READ case=843 PASS
+DSP_READ case=844 PASS
+DSP_READ case=845 PASS
+DSP_READ case=846 PASS
+DSP_READ case=847 PASS
+DSP_READ case=848 PASS
+DSP_READ case=857 PASS
+DSP_READ case=858 PASS
+DSP_READ case=859 PASS
+DSP_READ case=860 PASS
+DSP_READ case=861 PASS
+DSP_READ case=862 PASS
+DSP_READ case=863 PASS
+DSP_READ case=864 PASS
+DSP_READ case=873 PASS
+DSP_READ case=874 PASS
+DSP_READ case=875 PASS
+DSP_READ case=876 PASS
+DSP_READ case=877 PASS
+DSP_READ case=878 PASS
+DSP_READ case=879 PASS
+DSP_READ case=880 PASS
+DSP_READ case=889 PASS
+DSP_READ case=890 PASS
+DSP_READ case=891 PASS
+DSP_READ case=892 PASS
+DSP_READ case=893 PASS
+DSP_READ case=894 PASS
+DSP_READ case=895 PASS
+DSP_READ case=896 PASS
+DSP_READ case=905 PASS
+DSP_READ case=906 PASS
+DSP_READ case=907 PASS
+DSP_READ case=908 PASS
+DSP_READ case=909 PASS
+DSP_READ case=910 PASS
+DSP_READ case=911 PASS
+DSP_READ case=912 PASS
+DSP_READ case=921 PASS
+DSP_READ case=922 PASS
+DSP_READ case=923 PASS
+DSP_READ case=924 PASS
+DSP_READ case=925 PASS
+DSP_READ case=926 PASS
+DSP_READ case=927 PASS
+DSP_READ case=928 PASS
+DSP_READ case=937 PASS
+DSP_READ case=938 PASS
+DSP_READ case=939 PASS
+DSP_READ case=940 PASS
+DSP_READ case=941 PASS
+DSP_READ case=942 PASS
+DSP_READ case=943 PASS
+DSP_READ case=944 PASS
+DSP_READ case=953 PASS
+DSP_READ case=954 PASS
+DSP_READ case=955 PASS
+DSP_READ case=956 PASS
+DSP_READ case=957 PASS
+DSP_READ case=958 PASS
+DSP_READ case=959 PASS
+DSP_READ case=960 PASS
+DSP_READ case=969 PASS
+DSP_READ case=970 PASS
+DSP_READ case=971 PASS
+DSP_READ case=972 PASS
+DSP_READ case=973 PASS
+DSP_READ case=974 PASS
+DSP_READ case=975 PASS
+DSP_READ case=976 PASS
+DSP_READ case=985 PASS
+DSP_READ case=986 PASS
+DSP_READ case=987 PASS
+DSP_READ case=988 PASS
+DSP_READ case=989 PASS
+DSP_READ case=990 PASS
+DSP_READ case=991 PASS
+DSP_READ case=992 PASS
+DSP_READ case=1001 PASS
+DSP_READ case=1002 PASS
+DSP_READ case=1003 PASS
+DSP_READ case=1004 PASS
+DSP_READ case=1005 PASS
+DSP_READ case=1006 PASS
+DSP_READ case=1007 PASS
+DSP_READ case=1008 PASS
+DSP_READ case=1017 PASS
+DSP_READ case=1018 PASS
+DSP_READ case=1019 PASS
+DSP_READ case=1020 PASS
+DSP_READ case=1021 PASS
+DSP_READ case=1022 PASS
+DSP_READ case=1023 PASS
+DSP_READ case=1024 PASS
+DSP_READ FAIL case321_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case321_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case322_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case322_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case323_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case323_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case324_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case324_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case325_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case325_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case326_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case326_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case327_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case327_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case328_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case328_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case337_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case337_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case338_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case338_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case339_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case339_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case340_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case340_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case341_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case341_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case342_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case342_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case343_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case343_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case344_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case344_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case353_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case353_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case354_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case354_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case355_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case355_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case356_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case356_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case357_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case357_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case358_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case358_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case359_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case359_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case360_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case360_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case369_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case369_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case370_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case370_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case371_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case371_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case372_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case372_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case373_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case373_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case374_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case374_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case375_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case375_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case376_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case376_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case385_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case385_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case386_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case386_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case387_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case387_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case388_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case388_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case389_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case389_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case390_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case390_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case391_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case391_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case392_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case392_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case401_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case401_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case402_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case402_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case403_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case403_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case404_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case404_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case405_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case405_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case406_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case406_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case407_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case407_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case408_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case408_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case417_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case417_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case418_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case418_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case419_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case419_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case420_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case420_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case421_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case421_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case422_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case422_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case423_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case423_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case424_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case424_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case433_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case433_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case434_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case434_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case435_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case435_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case436_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case436_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case437_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case437_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case438_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case438_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case439_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case439_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case440_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case440_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case449_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case449_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case450_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case450_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case451_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case451_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case452_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case452_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case453_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case453_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case454_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case454_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case455_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case455_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case456_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case456_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case465_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case465_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case466_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case466_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case467_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case467_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case468_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case468_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case469_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case469_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case470_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case470_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case471_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case471_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case472_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case472_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case481_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case481_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case482_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case482_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case483_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case483_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case484_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case484_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case485_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case485_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case486_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case486_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case487_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case487_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case488_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case488_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case497_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case497_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case498_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case498_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case499_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case499_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case500_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case500_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case501_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case501_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case502_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case502_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case503_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case503_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case504_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case504_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case517_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case517_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case518_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case518_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case519_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case519_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case520_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case520_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case525_word2 got=0 want=5678dcba
+DSP_READ FAIL case525_word3 got=0 want=2468ace0
+DSP_READ FAIL case526_word2 got=0 want=5678dcba
+DSP_READ FAIL case526_word3 got=0 want=2468ace0
+DSP_READ FAIL case529_word2 got=0 want=1234abcd
+DSP_READ FAIL case529_word3 got=0 want=1234abcd
+DSP_READ FAIL case530_word2 got=0 want=1234abcd
+DSP_READ FAIL case530_word3 got=0 want=1234abcd
+DSP_READ FAIL case531_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case531_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case532_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case532_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case533_word2 got=0 want=1234abcd
+DSP_READ FAIL case533_word3 got=12542 want=1234abcd
+DSP_READ FAIL case534_word2 got=0 want=1234abcd
+DSP_READ FAIL case534_word3 got=12542 want=1234abcd
+DSP_READ FAIL case535_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case535_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case536_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case536_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case537_word2 got=12542 want=5678dcba
+DSP_READ FAIL case537_word3 got=0 want=2468ace0
+DSP_READ FAIL case538_word2 got=12542 want=5678dcba
+DSP_READ FAIL case538_word3 got=0 want=2468ace0
+DSP_READ FAIL case541_word2 got=0 want=5678dcba
+DSP_READ FAIL case541_word3 got=0 want=2468ace0
+DSP_READ FAIL case542_word2 got=0 want=5678dcba
+DSP_READ FAIL case542_word3 got=0 want=2468ace0
+DSP_READ FAIL case549_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case549_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case550_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case550_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case551_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case551_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case552_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case552_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case557_word2 got=0 want=5678dcba
+DSP_READ FAIL case557_word3 got=0 want=2468ace0
+DSP_READ FAIL case558_word2 got=0 want=5678dcba
+DSP_READ FAIL case558_word3 got=0 want=2468ace0
+DSP_READ FAIL case561_word2 got=0 want=1234abcd
+DSP_READ FAIL case561_word3 got=0 want=1234abcd
+DSP_READ FAIL case562_word2 got=0 want=1234abcd
+DSP_READ FAIL case562_word3 got=0 want=1234abcd
+DSP_READ FAIL case563_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case563_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case564_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case564_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case565_word2 got=0 want=1234abcd
+DSP_READ FAIL case565_word3 got=12542 want=1234abcd
+DSP_READ FAIL case566_word2 got=0 want=1234abcd
+DSP_READ FAIL case566_word3 got=12542 want=1234abcd
+DSP_READ FAIL case567_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case567_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case568_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case568_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case569_word2 got=12542 want=5678dcba
+DSP_READ FAIL case569_word3 got=0 want=2468ace0
+DSP_READ FAIL case570_word2 got=12542 want=5678dcba
+DSP_READ FAIL case570_word3 got=0 want=2468ace0
+DSP_READ FAIL case573_word2 got=0 want=5678dcba
+DSP_READ FAIL case573_word3 got=0 want=2468ace0
+DSP_READ FAIL case574_word2 got=0 want=5678dcba
+DSP_READ FAIL case574_word3 got=0 want=2468ace0
+DSP_READ FAIL case581_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case581_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case582_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case582_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case583_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case583_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case584_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case584_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case589_word2 got=0 want=5678dcba
+DSP_READ FAIL case589_word3 got=0 want=2468ace0
+DSP_READ FAIL case590_word2 got=0 want=5678dcba
+DSP_READ FAIL case590_word3 got=0 want=2468ace0
+DSP_READ FAIL case593_word2 got=0 want=1234abcd
+DSP_READ FAIL case593_word3 got=0 want=1234abcd
+DSP_READ FAIL case594_word2 got=0 want=1234abcd
+DSP_READ FAIL case594_word3 got=0 want=1234abcd
+DSP_READ FAIL case595_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case595_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case596_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case596_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case597_word2 got=0 want=1234abcd
+DSP_READ FAIL case597_word3 got=12542 want=1234abcd
+DSP_READ FAIL case598_word2 got=0 want=1234abcd
+DSP_READ FAIL case598_word3 got=12542 want=1234abcd
+DSP_READ FAIL case599_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case599_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case600_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case600_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case601_word2 got=12542 want=5678dcba
+DSP_READ FAIL case601_word3 got=0 want=2468ace0
+DSP_READ FAIL case602_word2 got=12542 want=5678dcba
+DSP_READ FAIL case602_word3 got=0 want=2468ace0
+DSP_READ FAIL case605_word2 got=0 want=5678dcba
+DSP_READ FAIL case605_word3 got=0 want=2468ace0
+DSP_READ FAIL case606_word2 got=0 want=5678dcba
+DSP_READ FAIL case606_word3 got=0 want=2468ace0
+DSP_READ FAIL case613_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case613_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case614_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case614_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case615_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case615_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case616_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case616_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case621_word2 got=0 want=5678dcba
+DSP_READ FAIL case621_word3 got=0 want=2468ace0
+DSP_READ FAIL case622_word2 got=0 want=5678dcba
+DSP_READ FAIL case622_word3 got=0 want=2468ace0
+DSP_READ FAIL case625_word2 got=0 want=1234abcd
+DSP_READ FAIL case625_word3 got=0 want=1234abcd
+DSP_READ FAIL case626_word2 got=0 want=1234abcd
+DSP_READ FAIL case626_word3 got=0 want=1234abcd
+DSP_READ FAIL case627_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case627_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case628_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case628_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case629_word2 got=0 want=1234abcd
+DSP_READ FAIL case629_word3 got=12542 want=1234abcd
+DSP_READ FAIL case630_word2 got=0 want=1234abcd
+DSP_READ FAIL case630_word3 got=12542 want=1234abcd
+DSP_READ FAIL case631_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case631_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case632_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case632_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case633_word2 got=12542 want=5678dcba
+DSP_READ FAIL case633_word3 got=0 want=2468ace0
+DSP_READ FAIL case634_word2 got=12542 want=5678dcba
+DSP_READ FAIL case634_word3 got=0 want=2468ace0
+DSP_READ FAIL case637_word2 got=0 want=5678dcba
+DSP_READ FAIL case637_word3 got=0 want=2468ace0
+DSP_READ FAIL case638_word2 got=0 want=5678dcba
+DSP_READ FAIL case638_word3 got=0 want=2468ace0
+DSP_READ FAIL case645_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case645_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case646_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case646_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case647_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case647_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case648_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case648_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case653_word2 got=0 want=5678dcba
+DSP_READ FAIL case653_word3 got=0 want=2468ace0
+DSP_READ FAIL case654_word2 got=0 want=5678dcba
+DSP_READ FAIL case654_word3 got=0 want=2468ace0
+DSP_READ FAIL case657_word2 got=0 want=1234abcd
+DSP_READ FAIL case657_word3 got=0 want=1234abcd
+DSP_READ FAIL case658_word2 got=0 want=1234abcd
+DSP_READ FAIL case658_word3 got=0 want=1234abcd
+DSP_READ FAIL case659_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case659_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case660_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case660_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case661_word2 got=0 want=1234abcd
+DSP_READ FAIL case661_word3 got=12542 want=1234abcd
+DSP_READ FAIL case662_word2 got=0 want=1234abcd
+DSP_READ FAIL case662_word3 got=12542 want=1234abcd
+DSP_READ FAIL case663_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case663_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case664_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case664_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case665_word2 got=12542 want=5678dcba
+DSP_READ FAIL case665_word3 got=0 want=2468ace0
+DSP_READ FAIL case666_word2 got=12542 want=5678dcba
+DSP_READ FAIL case666_word3 got=0 want=2468ace0
+DSP_READ FAIL case669_word2 got=0 want=5678dcba
+DSP_READ FAIL case669_word3 got=0 want=2468ace0
+DSP_READ FAIL case670_word2 got=0 want=5678dcba
+DSP_READ FAIL case670_word3 got=0 want=2468ace0
+DSP_READ FAIL case677_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case677_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case678_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case678_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case679_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case679_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case680_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case680_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case685_word2 got=0 want=5678dcba
+DSP_READ FAIL case685_word3 got=0 want=2468ace0
+DSP_READ FAIL case686_word2 got=0 want=5678dcba
+DSP_READ FAIL case686_word3 got=0 want=2468ace0
+DSP_READ FAIL case689_word2 got=0 want=1234abcd
+DSP_READ FAIL case689_word3 got=0 want=1234abcd
+DSP_READ FAIL case690_word2 got=0 want=1234abcd
+DSP_READ FAIL case690_word3 got=0 want=1234abcd
+DSP_READ FAIL case691_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case691_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case692_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case692_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case693_word2 got=0 want=1234abcd
+DSP_READ FAIL case693_word3 got=12542 want=1234abcd
+DSP_READ FAIL case694_word2 got=0 want=1234abcd
+DSP_READ FAIL case694_word3 got=12542 want=1234abcd
+DSP_READ FAIL case695_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case695_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case696_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case696_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case697_word2 got=12542 want=5678dcba
+DSP_READ FAIL case697_word3 got=0 want=2468ace0
+DSP_READ FAIL case698_word2 got=12542 want=5678dcba
+DSP_READ FAIL case698_word3 got=0 want=2468ace0
+DSP_READ FAIL case701_word2 got=0 want=5678dcba
+DSP_READ FAIL case701_word3 got=0 want=2468ace0
+DSP_READ FAIL case702_word2 got=0 want=5678dcba
+DSP_READ FAIL case702_word3 got=0 want=2468ace0
+DSP_READ FAIL case709_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case709_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case710_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case710_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case711_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case711_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case712_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case712_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case717_word2 got=0 want=5678dcba
+DSP_READ FAIL case717_word3 got=0 want=2468ace0
+DSP_READ FAIL case718_word2 got=0 want=5678dcba
+DSP_READ FAIL case718_word3 got=0 want=2468ace0
+DSP_READ FAIL case721_word2 got=0 want=1234abcd
+DSP_READ FAIL case721_word3 got=0 want=1234abcd
+DSP_READ FAIL case722_word2 got=0 want=1234abcd
+DSP_READ FAIL case722_word3 got=0 want=1234abcd
+DSP_READ FAIL case723_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case723_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case724_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case724_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case725_word2 got=0 want=1234abcd
+DSP_READ FAIL case725_word3 got=12542 want=1234abcd
+DSP_READ FAIL case726_word2 got=0 want=1234abcd
+DSP_READ FAIL case726_word3 got=12542 want=1234abcd
+DSP_READ FAIL case727_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case727_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case728_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case728_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case729_word2 got=12542 want=5678dcba
+DSP_READ FAIL case729_word3 got=0 want=2468ace0
+DSP_READ FAIL case730_word2 got=12542 want=5678dcba
+DSP_READ FAIL case730_word3 got=0 want=2468ace0
+DSP_READ FAIL case733_word2 got=0 want=5678dcba
+DSP_READ FAIL case733_word3 got=0 want=2468ace0
+DSP_READ FAIL case734_word2 got=0 want=5678dcba
+DSP_READ FAIL case734_word3 got=0 want=2468ace0
+DSP_READ FAIL case741_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case741_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case742_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case742_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case743_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case743_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case744_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case744_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case749_word2 got=0 want=5678dcba
+DSP_READ FAIL case749_word3 got=0 want=2468ace0
+DSP_READ FAIL case750_word2 got=0 want=5678dcba
+DSP_READ FAIL case750_word3 got=0 want=2468ace0
+DSP_READ FAIL case753_word2 got=0 want=1234abcd
+DSP_READ FAIL case753_word3 got=0 want=1234abcd
+DSP_READ FAIL case754_word2 got=0 want=1234abcd
+DSP_READ FAIL case754_word3 got=0 want=1234abcd
+DSP_READ FAIL case755_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case755_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case756_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case756_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case757_word2 got=0 want=1234abcd
+DSP_READ FAIL case757_word3 got=12542 want=1234abcd
+DSP_READ FAIL case758_word2 got=0 want=1234abcd
+DSP_READ FAIL case758_word3 got=12542 want=1234abcd
+DSP_READ FAIL case759_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case759_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case760_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case760_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case761_word2 got=12542 want=5678dcba
+DSP_READ FAIL case761_word3 got=0 want=2468ace0
+DSP_READ FAIL case762_word2 got=12542 want=5678dcba
+DSP_READ FAIL case762_word3 got=0 want=2468ace0
+DSP_READ FAIL case765_word2 got=0 want=5678dcba
+DSP_READ FAIL case765_word3 got=0 want=2468ace0
+DSP_READ FAIL case766_word2 got=0 want=5678dcba
+DSP_READ FAIL case766_word3 got=0 want=2468ace0
+DSP_READ FAIL case773_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case773_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case774_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case774_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case775_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case775_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case776_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case776_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case781_word2 got=0 want=5678dcba
+DSP_READ FAIL case781_word3 got=0 want=2468ace0
+DSP_READ FAIL case782_word2 got=0 want=5678dcba
+DSP_READ FAIL case782_word3 got=0 want=2468ace0
+DSP_READ FAIL case785_word2 got=0 want=1234abcd
+DSP_READ FAIL case785_word3 got=0 want=1234abcd
+DSP_READ FAIL case786_word2 got=0 want=1234abcd
+DSP_READ FAIL case786_word3 got=0 want=1234abcd
+DSP_READ FAIL case787_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case787_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case788_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case788_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case789_word2 got=0 want=1234abcd
+DSP_READ FAIL case789_word3 got=12542 want=1234abcd
+DSP_READ FAIL case790_word2 got=0 want=1234abcd
+DSP_READ FAIL case790_word3 got=12542 want=1234abcd
+DSP_READ FAIL case791_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case791_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case792_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case792_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case793_word2 got=12542 want=5678dcba
+DSP_READ FAIL case793_word3 got=0 want=2468ace0
+DSP_READ FAIL case794_word2 got=12542 want=5678dcba
+DSP_READ FAIL case794_word3 got=0 want=2468ace0
+DSP_READ FAIL case797_word2 got=0 want=5678dcba
+DSP_READ FAIL case797_word3 got=0 want=2468ace0
+DSP_READ FAIL case798_word2 got=0 want=5678dcba
+DSP_READ FAIL case798_word3 got=0 want=2468ace0
+DSP_READ FAIL case805_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case805_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case806_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case806_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case807_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case807_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case808_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case808_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case813_word2 got=0 want=5678dcba
+DSP_READ FAIL case813_word3 got=0 want=2468ace0
+DSP_READ FAIL case814_word2 got=0 want=5678dcba
+DSP_READ FAIL case814_word3 got=0 want=2468ace0
+DSP_READ FAIL case817_word2 got=0 want=1234abcd
+DSP_READ FAIL case817_word3 got=0 want=1234abcd
+DSP_READ FAIL case818_word2 got=0 want=1234abcd
+DSP_READ FAIL case818_word3 got=0 want=1234abcd
+DSP_READ FAIL case819_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case819_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case820_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case820_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case821_word2 got=0 want=1234abcd
+DSP_READ FAIL case821_word3 got=12542 want=1234abcd
+DSP_READ FAIL case822_word2 got=0 want=1234abcd
+DSP_READ FAIL case822_word3 got=12542 want=1234abcd
+DSP_READ FAIL case823_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case823_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case824_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case824_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case825_word2 got=12542 want=5678dcba
+DSP_READ FAIL case825_word3 got=0 want=2468ace0
+DSP_READ FAIL case826_word2 got=12542 want=5678dcba
+DSP_READ FAIL case826_word3 got=0 want=2468ace0
+DSP_READ FAIL case829_word2 got=0 want=5678dcba
+DSP_READ FAIL case829_word3 got=0 want=2468ace0
+DSP_READ FAIL case830_word2 got=0 want=5678dcba
+DSP_READ FAIL case830_word3 got=0 want=2468ace0
+DSP_READ FAIL case833_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case833_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case834_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case834_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case835_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case835_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case836_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case836_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case837_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case837_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case838_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case838_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case839_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case839_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case840_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case840_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case849_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case849_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case850_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case850_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case851_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case851_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case852_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case852_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case853_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case853_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case854_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case854_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case855_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case855_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case856_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case856_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case865_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case865_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case866_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case866_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case867_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case867_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case868_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case868_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case869_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case869_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case870_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case870_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case871_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case871_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case872_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case872_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case881_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case881_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case882_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case882_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case883_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case883_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case884_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case884_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case885_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case885_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case886_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case886_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case887_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case887_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case888_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case888_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case897_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case897_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case898_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case898_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case899_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case899_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case900_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case900_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case901_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case901_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case902_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case902_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case903_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case903_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case904_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case904_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case913_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case913_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case914_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case914_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case915_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case915_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case916_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case916_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case917_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case917_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case918_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case918_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case919_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case919_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case920_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case920_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case929_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case929_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case930_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case930_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case931_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case931_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case932_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case932_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case933_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case933_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case934_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case934_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case935_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case935_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case936_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case936_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case945_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case945_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case946_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case946_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case947_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case947_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case948_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case948_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case949_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case949_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case950_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case950_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case951_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case951_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case952_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case952_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case961_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case961_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case962_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case962_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case963_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case963_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case964_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case964_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case965_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case965_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case966_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case966_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case967_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case967_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case968_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case968_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case977_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case977_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case978_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case978_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case979_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case979_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case980_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case980_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case981_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case981_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case982_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case982_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case983_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case983_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case984_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case984_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case993_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case993_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case994_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case994_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case995_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case995_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case996_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case996_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case997_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case997_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case998_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case998_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case999_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case999_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1000_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1000_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1009_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1009_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1010_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1010_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1011_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1011_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1012_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1012_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1013_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1013_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1014_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1014_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1015_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1015_word3 got=2468ace0 want=1234abcd
+DSP_READ FAIL case1016_word2 got=5678dcba want=1234abcd
+DSP_READ FAIL case1016_word3 got=2468ace0 want=1234abcd
+Average speed: 135.10% (2 seconds)

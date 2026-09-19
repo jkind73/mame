@@ -1,0 +1,7 @@
+test: /tmp/scudsp-cbus-p6o316na/test.cpp:360: int main(): Assertion `s.m_dma.dst==base+count*stride&&!s.halt&&!s.m_dma.ex' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_cbus_model.py", line 63, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-cbus-p6o316na/test']' died with <Signals.SIGABRT: 6>.

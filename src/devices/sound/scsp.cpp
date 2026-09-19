@@ -20,292 +20,379 @@
                              added ringbuffer support.
     * January 8, 2005    (RB) Added ability to specify region offset for RAM.
     * January 26, 2007   (ES) Added on-board DSP capability
-    * September 24, 2007 (RB+ES) Removed fake reverb.  Rewrote timers and IRQ handling.
-                             Fixed case where voice frequency is updated while looping.
-                             Enabled DSP again.
-    * December 16, 2007  (kingshriek) Many EG bug fixes, implemented effects mixer,
-                             implemented FM.
-    * January 5, 2008    (kingshriek+RB) Working, good-sounding FM, removed obsolete non-USEDSP code.
+    * September 24, 2007 (RB+ES) Removed fake reverb.  Rewrote timers and IRQ
+   handling. Fixed case where voice frequency is updated while looping. Enabled
+   DSP again.
+    * December 16, 2007  (kingshriek) Many EG bug fixes, implemented effects
+   mixer, implemented FM.
+    * January 5, 2008    (kingshriek+RB) Working, good-sounding FM, removed
+   obsolete non-USEDSP code.
     * April 22, 2009     ("PluginNinja") Improved slot monitor, misc cleanups
     * June 6, 2011       (AS) Rewrote DMA from scratch, Darius 2 relies on it.
 */
 
-// TODO : Envelope/LFO times are based on 44100Hz case?
 #include "emu.h"
 #include "scsp.h"
 
+
 #include <algorithm>
+#include <cmath>
 
-#define SHIFT   12
-#define LFO_SHIFT   8
-#define FIX(v)  ((u32) ((float) (1 << SHIFT) * (v)))
+// fixed-width enum, safe to save/restore directly
+ALLOW_SAVE_TYPE(scsp_device::SCSP_STATE);
 
+/* Chip clocking (ST-077 chapter 2):
+   - the sound generator re-sampling frequency is fixed at 44.1 kHz, so one
+     output sample (1Fs) is 512 master clocks wide and drivers must feed the
+     device 512 * fs (22.5792 MHz on Saturn/ST-V, where the sound 68EC000
+     runs at half that)
+   - the eight timers count at fs divided by their prescaler (1, 2, 4, 8),
+     i.e. one tick per (512 << prescale) master clocks
+   - the envelope engine and LFO phase steps are driven by the output sample
+     counter (see EG_Update / LFO_ComputeStep), so both track any legal
+     master clock instead of assuming a 44100 Hz stream */
+static constexpr u32 SAMPLE_CLOCKS = 512;
 
-#define EG_SHIFT    16
-
+#define SHIFT 12
+#define LFO_SHIFT 8
+// fractional bits of the LFO phase accumulator (see SCSP_LFO_t::phase)
+#define LFO_PHASE_SHIFT 24
+#define FIX(v) ((u32)((float)(1 << SHIFT) * (v)))
 
 /*
     SCSP features 32 programmable slots
     that can generate FM and PCM (from ROM/RAM) sound
 */
 
-//SLOT PARAMETERS
-#define KEYONEX(slot)   ((slot->udata.data[0x0] >> 0x0) & 0x1000)
-#define KEYONB(slot)    ((slot->udata.data[0x0] >> 0x0) & 0x0800)
-#define SBCTL(slot)     ((slot->udata.data[0x0] >> 0x9) & 0x0003)
-#define SSCTL(slot)     ((slot->udata.data[0x0] >> 0x7) & 0x0003)
-#define LPCTL(slot)     ((slot->udata.data[0x0] >> 0x5) & 0x0003)
-#define PCM8B(slot)     ((slot->udata.data[0x0] >> 0x0) & 0x0010)
+// FM voice mixing address shift: the value the "MDL" scaler sends to the phase
+// adder for the averaged modulator input ZD.
+//
+// ST-077-R2-052594 p.67 (Table 4.17): the maximum address shift is 32, 64, 128,
+// 256, 512, 1024 ... words for MDL 5, 6, 7, 8, 9, A ..., i.e. 2^MDL words, and
+// that maximum is reached at full scale ZD.  Table 4.15 gives the same set as
+// modulation rates 1/16, 1/8, 1/4 ... 64 (n/pi, measured against the half cycle
+// the text equates to 512 words), and a rate of 0 for MDL 0-4, so
+//     shift = ZD * 2^(MDL - 15) words
+// for a 16 bit ZD, and MDL 0-4 do not modulate at all.
+//
+// p.68 then says the shift is clipped at 1 Kword: "the SCSP clips (process to
+// prevent shift from exceeding a limit) shift that exceeds 1K word and returns
+// the shift to 0 ... Clipping process was done because the valid address bits
+// available for shift was 10."  A hardware shift quantity with 10 address bits
+// plus a sign bit wraps rather than saturating, so the shift is truncated to a
+// signed 11 bit field: MDL=AH at full scale is +1023 words (just inside the
+// documented limit) and MDL=BH at full scale is 2048 words, which comes back as
+// 0 - exactly the "returns to the shift to 0" the page describes.  Beetle
+// implements the same truncation (`sign_x_to_s32(11, sia >> 6)` in
+// beetle-scsp.inc, evaluated after adding the phase fraction), MiSTer keeps a
+// wider field and lets its loop mask wrap the sum.
+//
+// Returned in the fixed point word units of the address pointers (SHIFT
+// fraction bits), which is where the shift belongs: the PG steps by fractions
+// of a word through FNS, the interpolation uses the fraction of the modulated
+// address, and MiSTer's MDCalc keeps the same sub-word resolution (MOD_PHASE_
+// CURR adds the 6 bit phase fraction to the modulation value before its integer
+// part is taken).
+static inline s32 MD_Shift(s32 zd, u32 mdl)
+{
+  if (mdl < 5)
+    return 0;
 
-#define SA(slot)        (((slot->udata.data[0x0] & 0xF) << 16) | (slot->udata.data[0x1]))
+  // words << SHIFT, range of a 16 bit ZD times the largest 2^MDL factor
+  s64 const shifted = s64(zd) << (mdl - 3);
 
-#define LSA(slot)       (slot->udata.data[0x2])
+  // 10 address bits and a sign bit, p.68
+  constexpr s64 FIELD = s64(2048) << SHIFT;
+  constexpr s64 HALF = s64(1024) << SHIFT;
 
-#define LEA(slot)       (slot->udata.data[0x3])
+  s64 wrapped = shifted % FIELD;
+  if (wrapped < 0)
+    wrapped += FIELD;
+  if (wrapped >= HALF)
+    wrapped -= FIELD;
 
-#define D2R(slot)       ((slot->udata.data[0x4] >> 0xB) & 0x001F)
-#define D1R(slot)       ((slot->udata.data[0x4] >> 0x6) & 0x001F)
-#define EGHOLD(slot)    ((slot->udata.data[0x4] >> 0x0) & 0x0020)
-#define AR(slot)        ((slot->udata.data[0x4] >> 0x0) & 0x001F)
+  return s32(wrapped);
+}
 
-#define LPSLNK(slot)    ((slot->udata.data[0x5] >> 0x0) & 0x4000)
-#define KRS(slot)       ((slot->udata.data[0x5] >> 0xA) & 0x000F)
-#define DL(slot)        ((slot->udata.data[0x5] >> 0x5) & 0x001F)
-#define RR(slot)        ((slot->udata.data[0x5] >> 0x0) & 0x001F)
+// SLOT PARAMETERS
+#define KEYONEX(slot) ((slot->udata.data[0x0] >> 0x0) & 0x1000)
+#define KEYONB(slot) ((slot->udata.data[0x0] >> 0x0) & 0x0800)
+#define SBCTL(slot) ((slot->udata.data[0x0] >> 0x9) & 0x0003)
+#define SSCTL(slot) ((slot->udata.data[0x0] >> 0x7) & 0x0003)
+#define LPCTL(slot) ((slot->udata.data[0x0] >> 0x5) & 0x0003)
+#define PCM8B(slot) ((slot->udata.data[0x0] >> 0x0) & 0x0010)
 
-#define STWINH(slot)    ((slot->udata.data[0x6] >> 0x0) & 0x0200)
-#define SDIR(slot)      ((slot->udata.data[0x6] >> 0x0) & 0x0100)
-#define TL(slot)        ((slot->udata.data[0x6] >> 0x0) & 0x00FF)
+#define SA(slot)                                                               \
+  (((slot->udata.data[0x0] & 0xF) << 16) | (slot->udata.data[0x1]))
 
-#define MDL(slot)       ((slot->udata.data[0x7] >> 0xC) & 0x000F)
-#define MDXSL(slot)     ((slot->udata.data[0x7] >> 0x6) & 0x003F)
-#define MDYSL(slot)     ((slot->udata.data[0x7] >> 0x0) & 0x003F)
+#define LSA(slot) (slot->udata.data[0x2])
 
-#define OCT(slot)       ((slot->udata.data[0x8] >> 0xB) & 0x000F)
-#define FNS(slot)       ((slot->udata.data[0x8] >> 0x0) & 0x03FF)
+#define LEA(slot) (slot->udata.data[0x3])
 
-#define LFORE(slot)     ((slot->udata.data[0x9] >> 0x0) & 0x8000)
-#define LFOF(slot)      ((slot->udata.data[0x9] >> 0xA) & 0x001F)
-#define PLFOWS(slot)    ((slot->udata.data[0x9] >> 0x8) & 0x0003)
-#define PLFOS(slot)     ((slot->udata.data[0x9] >> 0x5) & 0x0007)
-#define ALFOWS(slot)    ((slot->udata.data[0x9] >> 0x3) & 0x0003)
-#define ALFOS(slot)     ((slot->udata.data[0x9] >> 0x0) & 0x0007)
+#define D2R(slot) ((slot->udata.data[0x4] >> 0xB) & 0x001F)
+#define D1R(slot) ((slot->udata.data[0x4] >> 0x6) & 0x001F)
+#define EGHOLD(slot) ((slot->udata.data[0x4] >> 0x0) & 0x0020)
+#define AR(slot) ((slot->udata.data[0x4] >> 0x0) & 0x001F)
 
-#define ISEL(slot)      ((slot->udata.data[0xA] >> 0x3) & 0x000F)
-#define IMXL(slot)      ((slot->udata.data[0xA] >> 0x0) & 0x0007)
+#define LPSLNK(slot) ((slot->udata.data[0x5] >> 0x0) & 0x4000)
+// undocumented EG bypass (slot register 0x0A bit 15): forces the envelope to
+// full volume; both Ymir and mednafen model it
+#define EGBYP(slot) ((slot->udata.data[0x5] >> 0xf) & 0x0001)
+#define KRS(slot) ((slot->udata.data[0x5] >> 0xA) & 0x000F)
+#define DL(slot) ((slot->udata.data[0x5] >> 0x5) & 0x001F)
+#define RR(slot) ((slot->udata.data[0x5] >> 0x0) & 0x001F)
 
-#define DISDL(slot)     ((slot->udata.data[0xB] >> 0xD) & 0x0007)
-#define DIPAN(slot)     ((slot->udata.data[0xB] >> 0x8) & 0x001F)
-#define EFSDL(slot)     ((slot->udata.data[0xB] >> 0x5) & 0x0007)
-#define EFPAN(slot)     ((slot->udata.data[0xB] >> 0x0) & 0x001F)
+#define STWINH(slot) ((slot->udata.data[0x6] >> 0x0) & 0x0200)
+#define SDIR(slot) ((slot->udata.data[0x6] >> 0x0) & 0x0100)
+#define TL(slot) ((slot->udata.data[0x6] >> 0x0) & 0x00FF)
 
-//Envelope times in ms
-static const double ARTimes[64] = {100000/*infinity*/,100000/*infinity*/,8100.0,6900.0,6000.0,4800.0,4000.0,3400.0,3000.0,2400.0,2000.0,1700.0,1500.0,
-					1200.0,1000.0,860.0,760.0,600.0,500.0,430.0,380.0,300.0,250.0,220.0,190.0,150.0,130.0,110.0,95.0,
-					76.0,63.0,55.0,47.0,38.0,31.0,27.0,24.0,19.0,15.0,13.0,12.0,9.4,7.9,6.8,6.0,4.7,3.8,3.4,3.0,2.4,
-					2.0,1.8,1.6,1.3,1.1,0.93,0.85,0.65,0.53,0.44,0.40,0.35,0.0,0.0};
-static const double DRTimes[64] = {100000/*infinity*/,100000/*infinity*/,118200.0,101300.0,88600.0,70900.0,59100.0,50700.0,44300.0,35500.0,29600.0,25300.0,22200.0,17700.0,
-					14800.0,12700.0,11100.0,8900.0,7400.0,6300.0,5500.0,4400.0,3700.0,3200.0,2800.0,2200.0,1800.0,1600.0,1400.0,1100.0,
-					920.0,790.0,690.0,550.0,460.0,390.0,340.0,270.0,230.0,200.0,170.0,140.0,110.0,98.0,85.0,68.0,57.0,49.0,43.0,34.0,
-					28.0,25.0,22.0,18.0,14.0,12.0,11.0,8.5,7.1,6.1,5.4,4.3,3.6,3.1};
+#define MDL(slot) ((slot->udata.data[0x7] >> 0xC) & 0x000F)
+#define MDXSL(slot) ((slot->udata.data[0x7] >> 0x6) & 0x003F)
+#define MDYSL(slot) ((slot->udata.data[0x7] >> 0x0) & 0x003F)
 
-#define MEM4B()     ((m_udata.data[0] >> 0x0) & 0x0200)
-#define DAC18B()    ((m_udata.data[0] >> 0x0) & 0x0100)
-#define MVOL()      ((m_udata.data[0] >> 0x0) & 0x000F)
-#define RBL()       ((m_udata.data[1] >> 0x7) & 0x0003)
-#define RBP()       ((m_udata.data[1] >> 0x0) & 0x003F)
-#define MOFULL()    ((m_udata.data[2] >> 0x0) & 0x1000)
-#define MOEMPTY()   ((m_udata.data[2] >> 0x0) & 0x0800)
-#define MIOVF()     ((m_udata.data[2] >> 0x0) & 0x0400)
-#define MIFULL()    ((m_udata.data[2] >> 0x0) & 0x0200)
-#define MIEMPTY()   ((m_udata.data[2] >> 0x0) & 0x0100)
+#define OCT(slot) ((slot->udata.data[0x8] >> 0xB) & 0x000F)
+#define FNS(slot) ((slot->udata.data[0x8] >> 0x0) & 0x03FF)
 
-#define SCILV0()    ((m_udata.data[0x24/2] >> 0x0) & 0xff)
-#define SCILV1()    ((m_udata.data[0x26/2] >> 0x0) & 0xff)
-#define SCILV2()    ((m_udata.data[0x28/2] >> 0x0) & 0xff)
+#define LFORE(slot) ((slot->udata.data[0x9] >> 0x0) & 0x8000)
+#define LFOF(slot) ((slot->udata.data[0x9] >> 0xA) & 0x001F)
+#define PLFOWS(slot) ((slot->udata.data[0x9] >> 0x8) & 0x0003)
+#define PLFOS(slot) ((slot->udata.data[0x9] >> 0x5) & 0x0007)
+#define ALFOWS(slot) ((slot->udata.data[0x9] >> 0x3) & 0x0003)
+#define ALFOS(slot) ((slot->udata.data[0x9] >> 0x0) & 0x0007)
 
-#define SCIEX0  0
-#define SCIEX1  1
-#define SCIEX2  2
-#define SCIMID  3
-#define SCIDMA  4
-#define SCIIRQ  5
-#define SCITMA  6
-#define SCITMB  7
+#define ISEL(slot) ((slot->udata.data[0xA] >> 0x3) & 0x000F)
+#define IMXL(slot) ((slot->udata.data[0xA] >> 0x0) & 0x0007)
+
+#define DISDL(slot) ((slot->udata.data[0xB] >> 0xD) & 0x0007)
+#define DIPAN(slot) ((slot->udata.data[0xB] >> 0x8) & 0x001F)
+#define EFSDL(slot) ((slot->udata.data[0xB] >> 0x5) & 0x0007)
+#define EFPAN(slot) ((slot->udata.data[0xB] >> 0x0) & 0x001F)
+
+#define MEM4B() ((m_udata.data[0] >> 0x0) & 0x0200)
+#define DAC18B() ((m_udata.data[0] >> 0x0) & 0x0100)
+#define MVOL() ((m_udata.data[0] >> 0x0) & 0x000F)
+#define RBL() ((m_udata.data[1] >> 0x7) & 0x0003)
+#define RBP() ((m_udata.data[1] >> 0x0) & 0x003F)
+// The MIDI status bits are derived from FIFO occupancy in UpdateRegR, not read
+// back from the register file; the old MOFULL/MOEMPTY/MIOVF/MIFULL/MIEMPTY
+// macros were unused and only reported stale written bits.
+
+#define SCILV0() ((m_udata.data[0x24 / 2] >> 0x0) & 0xff)
+#define SCILV1() ((m_udata.data[0x26 / 2] >> 0x0) & 0xff)
+#define SCILV2() ((m_udata.data[0x28 / 2] >> 0x0) & 0xff)
+
+#define SCIEX0 0
+#define SCIEX1 1
+#define SCIEX2 2
+#define SCIMID 3
+#define SCIDMA 4
+#define SCIIRQ 5
+#define SCITMA 6
+#define SCITMB 7
 
 #define USEDSP
 
-/* TODO */
-//#define dma_transfer_end  ((scsp_regs[0x24/2] & 0x10) >> 4) | (((scsp_regs[0x26/2] & 0x10) >> 4) << 1) | (((scsp_regs[0x28/2] & 0x10) >> 4) << 2)
-
-static const float SDLT[8] = {-1000000.0f,-36.0f,-30.0f,-24.0f,-18.0f,-12.0f,-6.0f,0.0f};
+static const float SDLT[8] = {-1000000.0f, -36.0f, -30.0f, -24.0f,
+                              -18.0f,      -12.0f, -6.0f,  0.0f};
 
 DEFINE_DEVICE_TYPE(SCSP, scsp_device, "scsp", "Yamaha YMF292-F SCSP")
 
-scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
-	: device_t(mconfig, SCSP, tag, owner, clock),
-		device_sound_interface(mconfig, *this),
-		device_rom_interface(mconfig, *this),
-		device_serial_interface(mconfig, *this),
-		m_irq_cb(*this),
-		m_main_irq_cb(*this),
-		m_midi_out_cb(*this),
-		m_BUFPTR(0),
-		m_stream(nullptr),
-		m_IrqTimA(0),
-		m_IrqTimBC(0),
-		m_IrqMidi(0),
-		m_MidiOutW(0),
-		m_MidiOutR(0),
-		m_MidiW(0),
-		m_MidiR(0),
-		m_timerA(nullptr),
-		m_timerB(nullptr),
-		m_timerC(nullptr),
-		m_mcieb(0),
-		m_mcipd(0),
-		m_RBUFDST(nullptr)
-{
-	std::fill(std::begin(m_RINGBUF), std::end(m_RINGBUF), 0);
-	std::fill(std::begin(m_MidiStack), std::end(m_MidiStack), 0);
-	std::fill(std::begin(m_MidiOutStack), std::end(m_MidiOutStack), 0);
-	std::fill(std::begin(m_LPANTABLE), std::end(m_LPANTABLE), 0);
-	std::fill(std::begin(m_RPANTABLE), std::end(m_RPANTABLE), 0);
-	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
-	std::fill(std::begin(m_ARTABLE), std::end(m_ARTABLE), 0);
-	std::fill(std::begin(m_DRTABLE), std::end(m_DRTABLE), 0);
-	std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
-	std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
-	std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
-	std::fill(std::begin(m_PLFO_SAW), std::end(m_PLFO_SAW), 0);
-	std::fill(std::begin(m_PLFO_NOI), std::end(m_PLFO_NOI), 0);
-	std::fill(std::begin(m_ALFO_TRI), std::end(m_ALFO_TRI), 0);
-	std::fill(std::begin(m_ALFO_SQR), std::end(m_ALFO_SQR), 0);
-	std::fill(std::begin(m_ALFO_SAW), std::end(m_ALFO_SAW), 0);
-	std::fill(std::begin(m_ALFO_NOI), std::end(m_ALFO_NOI), 0);
-	std::fill(std::begin(m_ALFO_NOI), std::end(m_ALFO_NOI), 0);
-	memset(m_PSCALES, 0, sizeof(m_PSCALES));
-	memset(m_ASCALES, 0, sizeof(m_ASCALES));
-	memset(&m_Slots, 0, sizeof(m_Slots));
-	memset(&m_udata.data, 0, sizeof(m_udata.data));
-	m_TimCnt[0] = 0;
-	m_TimCnt[1] = 0;
-	m_TimCnt[2] = 0;
+scsp_device::scsp_device(const machine_config &mconfig, const char *tag,
+                         device_t *owner, u32 clock)
+    : device_t(mconfig, SCSP, tag, owner, clock),
+      device_sound_interface(mconfig, *this),
+      device_rom_interface(mconfig, *this),
+      device_serial_interface(mconfig, *this), m_irq_cb(*this),
+      m_main_irq_cb(*this), m_midi_out_cb(*this), m_BUFPTR(0),
+      m_stream(nullptr), m_current_level(0), m_MidiOutW(0), m_MidiOutR(0),
+      m_MidiW(0), m_MidiR(0), m_master_volume(0), m_mcieb(0), m_mcipd(0),
+      m_RBUFDST(nullptr), m_lfsr(1) {
+  std::fill(std::begin(m_RINGBUF), std::end(m_RINGBUF), 0);
+  std::fill(std::begin(m_MidiStack), std::end(m_MidiStack), 0);
+  std::fill(std::begin(m_MidiOutStack), std::end(m_MidiOutStack), 0);
+  std::fill(std::begin(m_LPANTABLE), std::end(m_LPANTABLE), 0);
+  std::fill(std::begin(m_RPANTABLE), std::end(m_RPANTABLE), 0);
+  m_eg_clock = 0;
+  std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
+  std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
+  std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
+  std::fill(std::begin(m_PLFO_SAW), std::end(m_PLFO_SAW), 0);
+  std::fill(std::begin(m_ALFO_TRI), std::end(m_ALFO_TRI), 0);
+  std::fill(std::begin(m_ALFO_SQR), std::end(m_ALFO_SQR), 0);
+  std::fill(std::begin(m_ALFO_SAW), std::end(m_ALFO_SAW), 0);
+  memset(m_PSCALES, 0, sizeof(m_PSCALES));
+  memset(m_ASCALES, 0, sizeof(m_ASCALES));
+  memset(&m_Slots, 0, sizeof(m_Slots));
+  memset(&m_udata.data, 0, sizeof(m_udata.data));
 }
 
 //-------------------------------------------------
 //  device_start - device-specific startup
 //-------------------------------------------------
 
-void scsp_device::device_start()
-{
-	// init the emulation
-	init();
+void scsp_device::device_start() {
+  // Stereo output with EXTS0,1 Input (External digital audio output)
+  // The stream must be allocated before init() because init() calls
+  // update_master_volume() which does set_output_gain(0/1, 1.0) and that
+  // requires the sound streams to exist — otherwise we trip
+  // \"Requested output 0 on sound device :scsp which only has 0\" during
+  // start_all_devices (seen at 2aedb4de/55b318be).  The bug has been latent
+  // since ab377921 which introduced update_master_volume() in init().
+  u32 rate = clock() / SAMPLE_CLOCKS;
+  if (rate == 0)
+    rate = 44100;
+  m_stream = stream_alloc(2, 2, rate);
 
-	// Stereo output with EXTS0,1 Input (External digital audio output)
-	m_stream = stream_alloc(2, 2, clock() / 512);
+  // init the emulation
+  init();
 
-	for (int slot = 0; slot < 32; slot++)
-	{
-		for (int i = 0; i < 0x10; i++)
-			save_item(NAME(m_Slots[slot].udata.data[i]), (i << 8) | slot);
+  for (int slot = 0; slot < 32; slot++) {
+    for (int i = 0; i < 0x10; i++)
+      save_item(NAME(m_Slots[slot].udata.data[i]), (i << 8) | slot);
 
-		save_item(NAME(m_Slots[slot].Backwards), slot);
-		save_item(NAME(m_Slots[slot].active), slot);
-		save_item(NAME(m_Slots[slot].cur_addr), slot);
-		save_item(NAME(m_Slots[slot].nxt_addr), slot);
-		save_item(NAME(m_Slots[slot].step), slot);
-		save_item(NAME(m_Slots[slot].EG.volume), slot);
-		save_item(NAME(m_Slots[slot].EG.step), slot);
-		save_item(NAME(m_Slots[slot].EG.AR), slot);
-		save_item(NAME(m_Slots[slot].EG.D1R), slot);
-		save_item(NAME(m_Slots[slot].EG.D2R), slot);
-		save_item(NAME(m_Slots[slot].EG.RR), slot);
-		save_item(NAME(m_Slots[slot].EG.DL), slot);
-		save_item(NAME(m_Slots[slot].EG.EGHOLD), slot);
-		save_item(NAME(m_Slots[slot].EG.LPLINK), slot);
-		save_item(NAME(m_Slots[slot].PLFO.phase), slot);
-		save_item(NAME(m_Slots[slot].PLFO.phase_step), slot);
-		save_item(NAME(m_Slots[slot].ALFO.phase), slot);
-		save_item(NAME(m_Slots[slot].ALFO.phase_step), slot);
-	}
+    save_item(NAME(m_Slots[slot].Backwards), slot);
+    save_item(NAME(m_Slots[slot].active), slot);
+    save_item(NAME(m_Slots[slot].cur_addr), slot);
+    save_item(NAME(m_Slots[slot].nxt_addr), slot);
+    save_item(NAME(m_Slots[slot].step), slot);
+    save_item(NAME(m_Slots[slot].EG.level), slot);
+    save_item(NAME(m_Slots[slot].EG.prev_level), slot);
+    save_item(NAME(m_Slots[slot].EG.state), slot);
+    save_item(NAME(m_Slots[slot].EG.attack_bug), slot);
+    save_item(NAME(m_Slots[slot].PLFO.phase), slot);
+    save_item(NAME(m_Slots[slot].PLFO.phase_step), slot);
+    save_item(NAME(m_Slots[slot].ALFO.phase), slot);
+    save_item(NAME(m_Slots[slot].ALFO.phase_step), slot);
+  }
 
-	for (int i = 0; i < 0x30/2; i++)
-	{
-		save_item(NAME(m_udata.data[i]), i);
-	}
+  for (int i = 0; i < 0x30 / 2; i++) {
+    save_item(NAME(m_udata.data[i]), i);
+  }
 
-	save_item(NAME(m_RINGBUF));
-	save_item(NAME(m_BUFPTR));
+  save_item(NAME(m_RINGBUF));
+  save_item(NAME(m_BUFPTR));
+  save_item(NAME(m_eg_clock));
 #if SCSP_FM_DELAY
-	save_item(NAME(m_DELAYBUF));
-	save_item(NAME(m_DELAYPTR));
+  save_item(NAME(m_DELAYBUF));
+  save_item(NAME(m_DELAYPTR));
 #endif
 
-	save_item(NAME(m_latched_MSLC));
-	save_item(NAME(m_latched_MSLC_data));
+  save_item(NAME(m_latched_MSLC));
+  save_item(NAME(m_latched_MSLC_data));
 
-	save_item(NAME(m_IrqTimA));
-	save_item(NAME(m_IrqTimBC));
-	save_item(NAME(m_IrqMidi));
-	save_item(NAME(m_IrqCPU));
-	save_item(NAME(m_IrqDMA));
+  save_item(NAME(m_current_level));
 
-	save_item(NAME(m_MidiOutStack));
-	save_item(NAME(m_MidiOutW));
-	save_item(NAME(m_MidiOutR));
-	save_item(NAME(m_MidiStack));
-	save_item(NAME(m_MidiW));
-	save_item(NAME(m_MidiR));
+  save_item(NAME(m_MidiOutStack));
+  save_item(NAME(m_MidiOutW));
+  save_item(NAME(m_MidiOutR));
+  save_item(NAME(m_MidiStack));
+  save_item(NAME(m_MidiW));
+  save_item(NAME(m_MidiR));
+  save_item(NAME(m_MidiCount));
+  save_item(NAME(m_MidiOutCount));
+  save_item(NAME(m_MidiOverflow));
 
-	save_item(NAME(m_TimPris));
-	save_item(NAME(m_TimCnt));
+  for (int i = 0; i < 3; i++) {
+    save_item(NAME(m_timers[i].counter), i);
+    save_item(NAME(m_timers[i].prescale), i);
+    save_item(NAME(m_timers[i].reload), i);
+    save_item(NAME(m_timers[i].reload_pending), i);
+    save_item(NAME(m_timers[i].base_time), i);
+  }
 
-	save_item(NAME(m_dma.dmea));
-	save_item(NAME(m_dma.drga));
-	save_item(NAME(m_dma.dtlg));
-	save_item(NAME(m_dma.dgate));
-	save_item(NAME(m_dma.ddir));
+  save_item(NAME(m_dma.dmea));
+  save_item(NAME(m_dma.drga));
+  save_item(NAME(m_dma.dtlg));
+  save_item(NAME(m_dma.dgate));
+  save_item(NAME(m_dma.ddir));
 
-	save_item(NAME(m_mcieb));
-	save_item(NAME(m_mcipd));
+  save_item(NAME(m_mcieb));
+  save_item(NAME(m_mcipd));
 
-	save_item(NAME(m_DSP.RBP));
-	save_item(NAME(m_DSP.RBL));
-	save_item(NAME(m_DSP.COEF));
-	save_item(NAME(m_DSP.MADRS));
-	save_item(NAME(m_DSP.MPRO));
-	save_item(NAME(m_DSP.TEMP));
-	save_item(NAME(m_DSP.MEMS));
-	save_item(NAME(m_DSP.DEC));
-	save_item(NAME(m_DSP.MIXS));
-	save_item(NAME(m_DSP.EXTS));
-	save_item(NAME(m_DSP.EFREG));
-	save_item(NAME(m_DSP.Stopped));
-	save_item(NAME(m_DSP.LastStep));
+  save_item(NAME(m_lfsr));
+
+  save_item(NAME(m_DSP.RBP));
+  save_item(NAME(m_DSP.RBL));
+  save_item(NAME(m_DSP.COEF));
+  save_item(NAME(m_DSP.MADRS));
+  save_item(NAME(m_DSP.MPRO));
+  save_item(NAME(m_DSP.TEMP));
+  save_item(NAME(m_DSP.MEMS));
+  save_item(NAME(m_DSP.DEC));
+  save_item(NAME(m_DSP.MIXS));
+  save_item(NAME(m_DSP.INPUTS));
+  save_item(NAME(m_DSP.ACC));
+  save_item(NAME(m_DSP.FRC_REG));
+  save_item(NAME(m_DSP.Y_REG));
+  save_item(NAME(m_DSP.ADRS_REG));
+  save_item(NAME(m_DSP.RWAddr));
+  save_item(NAME(m_DSP.ReadValue));
+  save_item(NAME(m_DSP.ReadPending));
+  save_item(NAME(m_DSP.WritePending));
+  save_item(NAME(m_DSP.WriteValue));
+  save_item(NAME(m_DSP.EXTS));
+  save_item(NAME(m_DSP.EFREG));
+  save_item(NAME(m_DSP.Stopped));
+  save_item(NAME(m_DSP.LastStep));
 }
 
 //-------------------------------------------------
 //  device_reset - device-specific reset
 //-------------------------------------------------
 
-void scsp_device::device_reset()
-{
-	set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
-	set_rate(31250);
+void scsp_device::device_reset() {
+  set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
+  set_rate(31250);
+
+  reset_midi();
+  reset_irq_timers();
+
+  // the noise generator restarts from a known state
+  m_lfsr = 1;
+}
+
+// A device reset (including SMPC clock change) must discard the previous
+// program's interrupt/timer setup, not just forget the cached output level.
+// Otherwise CheckPendingIRQ reasserts the old request at the next update.
+void scsp_device::reset_irq_timers() {
+  // Retain the old level until its physical CPU input has been released.
+  if (m_current_level != 0)
+    m_irq_cb(m_current_level, CLEAR_LINE);
+  m_current_level = 0;
+
+  for (unsigned reg = 0x18 / 2; reg < 0x30 / 2; ++reg)
+    m_udata.data[reg] = 0;
+  m_mcieb = 0;
+  m_mcipd = 0;
+  update_main_irq();
+
+  for (int i = 0; i < 3; ++i) {
+    auto &t = m_timers[i];
+    t.counter = 0;
+    t.prescale = 0;
+    t.reload = 0;
+    t.reload_pending = false;
+    t.base_time = machine().time();
+    // Replaces any pre-reset deadline. Counters run from zero, but their
+    // requests cannot reach either CPU until software enables them again.
+    timer_arm(i);
+  }
 }
 
 //-------------------------------------------------
 //  device_post_load - called after loading a saved state
 //-------------------------------------------------
 
-void scsp_device::device_post_load()
-{
-	for (int slot = 0; slot < 32; slot++)
-		Compute_LFO(&m_Slots[slot]);
+void scsp_device::device_post_load() {
+  for (int slot = 0; slot < 32; slot++)
+    Compute_LFO(&m_Slots[slot]);
 
-	set_output_gain(0, MVOL() / 15.0);
-	set_output_gain(1, MVOL() / 15.0);
+  update_master_volume();
+
+  // Machine time and timer origins are both restored. Rebasing to "now"
+  // would discard the saved sub-tick phase and delay pending interrupts.
+  for (int i = 0; i < 3; i++)
+    timer_arm(i);
 }
 
 //-------------------------------------------------
@@ -313,1341 +400,1543 @@ void scsp_device::device_post_load()
 //  changes
 //-------------------------------------------------
 
-void scsp_device::device_clock_changed()
-{
-	m_stream->set_sample_rate(clock() / 512);
+void scsp_device::device_clock_changed() {
+  m_stream->set_sample_rate(clock() / SAMPLE_CLOCKS);
+  // LFO phase steps are per output sample, so they must be recomputed when
+  // the sample rate changes
+  for (int i = 0; i < 32; ++i)
+    Compute_LFO(&m_Slots[i]);
 }
 
-void scsp_device::rom_bank_pre_change()
-{
-	m_stream->update();
-}
+void scsp_device::rom_bank_pre_change() { m_stream->update(); }
 
 //-------------------------------------------------
 //  sound_stream_update - handle a stream update
 //-------------------------------------------------
 
-void scsp_device::sound_stream_update(sound_stream &stream)
-{
-	DoMasterSamples(stream);
+void scsp_device::sound_stream_update(sound_stream &stream) {
+  DoMasterSamples(stream);
 
-	// MSLC     |  CA   |SGC|EG
-	// f e d c b a 9 8 7 6 5 4 3 2 1 0
+  // MSLC     |  CA   |SGC|EG
+  // f e d c b a 9 8 7 6 5 4 3 2 1 0
 
-	// latch the new MSLC, updates every 44.1 kHz
-	// cfr. vstriker (GK reflecting ball with heavy shots) and srallyc (PowerGames BGM bleeps at end)
-	u8 MSLC = m_latched_MSLC;
-	SCSP_SLOT *slot = m_Slots + MSLC;
-	u32 SGC = (slot->EG.state) & 3;
-	u32 CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
-	u32 EG = (0x1f - (slot->EG.volume >> (EG_SHIFT + 5))) & 0x1f;
-	// NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
-	// saturn:toughtrk will hang on Human logo otherwise
-	m_latched_MSLC_data =  /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
+  // latch the new MSLC, updates every 44.1 kHz
+  // cfr. vstriker (GK reflecting ball with heavy shots) and srallyc (PowerGames
+  // BGM bleeps at end)
+  u8 MSLC = m_latched_MSLC;
+  SCSP_SLOT *slot = m_Slots + MSLC;
+  u32 SGC = (slot->EG.state) & 3;
+  u32 CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
+  u32 EG = (slot->EG.prev_level >> 5) & 0x1f;
+  // NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
+  // saturn:toughtrk will hang on Human logo otherwise
+  m_latched_MSLC_data = /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
 
-	// TODO: 1 sample (1Fs) 44.1 kHz irq here.
+  // 1Fs: one output sample has been produced.  Hardware requests this every
+  // sample (44.1 kHz); samples are generated in batches here, so request it
+  // once per update, like Yabause does.
+  if (stream.samples() > 0) {
+    m_udata.data[0x20 / 2] |= 0x400;
+    CheckPendingIRQ();
+    MainCheckPendingIRQ(0x400);
+  }
 }
 
-u8 scsp_device::DecodeSCI(u8 irq)
-{
-	u8 SCI = 0;
-	u8 v;
-	v = (SCILV0() & (1 << irq)) ? 1 : 0;
-	SCI |= v;
-	v = (SCILV1() & (1 << irq)) ? 1 : 0;
-	SCI |= v << 1;
-	v = (SCILV2() & (1 << irq)) ? 1 : 0;
-	SCI |= v << 2;
-	return SCI;
+void scsp_device::CheckPendingIRQ() {
+  u32 pend = m_udata.data[0x20 / 2];
+  u32 const en = m_udata.data[0x1e / 2];
+
+  // MIDI input non-empty is derived from the input FIFO state
+  if (m_MidiCount) {
+    m_udata.data[0x20 / 2] |= 0x08;
+    pend |= 0x08;
+  }
+
+  u32 mask = pend & en;
+
+  // sources 8 to 10 (timer C, MIDI output empty and sample tick) have no
+  // level of their own in SCILV0-2, they share the one of source 7
+  if (mask & ~0xff)
+    mask = (mask & 0xff) | 0x80;
+
+  // SCILV0/1/2 hold bit 0/1/2 of the level assigned to every source, the
+  // level driven to the sound CPU is the highest one currently requested
+  u32 level = 0;
+  if (mask) {
+    u32 lv0 = SCILV0() & mask;
+    u32 lv1 = SCILV1() & mask;
+    u32 lv2 = SCILV2() & mask;
+
+    if (lv2) {
+      level |= 0x4;
+      lv1 &= lv2;
+      lv0 &= lv2;
+    }
+    if (lv1) {
+      level |= 0x2;
+      lv0 &= lv1;
+    }
+    if (lv0)
+      level |= 0x1;
+  }
+
+  if (level == m_current_level)
+    return;
+
+  // drop the previously requested level before raising the new one
+  if (m_current_level != 0)
+    m_irq_cb(m_current_level, CLEAR_LINE);
+
+  m_current_level = level;
+
+  if (level != 0)
+    m_irq_cb(level, ASSERT_LINE);
+  else
+    m_irq_cb((offs_t)0, CLEAR_LINE);
 }
 
-void scsp_device::CheckPendingIRQ()
-{
-	u32 pend = m_udata.data[0x20/2];
-	u32 en = m_udata.data[0x1e/2];
-	if (m_MidiW != m_MidiR)
-	{
-		m_udata.data[0x20/2] |= 8;
-		pend |= 8;
-	}
-	if (!pend)
-		return;
-	if (pend & en & 0x20)
-	{
-		m_irq_cb(m_IrqCPU, ASSERT_LINE);
-		return;
-	}
-	if (pend & 0x40)
-		if (en & 0x40)
-		{
-			m_irq_cb(m_IrqTimA, ASSERT_LINE);
-			return;
-		}
-	if (pend & 0x80)
-		if (en & 0x80)
-		{
-			m_irq_cb(m_IrqTimBC, ASSERT_LINE);
-			return;
-		}
-	if (pend & 0x100)
-		if (en & 0x100)
-		{
-			m_irq_cb(m_IrqTimBC, ASSERT_LINE);
-			return;
-		}
-	if (pend & 8)
-		if (en & 8)
-		{
-			m_irq_cb(m_IrqMidi, ASSERT_LINE);
-			return;
-		}
+void scsp_device::MainCheckPendingIRQ(u16 irq_type) {
+  m_mcipd |= irq_type;
 
-	m_irq_cb((offs_t)0, CLEAR_LINE);
+  // machine().scheduler().synchronize(); // force resync
+
+  update_main_irq();
 }
 
-void scsp_device::MainCheckPendingIRQ(u16 irq_type)
-{
-	m_mcipd |= irq_type;
-
-	//machine().scheduler().synchronize(); // force resync
-
-	if (m_mcipd & m_mcieb)
-		m_main_irq_cb(1);
-	else
-		m_main_irq_cb(0);
+// re-drive the main CPU interrupt line from whatever is pending and enabled
+void scsp_device::update_main_irq() {
+  m_main_irq_cb((m_mcipd & m_mcieb) ? 1 : 0);
 }
 
-void scsp_device::ResetInterrupts()
-{
-	u32 reset = m_udata.data[0x22/2];
+void scsp_device::ResetInterrupts() {
+  // SCIRE drops the requested bits, the sound CPU level is recomputed from
+  // whatever is still pending afterwards
+  m_udata.data[0x20 / 2] &= ~m_udata.data[0x22 / 2];
 
-	if (reset & 0x40)
-	{
-		m_irq_cb(m_IrqTimA, CLEAR_LINE);
-	}
-	if (reset & 0x180)
-	{
-		m_irq_cb(m_IrqTimBC, CLEAR_LINE);
-	}
-	if (reset & 0x20)
-	{
-		m_udata.data[0x20/2] &= ~0x20;
-		m_irq_cb(m_IrqCPU, CLEAR_LINE);
-	}
-
-	if (reset & 0x8)
-	{
-		m_irq_cb(m_IrqMidi, CLEAR_LINE);
-	}
-
-	CheckPendingIRQ();
+  CheckPendingIRQ();
 }
 
-TIMER_CALLBACK_MEMBER(scsp_device::timerA_cb)
-{
-	m_TimCnt[0] = 0xFFFF;
-	m_udata.data[0x20/2] |= 0x40;
-	m_udata.data[0x18/2] &= 0xff00;
-	m_udata.data[0x18/2] |= m_TimCnt[0] >> 8;
+//-------------------------------------------------
+//  timer_sync - lazily advance a timer counter up
+//  to the current machine time
+//-------------------------------------------------
 
-	CheckPendingIRQ();
-	MainCheckPendingIRQ(0x40);
+void scsp_device::timer_sync(int idx) {
+  SCSP_TIMER &t = m_timers[idx];
+  attotime const now = machine().time();
+
+  if (now <= t.base_time)
+    return;
+
+  u64 const inc_clocks = u64(SAMPLE_CLOCKS) << t.prescale;
+  attotime const elapsed = now - t.base_time;
+  u32 steps = u32(elapsed.as_ticks(clock()) / inc_clocks);
+  // from_ticks quantizes oscillator periods down to attoseconds; as_ticks
+  // can therefore report one fewer clock at that exact scheduled boundary.
+  // Use the same quantized boundary as timer_arm before deciding to defer it.
+  if (attotime::from_ticks((u64(steps) + 1) * inc_clocks, clock()) <= elapsed)
+    ++steps;
+  if (steps == 0)
+    return;
+
+  t.base_time += attotime::from_ticks(u64(steps) * inc_clocks, clock());
+
+  // a pending TIMx write is loaded on the next tick instead of incrementing
+  if (t.reload_pending) {
+    t.counter = t.reload;
+    t.reload_pending = false;
+    steps--;
+  }
+
+  t.counter = u8(t.counter + steps);
 }
 
-TIMER_CALLBACK_MEMBER(scsp_device::timerB_cb)
-{
-	m_TimCnt[1] = 0xFFFF;
-	m_udata.data[0x20/2] |= 0x80;
-	m_udata.data[0x1a/2] &= 0xff00;
-	m_udata.data[0x1a/2] |= m_TimCnt[1] >> 8;
+//-------------------------------------------------
+//  timer_arm - schedule the next 0xff crossing
+//-------------------------------------------------
 
-	CheckPendingIRQ();
+void scsp_device::timer_arm(int idx) {
+  SCSP_TIMER &t = m_timers[idx];
+
+  if (t.timer == nullptr)
+    return;
+
+  timer_sync(idx);
+
+  // ticks left before the counter reaches 0xff and requests an interrupt
+  u32 incs =
+      t.reload_pending ? (0x100 - t.reload) : ((0xff - t.counter) & 0xff);
+  if (incs == 0)
+    incs = 0x100;
+
+  // timer_sync retains the fractional tick at base_time. Scheduling a full
+  // number of ticks from now would add that fraction to the IRQ deadline.
+  attotime const deadline = t.base_time + attotime::from_ticks(
+      u64(incs) * (u64(SAMPLE_CLOCKS) << t.prescale), clock());
+  t.timer->adjust(deadline - machine().time(), idx);
 }
 
-TIMER_CALLBACK_MEMBER(scsp_device::timerC_cb)
-{
-	m_TimCnt[2] = 0xFFFF;
-	m_udata.data[0x20/2] |= 0x100;
-	m_udata.data[0x1c/2] &= 0xff00;
-	m_udata.data[0x1c/2] |= m_TimCnt[2] >> 8;
+//-------------------------------------------------
+//  timer_write - TxCTL / TIMx register write
+//-------------------------------------------------
 
-	CheckPendingIRQ();
+void scsp_device::timer_write(int idx, u16 data, u16 mem_mask) {
+  SCSP_TIMER &t = m_timers[idx];
+
+  timer_sync(idx);
+
+  // TIMx doesn't touch the counter directly, it is loaded on the next tick
+  if (mem_mask & 0x00ff) {
+    t.reload = data & 0xff;
+    t.reload_pending = true;
+  }
+
+  if (mem_mask & 0x0700)
+    t.prescale = (data >> 8) & 0x7;
+
+  timer_arm(idx);
 }
 
-int scsp_device::Get_AR(int base, int R)
-{
-	int Rate = base + (R << 1);
-	return m_ARTABLE[std::clamp(Rate, 0, 63)];
+//-------------------------------------------------
+//  timer_read - current counter value
+//-------------------------------------------------
+
+u8 scsp_device::timer_read(int idx) {
+  timer_sync(idx);
+  return m_timers[idx].counter;
 }
 
-int scsp_device::Get_DR(int base, int R)
-{
-	int Rate = base + (R << 1);
-	return m_DRTABLE[std::clamp(Rate, 0, 63)];
+TIMER_CALLBACK_MEMBER(scsp_device::timer_cb) {
+  int const idx = param;
+
+  timer_sync(idx);
+
+  // the counter has hit 0xff: request the interrupt on both the sound CPU
+  // (SCIPD) and the main CPU (MCIPD) side, then keep counting
+  m_udata.data[0x20 / 2] |= 0x40 << idx;
+  m_udata.data[(0x18 + idx * 2) / 2] =
+      (m_udata.data[(0x18 + idx * 2) / 2] & 0xff00) | m_timers[idx].counter;
+
+  CheckPendingIRQ();
+  MainCheckPendingIRQ(0x40 << idx);
+
+  timer_arm(idx);
 }
 
-void scsp_device::Compute_EG(SCSP_SLOT *slot)
-{
-	int octave = (OCT(slot) ^ 8) - 8;
-	int rate;
-	if (KRS(slot) != 0xf)
-		rate = octave + 2 * KRS(slot) + ((FNS(slot) >> 9) & 1);
-	else
-		rate = 0; //rate = ((FNS(slot) >> 9) & 1);
+//-------------------------------------------------
+//  update_master_volume - MVOL is a logarithmic
+//  attenuator, 0 mutes the output entirely
+//-------------------------------------------------
 
-	slot->EG.volume = 0x17F<<EG_SHIFT;
-	slot->EG.AR = Get_AR(rate,AR(slot));
-	slot->EG.D1R = Get_DR(rate,D1R(slot));
-	slot->EG.D2R = Get_DR(rate,D2R(slot));
-	slot->EG.RR = Get_DR(rate,RR(slot));
-	slot->EG.DL = 0x1f - DL(slot);
-	slot->EG.EGHOLD = EGHOLD(slot);
+void scsp_device::update_master_volume() {
+  u32 const mvol = MVOL();
+
+  // the output gain is applied by hand in DoMasterSamples()
+  set_output_gain(0, 1.0);
+  set_output_gain(1, 1.0);
+
+  if (mvol == 0) {
+    m_master_volume = 0;
+    return;
+  }
+
+  // roughly 2.5dB per step, Q8 fixed point (0x100 == unity)
+  u32 mv = 0x2 << (mvol >> 1);
+  if (!(mvol & 1))
+    mv -= (mv >> 2);
+
+  m_master_volume = mv;
 }
 
-int scsp_device::EG_Update(SCSP_SLOT *slot)
-{
-	switch (slot->EG.state)
-	{
-		case SCSP_ATTACK:
-			slot->EG.volume += slot->EG.AR;
-			if (slot->EG.volume >= (0x3ff<<EG_SHIFT))
-			{
-				if (!LPSLNK(slot))
-				{
-					slot->EG.state = SCSP_DECAY1;
-					if (slot->EG.D1R >= (1024 << EG_SHIFT)) //Skip SCSP_DECAY1, go directly to SCSP_DECAY2
-						slot->EG.state = SCSP_DECAY2;
-				}
-				slot->EG.volume=0x3ff << EG_SHIFT;
-			}
-			if (slot->EG.EGHOLD)
-				return 0x3ff << (SHIFT - 10);
-			break;
-		case SCSP_DECAY1:
-			slot->EG.volume -= slot->EG.D1R;
-			if (slot->EG.volume <= 0)
-				slot->EG.volume = 0;
-			if (slot->EG.volume >> (EG_SHIFT + 5) <= slot->EG.DL)
-				slot->EG.state = SCSP_DECAY2;
-			break;
-		case SCSP_DECAY2:
-			if (D2R(slot) == 0)
-				return (slot->EG.volume >> EG_SHIFT) << (SHIFT - 10);
-			slot->EG.volume -= slot->EG.D2R;
-			if (slot->EG.volume <= 0)
-				slot->EG.volume = 0;
-
-			break;
-		case SCSP_RELEASE:
-			slot->EG.volume -= slot->EG.RR;
-			if (slot->EG.volume <= 0)
-			{
-				slot->EG.volume = 0;
-				StopSlot(slot, 0);
-				//slot->EG.volume = 0x17F << EG_SHIFT;
-				//slot->EG.state = SCSP_ATTACK;
-			}
-			break;
-		default:
-			return 1 << SHIFT;
-	}
-	return (slot->EG.volume >> EG_SHIFT) << (SHIFT - 10);
+// hardware bug (Ymir CheckAttackBug): with key rate scaling active, an attack
+// rate plus the scaled KRS/octave adjustment of 0x20 or more stalls the attack
+// ramp; KRS = 0xF is immune.  Re-checked on writes to the AR/KRS registers,
+// so the flag tracks them live rather than being latched only at key-on.
+void scsp_device::Check_Attack_Bug(SCSP_SLOT *slot) {
+  if (KRS(slot) != 0xf) {
+    int const oct = (OCT(slot) ^ 8) - 8;
+    slot->EG.attack_bug =
+        (AR(slot) + std::clamp<int>(int(KRS(slot)) + oct, 0, 0xf)) >= 0x20;
+  } else
+    slot->EG.attack_bug = false;
 }
 
-u32 scsp_device::Step(SCSP_SLOT *slot)
-{
-	int octave = (OCT(slot) ^ 8) - 8 + SHIFT - 10;
-	u32 Fn = FNS(slot) + (1 << 10);
-	if (octave >= 0)
-	{
-		Fn <<= octave;
-	}
-	else
-	{
-		Fn >>= -octave;
-	}
+/* Hardware envelope engine.
 
-	return Fn;
+   The chip works in the attenuation domain (0x000 loudest .. 0x3FF silent).
+   The 5-bit segment rate (AR/D1R/D2R/RR) is adjusted by key rate scaling and
+   the octave, doubled and clamped to 6 bits; the effective rate selects a
+   sample-counter shift and an 8-phase increment pattern, so the envelope
+   only advances on samples whose low counter bits are zero - the EG is
+   clocked by the global sample counter rather than ramping a fractional
+   amount every sample.  Attack attenuates geometrically (the addend is
+   proportional to the current level), decay/release linearly.  Model, tables
+   and the attack-rate bug follow Ymir's IncrementEG (hardware-tested) with
+   mednafen's RunEG and SaturnRecomp's env_tick as second and third sources;
+   this replaces millisecond-based tables that assumed a 44100 Hz stream and
+   a linear amplitude ramp. */
+int scsp_device::EG_Update(SCSP_SLOT *slot, u64 eg_clock) {
+  static constexpr u8 counter_shift[64] = {
+      12, 12, 12, 12, 11, 11, 11, 11, 10, 10, 10, 10, 9, 9, 9, 9,
+      8,  8,  8,  8,  7,  7,  7,  7,  6,  6,  6,  6,  5, 5, 5, 5,
+      4,  4,  4,  4,  3,  3,  3,  3,  2,  2,  2,  2,  1, 1, 1, 1,
+      1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, 1, 1, 1};
+
+  static constexpr u8 increment[64][8] = {
+      {0, 0, 0, 0, 0, 0, 0, 0}, /* 0x00 */
+      {0, 0, 0, 0, 0, 0, 0, 0}, /* 0x01 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x02 */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x03 */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x04 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x05 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x06 */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x07 */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x08 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x09 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x0A */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x0B */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x0C */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x0D */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x0E */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x0F */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x10 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x11 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x12 */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x13 */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x14 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x15 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x16 */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x17 */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x18 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x19 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x1A */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x1B */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x1C */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x1D */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x1E */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x1F */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x20 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x21 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x22 */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x23 */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x24 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x25 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x26 */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x27 */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x28 */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x29 */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x2A */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x2B */
+      {0, 1, 0, 1, 0, 1, 0, 1}, /* 0x2C */
+      {0, 1, 0, 1, 1, 1, 0, 1}, /* 0x2D */
+      {0, 1, 1, 1, 0, 1, 1, 1}, /* 0x2E */
+      {0, 1, 1, 1, 1, 1, 1, 1}, /* 0x2F */
+      {1, 1, 1, 1, 1, 1, 1, 1}, /* 0x30 */
+      {1, 1, 1, 2, 1, 1, 1, 2}, /* 0x31 */
+      {2, 1, 2, 1, 2, 1, 2, 1}, /* 0x32 */
+      {1, 2, 2, 2, 1, 2, 2, 2}, /* 0x33 */
+      {2, 2, 2, 2, 2, 2, 2, 2}, /* 0x34 */
+      {2, 2, 2, 4, 2, 2, 2, 4}, /* 0x35 */
+      {4, 2, 4, 2, 4, 2, 4, 2}, /* 0x36 */
+      {2, 4, 4, 4, 2, 4, 4, 4}, /* 0x37 */
+      {4, 4, 4, 4, 4, 4, 4, 4}, /* 0x38 */
+      {4, 4, 4, 8, 4, 4, 4, 8}, /* 0x39 */
+      {8, 4, 8, 4, 8, 4, 8, 4}, /* 0x3A */
+      {4, 8, 8, 8, 4, 8, 8, 8}, /* 0x3B */
+      {8, 8, 8, 8, 8, 8, 8, 8}, /* 0x3C */
+      {8, 8, 8, 8, 8, 8, 8, 8}, /* 0x3D */
+      {8, 8, 8, 8, 8, 8, 8, 8}, /* 0x3E */
+      {8, 8, 8, 8, 8, 8, 8, 8}  /* 0x3F */
+  };
+  // rate register of the current segment
+  unsigned rate;
+  switch (slot->EG.state) {
+  case SCSP_ATTACK:
+    rate = AR(slot);
+    break;
+  case SCSP_DECAY1:
+    rate = D1R(slot);
+    break;
+  case SCSP_DECAY2:
+    rate = D2R(slot);
+    break;
+  default:
+    rate = RR(slot);
+    break;
+  }
+
+  // effective rate: KRS/octave adjustment (unless KRS = 0xF), doubled, 6-bit
+  unsigned eff = rate;
+  if (KRS(slot) != 0xf)
+    eff += std::clamp<int>(int(KRS(slot)) + ((OCT(slot) ^ 8) - 8), 0, 0xf);
+  eff = std::min<unsigned>(eff << 1, 0x3f);
+
+  // the EG only advances when the low counter bits are zero
+  const u32 shift = counter_shift[eff];
+  const u32 inc = (u32(eg_clock) & ((1u << shift) - 1u))
+                      ? 0u
+                      : increment[eff][(eg_clock >> shift) & 7];
+
+  const u32 prev_out = slot->EG.prev_level;
+  const u32 curr = slot->EG.level;
+
+  // externally visible level for this tick; EG hold (in attack) and the
+  // undocumented bypass bit both force full volume
+  slot->EG.prev_level =
+      (EGBYP(slot) || (slot->EG.state == SCSP_ATTACK && EGHOLD(slot))) ? 0u
+                                                                       : curr;
+
+  switch (slot->EG.state) {
+  case SCSP_ATTACK:
+    // geometric attack: level += (~level * inc) >> 4, with the level
+    // sampled before the update
+    if (!slot->EG.attack_bug && inc > 0 && curr > 0 && rate > 0)
+      slot->EG.level =
+          std::clamp<s32>(s32(curr) + ((~s32(curr) * s32(inc)) >> 4), 0, 0x3ff);
+    // LPSLNK slots make the attack -> decay 1 transition from the loop
+    // start crossing in UpdateSlot instead
+    if (!LPSLNK(slot) && curr == 0)
+      slot->EG.state = SCSP_DECAY1;
+    break;
+
+  case SCSP_DECAY1:
+    if ((curr >> 5) == DL(slot))
+      slot->EG.state = SCSP_DECAY2;
+    [[fallthrough]];
+
+  case SCSP_DECAY2:
+  case SCSP_RELEASE:
+    // rate 0 sustains (D2R = 0 holds the sound per the manual)
+    if (rate > 0)
+      slot->EG.level = std::min<u32>(curr + inc, 0x3ff);
+    break;
+
+  default:
+    break;
+  }
+
+  // a slot whose externally visible attenuation reached 0x3C0 goes inactive
+  // in ANY segment, not just release - the previous output level feeds the
+  // test, and the bypass bit suppresses it
+  if (prev_out >= 0x3c0 && !EGBYP(slot)) {
+    StopSlot(slot, 0);
+    slot->Backwards = 0;
+  }
+
+  // consumers index the dB table with a 10-bit amplitude value
+  return (0x3ff - slot->EG.prev_level) << (SHIFT - 10);
 }
 
+u32 scsp_device::Step(SCSP_SLOT *slot) {
+  int octave = (OCT(slot) ^ 8) - 8 + SHIFT - 10;
+  u32 Fn = FNS(slot) + (1 << 10);
+  if (octave >= 0) {
+    Fn <<= octave;
+  } else {
+    Fn >>= -octave;
+  }
 
-void scsp_device::Compute_LFO(SCSP_SLOT *slot)
-{
-	if (PLFOS(slot) != 0)
-		LFO_ComputeStep(&(slot->PLFO), LFOF(slot), PLFOWS(slot), PLFOS(slot), 0);
-	if (ALFOS(slot) != 0)
-		LFO_ComputeStep(&(slot->ALFO), LFOF(slot), ALFOWS(slot), ALFOS(slot), 1);
+  return Fn;
 }
 
-void scsp_device::StartSlot(SCSP_SLOT *slot)
-{
-	slot->active = 1;
-	slot->cur_addr = 0;
-	slot->nxt_addr = 1 << SHIFT;
-	slot->step = Step(slot);
-	Compute_EG(slot);
-	slot->EG.state = SCSP_ATTACK;
-	slot->EG.volume = 0x17F << EG_SHIFT;
-	slot->Prev = 0;
-	slot->Backwards = 0;
-
-	Compute_LFO(slot);
-
-//  printf("StartSlot[%p]: SA %x PCM8B %x LPCTL %x ALFOS %x STWINH %x TL %x EFSDL %x\n", slot, SA(slot), PCM8B(slot), LPCTL(slot), ALFOS(slot), STWINH(slot), TL(slot), EFSDL(slot));
+// ST-077-R2-052594 p.89: "LFORE (R/W) LFO REset - Sets the LFO reset to yes or
+// no. If this bit is set to 1, the LFO is reset. If 0 is written then operation
+// starts." p.37 adds that when the LFO waveform select is noise (ALFOWS or
+// PLFOWS = 3) the LFORE reset does not function. Beetle (scsp.inc RunLFO) and
+// MiSTer (SCSP.sv, LFORE forces the divider and phase data to zero) both hold
+// the phase at zero; neither models the noise exemption.
+// The hold is applied every sample whether or not a modulation depth is
+// programmed, because the LFO block itself is held reset: a later depth change
+// must start from the reset phase rather than from a stale accumulator.
+// Returns the hold flag so the step functions do not advance a held phase.
+bool scsp_device::LFO_ResetHold(SCSP_SLOT *slot) {
+  if (!LFORE(slot))
+    return false;
+  if (!slot->PLFO.noise)
+    slot->PLFO.phase = 0;
+  if (!slot->ALFO.noise)
+    slot->ALFO.phase = 0;
+  return true;
 }
 
-void scsp_device::StopSlot(SCSP_SLOT *slot,int keyoff)
-{
-	if (keyoff /*&& slot->EG.state!=SCSP_RELEASE*/)
-	{
-		slot->EG.state = SCSP_RELEASE;
-	}
-	else
-	{
-		slot->active = 0;
-	}
-	slot->udata.data[0] &= ~0x800;
+void scsp_device::Compute_LFO(SCSP_SLOT *slot) {
+  if (PLFOS(slot) != 0)
+    LFO_ComputeStep(&(slot->PLFO), LFOF(slot), PLFOWS(slot), PLFOS(slot), 0);
+  if (ALFOS(slot) != 0)
+    LFO_ComputeStep(&(slot->ALFO), LFOF(slot), ALFOWS(slot), ALFOS(slot), 1);
 }
 
-void scsp_device::init()
-{
-	int i;
+void scsp_device::StartSlot(SCSP_SLOT *slot) {
+  slot->active = 1;
+  slot->cur_addr = 0;
+  slot->nxt_addr = 1 << SHIFT;
+  slot->step = Step(slot);
+  slot->EG.state = SCSP_ATTACK;
+  Check_Attack_Bug(slot);
+  // when the attack bug strikes the key-on starts at full volume (0x000
+  // attenuation) instead of the usual 0x280
+  slot->EG.level = slot->EG.attack_bug ? 0x000 : 0x280;
+  slot->EG.prev_level = slot->EG.level;
+  slot->Prev = 0;
+  slot->Backwards = 0;
 
-	m_DSP.Init();
+  Compute_LFO(slot);
 
-	m_IrqTimA = m_IrqTimBC = m_IrqMidi = m_IrqCPU = m_IrqDMA = 0;
-	m_MidiR = m_MidiW = 0;
-	m_MidiOutR = m_MidiOutW = 0;
-
-	m_DSP.space = &this->space();
-	m_timerA = timer_alloc(FUNC(scsp_device::timerA_cb), this);
-	m_timerB = timer_alloc(FUNC(scsp_device::timerB_cb), this);
-	m_timerC = timer_alloc(FUNC(scsp_device::timerC_cb), this);
-
-	for (i = 0; i < 0x400; ++i)
-	{
-		float envDB = ((float)(3 * (i - 0x3ff))) / 32.0f;
-		float scale = (float)(1 << SHIFT);
-		m_EG_TABLE[i] = (s32)(powf(10.0f, envDB / 20.0f) * scale);
-	}
-
-	for (i = 0; i < 0x10000; ++i)
-	{
-		int iTL  = (i >> 0x0) & 0xff;
-		int iPAN = (i >> 0x8) & 0x1f;
-		int iSDL = (i >> 0xD) & 0x07;
-		float TL;
-		float SegaDB = 0.0f;
-		float fSDL;
-		float PAN;
-		float LPAN,RPAN;
-
-		if (iTL & 0x01) SegaDB -= 0.4f;
-		if (iTL & 0x02) SegaDB -= 0.8f;
-		if (iTL & 0x04) SegaDB -= 1.5f;
-		if (iTL & 0x08) SegaDB -= 3.0f;
-		if (iTL & 0x10) SegaDB -= 6.0f;
-		if (iTL & 0x20) SegaDB -= 12.0f;
-		if (iTL & 0x40) SegaDB -= 24.0f;
-		if (iTL & 0x80) SegaDB -= 48.0f;
-
-		TL=powf(10.0f, SegaDB / 20.0f);
-
-		SegaDB=0;
-		if (iPAN & 0x1) SegaDB -= 3.0f;
-		if (iPAN & 0x2) SegaDB -= 6.0f;
-		if (iPAN & 0x4) SegaDB -= 12.0f;
-		if (iPAN & 0x8) SegaDB -= 24.0f;
-
-		if ((iPAN & 0xf) == 0xf) PAN = 0.0;
-		else PAN=powf(10.0f, SegaDB / 20.0f);
-
-		if (iPAN < 0x10)
-		{
-			LPAN = PAN;
-			RPAN = 1.0;
-		}
-		else
-		{
-			RPAN = PAN;
-			LPAN = 1.0;
-		}
-
-		if (iSDL)
-			fSDL = powf(10.0f, (SDLT[iSDL]) / 20.0f);
-		else
-			fSDL = 0.0;
-
-		m_LPANTABLE[i] = FIX((4.0f * LPAN * TL * fSDL));
-		m_RPANTABLE[i] = FIX((4.0f * RPAN * TL * fSDL));
-	}
-
-	m_ARTABLE[0] = m_DRTABLE[0] = 0;    //Infinite time
-	m_ARTABLE[1] = m_DRTABLE[1] = 0;    //Infinite time
-	for (i = 2; i < 64; ++i)
-	{
-		double step, scale;
-		double t = ARTimes[i];   //In ms
-		if (t != 0.0)
-		{
-			step = (1023 * 1000.0) / (44100.0 * t);
-			scale = (double) (1 << EG_SHIFT);
-			m_ARTABLE[i] = (int) (step * scale);
-		}
-		else
-			m_ARTABLE[i] = 1024 << EG_SHIFT;
-
-		t = DRTimes[i];   //In ms
-		step = (1023 * 1000.0) / (44100.0 * t);
-		scale = (double) (1 << EG_SHIFT);
-		m_DRTABLE[i] = (int) (step * scale);
-	}
-
-	// make sure all the slots are off
-	for (i = 0; i < 32; ++i)
-	{
-		m_Slots[i].slot = i;
-		m_Slots[i].active = 0;
-		m_Slots[i].EG.state = SCSP_RELEASE;
-	}
-
-	LFO_Init();
-	// no "pend"
-	m_udata.data[0x20/2] = 0;
-	m_TimCnt[0] = 0xffff;
-	m_TimCnt[1] = 0xffff;
-	m_TimCnt[2] = 0xffff;
+  //  printf("StartSlot[%p]: SA %x PCM8B %x LPCTL %x ALFOS %x STWINH %x TL %x
+  //  EFSDL %x\n", slot, SA(slot), PCM8B(slot), LPCTL(slot), ALFOS(slot),
+  //  STWINH(slot), TL(slot), EFSDL(slot));
 }
 
-void scsp_device::UpdateSlotReg(int s,int r)
-{
-	SCSP_SLOT *slot = m_Slots + s;
-	switch (r & 0x3f)
-	{
-		case 0:
-		case 1:
-			if (KEYONEX(slot))
-			{
-				for (int sl=0; sl < 32; ++sl)
-				{
-					SCSP_SLOT *s2 = m_Slots + sl;
-					{
-						if (KEYONB(s2) && s2->EG.state == SCSP_RELEASE/*&& !s2->active*/)
-						{
-							StartSlot(s2);
-						}
-						if (!KEYONB(s2) /*&& s2->active*/)
-						{
-							StopSlot(s2, 1);
-						}
-					}
-				}
-				slot->udata.data[0] &= ~0x1000;
-			}
-			break;
-		case 0x10:
-		case 0x11:
-			slot->step = Step(slot);
-			break;
-		case 0xA:
-		case 0xB:
-			slot->EG.RR = Get_DR(0, RR(slot));
-			slot->EG.DL = 0x1f - DL(slot);
-			break;
-		case 0x12:
-		case 0x13:
-			Compute_LFO(slot);
-			break;
-	}
+void scsp_device::StopSlot(SCSP_SLOT *slot, int keyoff) {
+  if (keyoff /*&& slot->EG.state!=SCSP_RELEASE*/) {
+    slot->EG.state = SCSP_RELEASE;
+  } else {
+    slot->active = 0;
+  }
+  slot->udata.data[0] &= ~0x800;
 }
 
-void scsp_device::UpdateReg(int reg)
-{
-	switch (reg & 0x3f)
-	{
-		case 0x0:
-			set_output_gain(0, MVOL() / 15.0);
-			set_output_gain(1, MVOL() / 15.0);
-			break;
-		case 0x2:
-		case 0x3:
-			{
-				m_DSP.RBL = (8 * 1024) << RBL(); // 8 / 16 / 32 / 64 kwords
-				m_DSP.RBP = RBP();
-			}
-			break;
-		case 0x6:
-		case 0x7:
-			{
-				u8 data = m_udata.data[0x6 / 2] & 0xff;
-				if (m_MidiOutR == m_MidiOutW)
-				{
-					// not busy, so start transmission
-					transmit_register_setup(data);
-				}
-				m_MidiOutStack[m_MidiOutW++] = data;
-				m_MidiOutW &= 31;
-			}
-			break;
-		case 8:
-		case 9:
-			/* Only MSLC could be written.  */
-			// docs claims MSLC to be 0x7800 but saturn:jikkparo doesn't agree,
-			// assume doc mistake out of being 0~31 slots
-			m_latched_MSLC = (m_udata.data[0x8/2] & 0xf800) >> 11;
-			break;
-		case 0x12:
-		case 0x13:
-			m_dma.dmea = (m_udata.data[0x12/2] & 0xfffe) | (m_dma.dmea & 0xf0000);
-			break;
-		case 0x14:
-		case 0x15:
-			m_dma.dmea = ((m_udata.data[0x14/2] & 0xf000) << 4) | (m_dma.dmea & 0xfffe);
-			m_dma.drga = (m_udata.data[0x14/2] & 0x0ffe);
-			break;
-		case 0x16:
-		case 0x17:
-			m_dma.dtlg = (m_udata.data[0x16/2] & 0x0ffe);
-			m_dma.ddir = (m_udata.data[0x16/2] & 0x2000) >> 13;
-			m_dma.dgate = (m_udata.data[0x16/2] & 0x4000) >> 14;
-			if (m_udata.data[0x16/2] & 0x1000) // dexe
-				exec_dma();
-			break;
-		case 0x18:
-		case 0x19:
-			if (!m_irq_cb.isunset())
-			{
-				m_TimPris[0] = 1 << ((m_udata.data[0x18/2] >> 8) & 0x7);
-				m_TimCnt[0] = (m_udata.data[0x18/2] & 0xff) << 8;
+void scsp_device::init() {
+  int i;
 
-				if ((m_udata.data[0x18/2] & 0xff) != 255)
-				{
-					u32 time = (clock() / m_TimPris[0]) / (255 - (m_udata.data[0x18/2] & 0xff));
-					if (time)
-					{
-						m_timerA->adjust(attotime::from_ticks(512, time));
-					}
-				}
-			}
-			break;
-		case 0x1a:
-		case 0x1b:
-			if (!m_irq_cb.isunset())
-			{
-				m_TimPris[1] = 1 << ((m_udata.data[0x1A/2] >> 8) & 0x7);
-				m_TimCnt[1] = (m_udata.data[0x1A/2] & 0xff) << 8;
+  m_DSP.Init();
 
-				if ((m_udata.data[0x1A/2] & 0xff) != 255)
-				{
-					u32 time = (clock() / m_TimPris[1]) / (255 - (m_udata.data[0x1A/2] & 0xff));
-					if (time)
-					{
-						m_timerB->adjust(attotime::from_ticks(512, time));
-					}
-				}
-			}
-			break;
-		case 0x1c:
-		case 0x1d:
-			if (!m_irq_cb.isunset())
-			{
-				m_TimPris[2] = 1 << ((m_udata.data[0x1C/2] >> 8) & 0x7);
-				m_TimCnt[2] = (m_udata.data[0x1C/2] & 0xff) << 8;
+  m_current_level = 0;
+  m_MidiR = m_MidiW = m_MidiCount = 0;
+  m_MidiOutR = m_MidiOutW = m_MidiOutCount = 0;
+  m_MidiOverflow = false;
 
-				if ((m_udata.data[0x1C/2] & 0xff) != 255)
-				{
-					u32 time = (clock() / m_TimPris[2]) / (255 - (m_udata.data[0x1C/2] & 0xff));
-					if (time)
-					{
-						m_timerC->adjust(attotime::from_ticks(512, time));
-					}
-				}
-			}
-			break;
-		case 0x1e: // SCIEB
-		case 0x1f:
-			if (!m_irq_cb.isunset())
-			{
-				CheckPendingIRQ();
+  m_DSP.space = &this->space();
+  for (i = 0; i < 3; i++)
+    m_timers[i].timer = timer_alloc(FUNC(scsp_device::timer_cb), this);
 
-				if (m_udata.data[0x1e/2] & 0x610)
-					popmessage("SCSP SCIEB enabled %04x",m_udata.data[0x1e/2]);
-			}
-			break;
-		case 0x20: // SCIPD
-		case 0x21:
-			if (!m_irq_cb.isunset())
-			{
-				if (m_udata.data[0x1e/2] & m_udata.data[0x20/2] & 0x20)
-				{
-					// TODO: our use case (arcadegh) still doesn't have sound (but clearly executes irq 7s)
-					// log it anyway so we can validate the behaviour with anything else using this
-					// - documentation claims 7 to "not use because tied to dev board irq",
-					//   that doesn't stop this game using it anyway.
-					popmessage("SCSP SCIPD write CPU irq 0x20");
-					CheckPendingIRQ();
-				}
-			}
-			break;
-		case 0x22:  //SCIRE
-		case 0x23:
-			if (!m_irq_cb.isunset())
-			{
-				m_udata.data[0x20/2] &= ~m_udata.data[0x22/2];
-				ResetInterrupts();
+  for (i = 0; i < 0x400; ++i) {
+    float envDB = ((float)(3 * (i - 0x3ff))) / 32.0f;
+    float scale = (float)(1 << SHIFT);
+    m_EG_TABLE[i] = (s32)(powf(10.0f, envDB / 20.0f) * scale);
+  }
 
-				// behavior from real hardware: if you SCIRE a timer that's expired,
-				// it'll immediately pop up again in SCIPD.  cfr. saturn:sakurat
-				// TODO: crocj disagrees with this (keeps going spurious irqs)
-				if (m_TimCnt[0] == 0xffff)
-				{
-					m_udata.data[0x20/2] |= 0x40;
-				}
-				if (m_TimCnt[1] == 0xffff)
-				{
-					m_udata.data[0x20/2] |= 0x80;
-				}
-				if (m_TimCnt[2] == 0xffff)
-				{
-					m_udata.data[0x20/2] |= 0x100;
-				}
-			}
-			break;
-		case 0x24:
-		case 0x25:
-		case 0x26:
-		case 0x27:
-		case 0x28:
-		case 0x29:
-			if (!m_irq_cb.isunset())
-			{
-				m_IrqTimA = DecodeSCI(SCITMA);
-				m_IrqTimBC = DecodeSCI(SCITMB);
-				m_IrqMidi = DecodeSCI(SCIMID);
-				m_IrqCPU = DecodeSCI(SCIIRQ);
-				m_IrqDMA = DecodeSCI(SCIDMA);
-			}
-			break;
-		case 0x2a:
-		case 0x2b:
-			m_mcieb = m_udata.data[0x2a/2];
+  for (i = 0; i < 0x10000; ++i) {
+    int iTL = (i >> 0x0) & 0xff;
+    int iPAN = (i >> 0x8) & 0x1f;
+    int iSDL = (i >> 0xD) & 0x07;
+    float TL;
+    float SegaDB = 0.0f;
+    float fSDL;
+    float PAN;
+    float LPAN, RPAN;
 
-			MainCheckPendingIRQ(0);
-			if (m_mcieb & ~0x60)
-				popmessage("SCSP MCIEB enabled %04x",m_mcieb);
-			break;
-		case 0x2c:
-		case 0x2d:
-			if (m_udata.data[0x2c/2] & 0x20)
-				MainCheckPendingIRQ(0x20);
-			break;
-		case 0x2e:
-		case 0x2f:
-			m_mcipd &= ~m_udata.data[0x2e/2];
-			MainCheckPendingIRQ(0);
-			break;
+    if (iTL & 0x01)
+      SegaDB -= 0.4f;
+    if (iTL & 0x02)
+      SegaDB -= 0.8f;
+    if (iTL & 0x04)
+      SegaDB -= 1.5f;
+    if (iTL & 0x08)
+      SegaDB -= 3.0f;
+    if (iTL & 0x10)
+      SegaDB -= 6.0f;
+    if (iTL & 0x20)
+      SegaDB -= 12.0f;
+    if (iTL & 0x40)
+      SegaDB -= 24.0f;
+    if (iTL & 0x80)
+      SegaDB -= 48.0f;
 
-	}
+    TL = powf(10.0f, SegaDB / 20.0f);
+
+    SegaDB = 0;
+    if (iPAN & 0x1)
+      SegaDB -= 3.0f;
+    if (iPAN & 0x2)
+      SegaDB -= 6.0f;
+    if (iPAN & 0x4)
+      SegaDB -= 12.0f;
+    if (iPAN & 0x8)
+      SegaDB -= 24.0f;
+
+    if ((iPAN & 0xf) == 0xf)
+      PAN = 0.0;
+    else
+      PAN = powf(10.0f, SegaDB / 20.0f);
+
+    if (iPAN < 0x10) {
+      LPAN = PAN;
+      RPAN = 1.0;
+    } else {
+      RPAN = PAN;
+      LPAN = 1.0;
+    }
+
+    if (iSDL)
+      fSDL = powf(10.0f, (SDLT[iSDL]) / 20.0f);
+    else
+      fSDL = 0.0;
+
+    m_LPANTABLE[i] = FIX((4.0f * LPAN * TL * fSDL));
+    m_RPANTABLE[i] = FIX((4.0f * RPAN * TL * fSDL));
+  }
+
+  m_eg_clock = 0;
+
+  // make sure all the slots are off
+  for (i = 0; i < 32; ++i) {
+    m_Slots[i].slot = i;
+    m_Slots[i].active = 0;
+    m_Slots[i].EG.state = SCSP_RELEASE;
+    m_Slots[i].EG.level = 0x3ff;
+    m_Slots[i].EG.prev_level = 0x3ff;
+    m_Slots[i].EG.attack_bug = false;
+  }
+
+  LFO_Init();
+  // no "pend"
+  m_udata.data[0x20 / 2] = 0;
+  m_mcipd = 0;
+  for (i = 0; i < 3; i++) {
+    m_timers[i].counter = 0;
+    m_timers[i].prescale = 0;
+    m_timers[i].reload = 0;
+    m_timers[i].reload_pending = false;
+    m_timers[i].base_time = machine().time();
+    if (m_timers[i].timer != nullptr)
+      m_timers[i].timer->reset();
+  }
+
+  update_master_volume();
 }
 
-void scsp_device::UpdateSlotRegR(int slot,int reg)
-{
+void scsp_device::UpdateSlotReg(int s, int r) {
+  SCSP_SLOT *slot = m_Slots + s;
+  switch (r & 0x3f) {
+  case 0:
+  case 1:
+    if (KEYONEX(slot)) {
+      for (int sl = 0; sl < 32; ++sl) {
+        SCSP_SLOT *s2 = m_Slots + sl;
+        {
+          if (KEYONB(s2) && s2->EG.state == SCSP_RELEASE /*&& !s2->active*/) {
+            StartSlot(s2);
+          }
+          if (!KEYONB(s2) /*&& s2->active*/) {
+            StopSlot(s2, 1);
+          }
+        }
+      }
+      slot->udata.data[0] &= ~0x1000;
+    }
+    break;
+  case 0x10:
+  case 0x11:
+    slot->step = Step(slot);
+    break;
+  case 8:
+  case 9:
+  case 0xA:
+  case 0xB:
+    // EG_Update reads AR/D1R/D2R/RR/DL/KRS/LPSLNK/EGBYP live from the
+    // register file; only the attack-bug flag needs recomputing here,
+    // matching Ymir's CheckAttackBug on reg 0x08/0x0A writes
+    Check_Attack_Bug(slot);
+    break;
+  case 0x12:
+  case 0x13:
+    Compute_LFO(slot);
+    break;
+  }
 }
 
-void scsp_device::UpdateRegR(int reg)
-{
-	switch (reg & 0x3f)
-	{
-		case 4:
-		case 5:
-			{
-				u16 v = m_udata.data[0x4/2];
-				v &= 0xff00;
-				v |= m_MidiStack[m_MidiR];
-				logerror("Read %x from SCSP MIDI\n", v);
-				if (m_MidiR != m_MidiW)
-				{
-					++m_MidiR;
-					m_MidiR &= 31;
-				}
-				if (m_MidiR == m_MidiW)     // if the input FIFO is empty, clear the IRQ
-				{
-					m_irq_cb(m_IrqMidi, CLEAR_LINE);
-					m_udata.data[0x20 / 2] &= ~8;
-				}
-				m_udata.data[0x4/2] = v;
-			}
-			break;
-		case 8:
-		case 9:
-			{
-				m_udata.data[0x8/2] = m_latched_MSLC_data;
-			}
-			break;
+void scsp_device::UpdateReg(int reg, u16 mem_mask) {
+  switch (reg & 0x3f) {
+  case 0x0:
+    update_master_volume();
+    break;
+  case 0x2:
+  case 0x3: {
+    m_DSP.RBL = (8 * 1024) << RBL(); // 8 / 16 / 32 / 64 kwords
+    m_DSP.RBP = RBP();
+  } break;
+  case 0x6:
+  case 0x7: {
+    if (!(mem_mask & 0x00ff))
+      break; // MOBUF is in the low byte; status/reserved lanes do not transmit.
+    // Four FIFO bytes, independently of the serial shift register. A full
+    // FIFO rejects new writes rather than wrapping and appearing empty.
+    if (m_MidiOutCount == 4)
+      break;
+    u8 const data = m_udata.data[0x6 / 2] & 0xff;
+    m_MidiOutStack[m_MidiOutW] = data;
+    m_MidiOutW = (m_MidiOutW + 1) & 3;
+    ++m_MidiOutCount;
+    // Idle means no frame is currently being shifted out. The serial engine
+    // already saves that flag, so no separate busy state is needed.
+    if (is_transmit_register_empty())
+      transmit_register_setup(data);
 
-		case 0x18:
-		case 0x19:
-			break;
+    // the buffer is no longer empty, drop the pending request
+    m_udata.data[0x20 / 2] &= ~0x200;
+    m_mcipd &= ~0x200;
+    CheckPendingIRQ();
+    update_main_irq();
+  } break;
+  case 8:
+  case 9:
+    /* Only MSLC could be written.  */
+    // docs claims MSLC to be 0x7800 but saturn:jikkparo doesn't agree,
+    // assume doc mistake out of being 0~31 slots
+    m_latched_MSLC = (m_udata.data[0x8 / 2] & 0xf800) >> 11;
+    break;
+  case 0x12:
+  case 0x13:
+    m_dma.dmea = (m_udata.data[0x12 / 2] & 0xfffe) | (m_dma.dmea & 0xf0000);
+    break;
+  case 0x14:
+  case 0x15:
+    m_dma.dmea =
+        ((m_udata.data[0x14 / 2] & 0xf000) << 4) | (m_dma.dmea & 0xfffe);
+    m_dma.drga = (m_udata.data[0x14 / 2] & 0x0ffe);
+    break;
+  case 0x16:
+  case 0x17:
+    m_dma.dtlg = (m_udata.data[0x16 / 2] & 0x0ffe);
+    m_dma.ddir = (m_udata.data[0x16 / 2] & 0x2000) >> 13;
+    m_dma.dgate = (m_udata.data[0x16 / 2] & 0x4000) >> 14;
+    if (m_udata.data[0x16 / 2] & 0x1000) // dexe
+      exec_dma();
+    break;
+  case 0x18:
+  case 0x19:
+    if (!m_irq_cb.isunset())
+      timer_write(0, m_udata.data[0x18 / 2], mem_mask);
+    break;
+  case 0x1a:
+  case 0x1b:
+    if (!m_irq_cb.isunset())
+      timer_write(1, m_udata.data[0x1a / 2], mem_mask);
+    break;
+  case 0x1c:
+  case 0x1d:
+    if (!m_irq_cb.isunset())
+      timer_write(2, m_udata.data[0x1c / 2], mem_mask);
+    break;
+  case 0x1e: // SCIEB
+  case 0x1f:
+    if (!m_irq_cb.isunset())
+      CheckPendingIRQ();
+    break;
+  case 0x20: // SCIPD
+  case 0x21:
+    if (!m_irq_cb.isunset()) {
+      if (m_udata.data[0x1e / 2] & m_udata.data[0x20 / 2] & 0x20) {
+        // SCIPD is read-only except for bit 5: writing 1 there applies a CPU
+        // interrupt (source 5, level 7 - which ST-077 says "not to use
+        // because tied to dev board irq"), writing 0 is invalid.  The OR into
+        // the pending register happens in w16(), matching mednafen.  Software
+        // requesting its own level-7 interrupt is unusual enough to keep
+        // logging (Arcade's Greatest Hits does it).
+        logerror("%s: SCSP SCIPD write CPU irq 0x20\n",
+                 machine().describe_context());
+        CheckPendingIRQ();
+      }
+    }
+    break;
+  case 0x22: // SCIRE
+  case 0x23:
+    if (!m_irq_cb.isunset()) {
+      ResetInterrupts();
 
-		case 0x1a:
-		case 0x1b:
-			break;
+      // behavior from real hardware: if you SCIRE a timer that's expired,
+      // it'll immediately pop up again in SCIPD.  cfr. saturn:sakurat
+      // Note that this only lasts for as long as the counter sits on 0xff,
+      // i.e. one timer tick, so it doesn't turn into an interrupt storm
+      // (cfr. crocj).
+      bool repend = false;
+      for (int i = 0; i < 3; i++) {
+        if (timer_read(i) == 0xff) {
+          m_udata.data[0x20 / 2] |= 0x40 << i;
+          repend = true;
+        }
+      }
+      if (repend)
+        CheckPendingIRQ();
+    }
+    break;
+  case 0x24:
+  case 0x25:
+  case 0x26:
+  case 0x27:
+  case 0x28:
+  case 0x29:
+    // SCILV0-2 assign a 3 bit level to every interrupt source, they
+    // are resolved against the pending requests on the fly
+    if (!m_irq_cb.isunset())
+      CheckPendingIRQ();
+    break;
+  case 0x2a:
+  case 0x2b:
+    m_mcieb = m_udata.data[0x2a / 2];
 
-		case 0x1c:
-		case 0x1d:
-			break;
+    MainCheckPendingIRQ(0);
 
-		//case 0x20:
-		//  m_udata.data[0x20/2] ^= 0x400;
-		//  break;
-
-		case 0x2a:
-		case 0x2b:
-			m_udata.data[0x2a/2] = m_mcieb;
-			break;
-
-		case 0x2c:
-		case 0x2d:
-			m_udata.data[0x2c/2] = m_mcipd;
-			break;
-	}
+    // the external INT0N/INT1N/INT2N pins (bits 0-2) are marked
+    // "currently not used" in the ST-077 pinout and are not wired up by
+    // any current user of this device; log their enablement so software
+    // relying on them can be spotted
+    if (m_mcieb & 0x007)
+      logerror("%s: SCSP MCIEB enabled %04x\n", machine().describe_context(),
+               m_mcieb);
+    break;
+  case 0x2c:
+  case 0x2d:
+    if (m_udata.data[0x2c / 2] & 0x20)
+      MainCheckPendingIRQ(0x20);
+    break;
+  case 0x2e:
+  case 0x2f:
+    m_mcipd &= ~m_udata.data[0x2e / 2];
+    MainCheckPendingIRQ(0);
+    break;
+  }
 }
 
-void scsp_device::w16(u32 addr, u16 val)
-{
-	addr &= 0xffff;
-	if (addr < 0x400)
-	{
-		int slot = addr / 0x20;
-		addr &= 0x1f;
-		*((u16 *) (m_Slots[slot].udata.datab + (addr))) = val;
-		UpdateSlotReg(slot, addr & 0x1f);
-	}
-	else if (addr < 0x600)
-	{
-		if (addr < 0x430)
-		{
-			// SCIPD and MCIPD are r/o except for bit 5 CPU irqs
-			if (addr == 0x420 || addr == 0x42e)
-			{
-				*((u16 *) (m_udata.datab + ((addr & 0x3f)))) |= val & 0x20;
-			}
-			else
-				*((u16 *) (m_udata.datab + ((addr & 0x3f)))) = val;
-			UpdateReg(addr & 0x3f);
-		}
-	}
-	else if (addr < 0x700)
-		m_RINGBUF[(addr - 0x600)/2] = val;
-	else
-	{
-		//DSP
-		if (addr < 0x780)  //COEF
-			*((u16 *) (m_DSP.COEF + (addr - 0x700) / 2)) = val;
-		else if (addr < 0x7c0)
-			*((u16 *) (m_DSP.MADRS + (addr - 0x780) / 2)) = val;
-		else if (addr < 0x800) // MADRS is mirrored twice
-			*((u16 *) (m_DSP.MADRS + (addr - 0x7c0) / 2)) = val;
-		else if (addr < 0xC00)
-		{
-			*((uint16_t *) (m_DSP.MPRO + (addr - 0x800) / 2)) = val;
+void scsp_device::UpdateSlotRegR(int slot, int reg) {}
 
-			if (addr == 0xBF0)
-			{
-				m_DSP.Start();
-			}
-		}
-	}
+void scsp_device::UpdateRegR(int reg, u16 mem_mask) {
+  switch (reg & 0x3f) {
+  case 4:
+  case 5: {
+    // Status is captured before a data-byte read removes the front byte.
+    u16 v = (m_MidiCount == 0 ? 0x0100 : 0) |
+            (m_MidiCount == 4 ? 0x0200 : 0) |
+            (m_MidiOverflow ? 0x0400 : 0) |
+            (m_MidiOutCount == 0 ? 0x0800 : 0) |
+            (m_MidiOutCount == 4 ? 0x1000 : 0) |
+            m_MidiStack[m_MidiR];
+    logerror("Read %x from SCSP MIDI\n", v);
+    // Only a data-byte read consumes MIDI input. Status-byte reads, debugger
+    // inspection and the register-write merge must leave the FIFO/IRQs alone.
+    if ((mem_mask & 0x00ff) && !machine().side_effects_disabled()) {
+      if (m_MidiCount) {
+        m_MidiR = (m_MidiR + 1) & 3;
+        --m_MidiCount;
+      }
+      if (!m_MidiCount) // if the input FIFO is empty, clear the IRQ
+      {
+        // Draining also retires a latched overflow: ST-077 gives no other
+        // clear condition, and this needs no additional undocumented edge.
+        m_MidiOverflow = false;
+        m_udata.data[0x20 / 2] &= ~0x08;
+        m_mcipd &= ~0x08;
+        CheckPendingIRQ();
+        update_main_irq();
+      }
+    }
+    m_udata.data[0x4 / 2] = v;
+  } break;
+  case 6:
+  case 7:
+    // MOBUF[7:0] is write only and p.35 says write-only bits read as 0B. The
+    // MIDI-OUT status flags are reported by register 0x04, not here.
+    m_udata.data[0x6 / 2] = 0;
+    break;
+
+  case 8:
+  case 9: {
+    m_udata.data[0x8 / 2] = m_latched_MSLC_data;
+  } break;
+
+  case 0x18:
+  case 0x19:
+  case 0x1a:
+  case 0x1b:
+  case 0x1c:
+  case 0x1d:
+    // the manual claims the timer registers to be write only, report
+    // the live counter value anyway
+    {
+      int const idx = ((reg & 0x3f) - 0x18) >> 1;
+      u16 &data = m_udata.data[(0x18 + idx * 2) / 2];
+      data = (data & 0xff00) | timer_read(idx);
+    }
+    break;
+
+  case 0x2a:
+  case 0x2b:
+    m_udata.data[0x2a / 2] = m_mcieb;
+    break;
+
+  case 0x2c:
+  case 0x2d:
+    m_udata.data[0x2c / 2] = m_mcipd;
+    break;
+  }
 }
 
-u16 scsp_device::r16(u32 addr)
-{
-	u16 v = 0;
-	addr &= 0xffff;
-	if (addr < 0x400)
-	{
-		int slot = addr / 0x20;
-		addr &= 0x1f;
-		UpdateSlotRegR(slot, addr & 0x1f);
-		v = *((u16 *) (m_Slots[slot].udata.datab + (addr)));
-	}
-	else if (addr < 0x600)
-	{
-		if (addr < 0x430)
-		{
-			UpdateRegR(addr & 0x3f);
-			v = *((u16 *) (m_udata.datab + ((addr & 0x3f))));
-		}
-	}
-	else if (addr < 0x700)
-		v = m_RINGBUF[(addr-0x600)/2];
-	else
-	{
-		//DSP
-		if (addr < 0x780)  //COEF
-			v= *((u16 *) (m_DSP.COEF + (addr - 0x700) / 2));
-		else if (addr < 0x7c0)
-			v= *((u16 *) (m_DSP.MADRS + (addr - 0x780) / 2));
-		else if (addr < 0x800)
-			v= *((u16 *) (m_DSP.MADRS + (addr - 0x7c0) / 2));
-		else if (addr < 0xC00)
-			v= *((u16 *) (m_DSP.MPRO + (addr - 0x800) / 2));
-		else if (addr < 0xE00)
-		{
-			if (addr & 2)
-				v = m_DSP.TEMP[(addr >> 2) & 0x7f] & 0xffff;
-			else
-				v = m_DSP.TEMP[(addr >> 2) & 0x7f] >> 16;
-		}
-		else if (addr < 0xE80)
-		{
-			if (addr & 2)
-				v = m_DSP.MEMS[(addr >> 2) & 0x1f] & 0xffff;
-			else
-				v = m_DSP.MEMS[(addr >> 2) & 0x1f] >> 16;
-		}
-		else if (addr < 0xEC0)
-		{
-			if (addr & 2)
-				v = m_DSP.MIXS[(addr >> 2) & 0xf] & 0xffff;
-			else
-				v = m_DSP.MIXS[(addr >> 2) & 0xf] >> 16;
-		}
-		else if (addr < 0xEE0)
-			v = *((u16 *) (m_DSP.EFREG + (addr - 0xec0) / 2));
-		else
-		{
-			// saturn Multiplayer Audio CDs and kyutnkai (68k PC=004A3A) reads from 0xee0/0xee2 EXTS
-			// returns back current sample, makes the balloons in former to inflate.
-			logerror("%s: SCSP Reading from EXTS register %08x\n", machine().describe_context(), addr);
-			if (addr < 0xEE4)
-				v = *((u16 *) (m_DSP.EXTS + (addr - 0xee0) / 2));
-		}
-	}
-	return v;
+void scsp_device::w16(u32 addr, u16 val, u16 mem_mask) {
+  addr &= 0xffff;
+  if (addr < 0x400) {
+    int slot = addr / 0x20;
+    addr &= 0x1f;
+    *((u16 *)(m_Slots[slot].udata.datab + (addr))) = val;
+    UpdateSlotReg(slot, addr & 0x1f);
+  } else if (addr < 0x600) {
+    if (addr < 0x430) {
+      if (addr == 0x404)
+        return; // MIBUF and MIDI status are read-only, including DMA writes.
+      // SCIPD and MCIPD are r/o except for bit 5 CPU irqs
+      if (addr == 0x420 || addr == 0x42c) {
+        *((u16 *)(m_udata.datab + ((addr & 0x3f)))) |= val & mem_mask & 0x20;
+      } else if (addr == 0x422 || addr == 0x42e) {
+        // Interrupt reset ports are write-one commands, not merged storage.
+        // Inactive byte lanes must not replay a previous acknowledgement.
+        *((u16 *)(m_udata.datab + ((addr & 0x3f)))) = val & mem_mask;
+      } else
+        *((u16 *)(m_udata.datab + ((addr & 0x3f)))) = val;
+      UpdateReg(addr & 0x3f, mem_mask);
+    }
+  } else if (addr < 0x700)
+    m_RINGBUF[(addr - 0x600) / 2] = val;
+  else {
+    // DSP
+    if (addr < 0x780) // COEF
+      *((u16 *)(m_DSP.COEF + (addr - 0x700) / 2)) = val;
+    else if (addr < 0x7c0)
+      *((u16 *)(m_DSP.MADRS + (addr - 0x780) / 2)) = val;
+    else if (addr < 0x800) // MADRS is mirrored twice
+      *((u16 *)(m_DSP.MADRS + (addr - 0x7c0) / 2)) = val;
+    else if (addr < 0xC00) {
+      *((uint16_t *)(m_DSP.MPRO + (addr - 0x800) / 2)) = val;
+
+      if (addr == 0xBF0) {
+        m_DSP.Start();
+      }
+    }
+  }
 }
 
-
-inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
-{
-	if (SSCTL(slot) == 3) // manual says cannot be used
-	{
-		logerror("SCSP: Invaild SSCTL setting at slot %02x\n", slot->slot);
-		return 0;
-	}
-
-	s32 sample = 0; // NB: Shouldn't be necessary, but GCC 8.2.1 claims otherwise.
-	int step = slot->step;
-	u32 addr1, addr2, addr_select;                                   // current and next sample addresses
-	u32 *addr[2]      = {&addr1, &addr2};                          // used for linear interpolation
-	u32 *slot_addr[2] = {&(slot->cur_addr), &(slot->nxt_addr)};    //
-
-	if (PLFOS(slot) != 0)
-	{
-		step = step * PLFO_Step(&(slot->PLFO));
-		step >>= SHIFT;
-	}
-
-	if (PCM8B(slot))
-	{
-		addr1 = slot->cur_addr >> SHIFT;
-		addr2 = slot->nxt_addr >> SHIFT;
-	}
-	else
-	{
-		addr1 = (slot->cur_addr >> (SHIFT - 1)) & ~1;
-		addr2 = (slot->nxt_addr >> (SHIFT - 1)) & ~1;
-	}
-
-	if (MDL(slot) != 0 || MDXSL(slot) != 0 || MDYSL(slot) != 0)
-	{
-		s32 smp = (m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] + m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) / 2;
-
-		smp <<= 0xA; // associate cycle with 1024
-		smp >>= 0x1A - MDL(slot); // ex. for MDL=0xF, sample range corresponds to +/- 64 pi (32=2^5 cycles) so shift by 11 (16-5 == 0x1A-0xF)
-		if (!PCM8B(slot)) smp <<= 1;
-
-		addr1 += smp; addr2 += smp;
-	}
-
-	if (SSCTL(slot) == 0) // External DRAM data
-	{
-		if (PCM8B(slot)) //8 bit signed
-		{
-			int8_t p1 = read_byte(SA(slot) + addr1);
-			int8_t p2 = read_byte(SA(slot) + addr2);
-			s32 s;
-			s32 fpart=slot->cur_addr & ((1 << SHIFT) - 1);
-			s = (int) (p1 << 8) * ((1 << SHIFT) - fpart) + (int) (p2 << 8) * fpart;
-			sample = (s >> SHIFT);
-		}
-		else    //16 bit signed (endianness?)
-		{
-			s16 p1 = read_word(SA(slot) + addr1);
-			s16 p2 = read_word(SA(slot) + addr2);
-			s32 s;
-			s32 fpart = slot->cur_addr & ((1 << SHIFT) - 1);
-			s = (int)(p1) * ((1 << SHIFT) - fpart) + (int)(p2) * fpart;
-			sample = (s >> SHIFT);
-		}
-	}
-	else if (SSCTL(slot) == 1)  // Internally generated data (Noise)
-		sample = (s16)(machine().rand() & 0xffff); // Unknown algorithm
-	else if (SSCTL(slot) >= 2)  // Internally generated data (All 0)
-		sample = 0;
-
-	if (SBCTL(slot) & 0x1)
-		sample ^= 0x7FFF;
-	if (SBCTL(slot) & 0x2)
-		sample = (s16)(sample ^ 0x8000);
-
-	if (slot->Backwards)
-		slot->cur_addr -= step;
-	else
-		slot->cur_addr += step;
-	slot->nxt_addr = slot->cur_addr + (1 << SHIFT);
-
-	addr1 = slot->cur_addr >> SHIFT;
-	addr2 = slot->nxt_addr >> SHIFT;
-
-	if (addr1 >= LSA(slot) && !(slot->Backwards))
-	{
-		if (LPSLNK(slot) && slot->EG.state == SCSP_ATTACK)
-			slot->EG.state = SCSP_DECAY1;
-	}
-
-	for (addr_select = 0; addr_select < 2; addr_select++)
-	{
-		s32 rem_addr;
-		switch (LPCTL(slot))
-		{
-		case 0: //no loop
-			if (*addr[addr_select] >= LSA(slot) && *addr[addr_select] >= LEA(slot))
-			{
-				//slot->active=0;
-				StopSlot(slot, 0);
-			}
-			break;
-		case 1: //normal loop
-			if (*addr[addr_select] >= LEA(slot))
-			{
-				rem_addr = *slot_addr[addr_select] - (LEA(slot) << SHIFT);
-				*slot_addr[addr_select] = (LSA(slot) << SHIFT) + rem_addr;
-			}
-			break;
-		case 2: //reverse loop
-			if ((*addr[addr_select] >= LSA(slot)) && !(slot->Backwards))
-			{
-				rem_addr = *slot_addr[addr_select] - (LSA(slot) << SHIFT);
-				*slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
-				slot->Backwards = 1;
-			}
-			else if ((*addr[addr_select] < LSA(slot) || (*slot_addr[addr_select] & 0x80000000)) && slot->Backwards)
-			{
-				rem_addr = (LSA(slot) << SHIFT) - *slot_addr[addr_select];
-				*slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
-			}
-			break;
-		case 3: //ping-pong
-			if (*addr[addr_select] >= LEA(slot)) //reached end, reverse till start
-			{
-				rem_addr = *slot_addr[addr_select] - (LEA(slot) << SHIFT);
-				*slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
-				slot->Backwards = 1;
-			}
-			else if ((*addr[addr_select] < LSA(slot) || (*slot_addr[addr_select] & 0x80000000)) && slot->Backwards)//reached start or negative
-			{
-				rem_addr = (LSA(slot) << SHIFT) - *slot_addr[addr_select];
-				*slot_addr[addr_select] = (LSA(slot) << SHIFT) + rem_addr;
-				slot->Backwards = 0;
-			}
-			break;
-		}
-	}
-
-	if (!SDIR(slot))
-	{
-		if (ALFOS(slot) != 0)
-		{
-			sample = sample * ALFO_Step(&(slot->ALFO));
-			sample >>= SHIFT;
-		}
-
-		if (slot->EG.state == SCSP_ATTACK)
-			sample = (sample * EG_Update(slot)) >> SHIFT;
-		else
-			sample = (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT - 10)]) >> SHIFT;
-	}
-
-	if (!STWINH(slot))
-	{
-		if (!SDIR(slot))
-		{
-			u16 Enc = ((TL(slot)) << 0x0) | (0x7 << 0xd);
-			*m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 1);
-		}
-		else
-		{
-			u16 Enc = (0 << 0x0) | (0x7 << 0xd);
-			*m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 1);
-		}
-	}
-
-	return sample;
+u16 scsp_device::r16(u32 addr, u16 mem_mask) {
+  u16 v = 0;
+  addr &= 0xffff;
+  if (addr < 0x400) {
+    int slot = addr / 0x20;
+    addr &= 0x1f;
+    UpdateSlotRegR(slot, addr & 0x1f);
+    v = *((u16 *)(m_Slots[slot].udata.datab + (addr)));
+  } else if (addr < 0x600) {
+    if (addr < 0x430) {
+      UpdateRegR(addr & 0x3f, mem_mask);
+      v = *((u16 *)(m_udata.datab + ((addr & 0x3f))));
+    }
+  } else if (addr < 0x700)
+    v = m_RINGBUF[(addr - 0x600) / 2];
+  else {
+    // DSP
+    if (addr < 0x780) // COEF
+      v = *((u16 *)(m_DSP.COEF + (addr - 0x700) / 2));
+    else if (addr < 0x7c0)
+      v = *((u16 *)(m_DSP.MADRS + (addr - 0x780) / 2));
+    else if (addr < 0x800)
+      v = *((u16 *)(m_DSP.MADRS + (addr - 0x7c0) / 2));
+    else if (addr < 0xC00)
+      v = *((u16 *)(m_DSP.MPRO + (addr - 0x800) / 2));
+    else if (addr < 0xE00) {
+      if (addr & 2)
+        v = m_DSP.TEMP[(addr >> 2) & 0x7f] & 0xffff;
+      else
+        v = m_DSP.TEMP[(addr >> 2) & 0x7f] >> 16;
+    } else if (addr < 0xE80) {
+      if (addr & 2)
+        v = m_DSP.MEMS[(addr >> 2) & 0x1f] & 0xffff;
+      else
+        v = m_DSP.MEMS[(addr >> 2) & 0x1f] >> 16;
+    } else if (addr < 0xEC0) {
+      if (addr & 2)
+        v = m_DSP.MIXS[(addr >> 2) & 0xf] & 0xffff;
+      else
+        v = m_DSP.MIXS[(addr >> 2) & 0xf] >> 16;
+    } else if (addr < 0xEE0)
+      v = *((u16 *)(m_DSP.EFREG + (addr - 0xec0) / 2));
+    else {
+      // saturn Multiplayer Audio CDs and kyutnkai (68k PC=004A3A) reads from
+      // 0xee0/0xee2 EXTS returns back current sample, makes the balloons in
+      // former to inflate.
+      logerror("%s: SCSP Reading from EXTS register %08x\n",
+               machine().describe_context(), addr);
+      if (addr < 0xEE4)
+        v = *((u16 *)(m_DSP.EXTS + (addr - 0xee0) / 2));
+    }
+  }
+  return v;
 }
 
-void scsp_device::DoMasterSamples(sound_stream &stream)
-{
-	for (int s = 0; s < stream.samples(); ++s)
-	{
-		s32 smpl = 0, smpr = 0;
+inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
+  if (SSCTL(slot) == 3) // manual says cannot be used
+  {
+    logerror("SCSP: Invaild SSCTL setting at slot %02x\n", slot->slot);
+    return 0;
+  }
 
-		for (int sl = 0; sl < 32; ++sl)
-		{
+  s32 sample = 0; // NB: Shouldn't be necessary, but GCC 8.2.1 claims otherwise.
+  int step = slot->step;
+  u32 addr1, addr2, addr_select;   // current and next sample addresses
+  u32 *addr[2] = {&addr1, &addr2}; // used for linear interpolation
+  u32 *slot_addr[2] = {&(slot->cur_addr), &(slot->nxt_addr)}; //
+
+  bool const lfo_hold = LFO_ResetHold(slot);
+
+  if (PLFOS(slot) != 0) {
+    step = step * PLFO_Step(&(slot->PLFO), lfo_hold);
+    step >>= SHIFT;
+  }
+
+  if (PCM8B(slot)) {
+    addr1 = slot->cur_addr >> SHIFT;
+    addr2 = slot->nxt_addr >> SHIFT;
+  } else {
+    addr1 = (slot->cur_addr >> (SHIFT - 1)) & ~1;
+    addr2 = (slot->nxt_addr >> (SHIFT - 1)) & ~1;
+  }
+
+  // interpolation weight of addr1/addr2; the FM path below moves both
+  // addresses by the same amount, so it moves the fraction with them
+  s32 fpart = slot->cur_addr & ((1 << SHIFT) - 1);
+
+  if (MDL(slot) != 0 || MDXSL(slot) != 0 || MDYSL(slot) != 0) {
+    // Averaging operation unit (ST-077-R2-052594 p.54): the two sound stack
+    // values are each halved before being added, so their sum cannot
+    // overflow, and the result is ZD = (XD + YD) / 2.
+    s32 const zd = (m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] +
+                    m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) /
+                   2;
+
+    // The phase adder keeps fractional address bits (the PG itself steps by
+    // fractions of a word through FNS), so the modulation offset is applied to
+    // the fixed point addresses instead of to the integer word addresses.
+    s32 const offset = MD_Shift(zd, MDL(slot));
+    if (offset != 0) {
+      u32 const cur = slot->cur_addr + offset;
+      u32 const nxt = slot->nxt_addr + offset;
+      if (PCM8B(slot)) {
+        addr1 = cur >> SHIFT;
+        addr2 = nxt >> SHIFT;
+      } else {
+        addr1 = (cur >> (SHIFT - 1)) & ~1;
+        addr2 = (nxt >> (SHIFT - 1)) & ~1;
+      }
+      fpart = cur & ((1 << SHIFT) - 1);
+    }
+  }
+
+  if (SSCTL(slot) == 0) // External DRAM data
+  {
+    if (PCM8B(slot)) // 8 bit signed
+    {
+      int8_t p1 = read_byte(SA(slot) + addr1);
+      int8_t p2 = read_byte(SA(slot) + addr2);
+      s32 s;
+      s = (int)(p1 << 8) * ((1 << SHIFT) - fpart) + (int)(p2 << 8) * fpart;
+      sample = (s >> SHIFT);
+    } else // 16 bit signed (endianness?)
+    {
+      s16 p1 = read_word(SA(slot) + addr1);
+      s16 p2 = read_word(SA(slot) + addr2);
+      s32 s;
+      s = (int)(p1) * ((1 << SHIFT) - fpart) + (int)(p2)*fpart;
+      sample = (s >> SHIFT);
+    }
+  } else if (SSCTL(slot) == 1) // Internally generated data (Noise)
+    sample = (s16)((m_lfsr & 0xff)
+                   << 8);    // low byte of the LFSR, as Mednafen and Ymir do
+  else if (SSCTL(slot) >= 2) // Internally generated data (All 0)
+    sample = 0;
+
+  if (SBCTL(slot) & 0x1)
+    sample ^= 0x7FFF;
+  if (SBCTL(slot) & 0x2)
+    sample = (s16)(sample ^ 0x8000);
+
+  if (slot->Backwards)
+    slot->cur_addr -= step;
+  else
+    slot->cur_addr += step;
+  slot->nxt_addr = slot->cur_addr + (1 << SHIFT);
+
+  addr1 = slot->cur_addr >> SHIFT;
+  addr2 = slot->nxt_addr >> SHIFT;
+
+  if (addr1 >= LSA(slot) && !(slot->Backwards)) {
+    if (LPSLNK(slot) && slot->EG.state == SCSP_ATTACK)
+      slot->EG.state = SCSP_DECAY1;
+  }
+
+  for (addr_select = 0; addr_select < 2; addr_select++) {
+    s32 rem_addr;
+    switch (LPCTL(slot)) {
+    case 0: // no loop
+      if (*addr[addr_select] >= LSA(slot) && *addr[addr_select] >= LEA(slot)) {
+        // slot->active=0;
+        StopSlot(slot, 0);
+      }
+      break;
+    case 1: // normal loop
+      if (*addr[addr_select] >= LEA(slot)) {
+        rem_addr = *slot_addr[addr_select] - (LEA(slot) << SHIFT);
+        *slot_addr[addr_select] = (LSA(slot) << SHIFT) + rem_addr;
+      }
+      break;
+    case 2: // reverse loop
+      if ((*addr[addr_select] >= LSA(slot)) && !(slot->Backwards)) {
+        rem_addr = *slot_addr[addr_select] - (LSA(slot) << SHIFT);
+        *slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
+        slot->Backwards = 1;
+      } else if ((*addr[addr_select] < LSA(slot) ||
+                  (*slot_addr[addr_select] & 0x80000000)) &&
+                 slot->Backwards) {
+        rem_addr = (LSA(slot) << SHIFT) - *slot_addr[addr_select];
+        *slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
+      }
+      break;
+    case 3: // ping-pong ("alternative loop", ST-077-R2-052594 section 4.3)
+    {
+      // The boundary test has to follow the playback direction: the forward
+      // leg turns at LEA and the backward leg turns at LSA (MiSTer
+      // SCSP.sv "Alternative loop" mirrors with CUR_SO - (LEA<<1) on the way
+      // out and CUR_SO + (LSA<<1) on the way back, selected by CUR_SADIR).
+      // Testing LEA first, as the inherited code did, made a phase that ran
+      // past LSA satisfy the LEA test instead: the fixed point address wraps
+      // to a huge unsigned value, so the fold bounced off LEA and the loop
+      // never came back to LSA.  Measured with an eight bit address watermark
+      // in sound RAM: with LSA=0, LEA=64 the slot read the same offset for
+      // 1200 samples instead of a triangle (LSA=16 was unaffected, because
+      // then the wrapped address really is below LSA).
+      // The direction is sampled once per sample so both addresses of the
+      // interpolation pair fold the same way.
+      bool const backwards = slot->Backwards;
+      if (!backwards) {
+        if (*addr[addr_select] >= LEA(slot)) // reached end, reverse to start
+        {
+          rem_addr = *slot_addr[addr_select] - (LEA(slot) << SHIFT);
+          *slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
+          slot->Backwards = 1;
+        }
+      } else if (*addr[addr_select] < LSA(slot) ||
+                 (*slot_addr[addr_select] & 0x80000000)) // reached start
+      {
+        rem_addr = (LSA(slot) << SHIFT) - *slot_addr[addr_select];
+        *slot_addr[addr_select] = (LSA(slot) << SHIFT) + rem_addr;
+        slot->Backwards = 0;
+      }
+      break;
+    }
+    }
+  }
+
+  if (!SDIR(slot)) {
+    if (ALFOS(slot) != 0) {
+      sample = sample * ALFO_Step(&(slot->ALFO), lfo_hold);
+      sample >>= SHIFT;
+    }
+
+    sample =
+        (sample * m_EG_TABLE[EG_Update(slot, m_eg_clock) >> (SHIFT - 10)]) >>
+        SHIFT;
+  }
+
+  if (!STWINH(slot)) {
+    // ST-077-R2-052594 p.46: "SOUS ... is a data buffer for a slot output", and
+    // the p.53 block diagram has the level multiplier (TL, ALFO and the EG
+    // coefficient) feed both the sound stack write and the digital mixer, so
+    // only TL belongs here - the mixer's DISDL/DIPAN stage does not, and the
+    // stack is 16 bit wide like the SOUS register file at 0x600.
+    // LPANTABLE carries a 4x mixer gain, so shifting by SHIFT+2 undoes it and
+    // stores the slot output itself.  The previous SHIFT+1 store wrote twice
+    // the slot output and wrapped for every level at or above half scale,
+    // which the modulation read (which halved the two stack values) could not
+    // recover; the MDL scaler now works from the slot output directly, the way
+    // Table 4.17 is defined.
+    if (!SDIR(slot)) {
+      u16 Enc = ((TL(slot)) << 0x0) | (0x7 << 0xd);
+      *m_RBUFDST = s16(std::clamp<s32>((sample * m_LPANTABLE[Enc]) >> (SHIFT + 2),
+                                       -32768, 32767));
+    } else {
+      u16 Enc = (0 << 0x0) | (0x7 << 0xd);
+      *m_RBUFDST = s16(std::clamp<s32>((sample * m_LPANTABLE[Enc]) >> (SHIFT + 2),
+                                       -32768, 32767));
+    }
+  }
+
+  return sample;
+}
+
+void scsp_device::DoMasterSamples(sound_stream &stream) {
+  for (int s = 0; s < stream.samples(); ++s) {
+    s32 smpl = 0, smpr = 0;
+
+    // the envelope engine is clocked by the global sample counter: its
+    // phase gates (counter_shift / 8-phase increment patterns) advance
+    // only on samples whose low counter bits are zero
+    ++m_eg_clock;
+
+    // The DSP runs first and consumes the MIXS values written by the slots
+    // during the *previous* sample: the chip interleaves slot processing and
+    // DSP steps inside one sample period, so the effect input of a given
+    // slot is only visible to the DSP one sample later.
+    // Step() also zeroes MIXS, leaving a clean accumulator for the slots.
+    m_DSP.Step();
+
+    for (int i = 0; i < 16; ++i) {
+      SCSP_SLOT *slot = m_Slots + i;
+      if (EFSDL(slot)) {
+        u16 Enc = ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd);
+        smpl += (m_DSP.EFREG[i] * m_LPANTABLE[Enc]) >> SHIFT;
+        smpr += (m_DSP.EFREG[i] * m_RPANTABLE[Enc]) >> SHIFT;
+      }
+    }
+
+    for (int i = 0; i < 2; ++i) {
+      SCSP_SLOT *slot =
+          m_Slots + i + 16; // 100217, 100237 EFSDL, EFPAN for EXTS0/1
+      // !EFSDL case testable in saturn Multiplayer with Audio CD with default
+      // values.
+      u16 Enc = EFSDL(slot) ? ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd)
+                            : (((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd));
+      {
+        // EXTS is latched at the end of a sample period on hardware, so
+        // the DSP picks it up on the next one
+        m_DSP.EXTS[i] = s32(stream.get(i, s) * 32768.0);
+        smpl += (m_DSP.EXTS[i] * m_LPANTABLE[Enc]) >> SHIFT;
+        smpr += (m_DSP.EXTS[i] * m_RPANTABLE[Enc]) >> SHIFT;
+      }
+    }
+
+    for (int sl = 0; sl < 32; ++sl) {
 #if SCSP_FM_DELAY
-			m_RBUFDST = m_DELAYBUF + m_DELAYPTR;
+      m_RBUFDST = m_DELAYBUF + m_DELAYPTR;
 #else
-			m_RBUFDST = m_RINGBUF + m_BUFPTR;
+      m_RBUFDST = m_RINGBUF + m_BUFPTR;
 #endif
-			if (m_Slots[sl].active)
-			{
-				SCSP_SLOT *slot = m_Slots + sl;
-				u16 Enc;
+      // the noise generator is a 17-bit LFSR clocked once per slot step,
+      // active slot or not (Mednafen and Ymir both clock it per slot)
+      m_lfsr = (m_lfsr >> 1) | (((m_lfsr >> 5) ^ m_lfsr) & 1) << 16;
 
-				s32 sample = UpdateSlot(slot);
+      if (m_Slots[sl].active) {
+        SCSP_SLOT *slot = m_Slots + sl;
+        u16 Enc;
 
-				// SDIR ("sound direct") sends the raw sample straight to the output,
-				// bypassing the envelope generator AND the TL attenuator (the EG/ALFO
-				// bypass is handled in UpdateSlot). BOTH downstream mixes -- the DSP
-				// input feed here and the direct-output mix below -- must therefore
-				// zero TL when SDIR is set, otherwise a slot programmed with SDIR=1 +
-				// a large TL is wrongly muted.
-				// (Flash Beats keys its SFX with SDIR=1, TL=0xff = -95 dB; in
-				// particular its in-game/"Voice" SFX route only through the DSP
-				// (DISDL=0, IMXL>0), so without this the effect path is starved to
-				// near-silence.)
-				u16 eff_tl = SDIR(slot) ? 0 : TL(slot);
-				Enc = ((eff_tl) << 0x0) | ((IMXL(slot)) << 0xd);
-				m_DSP.SetSample((sample*m_LPANTABLE[Enc]) >> (SHIFT-2), ISEL(slot), IMXL(slot));
-				u16 dir_tl = SDIR(slot) ? 0 : TL(slot);
-				Enc = ((dir_tl) << 0x0) | ((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd);
-				{
-					smpl += (sample * m_LPANTABLE[Enc]) >> SHIFT;
-					smpr += (sample * m_RPANTABLE[Enc]) >> SHIFT;
-				}
-			}
+        s32 sample = UpdateSlot(slot);
+
+        // SDIR ("sound direct") sends the raw sample straight to the output,
+        // bypassing the envelope generator AND the TL attenuator (the EG/ALFO
+        // bypass is handled in UpdateSlot). BOTH downstream mixes -- the DSP
+        // input feed here and the direct-output mix below -- must therefore
+        // zero TL when SDIR is set, otherwise a slot programmed with SDIR=1 +
+        // a large TL is wrongly muted.
+        // (Flash Beats keys its SFX with SDIR=1, TL=0xff = -95 dB; in
+        // particular its in-game/"Voice" SFX route only through the DSP
+        // (DISDL=0, IMXL>0), so without this the effect path is starved to
+        // near-silence.)
+        u16 eff_tl = SDIR(slot) ? 0 : TL(slot);
+        Enc = ((eff_tl) << 0x0) | ((IMXL(slot)) << 0xd);
+        m_DSP.SetSample((sample * m_LPANTABLE[Enc]) >> (SHIFT - 2), ISEL(slot),
+                        IMXL(slot));
+        u16 dir_tl = SDIR(slot) ? 0 : TL(slot);
+        Enc =
+            ((dir_tl) << 0x0) | ((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd);
+        {
+          smpl += (sample * m_LPANTABLE[Enc]) >> SHIFT;
+          smpr += (sample * m_RPANTABLE[Enc]) >> SHIFT;
+        }
+      }
 
 #if SCSP_FM_DELAY
-			m_RINGBUF[(m_BUFPTR + 64 - (SCSP_FM_DELAY - 1)) & 63] = m_DELAYBUF[(m_DELAYPTR + SCSP_FM_DELAY - (SCSP_FM_DELAY - 1)) % SCSP_FM_DELAY];
+      m_RINGBUF[(m_BUFPTR + 64 - (SCSP_FM_DELAY - 1)) & 63] =
+          m_DELAYBUF[(m_DELAYPTR + SCSP_FM_DELAY - (SCSP_FM_DELAY - 1)) %
+                     SCSP_FM_DELAY];
 #endif
-			++m_BUFPTR;
-			m_BUFPTR &= 63;
+      ++m_BUFPTR;
+      m_BUFPTR &= 63;
 #if SCSP_FM_DELAY
-			++m_DELAYPTR;
-			if (m_DELAYPTR > SCSP_FM_DELAY-1) m_DELAYPTR = 0;
+      ++m_DELAYPTR;
+      if (m_DELAYPTR > SCSP_FM_DELAY - 1)
+        m_DELAYPTR = 0;
 #endif
-		}
+    }
 
-		m_DSP.Step();
+    // MVOL is a logarithmic attenuator applied to the 18 bit accumulator
+    // right before the DAC
+    smpl = (std::clamp<s32>(smpl, -131072, 131071) * s32(m_master_volume)) >> 8;
+    smpr = (std::clamp<s32>(smpr, -131072, 131071) * s32(m_master_volume)) >> 8;
 
-		for (int i = 0; i < 16; ++i)
-		{
-			SCSP_SLOT *slot = m_Slots + i;
-			if (EFSDL(slot))
-			{
-				u16 Enc = ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd);
-				smpl += (m_DSP.EFREG[i] * m_LPANTABLE[Enc]) >> SHIFT;
-				smpr += (m_DSP.EFREG[i] * m_RPANTABLE[Enc]) >> SHIFT;
-			}
-		}
-
-		for (int i = 0; i < 2; ++i)
-		{
-			SCSP_SLOT *slot = m_Slots + i + 16; // 100217, 100237 EFSDL, EFPAN for EXTS0/1
-			// !EFSDL case testable in saturn Multiplayer with Audio CD with default values.
-			u16 Enc = EFSDL(slot) ? ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd) : (((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd));
-			{
-				m_DSP.EXTS[i] = s32(stream.get(i, s) * 32768.0);
-				smpl += (m_DSP.EXTS[i] * m_LPANTABLE[Enc]) >> SHIFT;
-				smpr += (m_DSP.EXTS[i] * m_RPANTABLE[Enc]) >> SHIFT;
-			}
-		}
-
-		if (DAC18B())
-		{
-			stream.put_int_clamp(0, s, smpl, 131072);
-			stream.put_int_clamp(1, s, smpr, 131072);
-		}
-		else
-		{
-			stream.put_int_clamp(0, s, smpl >> 2, 32768);
-			stream.put_int_clamp(1, s, smpr >> 2, 32768);
-		}
-	}
+    if (DAC18B()) {
+      stream.put_int_clamp(0, s, smpl, 131072);
+      stream.put_int_clamp(1, s, smpr, 131072);
+    } else {
+      stream.put_int_clamp(0, s, smpl >> 2, 32768);
+      stream.put_int_clamp(1, s, smpr >> 2, 32768);
+    }
+  }
 }
 
-// TODO: this needs to be timer-ized
-// Very likely this is burst too.
-// - darius2j uses this at startup with DGATE enabled
-void scsp_device::exec_dma()
-{
-	static u16 tmp_dma[3];
-	int i;
+/* The DMA controller is not a fixed-rate engine: ST-077 3.2 gives it a
+   memory-access priority (below PCM/DSP fetches and DRAM refresh, above both
+   CPUs) without specifying a transfer rate, and both Ymir and mednafen run
+   the whole transfer as a burst when DEXE is written, so do the same here.
+   The wait states DMA imposes on the sound CPU are not modelled.
+   darius2j uses this at startup with DGATE enabled. */
+void scsp_device::exec_dma() {
+  // ST-077 p.101 explicitly prohibits DMA access to its own control registers
+  // and guarantees no behavior for it. Ignore self-targeting writes below:
+  // this preserves the programmed parameters and prevents recursive DEXE,
+  // rather than treating forbidden guest accesses as nested host transfers.
+  u32 mem_addr = m_dma.dmea;
+  u32 reg_addr = m_dma.drga;
+  u32 length = m_dma.dtlg;
+  bool const dir = m_dma.ddir;
+  bool const gate = m_dma.dgate;
 
-	logerror("SCSP: DMA transfer START\n"
-				"DMEA: %04x DRGA: %04x DTLG: %04x\n"
-				"DGATE: %d  DDIR: %d\n", m_dma.dmea, m_dma.drga, m_dma.dtlg, m_dma.dgate ? 1 : 0, m_dma.ddir ? 1 : 0);
+  /* note: we don't use space.read_word / write_word because it can happen that
+   * SH-2 enables the DMA instead of m68k. */
+  while (length) {
+    if (dir) {
+      // reg->mem: the register read still occurs when gated (register
+      // reads have side effects, e.g. popping the MIDI input buffer -
+      // mednafen observed the same); the gate only forces the stored
+      // value to 0
+      u16 const tmp = r16(reg_addr);
+      this->space().write_word(mem_addr, gate ? 0 : tmp);
+    } else {
+      u16 const tmp = read_word(mem_addr);
+      if (reg_addr < 0x412 || reg_addr > 0x416)
+        w16(reg_addr, gate ? 0 : tmp);
+    }
+    // both addresses always advance and wrap: the memory address stays
+    // word-aligned inside the 1 MB sound RAM window, the register
+    // address inside the 4 KB register window (as in mednafen/Ymir)
+    mem_addr = (mem_addr + 2) & 0xffffe;
+    reg_addr = (reg_addr + 2) & 0xffe;
+    length -= 2;
+  }
 
-	/* Copy the dma values in a temp storage for resuming later */
-	/* (DMA *can't* overwrite its parameters).                  */
-	if (!(m_dma.ddir))
-	{
-		for (i = 0; i < 3; i++)
-			tmp_dma[i] = m_udata.data[(0x12 + (i * 2)) / 2];
-	}
+  /* Job done */
+  m_udata.data[0x16 / 2] &= ~0x1000;
 
-	/* note: we don't use space.read_word / write_word because it can happen that SH-2 enables the DMA instead of m68k. */
-	/* TODO: don't know if params auto-updates, I guess not ... */
-	if (m_dma.ddir)
-	{
-		if (m_dma.dgate)
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				this->space().write_word(m_dma.dmea, 0);
-				m_dma.dmea += 2;
-			}
-		}
-		else
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				u16 tmp;
-				tmp = r16(m_dma.drga);
-				this->space().write_word(m_dma.dmea, tmp);
-				m_dma.dmea += 2;
-				m_dma.drga += 2;
-			}
-		}
-	}
-	else
-	{
-		if (m_dma.dgate)
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				w16(m_dma.drga, 0);
-				m_dma.drga += 2;
-			}
-		}
-		else
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				u16 tmp = read_word(m_dma.dmea);
-				w16(m_dma.drga, tmp);
-				m_dma.dmea += 2;
-				m_dma.drga += 2;
-			}
-		}
-	}
-
-	/*Resume the values*/
-	if (!(m_dma.ddir))
-	{
-		for (i = 0; i < 3; i++)
-			m_udata.data[(0x12 + (i * 2)) / 2] = tmp_dma[i];
-	}
-
-	/* Job done */
-	m_udata.data[0x16/2] &= ~0x1000;
-	/* request a dma end irq */
-	// TODO: do it inside CheckPendingIRQ
-	if (m_udata.data[0x1e/2] & 0x10)
-	{
-		popmessage("SCSP DMA IRQ triggered lv%d", m_IrqDMA);
-		m_irq_cb(m_IrqDMA, HOLD_LINE);
-	}
+  /* request a dma end irq, it's a regular interrupt source (bit 4) */
+  m_udata.data[0x20 / 2] |= 0x10;
+  CheckPendingIRQ();
+  MainCheckPendingIRQ(0x10);
 }
 
-
-u16 scsp_device::read(offs_t offset)
-{
-	m_stream->update();
-	return r16(offset * 2);
+u16 scsp_device::read(offs_t offset, u16 mem_mask) {
+  m_stream->update();
+  return r16(offset * 2, mem_mask);
 }
 
-void scsp_device::write(offs_t offset, u16 data, u16 mem_mask)
-{
-	m_stream->update();
+void scsp_device::write(offs_t offset, u16 data, u16 mem_mask) {
+  m_stream->update();
 
-	u16 tmp = r16(offset * 2);
-	COMBINE_DATA(&tmp);
-	w16(offset * 2, tmp);
+  u16 tmp = r16(offset * 2, 0); // peek for merging, not a MIDI data read
+  COMBINE_DATA(&tmp);
+  w16(offset * 2, tmp, mem_mask);
 }
 
-void scsp_device::tra_callback()
-{
-	m_midi_out_cb(transmit_register_get_data_bit());
+void scsp_device::reset_midi() {
+  m_MidiR = m_MidiW = m_MidiCount = 0;
+  m_MidiOutR = m_MidiOutW = m_MidiOutCount = 0;
+  m_MidiOverflow = false;
+  std::fill(std::begin(m_MidiStack), std::end(m_MidiStack), 0);
+  std::fill(std::begin(m_MidiOutStack), std::end(m_MidiOutStack), 0);
+  receive_register_reset();
+  transmit_register_reset();
 }
 
-void scsp_device::tra_complete()
-{
-	m_MidiOutR++;
-	m_MidiOutR &= 31;
-
-	// if buffer not empty, transmit next byte
-	if (m_MidiOutR != m_MidiOutW)
-	{
-		transmit_register_setup(m_MidiOutStack[m_MidiOutR]);
-	}
+void scsp_device::tra_callback() {
+  m_midi_out_cb(transmit_register_get_data_bit());
 }
 
-void scsp_device::rcv_complete()
-{
-	receive_register_extract();
-	m_MidiStack[m_MidiW++] = get_received_char();
-	m_MidiW &= 31;
+void scsp_device::tra_complete() {
+  // The frame just finished, so its byte leaves the FIFO now: MOEMP/MOFULL
+  // describe data still waiting to be sent out, and the output-empty request
+  // keeps its frame-completion timing.
+  if (m_MidiOutCount)
+    --m_MidiOutCount;
+  m_MidiOutR = (m_MidiOutR + 1) & 3;
 
-	CheckPendingIRQ();
+  // if buffer not empty, transmit next byte
+  if (m_MidiOutCount) {
+    transmit_register_setup(m_MidiOutStack[m_MidiOutR]);
+  } else {
+    // the output buffer has drained, request the MIDI out empty interrupt
+    // on both the sound CPU (SCIPD) and the main CPU (MCIPD) side
+    m_udata.data[0x20 / 2] |= 0x200;
+    CheckPendingIRQ();
+    MainCheckPendingIRQ(0x200);
+  }
 }
 
-//LFO handling
+void scsp_device::rcv_complete() {
+  receive_register_extract();
+  if (m_MidiCount == 4) {
+    // Figure 4.59/p.90: data arriving at a full buffer sets MIOVF and breaks
+    // MIDI communication. The queued bytes are kept; ST-077 does not say
+    // whether the new byte is discarded or replaces one.
+    m_MidiOverflow = true;
+  } else {
+    m_MidiStack[m_MidiW] = get_received_char();
+    m_MidiW = (m_MidiW + 1) & 3;
+    ++m_MidiCount;
+  }
 
-#define LFIX(v) ((u32) ((float) (1 << LFO_SHIFT) * (v)))
+  CheckPendingIRQ();
+  MainCheckPendingIRQ(0x08);
+}
 
-//Convert DB to multiply amplitude
-#define DB(v)   LFIX(powf(10.0f, v / 20.0f))
+// LFO handling
 
-//Convert cents to step increment
+#define LFIX(v) ((u32)((float)(1 << LFO_SHIFT) * (v)))
+
+// Convert DB to multiply amplitude
+#define DB(v) LFIX(powf(10.0f, v / 20.0f))
+
+// Convert cents to step increment
 #define CENTS(v) LFIX(powf(2.0f, v / 1200.0f))
 
+static const float LFOFreq[32] = {
+    0.17f, 0.19f, 0.23f, 0.27f, 0.34f, 0.39f, 0.45f, 0.55f, 0.68f, 0.78f, 0.92f,
+    1.10f, 1.39f, 1.60f, 1.87f, 2.27f, 2.87f, 3.31f, 3.92f, 4.79f, 6.15f, 7.18f,
+    8.60f, 10.8f, 14.4f, 17.2f, 21.5f, 28.7f, 43.1f, 57.4f, 86.1f, 172.3f};
+static const float ASCALE[8] = {0.0f, 0.4f, 0.8f,  1.5f,
+                                3.0f, 6.0f, 12.0f, 24.0f};
+static const float PSCALE[8] = {0.0f,  7.0f,   13.5f,  27.0f,
+                                55.0f, 112.0f, 230.0f, 494.0f};
 
-static const float LFOFreq[32] =
-{
-	0.17f,0.19f,0.23f,0.27f,0.34f,0.39f,0.45f,0.55f,0.68f,0.78f,0.92f,1.10f,1.39f,1.60f,1.87f,2.27f,
-	2.87f,3.31f,3.92f,4.79f,6.15f,7.18f,8.60f,10.8f,14.4f,17.2f,21.5f,28.7f,43.1f,57.4f,86.1f,172.3f
-};
-static const float ASCALE[8] = {0.0f,0.4f,0.8f,1.5f,3.0f,6.0f,12.0f,24.0f};
-static const float PSCALE[8] = {0.0f,7.0f,13.5f,27.0f,55.0f,112.0f,230.0f,494.0f};
+void scsp_device::LFO_Init() {
+  for (int i = 0; i < 256; ++i) {
+    int a, p;
+    //      float TL;
+    // Saw
+    a = 255 - i;
+    if (i < 128)
+      p = i;
+    else
+      p = i - 256;
+    m_ALFO_SAW[i] = a;
+    m_PLFO_SAW[i] = p;
 
+    // Square
+    if (i < 128) {
+      a = 255;
+      p = 127;
+    } else {
+      a = 0;
+      p = -128;
+    }
+    m_ALFO_SQR[i] = a;
+    m_PLFO_SQR[i] = p;
 
-void scsp_device::LFO_Init()
-{
-	for (int i = 0; i < 256; ++i)
-	{
-		int a,p;
-//      float TL;
-		//Saw
-		a = 255-i;
-		if (i < 128)
-			p = i;
-		else
-			p = i - 256;
-		m_ALFO_SAW[i] = a;
-		m_PLFO_SAW[i] = p;
+    // Tri
+    if (i < 128)
+      a = 255 - (i * 2);
+    else
+      a = (i * 2) - 256;
+    if (i < 64)
+      p = i * 2;
+    else if (i < 128)
+      p = 255 - i * 2;
+    else if (i < 192)
+      p = 256 - i * 2;
+    else
+      p = i * 2 - 511;
+    m_ALFO_TRI[i] = a;
+    m_PLFO_TRI[i] = p;
 
-		//Square
-		if (i < 128)
-		{
-			a = 255;
-			p = 127;
-		}
-		else
-		{
-			a = 0;
-			p = -128;
-		}
-		m_ALFO_SQR[i] = a;
-		m_PLFO_SQR[i] = p;
+    // the noise waveform is not a table, it comes from the LFSR
+  }
 
-		//Tri
-		if (i < 128)
-			a = 255 - (i * 2);
-		else
-			a = (i * 2) - 256;
-		if (i < 64)
-			p = i * 2;
-		else if (i < 128)
-			p = 255 - i * 2;
-		else if (i < 192)
-			p = 256 - i * 2;
-		else
-			p = i * 2 - 511;
-		m_ALFO_TRI[i] = a;
-		m_PLFO_TRI[i] = p;
-
-		//noise
-		//a=lfo_noise[i];
-		a = machine().rand() & 0xff;
-		p = 128 - a;
-		m_ALFO_NOI[i] = a;
-		m_PLFO_NOI[i] = p;
-	}
-
-	for (int s = 0; s < 8; ++s)
-	{
-		float limit = PSCALE[s];
-		for (int i = -128; i < 128; ++i)
-		{
-			m_PSCALES[s][i+128] = CENTS(((limit * (float) i) / 128.0f));
-		}
-		limit = -ASCALE[s];
-		for (int i = 0; i < 256; ++i)
-		{
-			m_ASCALES[s][i] = DB(((limit * (float) i) / 256.0f));
-		}
-	}
+  for (int s = 0; s < 8; ++s) {
+    float limit = PSCALE[s];
+    for (int i = -128; i < 128; ++i) {
+      m_PSCALES[s][i + 128] = CENTS(((limit * (float)i) / 128.0f));
+    }
+    limit = -ASCALE[s];
+    for (int i = 0; i < 256; ++i) {
+      m_ASCALES[s][i] = DB(((limit * (float)i) / 256.0f));
+    }
+  }
 }
 
-s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO)
-{
-	int p;
-	LFO->phase += LFO->phase_step;
-#if LFO_SHIFT!=8
-	LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
-#endif
-	p=LFO->table[LFO->phase >> LFO_SHIFT];
-	p=LFO->scale[p+128];
-	return p << (SHIFT - LFO_SHIFT);
+s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO, bool hold) {
+  int p;
+  // A held LFO reports its reset-phase output, so the accumulator must not run.
+  if (hold && !LFO->noise)
+    LFO->phase = 0;
+  else
+    LFO->phase += LFO->phase_step; // wraps at 2^32 == one cycle
+  p = LFO->noise ? (int)(s8)(m_lfsr & ~1)
+                 : LFO->table[LFO->phase >> LFO_PHASE_SHIFT];
+  p = LFO->scale[p + 128];
+  return p << (SHIFT - LFO_SHIFT);
 }
 
-s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO)
-{
-	int p;
-	LFO->phase += LFO->phase_step;
-#if LFO_SHIFT!=8
-	LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
-#endif
-	p=LFO->table[LFO->phase >> LFO_SHIFT];
-	p=LFO->scale[p];
-	return p << (SHIFT - LFO_SHIFT);
+s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO, bool hold) {
+  int p;
+  // A held LFO reports its reset-phase output, so the accumulator must not run.
+  if (hold && !LFO->noise)
+    LFO->phase = 0;
+  else
+    LFO->phase += LFO->phase_step; // wraps at 2^32 == one cycle
+  p = LFO->noise ? (int)(u8)(m_lfsr & ~1)
+                 : LFO->table[LFO->phase >> LFO_PHASE_SHIFT];
+  p = LFO->scale[p];
+  return p << (SHIFT - LFO_SHIFT);
 }
 
-void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO,u32 LFOF,u32 LFOWS,u32 LFOS,int ALFO)
-{
-	float step = (float) LFOFreq[LFOF] * 256.0f / 44100.0f;
-	LFO->phase_step = (u32) ((float) (1 << LFO_SHIFT) * step);
-	if (ALFO)
-	{
-		switch (LFOWS)
-		{
-			case 0: LFO->table = m_ALFO_SAW; break;
-			case 1: LFO->table = m_ALFO_SQR; break;
-			case 2: LFO->table = m_ALFO_TRI; break;
-			case 3: LFO->table = m_ALFO_NOI; break;
-		}
-		LFO->scale = m_ASCALES[LFOS];
-	}
-	else
-	{
-		switch (LFOWS)
-		{
-			case 0: LFO->table = m_PLFO_SAW; break;
-			case 1: LFO->table = m_PLFO_SQR; break;
-			case 2: LFO->table = m_PLFO_TRI; break;
-			case 3: LFO->table = m_PLFO_NOI; break;
-		}
-		LFO->scale = m_PSCALES[LFOS];
-	}
+void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS,
+                                  u32 LFOS, int ALFO) {
+  // Steps are per output sample: use the actual stream rate instead of
+  // assuming 44100 (ST-V runs the chip slightly faster, and the rate is
+  // programmable through the clock). The accumulator wraps once per LFO
+  // cycle and the 8-bit table index is the top byte (phase >> LFO_PHASE_SHIFT),
+  // so one cycle is 2^32 phase units and the per-sample increment is
+  // frequency * 2^32 / rate. Round to nearest so the slow end of Table 4.21
+  // survives: at 0.17 Hz the increment is ~16552/2^32 per sample, which the
+  // old 8.8 accumulator truncated to zero. Beetle and MiSTer both reach the
+  // same low frequencies with an integer sample divider instead.
+  double const rate = double(clock()) / SAMPLE_CLOCKS;
+  LFO->phase_step = (u32)std::llround(
+      double(LFOFreq[LFOF]) * 4294967296.0 / rate);
+  if (ALFO) {
+    switch (LFOWS) {
+    case 0:
+      LFO->table = m_ALFO_SAW;
+      break;
+    case 1:
+      LFO->table = m_ALFO_SQR;
+      break;
+    case 2:
+      LFO->table = m_ALFO_TRI;
+      break;
+    case 3:
+      LFO->table = nullptr;
+      break; // taken from the LFSR
+    }
+    LFO->noise = (LFOWS == 3);
+    LFO->scale = m_ASCALES[LFOS];
+  } else {
+    switch (LFOWS) {
+    case 0:
+      LFO->table = m_PLFO_SAW;
+      break;
+    case 1:
+      LFO->table = m_PLFO_SQR;
+      break;
+    case 2:
+      LFO->table = m_PLFO_TRI;
+      break;
+    case 3:
+      LFO->table = nullptr;
+      break; // taken from the LFSR
+    }
+    LFO->noise = (LFOWS == 3);
+    LFO->scale = m_PSCALES[LFOS];
+  }
 }

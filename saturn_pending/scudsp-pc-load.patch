@@ -1,0 +1,184 @@
+diff --git a/src/devices/cpu/scudsp/scudsp.cpp b/src/devices/cpu/scudsp/scudsp.cpp
+index 8908cfa2..8c9ba668 100644
+--- a/src/devices/cpu/scudsp/scudsp.cpp
++++ b/src/devices/cpu/scudsp/scudsp.cpp
+@@ -363,6 +363,7 @@ uint32_t scudsp_cpu_device::program_control_r()
+ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+ {
+ 	uint32_t oldval, newval;
++	bool const stopped_on_entry = !BIT(m_flags, EXF) || m_paused;
+ 
+ 	oldval = (m_flags & 0xffffff00) | (m_pc & 0xff);
+ 	newval = oldval;
+@@ -386,10 +387,13 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
+ 		m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
+ 	}
+ 
+-	// set new PC if transfer enable is set
+-	// NOTE: doesn't get transfered in flags
+-	if (BIT(data, LEF) && ACCESSING_BITS_0_15)
++	// LE is a masked write strobe, accepted only while stopped (ST-097 p.52).
++	// Test entry state so a stopped load-and-start write still loads the PC.
++	if (BIT(commands, LEF) && stopped_on_entry)
++	{
+ 		m_pc = newval & 0xff;
++		m_delay_pending = false;
++	}
+ 
+ 	//printf("%08x PRG CTRL\n",data);
+ 	// run DSP if EXF is on
+diff --git a/regtests/saturn/test_scudsp_hostflags.py b/regtests/saturn/test_scudsp_hostflags.py
+index 074775ff..60b95e4f 100644
+--- a/regtests/saturn/test_scudsp_hostflags.py
++++ b/regtests/saturn/test_scudsp_hostflags.py
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env python3
+ # license:BSD-3-Clause
+-"""Actual control-port write method: masked read-only flag preservation only."""
++"""Actual control-port write method: masked flags, stopped PC loads and pending-slot invalidation."""
+ import os
+ from pathlib import Path
+ import subprocess
+@@ -10,6 +10,11 @@ src=Path(os.environ.get('SCUDSP_HOSTFLAGS_SOURCE',ROOT/'src/devices/cpu/scudsp/s
+ start=src.index('void scudsp_cpu_device::program_control_w(')
+ end=src.index('void scudsp_cpu_device::program_w(',start)
+ method=src[start:end]
++mutant=os.environ.get('SCUDSP_HOSTFLAGS_MUTANT','')
++if mutant=='active-load': method=method.replace('BIT(commands, LEF) && stopped_on_entry', 'BIT(commands, LEF)')
++if mutant=='late-state': method=method.replace('BIT(commands, LEF) && stopped_on_entry', 'BIT(commands, LEF) && (!BIT(m_flags, EXF) || m_paused)')
++if mutant=='load-mask': method=method.replace('BIT(commands, LEF)', 'BIT(data, LEF)')
++if mutant=='old-slot': method=method.replace('m_delay_pending = false;', '')
+ cpp=r'''
+ #include <cstdint>
+ #include <cassert>
+@@ -24,7 +29,7 @@ using offs_t=uint32_t;
+ #define CLEAR_LINE 0
+ struct scudsp_cpu_device {
+  enum {EXF=16,LEF=15,EPF=25,PRF=26};
+- uint32_t m_flags=0;uint8_t m_pc=0;int reset=0,halt=0;bool m_paused=false;struct{bool stalled=false;}m_dma;
++ uint32_t m_flags=0;uint8_t m_pc=0;int reset=0,halt=0;bool m_paused=false,m_delay_pending=false;struct{bool stalled=false;}m_dma;
+  void set_input_line(int line,int value){if(line==INPUT_LINE_RESET)reset=value;else {assert(line==INPUT_LINE_HALT);halt=value;}}
+  void popmessage(const char*){}
+  void program_control_w(offs_t,uint32_t,uint32_t);
+@@ -33,19 +38,27 @@ struct scudsp_cpu_device {
+ int main(){
+  unsigned cases=0;uint32_t random=0x19283746;
+  for(unsigned flags=0;flags<256;++flags)
+- for(uint32_t mask:{0xffffffffu,0xffff0000u,0x0000ffffu,0xff000000u,0x00ff0000u,0x0000ff00u,0x000000ffu})
+- for(unsigned pattern=0;pattern<16;++pattern){
++ for(uint32_t mask:{0xffffffffu,0xffff0000u,0x0000ffffu,0xff000000u,0x00ff0000u,0x0000ff00u,0x000000ffu,0u})
++ for(unsigned pattern=0;pattern<16;++pattern)
++ for(unsigned paused=0;paused<2;++paused)for(unsigned pending=0;pending<2;++pending)
++ for(unsigned stalled=0;stalled<2;++stalled){
+   random=random*1664525u+1013904223u;
+   uint32_t value=pattern==0?0:pattern==1?0xffffffffu:random;
+   scudsp_cpu_device s;s.m_flags=flags<<16;s.m_pc=flags;
++  s.m_paused=paused;s.m_delay_pending=pending;s.m_dma.stalled=stalled;
+   uint32_t writable=(value&mask&0x06000000)?0:mask&0x00030000;
+   uint32_t expected=(s.m_flags&~writable)|(value&writable);
++  bool const load=(!(flags&1)||paused)&&(value&mask&0x8000);
++  unsigned pc=load?((flags&~mask)|(value&mask))&255:flags;
++  bool pause=paused;
++  if(flags&1){if(value&mask&0x02000000)pause=true;else if(value&mask&0x04000000)pause=false;}
+   s.program_control_w(0,value,mask);
++  assert(s.m_pc==pc);assert(s.m_delay_pending==(load?false:bool(pending)));
+   assert(s.m_flags==expected);assert(s.reset==!BIT(expected,16));
+-  assert(s.m_paused==bool((flags&1)&&(value&mask&0x02000000)));
+-  assert(s.halt==s.m_paused);++cases;
++  assert(s.m_paused==pause);
++  assert(s.halt==(pause||stalled));++cases;
+  }
+- std::cout<<cases<<" actual masked control-port read-only flag cases passed\n";
++ std::cout<<cases<<" actual masked flag/PC/pending-slot/entry-state cases passed\n";
+ }
+ '''
+ with tempfile.TemporaryDirectory(prefix='scudsp-hostflags-') as tmp:
+diff --git a/saturn_pending/test_scudsp_pause_runtime.py b/saturn_pending/test_scudsp_pause_runtime.py
+index db05672f..5a0aefbc 100644
+--- a/saturn_pending/test_scudsp_pause_runtime.py
++++ b/saturn_pending/test_scudsp_pause_runtime.py
+@@ -70,7 +70,70 @@ local function test()
+         sp:write_u32(addr,192);check('post_dma_instruction'..case,sp:read_u32(data),0x34)
+         if #fails==before then print('DSP_PAUSE case='..case..' PASS') end
+     end
+-    if #fails==0 then print('DSP_PAUSE PASS cases=6')
++    -- LE acceptance uses state before the write, including load-and-start.
++    for _,start in ipairs({0,252}) do
++        for width=0,1 do
++            case=case+1;local before=#fails
++            sp:write_u32(control,0);emu.wait(emu.attotime.from_usec(1))
++            sp:write_u32(control,0x8000|start)
++            sp:write_u32(program,0xd0000000|start);sp:write_u32(program,0)
++            sp:write_u32(control,0x18000|start);emu.wait(emu.attotime.from_usec(2))
++            local pc=sp:read_u32(control)&255
++            if width==0 then sp:write_u32(control,0x18040) else sp:write_u16(control+2,0x8040) end
++            check('active_load_ignored'..case,sp:read_u32(control)&0x100ff,0x10000|pc)
++            sp:write_u32(control,0);emu.wait(emu.attotime.from_usec(1))
++            if #fails==before then print('DSP_PAUSE case='..case..' PASS') end
++        end
++        for width=0,1 do
++            case=case+1;local before=#fails
++            sp:write_u32(addr,192);sp:write_u32(data,0xdeadbeef)
++            sp:write_u32(control,0x8040)
++            for _,op in ipairs({0x1f00,0x8c000034,0xf0000000}) do sp:write_u32(program,op) end
++            sp:write_u32(control,0x8000|start)
++            if width==0 then sp:write_u32(control,0x18040)
++            else sp:write_u16(control+2,0x8040);sp:write_u32(control,0x10000) end
++            emu.wait(emu.attotime.from_usec(2))
++            assert((sp:read_u32(control)&0x10000)==0,'stopped load control did not end')
++            sp:write_u32(addr,192);check('stopped_load'..case,sp:read_u32(data),0x34)
++            if #fails==before then print('DSP_PAUSE case='..case..' PASS') end
++        end
++        for width=0,2 do
++            case=case+1;local before=#fails
++            sp:write_u32(control,0x8000)
++            for _,op in ipairs({0x1f00,0xf0000000}) do sp:write_u32(program,op) end
++            sp:write_u32(control,0x18000);emu.wait(emu.attotime.from_usec(2))
++            assert((sp:read_u32(control)&0x10000)==0,'counter setup did not end')
++            sp:write_u32(addr,192);sp:write_u32(data,0xdeadbeef);sp:write_u32(data,0xdeadbeef)
++            sp:write_u32(control,0x8000|start)
++            local code=start==0 and {0xd0000040,0x8c000012} or {0,0,0,0xd0000040,0x8c000012}
++            for _,op in ipairs(code) do sp:write_u32(program,op) end
++            for _,target in ipairs({64,80}) do
++                sp:write_u32(control,0x8000|target)
++                sp:write_u32(program,target==64 and 0x8c000034 or 0x8c000056);sp:write_u32(program,0xf0000000)
++            end
++            sp:write_u32(control,0x18000|start)
++            local pending=false
++            for n=1,100 do
++                emu.wait(emu.attotime.from_nsec(20))
++                if (sp:read_u32(control)&0x100ff)==0x10041 then
++                    sp:write_u32(control,0x02010000);emu.wait(emu.attotime.from_nsec(0))
++                    assert((sp:read_u32(control)&0x10000)==0,'branch pause failed')
++                    sp:write_u32(addr,192);pending=sp:read_u32(data)==0xdeadbeef;break
++                end
++            end
++            assert(pending,'did not capture pre-slot branch for LE')
++            if width==0 then sp:write_u32(control,0x18050)
++            elseif width==1 then sp:write_u16(control+2,0x8050)
++            else sp:write_u8(control+2,0x80) end
++            sp:write_u32(control,0x04000000);emu.wait(emu.attotime.from_usec(2))
++            assert((sp:read_u32(control)&0x10000)==0,'loaded paused branch did not end')
++            sp:write_u32(addr,192)
++            check('loaded_entry_no_old_slot'..case,sp:read_u32(data),width==2 and 0x34 or 0x56)
++            check('loaded_entry_guard'..case,sp:read_u32(data),0xdeadbeef)
++            if #fails==before then print('DSP_PAUSE case='..case..' PASS') end
++        end
++    end
++    if #fails==0 then print('DSP_PAUSE PASS cases=20')
+     else for _,f in ipairs(fails) do print('DSP_PAUSE FAIL '..f) end end
+     m:exit()
+ end
+@@ -85,9 +148,9 @@ print('DSP_PAUSE armed')
+ '''
+ def validate_output(text,returncode):
+     if (returncode or 'DSP_PAUSE FAIL' in text or 'LUA ERROR' in text or
+-        re.findall(r'^DSP_PAUSE case=(\d+) PASS$',text,re.M)!=[str(i) for i in range(1,7)] or
+-        len(re.findall(r'^DSP_PAUSE PASS cases=6$',text,re.M))!=1):
++        re.findall(r'^DSP_PAUSE case=(\d+) PASS$',text,re.M)!=[str(i) for i in range(1,21)] or
++        len(re.findall(r'^DSP_PAUSE PASS cases=20$',text,re.M))!=1):
+         raise RuntimeError('DSP pause fixture failed:\n'+text[-16000:])
+ runner.validate_output=validate_output
+ if __name__=='__main__':
+-    runner.main('DSP pause: six loop/command-width/active-DMA cases passed live')
++    runner.main('DSP pause: 20 pause/DMA/stopped-load/pending-slot cases passed live')

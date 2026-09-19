@@ -1,0 +1,43 @@
+Traceback (most recent call last):
+  File "/home/user/scsp-tail-probe/test_scsp_dsp_runtime.py", line 80, in <module>
+    if __name__=='__main__':runner.main('SCSP DSP: 31 zero-tail/live-program cases passed live')
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/mame/saturn_pending/test_scudsp_dma_runtime.py", line 110, in main
+    validate_output((output/'runtime.log').read_text(errors='replace'),result.returncode)
+  File "/home/user/scsp-tail-probe/test_scsp_dsp_runtime.py", line 78, in validate_output
+    raise RuntimeError('SCSP DSP fixture failed:\n'+text[-12000:])
+RuntimeError: SCSP DSP fixture failed:
+SCSP_DSP armed
+SCSP_DSP case=1 PASS
+SCSP_DSP case=6 PASS
+SCSP_DSP case=11 PASS
+SCSP_DSP case=16 PASS
+SCSP_DSP case=21 PASS
+SCSP_DSP case=26 PASS
+SCSP_DSP case=27 PASS
+SCSP_DSP case=28 PASS
+SCSP_DSP case=29 PASS
+SCSP_DSP case=30 PASS
+SCSP_DSP FAIL zero_tail_effect2 got=1232 want=0
+SCSP_DSP FAIL zero_tail_effect3 got=7ff7 want=0
+SCSP_DSP FAIL zero_tail_effect4 got=8008 want=0
+SCSP_DSP FAIL zero_tail_effect5 got=ffff want=0
+SCSP_DSP FAIL zero_tail_effect7 got=1232 want=0
+SCSP_DSP FAIL zero_tail_effect8 got=7ff7 want=0
+SCSP_DSP FAIL zero_tail_effect9 got=8008 want=0
+SCSP_DSP FAIL zero_tail_effect10 got=ffff want=0
+SCSP_DSP FAIL zero_tail_effect12 got=1232 want=0
+SCSP_DSP FAIL zero_tail_effect13 got=7ff7 want=0
+SCSP_DSP FAIL zero_tail_effect14 got=8008 want=0
+SCSP_DSP FAIL zero_tail_effect15 got=ffff want=0
+SCSP_DSP FAIL zero_tail_effect17 got=1232 want=0
+SCSP_DSP FAIL zero_tail_effect18 got=7ff7 want=0
+SCSP_DSP FAIL zero_tail_effect19 got=8008 want=0
+SCSP_DSP FAIL zero_tail_effect20 got=ffff want=0
+SCSP_DSP FAIL zero_tail_effect22 got=1232 want=0
+SCSP_DSP FAIL zero_tail_effect23 got=7ff7 want=0
+SCSP_DSP FAIL zero_tail_effect24 got=8008 want=0
+SCSP_DSP FAIL zero_tail_effect25 got=ffff want=0
+SCSP_DSP FAIL live_tail_extension got=1232 want=0
+Average speed: 198.01% (2 seconds)
+

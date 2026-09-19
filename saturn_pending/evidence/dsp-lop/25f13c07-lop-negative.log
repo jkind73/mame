@@ -1,0 +1,82 @@
+DSP_LOP armed
+DSP_LOP case=1 PASS
+DSP_LOP case=2 PASS
+DSP_LOP case=3 PASS
+DSP_LOP case=9 PASS
+DSP_LOP case=10 PASS
+DSP_LOP case=12 PASS
+DSP_LOP case=15 PASS
+DSP_LOP case=17 PASS
+DSP_LOP case=18 PASS
+DSP_LOP case=19 PASS
+DSP_LOP case=25 PASS
+DSP_LOP case=26 PASS
+DSP_LOP case=27 PASS
+DSP_LOP case=33 PASS
+DSP_LOP case=34 PASS
+DSP_LOP case=35 PASS
+DSP_LOP case=36 PASS
+DSP_LOP case=37 PASS
+DSP_LOP case=38 PASS
+DSP_LOP case=39 PASS
+DSP_LOP case=40 PASS
+DSP_LOP case=41 PASS
+DSP_LOP case=42 PASS
+DSP_LOP case=43 PASS
+DSP_LOP case=49 PASS
+DSP_LOP case=50 PASS
+DSP_LOP case=52 PASS
+DSP_LOP case=55 PASS
+DSP_LOP case=57 PASS
+DSP_LOP case=58 PASS
+DSP_LOP case=59 PASS
+DSP_LOP case=65 PASS
+DSP_LOP case=66 PASS
+DSP_LOP case=67 PASS
+DSP_LOP case=73 PASS
+DSP_LOP case=74 PASS
+DSP_LOP case=75 PASS
+DSP_LOP case=76 PASS
+DSP_LOP case=77 PASS
+DSP_LOP case=78 PASS
+DSP_LOP case=79 PASS
+DSP_LOP case=80 PASS
+DSP_LOP FAIL iterations4 got=1001 want=1
+DSP_LOP FAIL iterations5 got=2000 want=1000
+DSP_LOP FAIL iterations6 got=10000 want=1000
+DSP_LOP FAIL iterations7 got=5679 want=679
+DSP_LOP FAIL iterations8 got=10000 want=1000
+DSP_LOP FAIL iterations11 got=10000 want=1000
+DSP_LOP FAIL iterations13 got=10000 want=1000
+DSP_LOP FAIL iterations14 got=10000 want=1000
+DSP_LOP FAIL iterations16 got=10000 want=1000
+DSP_LOP FAIL iterations20 got=1001 want=1
+DSP_LOP FAIL iterations21 got=2000 want=1000
+DSP_LOP FAIL iterations22 got=10000 want=1000
+DSP_LOP FAIL iterations23 got=5679 want=679
+DSP_LOP FAIL iterations24 got=10000 want=1000
+DSP_LOP FAIL iterations28 got=1001 want=1
+DSP_LOP FAIL iterations29 got=2000 want=1000
+DSP_LOP FAIL iterations30 got=10000 want=1000
+DSP_LOP FAIL iterations31 got=5679 want=679
+DSP_LOP FAIL iterations32 got=10000 want=1000
+DSP_LOP FAIL iterations44 got=1001 want=1
+DSP_LOP FAIL iterations45 got=2000 want=1000
+DSP_LOP FAIL iterations46 got=10000 want=1000
+DSP_LOP FAIL iterations47 got=5679 want=679
+DSP_LOP FAIL iterations48 got=10000 want=1000
+DSP_LOP FAIL iterations51 got=10000 want=1000
+DSP_LOP FAIL iterations53 got=10000 want=1000
+DSP_LOP FAIL iterations54 got=10000 want=1000
+DSP_LOP FAIL iterations56 got=10000 want=1000
+DSP_LOP FAIL iterations60 got=1001 want=1
+DSP_LOP FAIL iterations61 got=2000 want=1000
+DSP_LOP FAIL iterations62 got=10000 want=1000
+DSP_LOP FAIL iterations63 got=5679 want=679
+DSP_LOP FAIL iterations64 got=10000 want=1000
+DSP_LOP FAIL iterations68 got=1001 want=1
+DSP_LOP FAIL iterations69 got=2000 want=1000
+DSP_LOP FAIL iterations70 got=10000 want=1000
+DSP_LOP FAIL iterations71 got=5679 want=679
+DSP_LOP FAIL iterations72 got=10000 want=1000
+Average speed: 231.41% (5 seconds)

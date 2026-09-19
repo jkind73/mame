@@ -1,0 +1,7 @@
+test: /tmp/scsp-lfo-ximaycog/test.cpp:229: int main(): Assertion `s.PLFO.table==(pws==0?&d.m_PLFO_SAW[0]:pws==1?&d.m_PLFO_SQR[0]:pws==2?&d.m_PLFO_TRI[0]:nullptr)' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scsp_lfo.py", line 289, in <module>
+    subprocess.run([str(p/'test')], check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scsp-lfo-ximaycog/test']' died with <Signals.SIGABRT: 6>.

@@ -1,0 +1,6 @@
+DSP_SAVE armed
+DSP_SAVE saved
+DSP_SAVE mutated
+DSP_SAVE loaded
+DSP_SAVE PASS words=60000 busy=1 replay=exact
+Average speed: 130.37% (2 seconds)

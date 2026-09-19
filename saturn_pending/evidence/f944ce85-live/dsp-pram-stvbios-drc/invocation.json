@@ -1,0 +1,7 @@
+{
+  "system": "stvbios",
+  "engine": "drc",
+  "binary_sha256": "1c0d88d5f123bc50bdd19563b8d704cd25242af1327fa9660b99f865dea9fb13",
+  "bios_sha256": "b33664e974a06093392195227baeef48ba2b426c11ba7d5242c4c06f9c44df72",
+  "lua_sha256": "58d1d95d05a26f978031c7a06bed61542696c09df69e933b31bb4f46692fdce4"
+}

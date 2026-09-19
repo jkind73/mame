@@ -1,0 +1,6 @@
+{
+  "source_commit": "5008a92331e4bf6698b7a9e53116c2167ddcc673",
+  "binary_sha256": "3b4c476bff089672d5049a05f3fd739f7222608a7f84de467a0cd168d5b01557",
+  "executable": "/home/user/saturn-ci-artifact/saturn",
+  "run_url": "https://github.com/jkind73/mame/actions/runs/35287467065"
+}

@@ -1,0 +1,7 @@
+test: /tmp/scudsp-operand-m1dsx1qv/test.cpp:390: int main(): Assertion `s.m_dma.size==3' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/saturn_pending/test_scudsp_count_operand.py", line 89, in <module>
+    subprocess.run([str(exe)], check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-operand-m1dsx1qv/test']' died with <Signals.SIGABRT: 6>.

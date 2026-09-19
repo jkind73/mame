@@ -1,0 +1,23 @@
+  ar00        max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=0
+  ar04        max model error  0.00 tolerance units  phase=592 pattern=1 model anchor=0
+  ar08        max model error  0.00 tolerance units  phase=119 pattern=1 model anchor=0
+  ar08_krs0   max model error  0.00 tolerance units  phase=126 pattern=0 model anchor=0
+  ar08_oct    max model error  0.00 tolerance units  phase=87 pattern=1 model anchor=0
+  ar10        max model error  0.00 tolerance units  phase=7 pattern=0 model anchor=0
+  ar1f        max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=0
+  d1r00       max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=0
+  d1r04       max model error  0.00 tolerance units  phase=198 pattern=0 model anchor=0
+  d1r10       max model error  0.00 tolerance units  phase=6 pattern=1 model anchor=0
+  d1r1f       max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=0
+  d2r16       max model error  0.00 tolerance units  phase=5 pattern=1 model anchor=0
+  dl00        max model error  0.00 tolerance units  phase=1 pattern=0 model anchor=0
+  dl08        max model error  0.00 tolerance units  phase=1 pattern=0 model anchor=0
+  eg_hold     max model error  0.00 tolerance units  phase=10 pattern=1 model anchor=0
+  rr00        max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=0
+  rr04        max model error  0.00 tolerance units  phase=406 pattern=1 model anchor=0
+  rr08        max model error  0.00 tolerance units  phase=254 pattern=0 model anchor=0
+  rr08_krs    max model error  0.00 tolerance units  phase=197 pattern=1 model anchor=0
+  rr10        max model error  0.00 tolerance units  phase=7 pattern=1 model anchor=0
+  rr1f        max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=0
+  rr_from_dl  max model error  0.00 tolerance units  phase=0 pattern=0 model anchor=1857
+SCSP EG: 22 native envelope cases matched the tabulated rate model

@@ -1,0 +1,61 @@
+# Qualification correction: legal paused pending-slot observation
+
+The older scheduled-slot fixture read DSP data RAM while EX=1. That violates
+ST-097 pp.53–54; its earlier claim of legal active host-port phase observation
+is retracted. It now selects a candidate using PPAF, issues EP, verifies EX=0,
+and only then reads the marker. It saves that paused pending slot, resumes via
+PR, pauses again before observing completion, then poisons/loads/repeats.
+Every data-port observation asserts EX=0. No private DSP state is accessed.
+The corrected actual file gate PASSes on both f944ce85 and f8022878. Adjacent
+raw outputs preserve the result. The next full consumer uses this corrected
+gate. This does not retract independent guest-program branch/wrap tests; it
+supersedes the old file fixture's access legality, not hardware-prefetch timing.
+The already-completed f8022878 full consumer below its evidence tree used the
+older gate; its corrected isolated rerun is recorded here, not silently replaced.
+
+# DSP-01 / DSP-03: wrapped delayed control flow (integrated WIP)
+
+`scudsp-delay-slot.patch` is now integrated after b5caa488 passed its complete
+native consumer, including DSP beat addressing and actual in-flight save replay.
+The patch is historical; do not apply it again. It separates delay-slot validity from its 8-bit
+address. Existing code uses address 0 as the no-slot sentinel; branches at FF
+therefore drop the prefetched instruction at 00. The candidate records validity
+for JMP/MVI-PC/BTM/LPS, consumes it exactly once, saves it and clears it on reset.
+It preserves the current address-based fetch model, not a new full pipeline.
+
+Primary: ST-097-R5-072694, SDK 0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+PDF blob ffa8932249634ebd98947dad123621cebe3f24fa. Printed p.77/PDF p.93 has PC(8)
+and 256-word program RAM; p.90/PDF p.106 depicts executing the prefetched command;
+pp.154-155/PDF pp.170-171 describe BTM and LPS (next step LOP+1 executions).
+Ymir 6d779960127ced72087a418c1daefc637d0aaa80 SCUDSP uses separate nextInstr and
+8-bit PC rather than treating address zero as invalid. No reference code copied.
+
+393,216 extracted actual-fetch/control-method cases pass on the candidate:
+every PC/target pair, unconditional and taken/untaken conditional jump, MVI-PC,
+BTM and LPS, plus registered-state replay and reset. Three compiled mutants fail
+assertions: old zero sentinel, missing save registration, missing reset clear.
+The existing 768-case DSP DMA suite also passes on the candidate. Full-TU C++20
+syntax passes with the real headers. These are not native candidate acceptance.
+
+Historical 234c native negative: six nonwrapping cases pass; wrapping untaken
+conditional passes; five wrapping taken-control cases fail. JMP/MVI/BTM omit
+the 00-slot write; LPS emits one write instead of three. Setup uses real DSP
+instructions via mapped SCU ports, never private DSP register writes.
+The user-provided ZIP and binary hashes were rechecked before execution:
+ZIP 7129a6434f59db271254f515c3f1a9fef7d00d862c9347f8f44f563c76c966f8;
+binary 7508e813a6b93bd4f9650dd5f4a0cfcf73b84d128008a89bc3a8c678365c5062.
+This historical negative does NOT match the current production source trees.
+
+Runtime parser: 12 controls pass. Native positive, real pending-slot save/load,
+full prefetch timing and DSP program-memory DMA remain open. The rebuilt b5caa488 binary independently reproduces the same five failures;
+see `b5caa488-live-negative.log`. New-source native qualification remains pending.
+
+The same five control-flow failures were also reproduced on ST-V/DRC with the
+verified b5caa488 binary; `b5caa488-stv-drc-negative.log`. The next native gate
+requires both DMA and pipeline programs in JP/interpreter, JP/DRC, PAL/DRC and
+ST-V/DRC. Production 89764c08 is building in CI 35308649438.
+
+Integrated 89764c08 full local regression batch: **58 scripts, exit zero**.
+Three optional missing-default-binary live skips are explicitly excluded from
+acceptance. Full output: `local/regressions.log`. Native 35308649438 remains
+building; there is no new-source pipeline native-positive claim yet.

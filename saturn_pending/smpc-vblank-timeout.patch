@@ -1,0 +1,85 @@
+--- a/src/mame/sega/smpc.cpp
++++ b/src/mame/sega/smpc.cpp
+@@ -594,6 +594,33 @@
+   m_sndres(0);
+ }
+
++// ST-169-R1 p.50: peripheral INTBACK terminates at VBlank-IN if it
++// has not finished. Pending command completion and CONTINUE are distinct
++// timers. Do not cancel an unrelated system command sharing the SF register.
++void smpc_hle_device::vblank_in() {
++  // Leave the legacy no-controller/ST-V handshake unchanged.
++  if (!m_has_ctrl_ports)
++    return;
++
++  bool const pending = m_command_in_progress && m_comreg == 0x10 &&
++                       (m_intback_buf[1] & 8);
++  if (!pending && !m_intback_stage)
++    return;
++
++  if (pending) {
++    m_cmd_timer->reset();
++    m_command_in_progress = false;
++  }
++  m_intback_timer->reset();
++  m_intback_stage = 0;
++  m_peripheral_size = m_peripheral_pos = 0;
++  // No new report or interrupt. Clear PDL/NPE, retain the last report's
++  // type, reset-button indication and port modes (Ymir cross-check).
++  m_sr &= ~0x60;
++  if (!m_command_in_progress)
++    sf_ack(false);
++}
++
+ void smpc_hle_device::resolve_intback() {
+   int i;
+
+--- a/src/mame/sega/smpc.h
++++ b/src/mame/sega/smpc.h
+@@ -31,6 +31,8 @@
+
+   void m68k_reset_trigger();
+
++  void vblank_in();
++
+   bool get_iosel(bool which);
+
+   uint8_t get_ddr(bool which);
+--- a/src/mame/sega/saturn.cpp
++++ b/src/mame/sega/saturn.cpp
+@@ -185,6 +185,8 @@
+ } // anonymous namespace
+
+ void saturn_state::machine_start() {
++  save_item(NAME(m_prev_hint));
++  save_item(NAME(m_prev_vint));
+   save_item(NAME(m_system_halt));
+   save_item(NAME(m_main_dma_halt));
+   save_item(NAME(m_sound_dma_halt));
+@@ -198,6 +200,7 @@
+ }
+
+ void saturn_state::machine_reset() {
++  m_prev_hint = m_prev_vint = 0;
+   vdp2_reset_rotation_latches();
+   vdp1_reset_framebuffers();
+   vdp1_abort_draw();
+@@ -293,6 +296,7 @@
+ void saturn_state::vint_callback(int state) {
+   if (m_prev_vint != state) {
+     if (state) {
++      m_smpc_hle->vblank_in();
+       m_scu->vblank_in_w(1);
+       m_slave->set_input_line(0x6, ASSERT_LINE);
+     } else {
+--- a/src/mame/sega/saturn.h
++++ b/src/mame/sega/saturn.h
+@@ -211,7 +211,7 @@
+   TIMER_DEVICE_CALLBACK_MEMBER(saturn_scanline);
+   void vint_callback(int state);
+   void hint_callback(int state);
+-  int m_prev_hint, m_prev_vint;
++  int m_prev_hint = 0, m_prev_vint = 0;
+
+   TIMER_CALLBACK_MEMBER(vdp1_draw_end);
+   void soundram_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);

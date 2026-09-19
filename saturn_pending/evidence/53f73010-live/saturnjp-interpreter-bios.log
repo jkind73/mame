@@ -1,0 +1,5 @@
+BIOS_RUNTIME starting unmodified BIOS boot/replay smoke
+BIOS_RUNTIME PASS system=saturnjp time=15.560998664 pc=06040228 full-image replay identical
+Average speed: 115.95% (15 seconds)
+
+Linked BIOS_RUNTIME fixture passed; results: /home/user/saturn-ci-runtime-35402288912/saturnjp-interpreter-bios

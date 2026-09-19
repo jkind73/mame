@@ -1,0 +1,100 @@
+DSP_MUL armed
+DSP_MUL case=1 PASS
+DSP_MUL case=2 PASS
+DSP_MUL case=3 PASS
+DSP_MUL case=4 PASS
+DSP_MUL case=5 PASS
+DSP_MUL case=6 PASS
+DSP_MUL case=7 PASS
+DSP_MUL case=8 PASS
+DSP_MUL case=41 PASS
+DSP_MUL case=42 PASS
+DSP_MUL case=43 PASS
+DSP_MUL case=44 PASS
+DSP_MUL case=45 PASS
+DSP_MUL case=46 PASS
+DSP_MUL case=47 PASS
+DSP_MUL case=48 PASS
+DSP_MUL case=49 PASS
+DSP_MUL case=50 PASS
+DSP_MUL case=51 PASS
+DSP_MUL case=52 PASS
+DSP_MUL case=53 PASS
+DSP_MUL case=54 PASS
+DSP_MUL case=55 PASS
+DSP_MUL case=56 PASS
+DSP_MUL FAIL product2_low9 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift169 got=ffffffff want=0
+DSP_MUL FAIL product2_low10 got=70000 want=10000
+DSP_MUL FAIL product2_shift1610 got=7 want=1
+DSP_MUL FAIL product2_low11 got=ffffffeb want=fffffffa
+DSP_MUL FAIL product2_low12 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1612 got=7 want=7fffffff
+DSP_MUL FAIL product2_low13 got=ffffffeb want=80000000
+DSP_MUL FAIL product2_shift1613 got=ffffffff want=18000
+DSP_MUL FAIL product2_low14 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1614 got=7 want=ffffffff
+DSP_MUL FAIL product2_low15 got=ffffffeb want=c962fc98
+DSP_MUL FAIL product2_shift1615 got=ffffffff want=ffffc962
+DSP_MUL FAIL product2_low16 got=70000 want=43210000
+DSP_MUL FAIL product2_shift1616 got=7 want=87654321
+DSP_MUL FAIL product2_low17 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1617 got=ffffffff want=0
+DSP_MUL FAIL product2_low18 got=70000 want=10000
+DSP_MUL FAIL product2_shift1618 got=7 want=1
+DSP_MUL FAIL product2_low19 got=ffffffeb want=fffffffa
+DSP_MUL FAIL product2_low20 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1620 got=7 want=ffffffff
+DSP_MUL FAIL product2_low21 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1621 got=ffffffff want=0
+DSP_MUL FAIL product2_low22 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1622 got=7 want=ffffffff
+DSP_MUL FAIL product2_low23 got=ffffffeb want=fffffe98
+DSP_MUL FAIL product2_low24 got=70000 want=210000
+DSP_MUL FAIL product2_shift1624 got=7 want=21
+DSP_MUL FAIL product2_low25 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1625 got=ffffffff want=0
+DSP_MUL FAIL product2_low26 got=70000 want=10000
+DSP_MUL FAIL product2_shift1626 got=7 want=1
+DSP_MUL FAIL product2_low27 got=ffffffeb want=fffffffa
+DSP_MUL FAIL product2_low28 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1628 got=7 want=ffffffff
+DSP_MUL FAIL product2_low29 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1629 got=ffffffff want=0
+DSP_MUL FAIL product2_low30 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1630 got=7 want=ffffffff
+DSP_MUL FAIL product2_low31 got=ffffffeb want=ff62fc98
+DSP_MUL FAIL product2_shift1631 got=ffffffff want=ffffff62
+DSP_MUL FAIL product2_low32 got=70000 want=43210000
+DSP_MUL FAIL product2_shift1632 got=7 want=ff654321
+DSP_MUL FAIL product2_low33 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1633 got=ffffffff want=0
+DSP_MUL FAIL product2_low34 got=70000 want=10000
+DSP_MUL FAIL product2_shift1634 got=7 want=1
+DSP_MUL FAIL product2_low35 got=ffffffeb want=fffffffa
+DSP_MUL FAIL product2_low36 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1636 got=7 want=ffffffff
+DSP_MUL FAIL product2_low37 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1637 got=ffffffff want=0
+DSP_MUL FAIL product2_low38 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1638 got=7 want=ffffffff
+DSP_MUL FAIL product2_low39 got=ffffffeb want=afc98
+DSP_MUL FAIL product2_shift1639 got=ffffffff want=a
+DSP_MUL FAIL product2_low40 got=70000 want=43210000
+DSP_MUL FAIL product2_shift1640 got=7 want=fffd4321
+DSP_MUL FAIL product2_low57 got=ffffffeb want=0
+DSP_MUL FAIL product2_shift1657 got=ffffffff want=0
+DSP_MUL FAIL product2_low58 got=70000 want=10000
+DSP_MUL FAIL product2_shift1658 got=7 want=1
+DSP_MUL FAIL product2_low59 got=ffffffeb want=fffffffa
+DSP_MUL FAIL product2_low60 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1660 got=7 want=7fffffff
+DSP_MUL FAIL product2_low61 got=ffffffeb want=80000000
+DSP_MUL FAIL product2_shift1661 got=ffffffff want=18000
+DSP_MUL FAIL product2_low62 got=70000 want=ffff0000
+DSP_MUL FAIL product2_shift1662 got=7 want=ffffffff
+DSP_MUL FAIL product2_low63 got=ffffffeb want=c962fc98
+DSP_MUL FAIL product2_shift1663 got=ffffffff want=ffffc962
+DSP_MUL FAIL product2_low64 got=70000 want=43210000
+DSP_MUL FAIL product2_shift1664 got=7 want=87654321
+Average speed: 198.54% (2 seconds)

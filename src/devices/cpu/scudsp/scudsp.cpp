@@ -90,7 +90,8 @@ DEFINE_DEVICE_TYPE(SCUDSP, scudsp_cpu_device, "scudsp", "Sega SCUDSP")
 #define SET_C(_val) (m_flags = ((m_flags & ~0x00100000) | ((_val) ? 0x00100000 : 0)))
 #define SET_S(_val) (m_flags = ((m_flags & ~0x00400000) | ((_val) ? 0x00400000 : 0)))
 #define SET_Z(_val) (m_flags = ((m_flags & ~0x00200000) | ((_val) ? 0x00200000 : 0)))
-#define SET_V(_val) (m_flags = ((m_flags & ~0x00080000) | ((_val) ? 0x00080000 : 0)))
+// Overflow is latched until the host reads the program control port.
+#define SET_V(_val) (m_flags |= ((_val) ? 0x00080000 : 0))
 
 
 #define FLAGS_MASK 0x06ff8000
@@ -182,6 +183,7 @@ void scudsp_cpu_device::set_dest_mem_reg( uint32_t mode, uint32_t value )
 			break;
 		case 0x4:   /* RX */
 			m_rx.ui = value;
+			m_update_mul = 1;
 			break;
 		case 0x5:   /* PL */
 			m_pl.ui = value;
@@ -198,7 +200,7 @@ void scudsp_cpu_device::set_dest_mem_reg( uint32_t mode, uint32_t value )
 			/* ??? */
 			break;
 		case 0xa:   /* LOP */
-			m_lop = value;
+			m_lop = value & 0xfff;
 			break;
 		case 0xb:   /* TOP */
 			m_top = value;
@@ -230,8 +232,17 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 		{
 			case 0xc:   /* PC */
 				m_delay = m_pc;  /* address next after this command will be executed twice */
+				m_delay_pending = true;
 				m_top = m_pc;
 				m_pc = value;
+				// Program-RAM DMA is serialized by the following MVI to PC
+				// (ST-097 p.89). Its first write uses this new PC; completion
+				// resumes at TOP and discards the old prefetched slot.
+				if (m_dma.ex && !m_dma.dir && m_dma.dst == 4)
+				{
+					m_dma.stalled = true;
+					set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+				}
 				break;
 		}
 	}
@@ -298,9 +309,9 @@ void scudsp_cpu_device::set_dest_dma_mem( uint32_t memcode, uint32_t value )
 	}
 	else if ( memcode == 4 )
 	{
-		throw emu_fatalerror("scudsp.cpp: set_dest_dma_mem == 4");
-		/* caused a stack overflow for sure ... */
-		//dsp_reg.internal_prg[ counter & 0x100 ] = value;
+		if (m_dma.count == 0)
+			m_dma.program_address = m_pc;
+		scudsp_writeop(m_dma.program_address++, value);
 	}
 }
 
@@ -336,7 +347,7 @@ uint32_t scudsp_cpu_device::get_mem_source_dma( uint32_t memcode )
 
 uint32_t scudsp_cpu_device::program_control_r()
 {
-	const u32 flags = m_flags & FLAGS_MASK;
+	const u32 flags = (m_flags & FLAGS_MASK) & (m_paused ? ~(1U << EXF) : ~0U);
 
 	if (!machine().side_effects_disabled())
 	{
@@ -352,24 +363,42 @@ uint32_t scudsp_cpu_device::program_control_r()
 void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	uint32_t oldval, newval;
+	bool const stopped_on_entry = !BIT(m_flags, EXF) || m_paused;
 
 	oldval = (m_flags & 0xffffff00) | (m_pc & 0xff);
 	newval = oldval;
 	COMBINE_DATA(&newval);
 
-	m_flags = (newval & 0x0063'0000) | (m_flags & ~0x0063'0000);
+	// Pause/resume are write strobes, not replacements for the execute latch.
+	uint32_t const commands = data & mem_mask;
+	if (BIT(commands, EPF))
+	{
+		if (BIT(m_flags, EXF))
+			m_paused = true;
+	}
+	else if (BIT(commands, PRF))
+	{
+		if (BIT(m_flags, EXF))
+			m_paused = false;
+	}
+	else
+	{
+		// ST-097 p.51: arithmetic status flags, including S/Z, are read-only.
+		m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
+	}
 
-	if (BIT(m_flags, EPF))
-		popmessage("scudsp.cpp: single step enabled");
-
-	// set new PC if transfer enable is set
-	// NOTE: doesn't get transfered in flags
-	if (BIT(data, LEF) && ACCESSING_BITS_0_15)
+	// LE is a masked write strobe, accepted only while stopped (ST-097 p.52).
+	// Test entry state so a stopped load-and-start write still loads the PC.
+	if (BIT(commands, LEF) && stopped_on_entry)
+	{
 		m_pc = newval & 0xff;
+		m_delay_pending = false;
+	}
 
 	//printf("%08x PRG CTRL\n",data);
 	// run DSP if EXF is on
 	set_input_line(INPUT_LINE_RESET, (BIT(m_flags, EXF)) ? CLEAR_LINE : ASSERT_LINE);
+	set_input_line(INPUT_LINE_HALT, (m_paused || m_dma.stalled) ? ASSERT_LINE : CLEAR_LINE);
 }
 
 void scudsp_cpu_device::program_w(uint32_t data)
@@ -410,7 +439,13 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 	int32_t i3;
 	int update_ct[4] = {0,0,0,0};
 	int dsp_mem;
+	uint8_t *const ct[] = { &m_ct0, &m_ct1, &m_ct2, &m_ct3 };
+	unsigned ram_reads = 0;
 
+
+	// The ALU starts from entry-state A. NOP bypasses A, and 32-bit
+	// operations preserve its upper sixteen bits, not a prior ALU result.
+	m_alu = concat_64(m_ach.ui, m_acl.ui);
 
 	/* ALU */
 	// NOTE: anything but AD2 doesn't update upper 16-bit ALU part
@@ -432,10 +467,6 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
 			SET_C(0);
 			SET_S(i3 < 0);
-			/* TODO: Croc and some early Psygnosis games wants Z to be 1 when the result of this one is negative.
-			         Needs HW tests ... */
-			if(i3 < 0)
-				i3 = 0;
 			SET_Z(i3 == 0);
 			break;
 
@@ -448,31 +479,34 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			break;
 
 		case 0x4:   /* ADD */
-			i3 = m_acl.si + m_pl.si;
+			i1 = uint64_t(m_acl.ui) + m_pl.ui;
+			i3 = uint32_t(i1);
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z( (i3 & s64(0xffff'ffff'ffffU)) == 0 );
-			SET_S( i3 & s64(0x1'0000'0000'0000U));
-			SET_C(i3 & s64(0x1'0000'0000U));
+			SET_Z(i3 == 0);
+			SET_S(i3 < 0);
+			SET_C(i1 & s64(0x1'0000'0000U));
 			SET_V((i3 ^ m_acl.si) & (i3 ^ m_pl.si) & 0x8000'0000);
 			break;
 
 		case 0x5:   /* SUB */
-			i3 = m_acl.si - m_pl.si;
+			i1 = int64_t(m_acl.ui) - int64_t(m_pl.ui);
+			i3 = uint32_t(i1);
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
 			SET_Z(i3 == 0);
-			SET_C(i3 & s64(0x1'0000'0000U));
+			SET_C(i1 & s64(0x1'0000'0000U));
 			SET_S(i3 < 0);
-			SET_V(((m_pl.si) ^ (m_acl.si)) & ((m_pl.si) ^ (i3)) & 0x8000'0000);
+			SET_V(((m_pl.si) ^ (m_acl.si)) & ((m_acl.si) ^ (i3)) & 0x8000'0000);
 			break;
 
 		case 0x6:   /* AD2 */
-			i1 = concat_64(int32_t(m_ph.si), m_pl.si);
-			i2 = concat_64(int32_t(m_ach.si), m_acl.si);
+			i1 = concat_64(m_ph.ui, m_pl.ui);
+			i2 = concat_64(m_ach.ui, m_acl.si);
 			m_alu = i1 + i2;
 			SET_Z((m_alu & s64(0xffff'ffff'ffffU)) == 0);
 			SET_S((m_alu & s64(0x8000'0000'0000U)) > 0);
 			SET_C(m_alu & s64(0x1'0000'0000'0000U));
 			SET_V((m_alu ^ i1) & (m_alu ^ i2) & s64(0x8000'0000'0000U));
+			m_alu &= s64(0xffff'ffff'ffffU);
 			break;
 
 		case 0x7:   /* ??? */
@@ -485,7 +519,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
 			SET_Z(i3 == 0);
 			SET_S(i3 < 0);
-			SET_C(m_acl.ui & 0x8000'0000);
+			SET_C(m_acl.ui & 0x1);
 			break;
 
 		case 0x9:   /* RR */
@@ -537,6 +571,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			dsp_mem &= 3;
 			update_ct[dsp_mem] = 1;
 		}
+		ram_reads |= 1U << dsp_mem;
 		m_rx.ui = get_source_mem_value( dsp_mem );
 		m_update_mul = 1;
 	}
@@ -556,6 +591,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 				dsp_mem &= 3;
 				update_ct[dsp_mem] = 1;
 			}
+			ram_reads |= 1U << dsp_mem;
 			m_pl.ui = get_source_mem_value(  dsp_mem );
 			m_ph.si = (m_pl.si < 0) ? -1 : 0;
 			break;
@@ -571,6 +607,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			dsp_mem &= 3;
 			update_ct[dsp_mem] = 1;
 		}
+		ram_reads |= 1U << dsp_mem;
 		m_ry.ui = get_source_mem_value( dsp_mem );
 		m_update_mul = 1;
 	}
@@ -593,33 +630,69 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 				dsp_mem &= 3;
 				update_ct[dsp_mem] = 1;
 			}
+			ram_reads |= 1U << dsp_mem;
 			m_acl.ui = get_source_mem_value( dsp_mem );
 			m_ach.si = ((m_acl.si < 0) ? -1 : 0);
 			break;
 	}
 
-	/* update CT registers */
-	if (update_ct[0]) { m_ct0++; m_ct0 &= 0x3f; };
-	if (update_ct[1]) { m_ct1++; m_ct1 &= 0x3f; };
-	if (update_ct[2]) { m_ct2++; m_ct2 &= 0x3f; };
-	if (update_ct[3]) { m_ct3++; m_ct3 &= 0x3f; };
-
+	// All buses use the instruction-entry CT values.  Commit each requested
+	// increment once, after D1; an explicit CTx destination takes precedence.
+	auto const write_d1 = [this, &ct, &update_ct, &ram_reads](unsigned dest, uint32_t value)
+	{
+		if (dest < 4)
+		{
+			// A bank selected for reading cannot also accept a D1 write.
+			if (!(ram_reads & (1U << dest)))
+			{
+				scudsp_writemem(*ct[dest], dest, value);
+				update_ct[dest] = 1;
+			}
+		}
+		else
+		{
+			set_dest_mem_reg(dest, value);
+			if (dest >= 0xc)
+				update_ct[dest - 0xc] = 0;
+		}
+	};
 
 	/* D1-Bus */
-	switch( (opcode & 0x3000) >> 12 )
+	unsigned const dest = (opcode >> 8) & 0xf;
+	switch ((opcode >> 12) & 3)
 	{
 		case 0x0:   /* NOP */
 			break;
 		case 0x1:   /* MOV SImm,[d] */
-			set_dest_mem_reg((opcode & 0xf00) >> 8, int32_t(int8_t(opcode & 0xff)));
+			write_d1(dest, int32_t(int8_t(opcode & 0xff)));
 			break;
 		case 0x2:
 			/* ??? */
 			break;
 		case 0x3:   /* MOV [s],[d] */
-			set_dest_mem_reg((opcode & 0xf00) >> 8, get_source_mem_reg_value(opcode & 0xf));
+		{
+			unsigned const source = opcode & 0xf;
+			if (source < 8)
+			{
+				unsigned const bank = source & 3;
+				ram_reads |= 1U << bank;
+				// A same-bank D1 RAM copy is a no-op, including its increment.
+				if (dest != bank)
+				{
+					if (source & 4)
+						update_ct[bank] = 1;
+					write_d1(dest, get_source_mem_value(bank));
+				}
+			}
+			else
+				write_d1(dest, get_source_mem_reg_value(source));
 			break;
+		}
 	}
+
+	for (unsigned bank = 0; bank < 4; ++bank)
+		if (update_ct[bank])
+			*ct[bank] = (*ct[bank] + 1) & 0x3f;
 
 	m_icount -= 1;
 }
@@ -649,11 +722,11 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	uint8_t hold = (opcode &  0x4000) >> 14;
 	uint32_t add = (opcode & 0x38000) >> 15;
 	uint32_t dir_from_D0 = (opcode & 0x1000 ) >> 12;
-	uint32_t dsp_mem = (opcode & 0x300) >> 8;
+	uint32_t dsp_mem = (opcode & (dir_from_D0 ? 0x300 : 0x700)) >> 8;
 
 	if ( opcode & 0x2000 )
 	{
-		m_dma.size = get_source_mem_value( opcode & 0xf );
+		m_dma.size = get_source_mem_value( opcode & 0x7 ) & 0xff;
 		switch ( add & 0x7 )
 		{
 			case 0: m_dma.add = 0; break;
@@ -680,7 +753,12 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 		}
 	}
 
+	// The eight-bit transfer counter decrements with wrap: zero means 256.
+	if (!m_dma.size)
+		m_dma.size = 256;
+
 	m_dma.dir = dir_from_D0;
+	m_dma.write_stride = 2;
 	// printf("SRC %08x DST %08x SIZE %08x UPDATE %08x DIR %08x ADD %08x\n",m_dma.src,m_dma.dst,m_dma.size,m_dma.update,m_dma.dir, add);
 
 	if ( m_dma.dir == 0 )
@@ -691,13 +769,16 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 		// TODO: inherit bus reading from base SCU
 		// C-Bus reads can either be 0 or 4 only
 		// - mshvssf definitely wants this behaviour for palette at title & gameplay
-		if ((m_dma.src & 0x0700'0000) == 0x0600'0000)
+		uint32_t const physical = m_dma.src & 0x07ffffff;
+		if (physical >= 0x06000000 && physical < 0x08000000)
 		{
 			m_dma.add = (1 << (add & 2)) & ~1;
 		}
 
-		// B-Bus reads are reportedly always +4
-		if ((m_dma.src & 0x0700'0000) == 0x0500'0000 || (m_dma.src & 0x00e0'0000) >= 0x00a0'0000)
+		// B-bus reads are paired halfwords with a +4 source advance.
+		// Decode the entire bus address: testing only the low address bits
+		// misclassifies Work RAM-H mirrors and A-bus cartridge/CS2 accesses.
+		else if (physical >= 0x05900000 && physical < 0x06000000)
 		{
 			m_dma.add = 4;
 		}
@@ -707,14 +788,21 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 		m_dma.src = dsp_mem;
 		m_dma.dst = (m_wa0 << 2) & 0x27ffffff;
 
-		// TODO: implement this rule for B-Bus
-		// (updates destination on every 16-bit write)
-		//if ((m_dma.dst & 0x0700'0000) == 0x0500'0000 || (m_dma.dst & 0x00e0'0000) >= 0x00a0'0000)
-		//{
-		//	m_dma.add = (1 << add) & ~1;
-		//}
+		// ST-097 pp.134/136/138/140: B-bus address addition happens
+		// after EACH 16-bit beat, for immediate and RAM-sourced counts.
+		// Keep A/C-bus rules separate; in particular CS2 at 058xxxxx is A-bus.
+		uint32_t const physical = m_dma.dst & 0x07ffffff;
+		if (physical >= 0x05900000 && physical < 0x06000000)
+		{
+			m_dma.write_stride = (1U << add) & ~1U;
+			m_dma.add = 2 * m_dma.write_stride;
+		}
 
-		// TODO: C-Bus uses the same add rule as B, except it's buggy for add mode = 1 and crossing 1KiB boundaries
+		// Work RAM-H consumes one aligned longword per transfer, not two
+		// independently advanced B-bus halfwords. Mode1 advances only two
+		// bytes, so consecutive transfers can replace the same longword.
+		if (physical >= 0x06000000 && physical < 0x08000000)
+			m_dma.add = (1U << add) & ~1U;
 	}
 
 	m_dma.update = ( hold == 0 );
@@ -733,7 +821,13 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	// this is duct tape to make stv:vfremix not overrun atomic execution in the SH-2s,
 	// with its small DMA transfers and no T0F checked.
 	// Test scenario: attract mode, Sarah hitting the air rather than Kage.
-	set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+	// A program load must allow the next MVI-to-PC to supply its destination
+	// before stalling. Data-RAM transfers retain the existing stall policy.
+	if (m_dma.dir || m_dma.dst != 4)
+	{
+		m_dma.stalled = true;
+		set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+	}
 	m_icount -= 1;
 }
 
@@ -744,12 +838,14 @@ void scudsp_cpu_device::op_jump( uint32_t opcode )
 		if ( compute_condition( (opcode & 0x3f80000) >> 19 ) )
 		{
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc = opcode & 0xff;
 		}
 	}
 	else
 	{
 		m_delay = m_pc;
+		m_delay_pending = true;
 		m_pc = opcode & 0xff;
 	}
 
@@ -765,6 +861,7 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		{
 			m_lop--;
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc--;
 		}
 	}
@@ -775,6 +872,7 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		{
 			m_lop--;
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc = m_top;
 		}
 	}
@@ -811,7 +909,14 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 			m_out_ddmv_cb(0);
 			m_dma.ex = 0;
 			m_flags &= ~(1 << T0F);
-			set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
+			if (!m_dma.dir && m_dma.dst == 4)
+			{
+				m_pc = m_top;
+				m_delay = 0;
+				m_delay_pending = false;
+			}
+			m_dma.stalled = false;
+			set_input_line(INPUT_LINE_HALT, m_paused ? ASSERT_LINE : CLEAR_LINE);
 
 			break;
 		case DMA_STATE_WAIT:
@@ -851,14 +956,23 @@ void scudsp_cpu_device::exec_dma()
 	{
 		data = get_mem_source_dma( m_dma.src );
 
-		m_out_dma_cb(m_dma.dst, data >> 16 );
-		m_out_dma_cb(m_dma.dst + 2, data & 0xffff );
+		uint32_t const cursor = m_dma.dst;
+		uint32_t const physical = cursor & 0x07ffffff;
+		bool const c_bus = physical >= 0x06000000 && physical < 0x08000000;
+		uint32_t const address = c_bus ? (cursor & ~3U) : cursor;
+		m_out_dma_cb(address, data >> 16);
+		m_out_dma_cb(address + m_dma.write_stride, data & 0xffff);
 
 		m_dma.dst += m_dma.add;
 
 		if ( m_dma.update )
 		{
-			m_wa0 += ((1 * m_dma.add) >> 2);
+			// Keep the halfword phase in the saved byte cursor. Rounding each
+			// transfer independently would lose every mode1 address update.
+			if (c_bus)
+				m_wa0 += ((m_dma.dst + 2) >> 2) - ((cursor + 2) >> 2);
+			else
+				m_wa0 += (m_dma.add >> 2);
 		}
 	}
 }
@@ -872,11 +986,12 @@ void scudsp_cpu_device::execute_run()
 	{
 		m_update_mul = 0;
 
-		debugger_instruction_hook(m_pc);
+		debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);
 
-		if ( m_delay )
+		if ( m_delay_pending )
 		{
-			opcode = scudsp_readop(m_delay);
+			opcode = m_delay_opcode;
+			m_delay_pending = false;
 			m_delay = 0;
 		}
 		else
@@ -915,6 +1030,11 @@ void scudsp_cpu_device::execute_run()
 				break;
 		}
 
+		// Preserve the fetched slot word, not just its address. Program RAM can
+		// change while paused without replacing this already-fetched instruction.
+		if (m_delay_pending)
+			m_delay_opcode = scudsp_readop(m_delay);
+
 		if ( m_update_mul == 1 )
 		{
 			m_mul = (int64_t)m_rx.si * (int64_t)m_ry.si;
@@ -938,7 +1058,10 @@ void scudsp_cpu_device::device_start()
 
 	m_pc = 0;
 	m_flags = 0;
+	m_paused = false;
 	m_delay = 0;
+	m_delay_opcode = 0;
+	m_delay_pending = false;
 	m_top = 0;
 	m_lop = 0;
 	memset(&m_rx, 0x00, sizeof(m_rx));
@@ -957,6 +1080,7 @@ void scudsp_cpu_device::device_start()
 	m_ct2 = 0;
 	m_ct3 = 0;
 	memset(&m_dma, 0x00, sizeof(m_dma));
+	m_dma_state = DMA_STATE_IDLE;
 
 	m_program = &space(AS_PROGRAM);
 	m_data = &space(AS_DATA);
@@ -970,7 +1094,10 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_ct3));
 
 	save_item(NAME(m_flags));
+	save_item(NAME(m_paused));
 	save_item(NAME(m_delay));
+	save_item(NAME(m_delay_opcode));
+	save_item(NAME(m_delay_pending));
 
 	save_item(NAME(m_top));
 	save_item(NAME(m_lop));
@@ -991,6 +1118,15 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_dma.src));
 	save_item(NAME(m_dma.dst));
 	save_item(NAME(m_dma.size));
+	save_item(NAME(m_dma.add));
+	save_item(NAME(m_dma.write_stride));
+	save_item(NAME(m_dma.program_address));
+	save_item(NAME(m_dma.update));
+	save_item(NAME(m_dma.ex));
+	save_item(NAME(m_dma.stalled));
+	save_item(NAME(m_dma.dir));
+	save_item(NAME(m_dma.count));
+	save_item(NAME(m_dma_state));
 
 	// Register state for debugger
 	state_add( SCUDSP_PC, "PC", m_pc ).formatstr("%02X");
@@ -1022,10 +1158,20 @@ void scudsp_cpu_device::device_start()
 
 void scudsp_cpu_device::device_reset()
 {
+	m_delay = 0;
+	m_delay_opcode = 0;
+	m_delay_pending = false;
 	m_out_ddwt_cb(0);
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::never);
 	m_dma_state = DMA_STATE_IDLE;
+	m_dma.ex = 0;
+	m_dma.stalled = false;
+	m_paused = false;
+	m_dma.count = 0;
+	m_flags &= ~(1 << T0F);
+	// A reset during DMA must also release its private execution stall.
+	set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
 }
 
 // TODO: do we need this?
@@ -1069,7 +1215,7 @@ void scudsp_cpu_device::state_string_export(const device_state_entry &entry, std
 		case STATE_GENFLAGS:
 			str = string_format("%s%s%s%c%c%c%c%c%s%s%s",
 				m_flags & 0x4000000 ? "PR":"..",
-				m_flags & 0x2000000 ? "EP":"..",
+				m_paused ? "EP":"..",
 				m_flags & 0x800000 ? "T0":"..",
 				m_flags & 0x400000 ? 'S':'.',
 				m_flags & 0x200000 ? 'Z':'.',

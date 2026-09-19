@@ -1,0 +1,7 @@
+test: /tmp/dsp-pipeline-03trdw5q/test.cpp:297: int main(): Assertion `!reset.m_delay_pending' failed.
+Traceback (most recent call last):
+  File "/home/user/mame/regtests/saturn/test_scudsp_pipeline.py", line 137, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/dsp-pipeline-03trdw5q/test']' died with <Signals.SIGABRT: 6>.

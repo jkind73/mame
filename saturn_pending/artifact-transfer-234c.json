@@ -1,0 +1,14 @@
+{
+  "native_run": 35291979814,
+  "native_source": "234c7abcfc9a222978a7545a8491e568cf1781cf",
+  "export_run": 35299254687,
+  "export_url": "https://github.com/jkind73/mame/actions/runs/35299254687",
+  "draft_tag": "arena-saturn-validation-234c7abcfc9a222978a7545a8491e568cf1781cf",
+  "transfer_blob": "3e551def43c48caa963d0401330af3ae4a60a088",
+  "zip_size": 16305741,
+  "zip_sha256": "7129a6434f59db271254f515c3f1a9fef7d00d862c9347f8f44f563c76c966f8",
+  "binary_sha256": "7508e813a6b93bd4f9650dd5f4a0cfcf73b84d128008a89bc3a8c678365c5062",
+  "release_published": false,
+  "transfer_success": true,
+  "live_evidence": "saturn_pending/evidence/234c-live"
+}

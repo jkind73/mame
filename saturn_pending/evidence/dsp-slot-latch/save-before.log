@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/home/user/slot-latch-probe/saturn_pending/test_scudsp_slot_save_runtime.py", line 115, in <module>
+    runner.main('DSP pending slot save: wrapped slot restored and executed exactly')
+  File "/home/user/mame/saturn_pending/test_smpc_save_runtime.py", line 179, in main
+    validate_output((a.output/'runtime.log').read_text(errors='replace'), result.returncode)
+  File "/home/user/slot-latch-probe/saturn_pending/test_scudsp_slot_save_runtime.py", line 112, in validate_output
+    raise RuntimeError('DSP pending-slot save fixture failed:\n'+text[-10000:])
+RuntimeError: DSP pending-slot save fixture failed:
+DSP_SLOT_SAVE armed
+DSP_SLOT_SAVE saved
+DSP_SLOT_SAVE mutated
+DSP_SLOT_SAVE loaded
+DSP_SLOT_SAVE FAIL original_slot got=34 want=12
+DSP_SLOT_SAVE FAIL replayed_slot got=34 want=12
+Average speed: 243.70% (2 seconds)
+

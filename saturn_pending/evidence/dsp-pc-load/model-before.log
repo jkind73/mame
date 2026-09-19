@@ -1,0 +1,7 @@
+test: /tmp/scudsp-hostflags-xm35il6h/test.cpp:76: int main(): Assertion `s.m_delay_pending==(load?false:bool(pending))' failed.
+Traceback (most recent call last):
+  File "/home/user/pc-load-probe/test_scudsp_hostflags.py", line 63, in <module>
+    subprocess.run([str(p/'test')],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/scudsp-hostflags-xm35il6h/test']' died with <Signals.SIGABRT: 6>.

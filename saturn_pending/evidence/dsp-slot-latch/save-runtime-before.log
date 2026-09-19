@@ -1,0 +1,7 @@
+DSP_SLOT_SAVE armed
+DSP_SLOT_SAVE saved
+DSP_SLOT_SAVE mutated
+DSP_SLOT_SAVE loaded
+DSP_SLOT_SAVE FAIL original_slot got=34 want=12
+DSP_SLOT_SAVE FAIL replayed_slot got=34 want=12
+Average speed: 243.70% (2 seconds)
