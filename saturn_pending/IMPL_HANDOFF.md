@@ -24,6 +24,7 @@
 | IMPL-0010 | CPU-03/IO-02 | 3d18666d | UNVALIDATED | SCI MP receive mode discards non-address frames under MPIE and wakes on MPB=1 |
 | IMPL-0011 | CPU-03/IO-02 | 25302858 | UNVALIDATED | SCI async RX samples eight 16x clock pulses after start detection, then every sixteen |
 | IMPL-0012 | CPU-03/IO-02 | 7f895a95 | UNVALIDATED | SCI callback constructor initializers follow declaration order without suppressing reorder diagnostics |
+| IMPL-0013 | CPU-03/IO-02 | ef6a191e | UNVALIDATED | External SCK clocks synchronous SCI receive: eight LSB-first rising-edge samples per character |
 
 ---
 
@@ -850,3 +851,70 @@
   future checks must retain reorder diagnostics. This is a build-only
   correction to the earlier SCI callback addition, not SCI hardware
   acceptance. No added state, save-layout change or validator asset edit.
+
+
+### IMPL-0013 — CPU-03/IO-02 — external-clock synchronous SCI receiver
+
+- branch/commit: `arena/01a0b897-mame` @ **ef6a191e** (base: 2953c777).
+- files: `src/devices/cpu/sh/sh7604.h:37,215` (SCK input API/history),
+  `src/devices/cpu/sh/sh7604.cpp:123,253` (save/reset), `:925-947`
+  (RE disable/re-enable), `:1003-1039` (SCK receive path),
+  `saturn_pending/impl_checks/check_sh7604_sync_rx.py`.
+- contract: `sck_w(int)` tracks external pin transitions. With C/A=1,
+  CKE1=1 and RE=1, a falling edge synchronizes the receiver; each rising
+  edge then samples RxD. After exactly eight samples, the LSB-first byte
+  goes through the existing completion/overrun path. CHR, PE, O/E, STOP,
+  MP and MPIE do not change synchronous character framing. Repeated pin
+  levels do not advance the transfer. RE=0 discards partial input; after
+  re-enable a new falling edge is required. ORER/PER/FER block reception
+  until acknowledged. No internal timer synthesizes these external edges.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.3.4 pp.372-378, Figure 13.14 (data valid on rising clock,
+  falling-edge synchronization, fixed eight-bit format), Figure 13.19
+  (receive/overrun), p.378 receive steps 1-3; Table 13.9 pp.341-342 for
+  clock selection. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:275-286,311-320` samples synchronous data on
+  SCE_R, completes eight bits and preserves RDR on overrun. Upstream
+  MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:769-797` also samples on rising clock
+  phase and assembles eight bits. The related H8 is only a structural
+  cross-check. Upstream SH7604 remains a register stub; no code imported.
+- expected observable: with SMR=0x80, SCR=0x52 and clear RX flags, input
+  data 0x96 held at eight successive rising SCK edges yields RDR=0x96,
+  SSR=0xc4 and a receive IRQ recalculation only at edge eight. A second
+  byte without RDRF acknowledgement leaves RDR=0x96, SSR=0xe4. Repeated
+  high/low writes never add samples. All lower SMR format bits leave the
+  eight-bit framing unchanged. Tolerance: exact edge count/data/status;
+  setup/hold and synchronizer delay in phi cycles are not asserted.
+- suggested method: linked per-device fixture binds RxD, calls `sck_w`
+  and accesses real mapped SCI registers on both CPU engines. Drive
+  opposite data on falling vs rising edges; exercise CKE=2/3, RE=0,
+  asynchronous/internal-clock controls, all format bits, overrun and
+  error recovery. Save/load at both polarities between any two bit edges.
+- falsifier: an extra sample from a repeated level or falling edge,
+  reception without RE/external synchronous selection, fewer/more than
+  eight samples, framing controlled by asynchronous format bits, lost
+  RDR on overrun, or duplicate/missing data after save/load contradicts
+  this candidate. Hardware showing a different sample edge falsifies
+  the chosen pin contract.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 262144 sync RX format/control/data cases; 4096 half-edge state-copy replays
+  method-level, unvalidated: repeated levels, stop/resume, error stall, overrun and mode gates exercised
+  method-level, unvalidated: SCK edge-history reset/save registration present
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_sync_rx.py`.
+  Existing SSR/TX-chain/RX-error/MP/RX-phase extracted checks rerun with
+  unchanged expected values: exit 0. Full `sh7604.cpp` TU syntax with
+  `-std=c++20 -Wall -Werror -Wno-sign-compare` and the session includes:
+  exit 0, no diagnostics. Reorder warnings enabled. `git diff --check`:
+  exit 0. These are compiler/extracted-method results, not native proof.
+- state: UNVALIDATED
+- not covered / known doubts: native CPU/IRQ/save-manager behavior and
+  physical pin setup/hold are open. One saved/reset field `m_sci_sck`
+  changes the save layout; old save files are incompatible. Synchronous
+  transmit, internal synchronous clock generation, external-clock async,
+  SCI DMA and actual modem/cable wiring remain absent in this commit.
+  No Saturn/ST-V configuration is claimed to have an attached SCI peer.
