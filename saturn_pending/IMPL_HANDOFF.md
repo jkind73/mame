@@ -28,6 +28,7 @@
 | IMPL-0014 | CPU-03/IO-02 | 5a128134 | UNVALIDATED | External synchronous SCI TX changes on falling SCK, chains at MSB and supports concurrent RX |
 | IMPL-0015 | CPU-03/IO-02 | 01374a7d | UNVALIDATED | Internal synchronous SCI emits baud-derived SCK pulses, idles high and clocks TX/RX together |
 | IMPL-0016 | CPU-03/IO-02 | 520b3f8a | UNVALIDATED | External asynchronous receive advances only on rising 16x SCK edges, without RX timer pacing |
+| IMPL-0017 | CPU-03/IO-02 | ac368a39 | UNVALIDATED | External asynchronous TX advances once per sixteen rising SCK edges and never arms the internal bit timer |
 
 ---
 
@@ -1170,3 +1171,85 @@
   is not implemented in this commit: its older internal-timer path is
   not a supported external-mode transmitter. Async SCK output, SCI DMA
   and actual peripheral wiring also remain absent.
+
+
+### IMPL-0017 — CPU-03/IO-02 — externally clocked asynchronous SCI transmit
+
+- branch/commit: `arena/01a0b897-mame` @ **ac368a39** (base: 5ff90af5;
+  uses IMPL-0016's asynchronous SCK routing for simultaneous RX).
+- files: `src/devices/cpu/sh/sh7604.cpp` (TX divider save/reset, SCR
+  cancellation, `sck_w`, `sci_recalc_rates`, `sci_transmit_start`,
+  `sci_tx_tick`), `src/devices/cpu/sh/sh7604.h` (`m_sci_tx_phase`),
+  `saturn_pending/impl_checks/check_sh7604_external_async_tx.py`.
+  Existing mocks gain divider state/unused callback declarations only;
+  no existing expected values or validator assets changed.
+- contract: C/A=0 and CKE1=1 pace TX with the external 16x input clock.
+  Once a read-qualified TDRE clear starts an async frame, each group of
+  sixteen rising SCK edges advances one transmitted bit. Falling or
+  repeated levels do not advance the divider. Preserve existing data,
+  parity/MP, stop-bit, queued-frame and TEND semantics; BRR/CKS do not
+  control bit duration in external mode. No internal TX timer is armed
+  by start, continuation or rate recalculation. TE=0 discards partial
+  TX and clears the divider. Async receive errors do not stop transmit.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.2.6 pp.340-342 (TE and CKE), section 13.3.1 p.352
+  (external source does not use baud generator), section 13.3.2
+  pp.354-360, especially p.356 (external clock frequency 16 times bit
+  rate) and p.359/Figure 13.6 (frame/queue semantics). Section 13.5
+  p.381 limits receive-error TX inhibition to synchronous mode.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:391-410,538-547` has external-clock
+  TX/RX dispatch and a 16-phase TX counter. Its both-level edge dispatch
+  is not evidence of the same physical input-clock interpretation;
+  this candidate follows the SH7604 16x-frequency contract. MiSTer
+  pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:138-139` still selects internal SCE for async
+  mode, so that missing external behavior is not adopted. No external
+  reference code imported. Initial external-clock phase remains open.
+- expected observable: in external-clock 8N1 mode, start=0 at frame
+  initiation; data bit0 after 16 input rising edges, bit7 after 128,
+  stop=1 after 144; a queued frame's start after 160. Every complete
+  stop interval lasts sixteen input periods. BRR=0 vs 255, all CKS
+  settings and CKE=2 vs 3 give identical pulse-counted frames. With no
+  queued byte, further SCK edges cause no new TxD frame. Tolerance:
+  exact pulse counts/bit values within this model; absolute start-bit
+  phase relative to the free-running external input is not qualified.
+- suggested method: linked independent external-clock driver plus two
+  SH7604 devices exchanging distinct data. Use legal asynchronous
+  formats and continuous SCK; compare mapped SSR with pin traces.
+  Include queued bytes before/after the final stop decision, TIE/TEIE
+  writes, BRR variation, receive overruns while TX continues and TE
+  cancellation. Save/load at every divider phase with TDR/TSR occupied.
+- falsifier: an internal bit timer advancing external TX, BRR-dependent
+  pacing, non-sixteen-pulse bit duration, falling/repeated levels shifting
+  data, missing queued frames, shortened stop interval, RX error halting
+  async TX, or duplicate data after restoring a partial divider phase
+  contradicts this candidate. A hardware trace differing in start/divider
+  alignment would require revising that explicitly provisional phase.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 8192 external asynchronous three-frame streams; 256 two-device duplex cases; 4096 divider state-copy replays
+  method-level, unvalidated: no internal timers, BRR independence, late queue, RX-overrun isolation and TE cancellation exercised
+  method-level, unvalidated: external TX divider reset/save registration present
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_external_async_tx.py`.
+  Same script on pre-change `5ff90af5` source exits 1:
+  `line 482: tx.due==attotime::never.value && rx.due==attotime::never.value && clock_timer.due==attotime::never.value`.
+  Nine prior focused SCI scripts rerun with unchanged expectations:
+  exit 0. Extracted checks use UBSan. Full `sh7604.cpp` TU syntax with
+  `-std=c++20 -Wall -Werror -Wno-sign-compare` and session includes:
+  exit 0, no diagnostics; reorder enabled. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: the candidate retains immediate start-bit
+  output on TSR loading and counts sixteen rising edges to the next bit.
+  Exact synchronization from a register write to the free-running SCK
+  phase needs a trace; this is not a physical edge-to-output latency
+  claim. Stopping the external clock during operation is prohibited by
+  p.356; deterministic state-copy checks do not qualify hardware pauses.
+  No native CPU/IRQ/save-manager execution. New `m_sci_tx_phase` is
+  saved/reset in this commit; old save files are incompatible. Async SCK
+  output, SCI DMA, standby/CPU-clock transitions, physical margins and
+  real modem/cable/peer configuration remain open. Frozen accepted work
+  and validator assets are untouched.

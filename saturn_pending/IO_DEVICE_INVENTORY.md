@@ -1,6 +1,6 @@
 # Saturn / ST-V peripheral and communication configuration inventory
 
-Scope: **IO-02 / STV-05 / EXP-02**, base configuration inventory at `3d18666d`, SCI update at `01374a7d` on
+Scope: **IO-02 / STV-05 / EXP-02**, base configuration inventory at `3d18666d`, SCI update at `ac368a39` on
 `arena/01a0b897-mame`. This lists implementation/configuration availability,
 not hardware or game acceptance. It does not change the completion report's
 status labels. An emulated SCI engine alone is not an emulated modem or cable.
@@ -27,7 +27,7 @@ reassess previously accepted controller, sound or game work.
 
 | Interface | Implemented candidate scope | Missing or unresolved |
 |---|---|---|
-| SH7604 SCI | Internal-clock async TX/RX callbacks and register/IRQ logic (IMPL-0007 through IMPL-0011); external SCK synchronous RX/TX/full duplex candidates (IMPL-0013/0014), plus internal synchronous SCK output/pacing (IMPL-0015) | No Saturn/ST-V machine-config binding of `txd_wr_callback` / `rxd_rd_callback` in `sat_console.cpp` or `stv.cpp`; no cable drives the new `sck_w` input. Externally clocked async transfers, asynchronous SCK output and SCI-specific DMA request/ack routing remain absent. The new `sck_wr_callback` also has no configured peer. Physical sampling/status-edge phase and native IRQ/save behavior remain open. |
+| SH7604 SCI | Internal-clock async TX/RX callbacks and register/IRQ logic (IMPL-0007 through IMPL-0011), external 16x-clock async RX/TX (IMPL-0016/0017); external SCK synchronous RX/TX/full duplex candidates (IMPL-0013/0014), plus internal synchronous SCK output/pacing (IMPL-0015) | No Saturn/ST-V machine-config binding of `txd_wr_callback` / `rxd_rd_callback` in `sat_console.cpp` or `stv.cpp`; no cable drives the new `sck_w` input. Asynchronous SCK output and SCI-specific DMA request/ack routing remain absent. The new `sck_wr_callback` also has no configured peer. Physical sampling/status-edge phase and native IRQ/save behavior remain open. |
 | ST-V 315-5649 RS-422 | Two byte-level channels, occupancy and loopback candidate IMPL-0001 | No timed wire/peer model, error-generation model, satellite protocol or external connection save/disconnect policy. `magzun` binds both receive callbacks to return zero (`stv.cpp:1428-1435`), not to an emulated microphone board. |
 | Optional MPEG/Video CD path | HLE command/state handling exists | No configured board-level decode/composition acceptance. `src/mame/sega/saturn_cd_hle.cpp:2346+` is HLE, not evidence of a complete Movie Card. Tracked under EXP-01 / V2-H04, not a communication-device substitute. |
 
