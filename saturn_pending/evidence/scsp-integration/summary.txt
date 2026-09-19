@@ -1,0 +1,10 @@
+SND-01 SCSP integration gate - saturn_pending/test_scsp_integration_runtime.py
+binary sha256: 9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4
+
+saturnjp-nodrc   SCSP_INT PASS cases=84 | masked counter=5 scipd=05c0
+saturnjp-drc     SCSP_INT PASS cases=84 | masked counter=5 scipd=05c0
+saturneu-drc     SCSP_INT PASS cases=84 | masked counter=5 scipd=05c0
+stvbios-drc      SCSP_INT PASS cases=84 | masked counter=5 scipd=05c0
+
+sections: A sound RAM lanes (both windows)  B register lanes (both windows)
+          C SCU DMA forward/return + same-bus DMAILL  D reset hold/release + timer A level 6 delivery
