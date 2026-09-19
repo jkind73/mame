@@ -1,0 +1,192 @@
+probe.lua
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of mame.ini
+Parsing .\mame.ini
+Starting plugin data...
+Starting plugin layout...
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of source\empty.ini
+Attempting load of ___empty.ini
+Video: Monitor 65537 = "\\.\DISPLAY1" (primary)
+Direct3D: Using Direct3D 9
+Physical width 3840, height 2160
+Direct3D: Initialize
+Direct3D: Configuring adapter #0 = NVIDIA GeForce RTX 4080
+Direct3D: YUV format = RGB
+Direct3D: Max texture size = 16384x16384
+Direct3D: Device created at 3840x2160
+Direct3D: Initialize HLSL
+Sound: Got default output device ID: {0.0.0.00000000}.{4033e017-21ef-40a5-8055-a8a574bd8d63}
+Sound: Found audio output device Realtek Digital Output (Realtek(R) Audio) ({0.0.0.00000000}.{2bc9b225-0f6b-4fad-a2cc-3feda38fb0ed}), assigned ID 1.
+Sound: Found audio output device Speakers (Realtek(R) Audio) ({0.0.0.00000000}.{4033e017-21ef-40a5-8055-a8a574bd8d63}), assigned ID 2.
+Input: Adding keyboard #1:
+Input: Adding mouse #1:
+Input: Adding lightgun #1:
+Starting No Driver Loaded ':'
+  (missing dependencies; rescheduling)
+Starting Video Screen ':screen'
+Starting No Driver Loaded ':'
+Checking for icons in directory icons
+No candidate icons found for machines
+Attempting to parse: default.cfg
+Attempting to parse: ___empty.cfg
+Checking for icons in directory icons\saturn
+No candidate icons found for software list saturn
+Checking for icons in directory icons\photo_cd
+No candidate icons found for software list photo_cd
+Checking for icons in directory icons\sat_cart
+No candidate icons found for software list sat_cart
+unzip: opened archive file Z:\mame\roms\saturnjp.zip
+unzip: found Z:\mame\roms\saturnjp.zip ECD at 980
+unzip: Z:\mame\roms\saturnjp.zip has no ZIP64 ECD locator
+unzip: read Z:\mame\roms\saturnjp.zip central directory
+unzip: closing archive file Z:\mame\roms\saturnjp.zip and sending to cache
+unzip: found Z:\mame\roms\saturnjp.zip in cache
+unzip: closing archive file Z:\mame\roms\saturnjp.zip and sending to cache
+unzip: found Z:\mame\roms\saturnjp.zip in cache
+unzip: closing archive file Z:\mame\roms\saturnjp.zip and sending to cache
+unzip: opened archive file Z:\mame\roms\satcdb.zip
+unzip: found Z:\mame\roms\satcdb.zip ECD at 980
+unzip: Z:\mame\roms\satcdb.zip has no ZIP64 ECD locator
+unzip: read Z:\mame\roms\satcdb.zip central directory
+unzip: closing archive file Z:\mame\roms\satcdb.zip and sending to cache
+unzip: found Z:\mame\roms\satcdb.zip in cache
+unzip: closing archive file Z:\mame\roms\satcdb.zip and sending to cache
+unzip: found Z:\mame\roms\satcdb.zip in cache
+unzip: closing archive file Z:\mame\roms\satcdb.zip and sending to cache
+unzip: opened archive file Z:\mame\roms\saturn.zip
+unzip: found Z:\mame\roms\saturn.zip ECD at 980
+unzip: Z:\mame\roms\saturn.zip has no ZIP64 ECD locator
+unzip: read Z:\mame\roms\saturn.zip central directory
+unzip: closing archive file Z:\mame\roms\saturn.zip and sending to cache
+Sound: WASAPI exited
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of horizont.ini
+Attempting load of raster.ini
+Parsing ini/presets\raster.ini
+Attempting load of source\sat_console.ini
+Attempting load of saturn.ini
+Attempting load of saturnjp.ini
+Video: Monitor 65537 = "\\.\DISPLAY1" (primary)
+Direct3D: Using Direct3D 9
+Physical width 3840, height 2160
+Direct3D: Initialize
+Direct3D: Configuring adapter #0 = NVIDIA GeForce RTX 4080
+Direct3D: YUV format = RGB
+Direct3D: Max texture size = 16384x16384
+Direct3D: Device created at 3840x2160
+Direct3D: Initialize HLSL
+Direct3D: Unable to find D3DXCreateEffectFromFileW
+DirectInput: Using DirectInput 8
+Sound: Got default output device ID: {0.0.0.00000000}.{4033e017-21ef-40a5-8055-a8a574bd8d63}
+Sound: Found audio output device Realtek Digital Output (Realtek(R) Audio) ({0.0.0.00000000}.{2bc9b225-0f6b-4fad-a2cc-3feda38fb0ed}), assigned ID 3.
+Sound: Found audio output device Speakers (Realtek(R) Audio) ({0.0.0.00000000}.{4033e017-21ef-40a5-8055-a8a574bd8d63}), assigned ID 4.
+Input: Adding keyboard #1:
+Input: Adding mouse #1:
+Input: Adding lightgun #1:
+unzip: opened archive file Z:\mame\roms\saturnjp.zip
+unzip: found Z:\mame\roms\saturnjp.zip ECD at 980
+unzip: Z:\mame\roms\saturnjp.zip has no ZIP64 ECD locator
+unzip: read Z:\mame\roms\saturnjp.zip central directory
+unzip: closing archive file Z:\mame\roms\saturnjp.zip and sending to cache
+unzip: opened archive file Z:\mame\roms\satcdb.zip
+unzip: found Z:\mame\roms\satcdb.zip ECD at 980
+unzip: Z:\mame\roms\satcdb.zip has no ZIP64 ECD locator
+unzip: read Z:\mame\roms\satcdb.zip central directory
+unzip: closing archive file Z:\mame\roms\satcdb.zip and sending to cache
+:saturn_cd_hle:cdrom: attempting to load software item saturn:aburner2:cdrom
+unzip: opened archive file Z:\mame\roms\saturn.zip
+unzip: found Z:\mame\roms\saturn.zip ECD at 980
+unzip: Z:\mame\roms\saturn.zip has no ZIP64 ECD locator
+unzip: read Z:\mame\roms\saturn.zip central directory
+unzip: closing archive file Z:\mame\roms\saturn.zip and sending to cache
+Optional memory region ':smpc:smem' not found
+Optional memory region ':nvram' not found
+Optional memory region ':scsp' not found
+Starting Saturn (Japan) ':'
+  (missing dependencies; rescheduling)
+Starting Hitachi SH-2 (SH7604) ':maincpu'
+drc_cache: RWX pages supported
+Starting Timer ':scantimer'
+Starting Hitachi SH-2 (SH7604) ':slave'
+drc_cache: RWX pages supported
+Starting Sega Saturn DCC Dual CPU interface (Hitachi 315-5778) ':dcc'
+Starting Motorola MC68000 ':audiocpu'
+Starting Sega Saturn System Control Unit (Yamaha FH3007 315-5688) ':scu'
+Starting Sega SCUDSP ':scu:scudsp'
+Starting Sega Saturn SMPC HLE (Hitachi HD404920FS 315-5744) ':smpc'
+Starting NVRAM ':smpc:smem'
+Starting NVRAM ':nvram'
+Starting Video Screen ':screen'
+Starting Sega Saturn VDP2 (Yamaha 315-5690) ':vdp2'
+Starting Palette ':palette'
+Starting gfxdecode ':gfxdecode'
+Starting Speaker ':speaker'
+Starting Yamaha YMF292-F SCSP ':scsp'
+Starting Sega Saturn/ST-V CD Block HLE ':saturn_cd_hle'
+Starting CD-ROM Image ':saturn_cd_hle:cdrom'
+Starting CD/DA ':saturn_cd_hle:cdda'
+Starting Sega Saturn controller port ':ctrl1'
+Starting Sega Saturn Joypad ':ctrl1:joypad'
+Starting Sega Saturn controller port ':ctrl2'
+Starting Sega Saturn Joypad ':ctrl2:joypad'
+Starting Saturn CDB (CD Block) ':saturn_cdb'
+Starting Hitachi SH-1 (SH7032) ':saturn_cdb:cdbcpu'
+drc_cache: RWX pages supported
+Starting Software List ':cd_list'
+Starting Software List ':photocd_list'
+Starting Saturn Cartridge Slot ':exp'
+Starting Software List ':cart_list'
+Starting Saturn (Japan) ':'
+Attempting to parse: default.cfg
+Attempting to parse: saturnjp.cfg
+Sound: Created output stream :speaker on device Speakers (Realtek(R) Audio).
+SOUNDPROBE saved 1/3 to afterburner2-sound-probe.txt
+SOUNDPROBE saved 2/3 to afterburner2-sound-probe.txt
+SOUNDPROBE saved 3/3 to afterburner2-sound-probe.txt
+Average speed: 99.68% (77 seconds)
+Sound: WASAPI exited
+drc_cache: Statistics:
+Flush count 1, near cache use 1176, permanent cache use 7340048/7344128, invariant cache use 176, maximum transient cache use 21794384
+drc_cache: Statistics:
+Flush count 0, near cache use 1040, permanent cache use 786448/790528, invariant cache use 176, maximum transient cache use 0
+drc_cache: Statistics:
+Flush count 0, near cache use 1040, permanent cache use 786448/790528, invariant cache use 176, maximum transient cache use 0
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of mame.ini
+Parsing .\mame.ini
+Attempting load of source\empty.ini
+Attempting load of ___empty.ini
+Video: Monitor 65537 = "\\.\DISPLAY1" (primary)
+Direct3D: Using Direct3D 9
+Physical width 3840, height 2160
+Direct3D: Initialize
+Direct3D: Configuring adapter #0 = NVIDIA GeForce RTX 4080
+Direct3D: YUV format = RGB
+Direct3D: Max texture size = 16384x16384
+Direct3D: Device created at 3840x2160
+Direct3D: Initialize HLSL
+DirectInput: Using DirectInput 8
+Sound: Got default output device ID: {0.0.0.00000000}.{4033e017-21ef-40a5-8055-a8a574bd8d63}
+Sound: Found audio output device Realtek Digital Output (Realtek(R) Audio) ({0.0.0.00000000}.{2bc9b225-0f6b-4fad-a2cc-3feda38fb0ed}), assigned ID 5.
+Sound: Found audio output device Speakers (Realtek(R) Audio) ({0.0.0.00000000}.{4033e017-21ef-40a5-8055-a8a574bd8d63}), assigned ID 6.
+Input: Adding keyboard #1:
+Input: Adding mouse #1:
+Input: Adding lightgun #1:
+Starting No Driver Loaded ':'
+  (missing dependencies; rescheduling)
+Starting Video Screen ':screen'
+Starting No Driver Loaded ':'
+Checking for icons in directory icons
+No candidate icons found for machines
+Attempting to parse: default.cfg
+Attempting to parse: ___empty.cfg
+Sound: WASAPI exited

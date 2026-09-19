@@ -79,6 +79,21 @@ bool cpu_device::access_before_delay(u32 cycles, const void *tag) noexcept
 		return false;
 	}
 
+	// For Saturn/ST-V BUS-01/04 faithful retry: cycles >=1024 indicates forced retry
+	// (bus owned or device not ready). Must abort timeslice regardless of remaining icount
+	// so that SH2 interpreter snapshot restore (sh2.cpp) and DRC icount guard (sh.cpp)
+	// rewind R15 pre-decrement / post-inc side-effects and retry the transaction.
+	if(cycles >= 1024) {
+		// Force abort: ensure icount <=0 so both interpreter and DRC exit current block
+		if(*m_icountptr > 0)
+			*m_icountptr = 0;
+		else
+			*m_icountptr -= cycles; // keep negative for accounting
+		m_access_before_delay_tag = tag;
+		m_access_to_be_redone = true;
+		return true;
+	}
+
 	*m_icountptr -= cycles;
 
 	if(*m_icountptr <= 0) {

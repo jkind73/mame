@@ -2494,15 +2494,19 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 			UML_MOV(block, mem(&m_sh2_state->arg0), desc->opptr);                  // mov     [arg0],opcode
 			UML_CALLC(block, cfunc_unimplemented, this);                             // callc   cfunc_unimplemented
 
-			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
-			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
+			UML_SUB(block, I0, R32(15), 4);                    // r0 = R15-4
 			UML_MOV(block, I1, mem(&m_sh2_state->irqsr));           // mov     r1, irqsr
 			UML_CALLH(block, *m_write32);                           // call    write32
-
+			UML_CMP(block, mem(&m_sh2_state->icount), 0);
+			UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
-			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
+
+			UML_SUB(block, I0, R32(15), 4);                    // r0 = R15-4
 			UML_MOV(block, I1, desc->pc);                           // mov     r1, desc->pc
 			UML_CALLH(block, *m_write32);                           // call    write32
+			UML_CMP(block, mem(&m_sh2_state->icount), 0);
+			UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 
 			// evec is clobbered by the interrupt check inside generate_update_cycles
 			UML_MOV(block, mem(&m_sh2_state->target), mem(&m_sh2_state->evec));  // mov target, evec
@@ -2528,6 +2532,10 @@ void sh_common_execution::generate_delay_slot(drcuml_block &block, compiler_stat
 	// update after this returns, so stash them along with the label counter
 	compiler.cycles = compiler_temp.cycles;
 	compiler.labelnum = compiler_temp.labelnum;
+	// LDC [@Rm+,]SR in a delay slot can expose an interrupt. The branch
+	// emits the check after the slot, using the branch target as the return
+	// PC; do not lose the request with the temporary compiler state.
+	compiler.checkints = compiler_temp.checkints;
 }
 
 void sh_common_execution::func_unimplemented()
@@ -2663,6 +2671,8 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 			UML_MOV(block, I1, R32(REG_M));        // mov r1, Rm
 			SETEA(0);                       // set ea for debug
 			UML_CALLH(block, *m_write32);
+			UML_CMP(block, mem(&m_sh2_state->icount), 0);
+			UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 			if (!in_delay_slot)
 				generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -2680,6 +2690,8 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 			UML_ADD(block, I0, R32(REG_M), scratch);       // add r0, Rm, scratch
 			SETEA(0);                       // set ea for debug
 			UML_CALLH(block, *m_read32);             // call read32
+			UML_CMP(block, mem(&m_sh2_state->icount), 0);
+			UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 			UML_MOV(block, R32(REG_N), I0);            // mov Rn, r0
 
 			if (!in_delay_slot)
@@ -2704,6 +2716,8 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 				UML_ADD(block, I0, mem(&m_sh2_state->target), ((opcode & 0xff) * 2) + 2); // add r0, target, disp*2+2
 				SETEA(0);                                              // set ea for debug
 				UML_CALLH(block, *m_read16);                           // read16(r0, r1)
+				UML_CMP(block, mem(&m_sh2_state->icount), 0);
+				UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 				UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);            // sext Rn, r0, WORD
 			}
 			else
@@ -2718,6 +2732,8 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 					UML_MOV(block, I0, scratch);                       // mov r0, scratch
 					SETEA(0);                                          // set ea for debug
 					UML_CALLH(block, *m_read16);                       // read16(r0, r1)
+					UML_CMP(block, mem(&m_sh2_state->icount), 0);
+					UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 					UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);        // sext Rn, r0, WORD
 				}
 				else
@@ -2765,6 +2781,8 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 				UML_AND(block, I0, I0, 0xfffffffc);                    // and r0, r0, ~3
 				UML_ADD(block, I0, I0, (opcode & 0xff) * 4);           // add r0, r0, disp*4
 				UML_CALLH(block, *m_read32);                           // read32(r0, r1)
+				UML_CMP(block, mem(&m_sh2_state->icount), 0);
+				UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 				UML_MOV(block, R32(REG_N), I0);                        // mov Rn, r0
 			}
 			else
@@ -2782,6 +2800,8 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 				{
 					UML_MOV(block, I0, scratch);                       // mov r0, scratch
 					UML_CALLH(block, *m_read32);                       // read32(r0, r1)
+					UML_CMP(block, mem(&m_sh2_state->icount), 0);
+					UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 					UML_MOV(block, R32(REG_N), I0);                    // mov Rn, r0
 				}
 				else
@@ -2822,6 +2842,8 @@ bool sh_common_execution::generate_group_2(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		UML_AND(block, I1, R32(REG_M), 0xff);  // and r1, Rm, 0xff
 		UML_CALLH(block, *m_write8);
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -2831,6 +2853,8 @@ bool sh_common_execution::generate_group_2(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		UML_AND(block, I1, R32(REG_M), 0xffff);    // and r1, Rm, 0xffff
 		UML_CALLH(block, *m_write16);
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -2840,6 +2864,8 @@ bool sh_common_execution::generate_group_2(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		UML_MOV(block, I1, R32(REG_M));        // mov r1, Rm
 		UML_CALLH(block, *m_write32);
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -2849,10 +2875,14 @@ bool sh_common_execution::generate_group_2(drcuml_block &block, compiler_state &
 		return false;
 
 	case  4: // MOVBM(Rm, Rn);
+		// BUS-01/04: write at Rn-1 before decrement so bus stall doesn't double-decrement R15 (choroqpk)
+		// Faithful DRC retry: if bus arbiter forces before_delay stall, icount<=0 and we must exit with current PC before SUB
 		UML_MOV(block, I1, R32(REG_M));        // mov r1, Rm
-		UML_SUB(block, R32(REG_N), R32(REG_N), 1);    // sub Rn, Rn, 1
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 1);    // r0 = Rn-1 (address)
 		UML_CALLH(block, *m_write8);         // call write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 1);    // sub Rn, Rn, 1
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -2860,9 +2890,11 @@ bool sh_common_execution::generate_group_2(drcuml_block &block, compiler_state &
 
 	case  5: // MOVWM(Rm, Rn);
 		UML_MOV(block, I1, R32(REG_M));        // mov r1, Rm
-		UML_SUB(block, R32(REG_N), R32(REG_N), 2);    // sub Rn, Rn, 2
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 2);    // r0 = Rn-2
 		UML_CALLH(block, *m_write16);            // call write16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 2);    // sub Rn, Rn, 2
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -2870,9 +2902,11 @@ bool sh_common_execution::generate_group_2(drcuml_block &block, compiler_state &
 
 	case  6: // MOVLM(Rm, Rn);
 		UML_MOV(block, I1, R32(REG_M));        // mov r1, Rm
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, 4
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 4);    // r0 = Rn-4
 		UML_CALLH(block, *m_write32);            // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, 4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3093,6 +3127,8 @@ bool sh_common_execution::generate_group_6(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_M));        // mov r0, Rm
 		SETEA(0);                   // debug: ea = r0
 		UML_CALLH(block, *m_read8);          // call read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(REG_N), I0, SIZE_BYTE);    // sext Rn, r0, BYTE
 
 		if (!in_delay_slot)
@@ -3103,6 +3139,8 @@ bool sh_common_execution::generate_group_6(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_M));        // mov r0, Rm
 		SETEA(0);                   // debug: ea = r0
 		UML_CALLH(block, *m_read16);         // call read16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);    // sext Rn, r0, WORD
 
 		if (!in_delay_slot)
@@ -3113,6 +3151,8 @@ bool sh_common_execution::generate_group_6(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_M));        // mov r0, Rm
 		SETEA(0);                   // debug: ea = r0
 		UML_CALLH(block, *m_read32);         // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_MOV(block, R32(REG_N), I0);        // mov Rn, r0
 
 		if (!in_delay_slot)
@@ -3154,6 +3194,8 @@ bool sh_common_execution::generate_group_6(drcuml_block &block, compiler_state &
 	case  4: // MOVBP(Rm, Rn);
 		UML_MOV(block, I0, R32(REG_M));        // mov r0, Rm
 		UML_CALLH(block, *m_read8);          // call read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(REG_N), I0, SIZE_BYTE);        // sext Rn, r0, BYTE
 
 		if (REG_M != REG_N)
@@ -3166,6 +3208,8 @@ bool sh_common_execution::generate_group_6(drcuml_block &block, compiler_state &
 	case  5: // MOVWP(Rm, Rn);
 		UML_MOV(block, I0, R32(REG_M));        // mov r0, Rm
 		UML_CALLH(block, *m_read16);         // call read16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);        // sext Rn, r0, WORD
 
 		if (REG_M != REG_N)
@@ -3178,6 +3222,8 @@ bool sh_common_execution::generate_group_6(drcuml_block &block, compiler_state &
 	case  6: // MOVLP(Rm, Rn);
 		UML_MOV(block, I0, R32(REG_M));        // mov r0, Rm
 		UML_CALLH(block, *m_read32);         // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_MOV(block, R32(REG_N), I0);        // mov Rn, r0
 
 		if (REG_M != REG_N)
@@ -3228,6 +3274,8 @@ bool sh_common_execution::generate_group_8(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(REG_M), udisp);     // add r0, Rm, udisp
 		UML_MOV(block, I1, R32(0));         // mov r1, R0
 		UML_CALLH(block, *m_write8);             // call write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3238,6 +3286,8 @@ bool sh_common_execution::generate_group_8(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(REG_M), udisp);     // add r0, Rm, udisp
 		UML_MOV(block, I1, R32(0));         // mov r1, R0
 		UML_CALLH(block, *m_write16);                // call write16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3257,6 +3307,8 @@ bool sh_common_execution::generate_group_8(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(REG_M), udisp);     // add r0, Rm, udisp
 		SETEA(0);
 		UML_CALLH(block, *m_read8);              // call read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(0), I0, SIZE_BYTE);         // sext R0, r0, BYTE
 
 		if (!in_delay_slot)
@@ -3268,6 +3320,8 @@ bool sh_common_execution::generate_group_8(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(REG_M), udisp);     // add r0, Rm, udisp
 		SETEA(0);
 		UML_CALLH(block, *m_read16);             // call read16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(0), I0, SIZE_WORD);         // sext R0, r0, WORD
 
 		if (!in_delay_slot)
@@ -3376,18 +3430,25 @@ bool sh_common_execution::generate_group_12_TRAPA(drcuml_block &block, compiler_
 	uint32_t scratch = (opcode & 0xff) * 4;
 	UML_ADD(block, mem(&m_sh2_state->ea), mem(&m_sh2_state->vbr), scratch); // add ea, vbr, scratch
 
-	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
-	UML_MOV(block, I0, R32(15));                // mov r0, R15
+	// BUS-01/04: avoid double R15 on bus stall — write at R15-4 then decrement, with stall guard for faithful retry
+	UML_SUB(block, I0, R32(15), 4);            // r0 = R15-4
 	UML_MOV(block, I1, mem(&m_sh2_state->sr));              // mov r1, sr
 	UML_CALLH(block, *m_write32);                    // write32
-
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
-	UML_MOV(block, I0, R32(15));                // mov r0, R15
+
+	UML_SUB(block, I0, R32(15), 4);            // r0 = R15-4 (after first push)
 	UML_MOV(block, I1, desc->pc + 2);             // mov r1, pc+2
 	UML_CALLH(block, *m_write32);                    // write32
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 
 	UML_MOV(block, I0, mem(&m_sh2_state->ea));              // mov r0, ea
 	UML_CALLH(block, *m_read32);                 // read32
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 	UML_HASHJMP(block, 0, I0, *m_nocode);        // jmp (r0)
 
 	return true;
@@ -3404,6 +3465,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		UML_ADD(block, I0, mem(&m_sh2_state->gbr), scratch);    // add r0, gbr, scratch
 		UML_AND(block, I1, R32(0), 0xff);       // and r1, R0, 0xff
 		UML_CALLH(block, *m_write8);             // call write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3414,6 +3477,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		UML_ADD(block, I0, mem(&m_sh2_state->gbr), scratch);    // add r0, gbr, scratch
 		UML_AND(block, I1, R32(0), 0xffff);     // and r1, R0, 0xffff
 		UML_CALLH(block, *m_write16);                // call write16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3424,6 +3489,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		UML_ADD(block, I0, mem(&m_sh2_state->gbr), scratch);    // add r0, gbr, scratch
 		UML_MOV(block, I1, R32(0));         // mov r1, R0
 		UML_CALLH(block, *m_write32);                // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3436,6 +3503,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		scratch = (opcode & 0xff);
 		UML_ADD(block, I0, mem(&m_sh2_state->gbr), scratch);    // add r0, gbr, scratch
 		UML_CALLH(block, *m_read8);              // call read16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(0), I0, SIZE_BYTE);         // sext R0, r0, BYTE
 
 		if (!in_delay_slot)
@@ -3446,6 +3515,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		scratch = (opcode & 0xff) * 2;
 		UML_ADD(block, I0, mem(&m_sh2_state->gbr), scratch);    // add r0, gbr, scratch
 		UML_CALLH(block, *m_read16);             // call read16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(0), I0, SIZE_WORD);         // sext R0, r0, WORD
 
 		if (!in_delay_slot)
@@ -3456,6 +3527,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		scratch = (opcode & 0xff) * 4;
 		UML_ADD(block, I0, mem(&m_sh2_state->gbr), scratch);    // add r0, gbr, scratch
 		UML_CALLH(block, *m_read32);             // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_MOV(block, R32(0), I0);         // mov R0, r0
 
 		if (!in_delay_slot)
@@ -3507,6 +3580,8 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 		UML_AND(block, mem(&m_sh2_state->sr), mem(&m_sh2_state->sr), ~SH_T);   // and sr, sr, ~T (clear the T bit)
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		UML_CALLH(block, *m_read8);              // read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		UML_AND(block, I0, I0, opcode & 0xff);
 		UML_CMP(block, I0, 0);          // cmp r0, #0
@@ -3520,31 +3595,43 @@ bool sh_common_execution::generate_group_12(drcuml_block &block, compiler_state 
 	case 13: // ANDM(opcode & 0xff);
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		UML_CALLH(block, *m_read8);              // read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		UML_AND(block, I1, I0, opcode&0xff);    // and r1, r0, #opcode&0xff
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		SETEA(0);
 		UML_CALLH(block, *m_write8);             // write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		return true;
 
 	case 14: // XORM(opcode & 0xff);
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		UML_CALLH(block, *m_read8);              // read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		UML_XOR(block, I1, I0, opcode&0xff);    // xor r1, r0, #opcode&0xff
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		SETEA(0);
 		UML_CALLH(block, *m_write8);             // write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		return true;
 
 	case 15: // ORM(opcode & 0xff);
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		UML_CALLH(block, *m_read8);              // read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		UML_OR(block, I1, I0, opcode&0xff); // or r1, r0, #opcode&0xff
 		UML_ADD(block, I0, R32(0), mem(&m_sh2_state->gbr)); // add r0, R0, gbr
 		SETEA(0);
 		UML_CALLH(block, *m_write8);             // write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		return true;
 	}
 
@@ -3556,11 +3643,15 @@ bool sh_common_execution::generate_group_0_RTE(drcuml_block &block, compiler_sta
 	// PC and SR are both restored before the delay slot instruction executes
 	UML_MOV(block, I0, R32(15));            // mov r0, R15
 	UML_CALLH(block, *m_read32);             // call read32
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 	UML_MOV(block, mem(&m_sh2_state->target), I0);      // mov target, r0
 	UML_ADD(block, R32(15), R32(15), 4);        // add R15, R15, #4
 
 	UML_MOV(block, I0, R32(15));                // mov r0, R15
 	UML_CALLH(block, *m_read32);                // call read32
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 	UML_AND(block, I0, I0, SH_FLAGS);           // and r0, r0, FLAGS
 	UML_MOV(block, mem(&m_sh2_state->sr), I0);  // mov sr, r0
 	UML_ADD(block, R32(15), R32(15), 4);        // add R15, R15, #4
@@ -3628,6 +3719,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(0), R32(REG_N));        // add r0, R0, Rn
 		UML_AND(block, I1, R32(REG_M), 0x000000ff);    // and r1, Rm, 0xff
 		UML_CALLH(block, *m_write8);             // call write8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3640,6 +3733,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(0), R32(REG_N));        // add r0, R0, Rn
 		UML_AND(block, I1, R32(REG_M), 0x0000ffff);    // and r1, Rm, 0xffff
 		UML_CALLH(block, *m_write16);                // call write16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3652,6 +3747,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 		UML_ADD(block, I0, R32(0), R32(REG_N));        // add r0, R0, Rn
 		UML_MOV(block, I1, R32(REG_M));            // mov r1, Rm
 		UML_CALLH(block, *m_write32);                // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3691,6 +3788,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 	case 0x3c: // MOVBL0(Rm, Rn);
 		UML_ADD(block, I0, R32(0), R32(REG_M));        // add r0, R0, Rm
 		UML_CALLH(block, *m_read8);              // call read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(REG_N), I0, SIZE_BYTE);        // sext Rn, r0, BYTE
 
 		if (!in_delay_slot)
@@ -3703,6 +3802,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 	case 0x3d: // MOVWL0(Rm, Rn);
 		UML_ADD(block, I0, R32(0), R32(REG_M));        // add r0, R0, Rm
 		UML_CALLH(block, *m_read16);             // call read16
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);        // sext Rn, r0, WORD
 
 		if (!in_delay_slot)
@@ -3715,6 +3816,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 	case 0x3e: // MOVLL0(Rm, Rn);
 		UML_ADD(block, I0, R32(0), R32(REG_M));        // add r0, R0, Rm
 		UML_CALLH(block, *m_read32);             // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_MOV(block, R32(REG_N), I0);            // mov Rn, r0
 
 		if (!in_delay_slot)
@@ -3820,6 +3923,8 @@ bool sh_common_execution::generate_group_4_LDCMSR(drcuml_block &block, compiler_
 	UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 	SETEA(0);
 	UML_CALLH(block, *m_read32);         // call read32
+	UML_CMP(block, mem(&m_sh2_state->icount), 0);
+	UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 	UML_ADD(block, R32(REG_N), R32(REG_N), 4);    // add Rn, #4
 	UML_AND(block, I0, I0, SH_FLAGS);      // and r0, r0, FLAGS
 	UML_MOV(block, mem(&m_sh2_state->sr), I0);      // mov sr, r0
@@ -3859,22 +3964,27 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		return true;
 
 	case 0x02: // STSMMACH(Rn);
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		// BUS-01/04: avoid double R15 on bus stall + faithful retry
+		UML_SUB(block, I0, R32(REG_N), 4);    // r0 = Rn-4
 		UML_MOV(block, I1, mem(&m_sh2_state->mach));    // mov r1, mach
 		SETEA(0);                   // set ea for debug
 		UML_CALLH(block, *m_write32);            // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
 		return true;
 
 	case 0x03: // STCMSR(Rn);
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 4);    // r0 = Rn-4
 		UML_MOV(block, I1, mem(&m_sh2_state->sr));      // mov r1, sr
 		SETEA(0);                   // set ea for debug
 		UML_CALLH(block, *m_write32);            // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -3884,6 +3994,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		SETEA(0);
 		UML_CALLH(block, *m_read32);         // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_ADD(block, R32(REG_N), R32(REG_N), 4);    // add Rn, #4
 		UML_MOV(block, mem(&m_sh2_state->mach), I0);    // mov mach, r0
 
@@ -3988,22 +4100,26 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		return true;
 
 	case 0x12: // STSMMACL(Rn);
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 4);    // r0 = Rn-4
 		UML_MOV(block, I1, mem(&m_sh2_state->macl));    // mov r1, macl
 		SETEA(0);                   // set ea for debug
 		UML_CALLH(block, *m_write32);            // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
 		return true;
 
 	case 0x13: // STCMGBR(Rn);
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
-		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 4);    // r0 = Rn-4
 		UML_MOV(block, I1, mem(&m_sh2_state->gbr)); // mov r1, gbr
 		SETEA(0);                   // set ea for debug
 		UML_CALLH(block, *m_write32);            // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);    // sub Rn, Rn, #4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -4013,6 +4129,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		SETEA(0);
 		UML_CALLH(block, *m_read32);         // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_ADD(block, R32(REG_N), R32(REG_N), 4);    // add Rn, #4
 		UML_MOV(block, mem(&m_sh2_state->macl), I0);    // mov macl, r0
 
@@ -4024,6 +4142,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		SETEA(0);
 		UML_CALLH(block, *m_read32);         // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_ADD(block, R32(REG_N), R32(REG_N), 4);    // add Rn, #4
 		UML_MOV(block, mem(&m_sh2_state->gbr), I0); // mov gbr, r0
 
@@ -4039,6 +4159,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		SETEA(0);
 		UML_CALLH(block, *m_read8);          // call read8
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		UML_AND(block, mem(&m_sh2_state->sr), mem(&m_sh2_state->sr), ~SH_T);   // and sr, sr, ~T
 
@@ -4053,6 +4175,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		UML_CALLH(block, *m_write8);         // write the value back
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -4078,22 +4202,26 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		return true;
 
 	case 0x22: // STSMPR(Rn);
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);        // sub Rn, Rn, 4
-		UML_MOV(block, I0, R32(REG_N));            // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 4);        // r0 = Rn-4
 		SETEA(0);
 		UML_MOV(block, I1, mem(&m_sh2_state->pr));          // mov r1, pr
 		UML_CALLH(block, *m_write32);                // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);        // sub Rn, Rn, 4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
 		return true;
 
 	case 0x23: // STCMVBR(Rn);
-		UML_SUB(block, R32(REG_N), R32(REG_N), 4);        // sub Rn, Rn, 4
-		UML_MOV(block, I0, R32(REG_N));            // mov r0, Rn
+		UML_SUB(block, I0, R32(REG_N), 4);        // r0 = Rn-4
 		SETEA(0);
 		UML_MOV(block, I1, mem(&m_sh2_state->vbr));     // mov r1, vbr
 		UML_CALLH(block, *m_write32);                // call write32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
+		UML_SUB(block, R32(REG_N), R32(REG_N), 4);        // sub Rn, Rn, 4
 
 		if (!in_delay_slot)
 			generate_update_cycles(block, compiler, desc->pc + 2, true);
@@ -4117,6 +4245,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));            // mov r0, Rn
 		SETEA(0);
 		UML_CALLH(block, *m_read32);             // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_MOV(block, mem(&m_sh2_state->pr), I0);          // mov m_pr, r0
 		UML_ADD(block, R32(REG_N), R32(REG_N), 4);        // add Rn, Rn, #4
 
@@ -4128,6 +4258,8 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 		UML_MOV(block, I0, R32(REG_N));            // mov r0, Rn
 		SETEA(0);
 		UML_CALLH(block, *m_read32);             // call read32
+		UML_CMP(block, mem(&m_sh2_state->icount), 0);
+		UML_EXHc(block, COND_LE, *m_out_of_cycles, desc->pc);
 		UML_MOV(block, mem(&m_sh2_state->vbr), I0);     // mov m_sh2_state->vbr, r0
 		UML_ADD(block, R32(REG_N), R32(REG_N), 4);        // add Rn, Rn, #4
 

@@ -1,5 +1,6 @@
 // license:LGPL-2.1+
-// copyright-holders:David Haywood, Angelo Salese, Olivier Galibert, Mariusz Wojcieszek, R. Belmont
+// copyright-holders:David Haywood, Angelo Salese, Olivier Galibert, Mariusz
+// Wojcieszek, R. Belmont
 /**************************************************************************************************
 
 Sega Saturn
@@ -7,21 +8,23 @@ Sega Saturn
 
 Notes:
 - A successfully loaded game will write its header at $6002000
-- "Multiplayer" is the name of the BIOS menu (the one where you can playback an Audio CD,
-  boot a game loaded in CD tray or access Memory Manager)
+- "Multiplayer" is the name of the BIOS menu (the one where you can playback an
+Audio CD, boot a game loaded in CD tray or access Memory Manager)
 - Hold A at startup to skip auto booting a game (i.e. go in Multiplayer)
-- A+B+C+Start is the canonical way to reset a SW user side (where multigames will reset selected
-  game first, then go back to game select by pressing it a second time around)
+- A+B+C+Start is the canonical way to reset a SW user side (where multigames
+will reset selected game first, then go back to game select by pressing it a
+second time around)
 
 TODO:
 - https://github.com/mamedev/mame/issues/15773
 
 ===================================================================================================
 
-The Sega Saturn is a 32-bit 5th-generation home video game console that was developed by Sega and released
-on November 22nd 1994 in Japan, May 11th 1995 in North America, and July 8th 1995 in Europe as the successor
-to the Sega Genesis. The Saturn has a dual-CPU architecture and a total of eight processors.
-The games are on CD-ROM.
+The Sega Saturn is a 32-bit 5th-generation home video game console that was
+developed by Sega and released on November 22nd 1994 in Japan, May 11th 1995 in
+North America, and July 8th 1995 in Europe as the successor to the Sega Genesis.
+The Saturn has a dual-CPU architecture and a total of eight processors. The
+games are on CD-ROM.
 
 Basic Hardware:
 
@@ -91,20 +94,24 @@ Optional RF(TV), S-Video & RGB outputs
 
 PCB Layouts
 -----------
-There were *many* main board revisions. The two general 'sizes' are documented here.
+There were *many* main board revisions. The two general 'sizes' are documented
+here.
 
 Small board (VA revision documented)
 -----------
-Main board with a separate small sub-board for the controller ports, power LED and reset button.
-The power supply is slightly longer than the main board, has a 5 pin connector and outputs 9VDC, 5VDC and 3.3VDC
+Main board with a separate small sub-board for the controller ports, power LED
+and reset button. The power supply is slightly longer than the main board, has a
+5 pin connector and outputs 9VDC, 5VDC and 3.3VDC
 
 837-12126 IC BD SATURN MAIN VA SG
 171-7128B (C) SEGA 1995 PC BD SATURN MAIN VA SG
-(This PCB was found in a USA Saturn, Model MK-80000, also known as Saturn model 1 with BIOS MPR-17941)
+(This PCB was found in a USA Saturn, Model MK-80000, also known as Saturn model
+1 with BIOS MPR-17941)
 
 837-12135 IC BD SATURN MAIN VA PAL SD
 171-7131A (C) SEGA 1995 PC BD SATURN MAIN VA PAL SD
-(This PCB was found in a PAL Saturn, Model MK-80200-50, also known as Saturn model 1 PAL with BIOS MPR-17942)
+(This PCB was found in a PAL Saturn, Model MK-80200-50, also known as Saturn
+model 1 PAL with BIOS MPR-17942)
 
 (note both of these PCBs listed above are almost identical)
 
@@ -128,64 +135,63 @@ The power supply is slightly longer than the main board, has a 5 pin connector a
 |----------------------------------------------------------|
 Notes: (all IC's shown. ^ denotes these parts are on the other side of the PCB)
              ROM - SOP40 mask ROM for BIOS.
-                   Chip is pin-compatible with Toshiba TC574200 or MX27C4100 and can be read with a simple 1:1 DIP40 to SOP40 adapter
-                   JAPAN BIOS marked 'MPR-17940-MX' or 'MPR-17940-T'
-                   USA BIOS   marked 'MPR-17941-MX' or 'MPR-17941-T'
-                   PAL BIOS   marked 'MPR-17942-MX' or 'MPR-17942-T'
-                   T = Toshiba, MX = Macronix. Both contain identical data
-                   Other BIOSes known to exist include:
+                   Chip is pin-compatible with Toshiba TC574200 or MX27C4100 and
+can be read with a simple 1:1 DIP40 to SOP40 adapter JAPAN BIOS marked
+'MPR-17940-MX' or 'MPR-17940-T' USA BIOS   marked 'MPR-17941-MX' or
+'MPR-17941-T' PAL BIOS   marked 'MPR-17942-MX' or 'MPR-17942-T' T = Toshiba, MX
+= Macronix. Both contain identical data Other BIOSes known to exist include:
                    (These are mainly on the very       MPR-16605-T
                     early version main boards VA0/VA1  MPR-16606-T
                     and are all DIP chips)             MPR-16606A-T
                                                        MPR-17577-T
-                                                       EPR-17578 HI-SATURN BOOT ROM VER 1.01 SUM AA44 '95 1/27 (EPROM)
-        81141625 - Fujitsu 81141625-017 128k x16-bit x 2 banks (4Mbit) SDRAM                     \ compatible
-         5241605 - Hitachi HM5241605TT17S or HM524165CTT17S 128k x16-bit x 2 banks (4Mbit) SDRAM /
-                   The two 81141625 are the WORK RAM HIGH and the two TC514260 (near the ROM) make up the WORK RAM LOW
-                   The 5241605 is the VDP1 Sprite RAM
-         D489020 - NEC D489020GF-A15 SGRAM (probably 8Mbit). *- This single chip is replaced by two 81141625 IC's on some boards
-         4502161 - NEC D4502161G5-A12 or Sanyo LC382161T-17 64k x16-bit x 2 banks (2Mbit) SDRAM
-                   Two chips are used for the VDP1 Frame RAM, the other two are for the VDP2 Video RAM
-        TC514260 - 256k x16-bit (4Mbit) DRAM. Any of the following compatible chips are used....
-                   Hitachi HM514260AJ7 / HM514260CJ7
-                   Toshiba TC514260BJ-70
-                   Fujitsu 814260-70
-                   Mitsubishi M5M44260CJ
-                   Samsung KM416C256BJ-7
-                   Hyundai HY514260B JC-70
-                   Vanguard VG264260AJ
+                                                       EPR-17578 HI-SATURN BOOT
+ROM VER 1.01 SUM AA44 '95 1/27 (EPROM) 81141625 - Fujitsu 81141625-017 128k
+x16-bit x 2 banks (4Mbit) SDRAM                     \ compatible 5241605 -
+Hitachi HM5241605TT17S or HM524165CTT17S 128k x16-bit x 2 banks (4Mbit) SDRAM /
+                   The two 81141625 are the WORK RAM HIGH and the two TC514260
+(near the ROM) make up the WORK RAM LOW The 5241605 is the VDP1 Sprite RAM
+         D489020 - NEC D489020GF-A15 SGRAM (probably 8Mbit). *- This single chip
+is replaced by two 81141625 IC's on some boards 4502161 - NEC D4502161G5-A12 or
+Sanyo LC382161T-17 64k x16-bit x 2 banks (2Mbit) SDRAM Two chips are used for
+the VDP1 Frame RAM, the other two are for the VDP2 Video RAM TC514260 - 256k
+x16-bit (4Mbit) DRAM. Any of the following compatible chips are used.... Hitachi
+HM514260AJ7 / HM514260CJ7 Toshiba TC514260BJ-70 Fujitsu 814260-70 Mitsubishi
+M5M44260CJ Samsung KM416C256BJ-7 Hyundai HY514260B JC-70 Vanguard VG264260AJ
                    Panasonic MN414260CSJ-07
-        HM514270 - Hitachi HM514270 256k x16-bit (4Mbit) DRAM, used for the sound WORK RAM
-           62257 - Epson SRM20257LLM10 32k x8-bit (256kbit) battery-backed SRAM (also used SONY CXK58257AM-10L, NEC UPD43257B-10LL, UM62257AM-70LL)
-            ADAC - Dual CMOS Audio DAC. Either Burr-Brown BBPCM1710U or Philips TDA1386T
-        CXA1645M - Sony CXA1645M RGB to Composite Video Encoder
-            SH-2 - Hitachi HD6417095 SH-2 CPU. Clock input 28.63636MHz (14.31818*2)
-           68000 - Motorola MC68EC000FN12 CPU. Clock input 11.2896MHz
-               & - Master Clock. 14.31818MHz for USA revision or 17.7344MHz for PAL revision
-        315-5744 - Sega 315-5744 Hitachi HD404920 microcontroller used as the System Manager and Peripheral Controller (SMPC)
-        315-5746 - Sega 315-5746 Phase-locked Loop (PLL) clock generator IC
-        315-5883 - Sega 315-5883 Hitachi HD64440 Video Display Processor 1 (VDP1). Earliest revision is 315-5689
-        315-5687 - Sega 315-5687 Yamaha YMF292-F Saturn Custom Sound Processor (SCSP). Clock input 28.63636MHz (14.31818*2)
-        315-5688 - Sega 315-5688 System Control Unit (SCU). Clock input 14.31818MHz
-        315-5890 - Sega 315-5890 Video Display Processor 2 (VDP2)
-        315-5914 - Sega 315-5914 DRAM controller. Earliest revision is 315-5778. Later revision is 315-5963
-       HD6437097 - Hitachi HD6437097F20 SH1 (SH7034 family) microcontroller with 64k internal ROM. Clock input 20.000MHz
-         YGR019B - Hitachi YGR019B CD-Subsystem LSI. Earlier revision is YGR019A. Later revision combines this IC and the SH1 together
-                   into one IC (YGR022 315-5962). The SH1 and the YGR019B make up the 'CD Block' CD Authentication and CD I/O data controller.
-                   Another of it's functions is to prevent copied CDs from being played
-           VIDEO - 10-pin Mini-DIN video output port
+        HM514270 - Hitachi HM514270 256k x16-bit (4Mbit) DRAM, used for the
+sound WORK RAM 62257 - Epson SRM20257LLM10 32k x8-bit (256kbit) battery-backed
+SRAM (also used SONY CXK58257AM-10L, NEC UPD43257B-10LL, UM62257AM-70LL) ADAC -
+Dual CMOS Audio DAC. Either Burr-Brown BBPCM1710U or Philips TDA1386T CXA1645M -
+Sony CXA1645M RGB to Composite Video Encoder SH-2 - Hitachi HD6417095 SH-2 CPU.
+Clock input 28.63636MHz (14.31818*2) 68000 - Motorola MC68EC000FN12 CPU. Clock
+input 11.2896MHz & - Master Clock. 14.31818MHz for USA revision or 17.7344MHz
+for PAL revision 315-5744 - Sega 315-5744 Hitachi HD404920 microcontroller used
+as the System Manager and Peripheral Controller (SMPC) 315-5746 - Sega 315-5746
+Phase-locked Loop (PLL) clock generator IC 315-5883 - Sega 315-5883 Hitachi
+HD64440 Video Display Processor 1 (VDP1). Earliest revision is 315-5689 315-5687
+- Sega 315-5687 Yamaha YMF292-F Saturn Custom Sound Processor (SCSP). Clock
+input 28.63636MHz (14.31818*2) 315-5688 - Sega 315-5688 System Control Unit
+(SCU). Clock input 14.31818MHz 315-5890 - Sega 315-5890 Video Display Processor
+2 (VDP2) 315-5914 - Sega 315-5914 DRAM controller. Earliest revision is
+315-5778. Later revision is 315-5963 HD6437097 - Hitachi HD6437097F20 SH1
+(SH7034 family) microcontroller with 64k internal ROM. Clock input 20.000MHz
+         YGR019B - Hitachi YGR019B CD-Subsystem LSI. Earlier revision is
+YGR019A. Later revision combines this IC and the SH1 together into one IC
+(YGR022 315-5962). The SH1 and the YGR019B make up the 'CD Block' CD
+Authentication and CD I/O data controller. Another of it's functions is to
+prevent copied CDs from being played VIDEO - 10-pin Mini-DIN video output port
             COMM - Communication port
-       CARD_SLOT - Expansion slot for MPEG decoder card and other optional expansions
-       CART_SLOT - Expansion slot for plug-in RAM or ROM carts
-             SW1 - Master reset switch accessible behind the card slot/battery cover. Pressing this clears the battery-backed SRAM, resets the system
-                   and the user has to set the language, date and time
-         BATTERY - CR2032 3V lithium coin battery. When the system is off the battery provides power to the backup SRAM and SMPC which contains an RTC
-             SW2 - CDROM cover open/close detection switch
-             CN2 - 24-pin flat cable connector for control port board
-             CN3 - 5-pin power connector
-             CN4 - Flat cable connector for CDROM data cable. On some main board revisions the connector is reversed and the cable is folded so it
-                   is also reversed/flipped 180 degrees at the other end
-             CN7 - 5-pin connector for CDROM power
+       CARD_SLOT - Expansion slot for MPEG decoder card and other optional
+expansions CART_SLOT - Expansion slot for plug-in RAM or ROM carts SW1 - Master
+reset switch accessible behind the card slot/battery cover. Pressing this clears
+the battery-backed SRAM, resets the system and the user has to set the language,
+date and time BATTERY - CR2032 3V lithium coin battery. When the system is off
+the battery provides power to the backup SRAM and SMPC which contains an RTC SW2
+- CDROM cover open/close detection switch CN2 - 24-pin flat cable connector for
+control port board CN3 - 5-pin power connector CN4 - Flat cable connector for
+CDROM data cable. On some main board revisions the connector is reversed and the
+cable is folded so it is also reversed/flipped 180 degrees at the other end CN7
+- 5-pin connector for CDROM power
 
 
 Control Port board
@@ -212,11 +218,13 @@ This is a single main board containing everything.
 
 837-12643 IC BD SATURN MAIN VA7 USA SD
 171-7208C (C) SEGA 1996 PC BD SATURN MAIN VA7 USA SD
-(This PCB was found in a USA Saturn, Model MK-80000A, also known as Saturn model 2 with BIOS MPR-17941)
+(This PCB was found in a USA Saturn, Model MK-80000A, also known as Saturn model
+2 with BIOS MPR-17941)
 
 837-12992 IC BD SATURN MAIN VA7 PAL
 171-7424A (C) SEGA 1996 PC BD SATURN MAIN VA7 PAL
-(This PCB was found in a PAL Saturn, Model MK-80200A-50, also known as Saturn model 2 PAL with BIOS MPR-17942)
+(This PCB was found in a PAL Saturn, Model MK-80200A-50, also known as Saturn
+model 2 PAL with BIOS MPR-17942)
 
 (note both of these PCBs listed above are almost identical)
 
@@ -246,18 +254,18 @@ This is a single main board containing everything.
    |-------------------PORT1-----PORT2------------------|
 Notes: (all IC's shown. ^ denotes these parts are on the other side of the PCB)
              ROM - SOP40 mask ROM for BIOS.
-                   Chip is pin-compatible with Toshiba TC574200 or MX27C4100 and can be read with a simple 1:1 DIP40 to SOP40 adapter
-                   JAPAN BIOS marked 'MPR-17940-MX' or 'MPR-17940-T'
-                   USA BIOS   marked 'MPR-17941-MX' or 'MPR-17941-T'
-                   PAL BIOS   marked 'MPR-17942-MX' or 'MPR-17942-T'
-                   T = Toshiba, MX = Macronix. Both contain identical data
-        81141625 - Fujitsu 81141625-017 128k x16-bit x 2 banks (4Mbit) SDRAM
-                   The two 81141625 are the WORK RAM HIGH and two TC514260 (near the SH-2) make up the WORK RAM LOW
-          524165 - Hitachi HM524165CTT17S 128k x16-bit x 2 banks (4Mbit) SDRAM. This is the VDP1 Sprite RAM
+                   Chip is pin-compatible with Toshiba TC574200 or MX27C4100 and
+can be read with a simple 1:1 DIP40 to SOP40 adapter JAPAN BIOS marked
+'MPR-17940-MX' or 'MPR-17940-T' USA BIOS   marked 'MPR-17941-MX' or
+'MPR-17941-T' PAL BIOS   marked 'MPR-17942-MX' or 'MPR-17942-T' T = Toshiba, MX
+= Macronix. Both contain identical data 81141625 - Fujitsu 81141625-017 128k
+x16-bit x 2 banks (4Mbit) SDRAM The two 81141625 are the WORK RAM HIGH and two
+TC514260 (near the SH-2) make up the WORK RAM LOW 524165 - Hitachi
+HM524165CTT17S 128k x16-bit x 2 banks (4Mbit) SDRAM. This is the VDP1 Sprite RAM
          5221605 - Hitachi HM5221605TT17S 64k x16-bit x 2 banks (2Mbit) SDRAM
-                   Two chips are used for the VDP1 Frame RAM, the other two are for the VDP2 Video RAM
-        TC514260 - 256k x16-bit (4Mbit) DRAM. Any of the following compatible chips are used....
-                   Hitachi HM514260AJ7 / HM514260CJ7
+                   Two chips are used for the VDP1 Frame RAM, the other two are
+for the VDP2 Video RAM TC514260 - 256k x16-bit (4Mbit) DRAM. Any of the
+following compatible chips are used.... Hitachi HM514260AJ7 / HM514260CJ7
                    Toshiba TC514260BJ-70
                    Fujitsu 814260-70
                    Mitsubishi M5M44260CJ
@@ -265,63 +273,69 @@ Notes: (all IC's shown. ^ denotes these parts are on the other side of the PCB)
                    Hyundai HY514260B JC-70
                    Vanguard VG264260AJ
                    Panasonic MN414260CSJ-07
-        HM514270 - Hitachi HM514270 256k x16-bit (4Mbit) DRAM, used for the sound WORK RAM
-           62257 - Epson SRM20257LLM10 32k x8-bit (256kbit) battery-backed SRAM (also used SONY CXK58257AM-10L, NEC UPD43257B-10LL, UM62257AM-70LL)
-            ADAC - Dual CMOS Audio DAC. Either Burr-Brown BBPCM1710U or Philips TDA1386T
-             RGB - RGB to Composite Video Encoder with PAL & NTSC output capability. IC is either Fujitsu MB3516A or ROHM BH7236AF
-            SH-2 - Hitachi HD6417095 SH-2 CPU. Clock input 28.63636MHz (14.31818*2)
-           68000 - Motorola MC68EC000FN12 CPU. Clock input 11.2896MHz
-          CY2292 - Cypress CY2292SC-04 PLL clock generator IC. % = On the VA7 PAL version this chip is replaced with the older Sega PLL (315-5746)
-               & - Master Clock. 14.31818MHz for USA revision or 17.7344MHz for PAL revision
-        315-5744 - Sega 315-5744 Hitachi HD404920 microcontroller used as the System Manager and Peripheral Controller (SMPC)
-        315-5883 - Sega 315-5883 Hitachi HD64440 Video Display Processor 1 (VDP1).
-        315-5687 - Sega 315-5687 Yamaha YMF292-F Saturn Custom Sound Processor (SCSP). Clock input 28.63636MHz (14.31818*2)
-        315-5964 - Sega 315-5964 Video Display Processor 2 (VDP2)
-        315-5966 - Sega 315-5966 System Control Unit (SCU). Clock input 14.31818MHz
-     315-5977-01 - Sega 315-5977-01 DRAM controller
-          YGR022 - Hitachi YGR022 Sega 315-5962 single IC containing CD-Subsystem LSI and Hitachi SH-1 microcontroller with 64k internal ROM. Clock input 20.000MHz
-           VIDEO - 10-pin Mini-DIN video output port
-            COMM - Communication port
-       CARD_SLOT - Expansion slot for MPEG decoder card and other optional expansions
-       CART_SLOT - Expansion slot for plug-in RAM or ROM carts
-         BATTERY - CR2032 3V lithium coin battery. When the system is off the battery provides power to the backup SRAM and SMPC which contains an RTC
-             SW2 - CDROM cover open/close detection switch
-             CN3 - 4-pin or 5-pin power connector
-             CN4 - Flat cable connector for CDROM data cable
-             CN7 - 5-pin connector for CDROM power
-         PORT1/2 - Controller ports for controller/joystick/lightgun etc
-       GREEN-LED - Power LED
-           RESET - Push-button reset switch
+        HM514270 - Hitachi HM514270 256k x16-bit (4Mbit) DRAM, used for the
+sound WORK RAM 62257 - Epson SRM20257LLM10 32k x8-bit (256kbit) battery-backed
+SRAM (also used SONY CXK58257AM-10L, NEC UPD43257B-10LL, UM62257AM-70LL) ADAC -
+Dual CMOS Audio DAC. Either Burr-Brown BBPCM1710U or Philips TDA1386T RGB - RGB
+to Composite Video Encoder with PAL & NTSC output capability. IC is either
+Fujitsu MB3516A or ROHM BH7236AF SH-2 - Hitachi HD6417095 SH-2 CPU. Clock
+input 28.63636MHz (14.31818*2) 68000 - Motorola MC68EC000FN12 CPU. Clock
+input 11.2896MHz CY2292 - Cypress CY2292SC-04 PLL clock generator IC. % = On the
+VA7 PAL version this chip is replaced with the older Sega PLL (315-5746) & -
+Master Clock. 14.31818MHz for USA revision or 17.7344MHz for PAL revision
+        315-5744 - Sega 315-5744 Hitachi HD404920 microcontroller used as the
+System Manager and Peripheral Controller (SMPC) 315-5883 - Sega 315-5883 Hitachi
+HD64440 Video Display Processor 1 (VDP1). 315-5687 - Sega 315-5687 Yamaha
+YMF292-F Saturn Custom Sound Processor (SCSP). Clock input 28.63636MHz
+(14.31818*2) 315-5964 - Sega 315-5964 Video Display Processor 2 (VDP2) 315-5966
+- Sega 315-5966 System Control Unit (SCU). Clock input 14.31818MHz 315-5977-01 -
+Sega 315-5977-01 DRAM controller YGR022 - Hitachi YGR022 Sega 315-5962 single IC
+containing CD-Subsystem LSI and Hitachi SH-1 microcontroller with 64k internal
+ROM. Clock input 20.000MHz VIDEO - 10-pin Mini-DIN video output port COMM -
+Communication port CARD_SLOT - Expansion slot for MPEG decoder card and other
+optional expansions CART_SLOT - Expansion slot for plug-in RAM or ROM carts
+         BATTERY - CR2032 3V lithium coin battery. When the system is off the
+battery provides power to the backup SRAM and SMPC which contains an RTC SW2 -
+CDROM cover open/close detection switch CN3 - 4-pin or 5-pin power connector CN4
+- Flat cable connector for CDROM data cable CN7 - 5-pin connector for CDROM
+power PORT1/2 - Controller ports for controller/joystick/lightgun etc GREEN-LED
+- Power LED RESET - Push-button reset switch
 
 
 Motherboard List
 ----------------
 Board types used in Model 1: VA0 to VA3
 Board types used in Model 2: VA2 to VA15
-If the VA-number is an even number the board uses a single 8Mbit SGRAM for some of the work RAM, if an odd number it uses two 4Mbit SDRAMs.
-Note there are MANY missing. Please help to update this list if you have info for others not listed here.
+If the VA-number is an even number the board uses a single 8Mbit SGRAM for some
+of the work RAM, if an odd number it uses two 4Mbit SDRAMs. Note there are MANY
+missing. Please help to update this list if you have info for others not listed
+here.
 
-837-11076    IC BD SATURN MAIN VA0.5        171-6874E PC BD SATURN MAIN VA0.5      (C) SEGA 1994
-837-11076-01 IC BD SATURN MAIN VA0 CCI      171-6874D PC BD SATURN MAIN VA0.5      (C) SEGA 1994
-837-11491    IC BD SATURN MAIN VA0          171-6962A PC BD SATURN MAIN VA0 USA    (C) SEGA 1995
-837-11493    IC BD SATURN MAIN VA0 PAL      171-6963B PC BD SATURN MAIN VA0 PAL    (C) SEGA 1995
-837-11613-01 IC BD SATURN MAIN VA1          171-7006C PC BD SATURN MAIN VA1        (C) SEGA 1995
-837-11892-01 PAL                            171-7069B MAIN                         (C) SEGA 1995
-837-12126    IC BD SATURN MAIN VA SG        171-7128B PC BD SATURN MAIN VA SG      (C) SEGA 1995
-837-12126    IC BD SATURN MAIN VA SG        171-7128C PC BD SATURN MAIN VA SG      (C) SEGA 1995
-837-12133    IC BD SATURN MAIN VA SD        171-7130C PC BD SATURN MAIN VA SD      (C) SEGA 1995
-837-12134    IC BD SATURN MAIN VA USA SD    171-7130C PC BD SATURN MAIN VA USA SD  (C) SEGA 1995
-837-12135    IC BD SATURN MAIN VA PAL SD    171-7131A PC BD SATURN MAIN VA PAL SD  (C) SEGA 1995
-837-12459    IC BD SATURN MAIN VA6 JPN SG   171-7207A PC BD SATURN MAIN VA6 SG     (C) SEGA 1996
-837-12468    IC BD SATURN MAIN VA8 JPN OCU  171-7209C PC BD SATURN MAIN VA8 OCU    (C) SEGA 1996
-837-12643    IC BD SATURN MAIN VA7 USA SD   171-7208C PC BD SATURN MAIN VA7 USA SD (C) SEGA 1996
-(none)                                      171-7291B PC BD SATURN MAIN VA9 PAL    (C) SEGA 1996
-(none)                                      171-7291C PC BD SATURN MAIN VA9        (C) SEGA 1996
-837-12650    IC BD SATURN MAIN VA13 JPN     171-7???? PC BD SATURN MAIN VA13       (C) SEGA 1996
-837-12845    IC BD SATURN MAIN VA13 USA     171-7???? PC BD SATURN MAIN VA13       (C) SEGA 1996
-837-12992    IC BD SATURN MAIN VA7 PAL      171-7424A PC BD SATURN MAIN VA7 PAL    (C) SEGA 1996
-837-13100    IC BD SATURN MAIN VA13 PAL     171-7455D PC BD SATURN MAIN VA13 PAL   (C) SEGA 1997
-837-13137    IC BD SATURN MAIN VA15 JPN     171-7462B PC BD SATURN MAIN VA15       (C) SEGA 1997
+837-11076    IC BD SATURN MAIN VA0.5        171-6874E PC BD SATURN MAIN VA0.5
+(C) SEGA 1994 837-11076-01 IC BD SATURN MAIN VA0 CCI      171-6874D PC BD SATURN
+MAIN VA0.5      (C) SEGA 1994 837-11491    IC BD SATURN MAIN VA0 171-6962A PC BD
+SATURN MAIN VA0 USA    (C) SEGA 1995 837-11493    IC BD SATURN MAIN VA0 PAL
+171-6963B PC BD SATURN MAIN VA0 PAL    (C) SEGA 1995 837-11613-01 IC BD SATURN
+MAIN VA1          171-7006C PC BD SATURN MAIN VA1        (C) SEGA 1995
+837-11892-01 PAL                            171-7069B MAIN (C) SEGA 1995
+837-12126    IC BD SATURN MAIN VA SG        171-7128B PC BD SATURN MAIN VA SG
+(C) SEGA 1995 837-12126    IC BD SATURN MAIN VA SG        171-7128C PC BD SATURN
+MAIN VA SG      (C) SEGA 1995 837-12133    IC BD SATURN MAIN VA SD 171-7130C PC
+BD SATURN MAIN VA SD      (C) SEGA 1995 837-12134    IC BD SATURN MAIN VA USA SD
+171-7130C PC BD SATURN MAIN VA USA SD  (C) SEGA 1995 837-12135    IC BD SATURN
+MAIN VA PAL SD    171-7131A PC BD SATURN MAIN VA PAL SD  (C) SEGA 1995 837-12459
+IC BD SATURN MAIN VA6 JPN SG   171-7207A PC BD SATURN MAIN VA6 SG     (C) SEGA
+1996 837-12468    IC BD SATURN MAIN VA8 JPN OCU  171-7209C PC BD SATURN MAIN VA8
+OCU    (C) SEGA 1996 837-12643    IC BD SATURN MAIN VA7 USA SD   171-7208C PC BD
+SATURN MAIN VA7 USA SD (C) SEGA 1996 (none) 171-7291B PC BD SATURN MAIN VA9 PAL
+(C) SEGA 1996 (none)                                      171-7291C PC BD SATURN
+MAIN VA9        (C) SEGA 1996 837-12650    IC BD SATURN MAIN VA13 JPN 171-7????
+PC BD SATURN MAIN VA13       (C) SEGA 1996 837-12845    IC BD SATURN MAIN VA13
+USA     171-7???? PC BD SATURN MAIN VA13       (C) SEGA 1996 837-12992    IC BD
+SATURN MAIN VA7 PAL      171-7424A PC BD SATURN MAIN VA7 PAL    (C) SEGA 1996
+837-13100    IC BD SATURN MAIN VA13 PAL     171-7455D PC BD SATURN MAIN VA13 PAL
+(C) SEGA 1997 837-13137    IC BD SATURN MAIN VA15 JPN     171-7462B PC BD SATURN
+MAIN VA15       (C) SEGA 1997
 
 
 Motherboard Variations Summary
@@ -329,53 +343,80 @@ Motherboard Variations Summary
 
 NTSC
 ----
-- VA0: First revision. CD Block (YGR019A & HD6437097) is on a daughterboard. Power supply mounted on top casing.
-  Has 40 pin DIP EPROM or mask ROM for BIOS. Larger board with control ports on the main board. Uses JVC CD drive units ENR-007B/ENR-007D.
-- VA1: marked as 'VA' on the main board. Power supply is now bottom mounted and plugs in on top into 5 pins on the main board. Most sub boards
-  integrated into the main board except the controller ports which are on a small sub board. BIOS is SOP40 mask ROM located on the bottom side of
-  the main board. Battery-backup RAM and the VRAM are also on the bottom side of the main board. Uses ENR-007D CD drive units.
-- VA2 & VA3: Mostly same as VA1. VA2 is marked as 'VA SG' (uses SGRAM), and VA3 is marked as VA SD (uses SDRAM). Uses ENR-011A CD drive units.
-- VA4 & VA5: Same as VA2 and VA3 but in a cheaper model 2 case. Uses ENR-011A CD drive units.
-- VA6: One single PCB for everything. Uses an off-the-shelf PLL chip (CY2292). Some custom chips have been revised and have different 315-xxxx numbers.
-  BIOS and battery-backed RAM moved to the top side of the main board. Power supply has 4 pins and generates only +5VDC. Uses ENR-013A CD drive unit
-  or Sanyo 610-6185-30 CD drive unit.
-- VA6 & VA7 has the CD Block reduced to a single IC (YGR022). Some custom chips have been revised and have different 315-xxxx numbers.
-- VA8 & VA9 still has the CD Block ICs separated. VA9 uses the old type PLL chip (315-5746).
-- VA10 to VA15: uses HQA-001A CD drive unit or Sanyo 610-6294-30 / 610-6473-30 CD drive unit. 68000 & YMF292 integrated into a single IC (315-5965).
-  The integrated sound IC has a bug with certain 68000 commands.
-- VA11 has a small daughter board mounted on the main board to fix a design fault (possibly to fix the above sound IC problem?)
+- VA0: First revision. CD Block (YGR019A & HD6437097) is on a daughterboard.
+Power supply mounted on top casing. Has 40 pin DIP EPROM or mask ROM for BIOS.
+Larger board with control ports on the main board. Uses JVC CD drive units
+ENR-007B/ENR-007D.
+- VA1: marked as 'VA' on the main board. Power supply is now bottom mounted and
+plugs in on top into 5 pins on the main board. Most sub boards integrated into
+the main board except the controller ports which are on a small sub board. BIOS
+is SOP40 mask ROM located on the bottom side of the main board. Battery-backup
+RAM and the VRAM are also on the bottom side of the main board. Uses ENR-007D CD
+drive units.
+- VA2 & VA3: Mostly same as VA1. VA2 is marked as 'VA SG' (uses SGRAM), and VA3
+is marked as VA SD (uses SDRAM). Uses ENR-011A CD drive units.
+- VA4 & VA5: Same as VA2 and VA3 but in a cheaper model 2 case. Uses ENR-011A CD
+drive units.
+- VA6: One single PCB for everything. Uses an off-the-shelf PLL chip (CY2292).
+Some custom chips have been revised and have different 315-xxxx numbers. BIOS
+and battery-backed RAM moved to the top side of the main board. Power supply has
+4 pins and generates only +5VDC. Uses ENR-013A CD drive unit or Sanyo
+610-6185-30 CD drive unit.
+- VA6 & VA7 has the CD Block reduced to a single IC (YGR022). Some custom chips
+have been revised and have different 315-xxxx numbers.
+- VA8 & VA9 still has the CD Block ICs separated. VA9 uses the old type PLL chip
+(315-5746).
+- VA10 to VA15: uses HQA-001A CD drive unit or Sanyo 610-6294-30 / 610-6473-30
+CD drive unit. 68000 & YMF292 integrated into a single IC (315-5965). The
+integrated sound IC has a bug with certain 68000 commands.
+- VA11 has a small daughter board mounted on the main board to fix a design
+fault (possibly to fix the above sound IC problem?)
 - VA11+ boards use a smaller TSSOP20 audio DAC, VA10 uses the old one.
 - VA12, VA14 and VA16 might not exist.
 - VA13 fixes the design fault on VA11 so the patch board is no longer needed.
-- VA15 integrates the two SH-2 main CPUs into a larger single IC (HD6417098 / 315-6018).
+- VA15 integrates the two SH-2 main CPUs into a larger single IC (HD6417098 /
+315-6018).
 
 PAL (only the main differences to the above are listed)
 ---
 - No PAL board ever used SGRAM.
 - All PAL boards have an odd VA-number.
 - All PAL boards have a 5 pin power connector and use a 5 pin power supply.
-- All PAL boards use different region & video output jumpers when compared to NTSC machines.
+- All PAL boards use different region & video output jumpers when compared to
+NTSC machines.
 - All PAL boards use a 17.7344MHz master clock (NTSC units use 14.31818MHz).
-- All PAL boards replace the composite sync output on the A/V OUT connector with 9VDC which is used for SCART auto switching. The 9VDC power comes from
-  pin 5 of the power supplies with a 5 pin connector. Composite sync is still there at TP4 on the bottom of the board but not wired into the A/V OUT port.
-- VA0 PAL - has extra jumpers to set the master clock divider (JP18 & 19), functional but unpopulated 50/60Hz switch on the back (SW4).
-- VA1 PAL - unpopulated 50/60Hz switch on the back (SW4). There is a design fault as it is still connected to the master clock divider select pin.
-  Therefore the switch does not work on its own, you have to cut or raise & ground the PLL pin 1 for the switch to work.
-- VA3 PAL - has extra jumpers to set the master clock divider (JP20 & 21), functional but unpopulated 50/60Hz switch on the back (SW4).
+- All PAL boards replace the composite sync output on the A/V OUT connector with
+9VDC which is used for SCART auto switching. The 9VDC power comes from pin 5 of
+the power supplies with a 5 pin connector. Composite sync is still there at TP4
+on the bottom of the board but not wired into the A/V OUT port.
+- VA0 PAL - has extra jumpers to set the master clock divider (JP18 & 19),
+functional but unpopulated 50/60Hz switch on the back (SW4).
+- VA1 PAL - unpopulated 50/60Hz switch on the back (SW4). There is a design
+fault as it is still connected to the master clock divider select pin. Therefore
+the switch does not work on its own, you have to cut or raise & ground the PLL
+pin 1 for the switch to work.
+- VA3 PAL - has extra jumpers to set the master clock divider (JP20 & 21),
+functional but unpopulated 50/60Hz switch on the back (SW4).
 - VA5 PAL - same as VA3 PAL.
-- VA7 PAL - Unlike NTSC boards, this still uses the old PLL (315-5746) and pin 1 is connected to the PAL/NTSC and 50/60Hz selection pins on the video
-            encoder and the VDP2.
+- VA7 PAL - Unlike NTSC boards, this still uses the old PLL (315-5746) and pin 1
+is connected to the PAL/NTSC and 50/60Hz selection pins on the video encoder and
+the VDP2.
 - VA9 - same as VA7 PAL.
-- VA13 PAL - Other than a 5 pin power connector it's identical to the NTSC VA13 board.
-- VA17 PAL - probably the final revision specifically for EU/PAL regions. Differences are unknown.
+- VA13 PAL - Other than a 5 pin power connector it's identical to the NTSC VA13
+board.
+- VA17 PAL - probably the final revision specifically for EU/PAL regions.
+Differences are unknown.
 
 Power supplies
 --------------
-Type A is used on VA0 main boards and is mounted to the top casing. Pinout is GND, GND, 3.3V, 5V, (empty pin), 9V. (5 pins total)
-Type B is used on VA1 to VA5 main boards and is bottom mounted. Pinout is GND, GND, 3.3V, 5V, 9V. (5 pins total)
-Type C is used on VA6+ main boards and is bottom mounted. Pinout is GND, GND, 5V, 5V (4 pins total).
-PAL units use either Type B or a 5-pin version of Type C power supplies. On earlier boards such as 'VA' the 9V pin is connected to pin 1 of the CD ROM
-unit power supply cable connector on the main board. On later boards it's also connected to the A/V OUT port for SCART auto switching.
+Type A is used on VA0 main boards and is mounted to the top casing. Pinout is
+GND, GND, 3.3V, 5V, (empty pin), 9V. (5 pins total) Type B is used on VA1 to VA5
+main boards and is bottom mounted. Pinout is GND, GND, 3.3V, 5V, 9V. (5 pins
+total) Type C is used on VA6+ main boards and is bottom mounted. Pinout is GND,
+GND, 5V, 5V (4 pins total). PAL units use either Type B or a 5-pin version of
+Type C power supplies. On earlier boards such as 'VA' the 9V pin is connected to
+pin 1 of the CD ROM unit power supply cable connector on the main board. On
+later boards it's also connected to the A/V OUT port for SCART auto switching.
 
 CD Drives
 ---------
@@ -392,27 +433,34 @@ With 21 pin flat cable connector, VA2-VA5:
 
 With 21 pin flat cable connector, VA6-VA9:
 - JVC ENR-013A EMW20035-002 610-6185-20
-- Sanyo 610-6185-30 (sometimes with an extra protection board where the flat cable plugs in)
+- Sanyo 610-6185-30 (sometimes with an extra protection board where the flat
+cable plugs in)
 
 With 21 pin flat cable connector, VA10-VA15:
 - JVC HQA-001A HQ100002-002 610-6294-20
 - Sanyo 610-6294-30 \
-- Sanyo 610-6473-30 / (sometimes with an extra protection board where the flat cable plugs in)
-These are the same as the VA6-VA9 units but lack an oscillator and have a white border on the edges of the PCB.
+- Sanyo 610-6473-30 / (sometimes with an extra protection board where the flat
+cable plugs in) These are the same as the VA6-VA9 units but lack an oscillator
+and have a white border on the edges of the PCB.
 
-Optical pickups used - JVC drive: Optima-6, Hitachi drive: HOP-6, Sanyo drive: SF-P101 is used in the 610-6185-30
+Optical pickups used - JVC drive: Optima-6, Hitachi drive: HOP-6, Sanyo drive:
+SF-P101 is used in the 610-6185-30
 
 ****************************************************************************************************
 
 TODO:
 (Main issues)
 - decap the SH-1, used for CD block (needed especially for Sega Saturn)
-- IRQs: some games have some issues with timing accurate IRQs, check/fix all of them.
-- The Cart-Dev mode hangs even with the -dev bios,I would like to see what it does on the real HW.
-- IC13 games on the dev bios doesn't even load the cartridge / crashes the emulation at start-up,
-  rom rearrange needed?
-- SCU DSP still has its fair share of issues, it also needs to be converted to CPU structure;
-- Add the RS232c interface (serial port), needed by fhboxers (accesses some ports in the a-bus dummy range).
+- IRQs: some games have some issues with timing accurate IRQs, check/fix all of
+them.
+- The Cart-Dev mode hangs even with the -dev bios,I would like to see what it
+does on the real HW.
+- IC13 games on the dev bios doesn't even load the cartridge / crashes the
+emulation at start-up, rom rearrange needed?
+- SCU DSP still has its fair share of issues, it also needs to be converted to
+CPU structure;
+- Add the RS232c interface (serial port), needed by fhboxers (accesses some
+ports in the a-bus dummy range).
 - Video emulation is nowhere near perfection.
 - Reimplement the idle skip if possible.
 - Move SCU device into its respective file;
@@ -426,8 +474,9 @@ test1f diagnostic hacks:
 #include "emu.h"
 #include "saturn.h"
 
-#include "saturn_cdb.h"
 #include "saturn_cd_hle.h"
+#include "saturn_cdb.h"
+
 
 #include "cpu/m68000/m68000.h"
 #include "cpu/scudsp/scudsp.h"
@@ -443,603 +492,914 @@ test1f diagnostic hacks:
 #include "softlist.h"
 #include "speaker.h"
 
-
 namespace {
 
-class sat_console_state : public saturn_state
-{
+class sat_console_state : public saturn_state {
 public:
-	sat_console_state(const machine_config &mconfig, device_type type, const char *tag)
-		: saturn_state(mconfig, type, tag)
-		, m_exp(*this, "exp")
-		, m_nvram(*this, "nvram")
-		, m_saturn_cd_hle(*this, "saturn_cd_hle")
-		, m_ctrl1(*this, "ctrl1")
-		, m_ctrl2(*this, "ctrl2")
-	{ }
+  sat_console_state(const machine_config &mconfig, device_type type,
+                    const char *tag)
+      : saturn_state(mconfig, type, tag), m_exp(*this, "exp"),
+        m_nvram(*this, "nvram"), m_saturn_cd_hle(*this, "saturn_cd_hle"),
+        m_ctrl1(*this, "ctrl1"), m_ctrl2(*this, "ctrl2") {}
 
-	void saturn(machine_config &config) ATTR_COLD;
-	void saturnjp(machine_config &config) ATTR_COLD;
-	void saturneu(machine_config &config) ATTR_COLD;
-	void saturnus(machine_config &config) ATTR_COLD;
-	void saturnkr(machine_config &config) ATTR_COLD;
+  void saturn(machine_config &config) ATTR_COLD;
+  void saturnjp(machine_config &config) ATTR_COLD;
+  void saturneu(machine_config &config) ATTR_COLD;
+  void saturnus(machine_config &config) ATTR_COLD;
+  void saturnkr(machine_config &config) ATTR_COLD;
 
-	void init_saturn() ATTR_COLD;
+  void init_saturn() ATTR_COLD;
 
-	DECLARE_INPUT_CHANGED_MEMBER(tray_open);
-	DECLARE_INPUT_CHANGED_MEMBER(tray_close);
+  DECLARE_INPUT_CHANGED_MEMBER(tray_open);
+  DECLARE_INPUT_CHANGED_MEMBER(tray_close);
 
 protected:
-	virtual void machine_start() override ATTR_COLD;
-	virtual void machine_reset() override ATTR_COLD;
+  virtual void machine_start() override ATTR_COLD;
+  virtual void machine_reset() override ATTR_COLD;
 
 private:
-	// SMPC region codes, hardwired via jumper setting.
-	// - Given the scheme bit 3 should determine if the region is PAL or NTSC.
-	// - 0 and F are "prohibited", others are "Sega reserved".
-	// - Documentation states that 2 is "TAIWAN" and 6 is "KOREA",
-	//   but games on latter definitely wants 2 rather than 6.
-	//   We currently swap, former actual slot needs to be confirmed.
-	enum {
-		REGION_NTSC_0 = 0,
-		REGION_NTSC_JAPAN,
-//      REGION_NTSC_TAIWAN,
-		REGION_NTSC_KOREA,
-		REGION_NTSC_3,
-		REGION_NTSC_USA, // & Canada, Mexico
-		REGION_NTSC_BRAZIL,
-//      REGION_NTSC_KOREA,
-		REGION_NTSC_TAIWAN, // & Philippines
-		REGION_NTSC_7,
-		REGION_PAL_8,
-		REGION_PAL_9,
-		REGION_PAL_ASIA, // China, Middle East, East Asia not covered above
-		REGION_PAL_B,
-		REGION_PAL_EUROPE, // Australia, South Africa
-		REGION_PAL_AMERICA, // Non-NTSC Central/South America
-		REGION_PAL_E,
-		REGION_PAL_F
-	};
+  // SMPC region codes, hardwired via jumper setting.
+  // - Given the scheme bit 3 should determine if the region is PAL or NTSC.
+  // - 0 and F are "prohibited", others are "Sega reserved".
+  // - Documentation states that 2 is "TAIWAN" and 6 is "KOREA",
+  //   but games on latter definitely wants 2 rather than 6.
+  //   We currently swap, former actual slot needs to be confirmed.
+  enum {
+    REGION_NTSC_0 = 0,
+    REGION_NTSC_JAPAN,
+    //      REGION_NTSC_TAIWAN,
+    REGION_NTSC_KOREA,
+    REGION_NTSC_3,
+    REGION_NTSC_USA, // & Canada, Mexico
+    REGION_NTSC_BRAZIL,
+    //      REGION_NTSC_KOREA,
+    REGION_NTSC_TAIWAN, // & Philippines
+    REGION_NTSC_7,
+    REGION_PAL_8,
+    REGION_PAL_9,
+    REGION_PAL_ASIA, // China, Middle East, East Asia not covered above
+    REGION_PAL_B,
+    REGION_PAL_EUROPE,  // Australia, South Africa
+    REGION_PAL_AMERICA, // Non-NTSC Central/South America
+    REGION_PAL_E,
+    REGION_PAL_F
+  };
 
-	uint8_t saturn_cart_type_r();
-	uint32_t abus_dummy_r(offs_t offset);
+  uint8_t saturn_cart_type_r();
+  uint32_t abus_dummy_r(offs_t offset);
+  void ext_ram_init_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 
-	uint32_t saturn_null_ram_r();
-	void saturn_null_ram_w(uint32_t data);
+  uint32_t saturn_null_ram_r();
+  void saturn_null_ram_w(uint32_t data);
 
-	uint8_t saturn_pdr1_direct_r();
-	uint8_t saturn_pdr2_direct_r();
-	void saturn_pdr1_direct_w(uint8_t data);
-	void saturn_pdr2_direct_w(uint8_t data);
-	uint8_t m_direct_mux[2];
-	uint8_t saturn_direct_port_read(bool which);
-	uint8_t smpc_direct_mode(uint16_t in_value, bool which);
-	uint8_t smpc_th_control_mode(uint16_t in_value, bool which);
+  uint8_t saturn_pdr1_direct_r();
+  uint8_t saturn_pdr2_direct_r();
+  void saturn_pdr1_direct_w(uint8_t data);
+  void saturn_pdr2_direct_w(uint8_t data);
+  // PDR1/PDR2 direct mode latches: direction, threshold and handshake bits
+  // read back by saturn_direct_port_read(). Nothing else initialises them and
+  // machine_reset does not touch them, so they were indeterminate until the
+  // guest first wrote a port.
+  uint8_t m_direct_mux[2]{};
+  uint8_t saturn_direct_port_read(bool which);
+  uint8_t smpc_direct_mode(uint16_t in_value, bool which);
+  uint8_t smpc_th_control_mode(uint16_t in_value, bool which);
+  void gun_latch(bool which);
+  void gun1_latch();
+  void gun2_latch();
 
-	void nvram_init(nvram_device &nvram, void *data, size_t size);
+  void nvram_init(nvram_device &nvram, void *data, size_t size);
 
-	required_device<sat_cart_slot_device> m_exp;
-	required_device<nvram_device> m_nvram;
-	required_device<saturn_cd_hle_device> m_saturn_cd_hle;
+  required_device<sat_cart_slot_device> m_exp;
+  required_device<nvram_device> m_nvram;
+  required_device<saturn_cd_hle_device> m_saturn_cd_hle;
 
-	required_device<saturn_control_port_device> m_ctrl1;
-	required_device<saturn_control_port_device> m_ctrl2;
+  required_device<saturn_control_port_device> m_ctrl1;
+  required_device<saturn_control_port_device> m_ctrl2;
 
-	void saturn_mem(address_map &map) ATTR_COLD;
-	void sound_mem(address_map &map) ATTR_COLD;
-	void scsp_mem(address_map &map) ATTR_COLD;
+  // BUS-01/02 CPU wait
+  uint32_t main_bus_wait_r(offs_t offset);
+  uint32_t main_bus_wait_w(offs_t offset);
+  uint32_t slave_bus_wait_r(offs_t offset);
+  uint32_t slave_bus_wait_w(offs_t offset);
+
+  void saturn_mem(address_map &map) ATTR_COLD;
+  void sound_mem(address_map &map) ATTR_COLD;
+  void scsp_mem(address_map &map) ATTR_COLD;
 };
 
-
-uint8_t sat_console_state::saturn_cart_type_r()
-{
-	if (m_exp)
-		return m_exp->get_cart_type();
-	else
-		return 0xff;
+uint8_t sat_console_state::saturn_cart_type_r() {
+  if (m_exp)
+    return m_exp->get_cart_type();
+  else
+    return 0xff;
 }
 
-/* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be an actual bug with the CD block. */
-uint32_t sat_console_state::abus_dummy_r(offs_t offset)
-{
-	logerror("A-Bus Dummy access %08x\n",offset*4);
-	return -1;
+/* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be
+ * an actual bug with the CD block. */
+uint32_t sat_console_state::abus_dummy_r(offs_t offset) {
+  logerror("A-Bus Dummy access %08x\n", offset * 4);
+  return -1;
 }
 
-void sat_console_state::saturn_mem(address_map &map)
-{
-	map(0x00000000, 0x0007ffff).rom().mirror(0x20000000).region("bios", 0).nopw(); // bios
-	map(0x00100000, 0x0010007f).mirror(0x2007ff80).m(m_smpc_hle, FUNC(smpc_hle_device::io_map));
-	map(0x00180000, 0x0018ffff).rw(FUNC(sat_console_state::backupram_r), FUNC(sat_console_state::backupram_w)).share("share1");
-	map(0x00200000, 0x002fffff).ram().mirror(0x20100000).share("workram_l");
-	map(0x00400000, 0x00400001).lr16(NAME([this] (offs_t offset, u16 mem_mask) {
-		// avoid trying to test an unknown device in A-Bus CS2 area with -bios 1
-		// https://github.com/mamedev/mame/issues/15891#issuecomment-5319402851
-		logerror("Unknown read ID at %08x & %08x\n", offset * 2 + 0x00400000, mem_mask);
-		return 0xffff;
-	}));
-	map(0x01000000, 0x017fffff).w("dcc", FUNC(saturn_dcc_device::minit_w));
-	map(0x01800000, 0x01ffffff).w("dcc", FUNC(saturn_dcc_device::sinit_w));
-//  map(0x02000000, 0x023fffff).rom().mirror(0x20000000); // Cartridge area
-//  map(0x02400000, 0x027fffff).ram(); // External Data RAM area
-//  map(0x04000000, 0x047fffff).ram(); // External Battery RAM area
-	map(0x04ffffff, 0x04ffffff).r(FUNC(sat_console_state::saturn_cart_type_r));
-	map(0x05000000, 0x057fffff).r(FUNC(sat_console_state::abus_dummy_r));
-	map(0x05800000, 0x0589ffff).m(m_saturn_cd_hle, FUNC(saturn_cd_hle_device::amap));
-	/* Sound */
-	map(0x05a00000, 0x05a7ffff).rw(FUNC(sat_console_state::soundram_r), FUNC(sat_console_state::soundram_w));
-	map(0x05b00000, 0x05b00fff).rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write));
-	/* VDP1 */
-	map(0x05c00000, 0x05c7ffff).rw(FUNC(sat_console_state::vdp1_vram_r), FUNC(sat_console_state::vdp1_vram_w));
-	map(0x05c80000, 0x05cbffff).rw(FUNC(sat_console_state::vdp1_framebuffer0_r), FUNC(sat_console_state::vdp1_framebuffer0_w));
-	map(0x05d00000, 0x05d0001f).rw(FUNC(sat_console_state::vdp1_regs_r), FUNC(sat_console_state::vdp1_regs_w));
-	/* VDP2 */
-	map(0x05e00000, 0x05e7ffff).mirror(0x80000).rw(FUNC(sat_console_state::vdp2_vram_r), FUNC(sat_console_state::vdp2_vram_w));
-	map(0x05f00000, 0x05f7ffff).rw(FUNC(sat_console_state::vdp2_cram_r), FUNC(sat_console_state::vdp2_cram_w));
-	map(0x05f80000, 0x05fbffff).rw(FUNC(sat_console_state::vdp2_regs_r), FUNC(sat_console_state::vdp2_regs_w));
-	map(0x05f80000, 0x05fbffff).m(m_vdp2, FUNC(saturn_vdp2_device::regs_map));
-	/* SCU */
-	map(0x05fe0000, 0x05fe00cf).m(m_scu, FUNC(saturn_scu_device::regs_map));
+/* Technical Bulletin #47 (Extended RAM Cartridge), section 4 "Initialization":
+   write "1" to 257EFFFEh (W/O) in word size, and "be sure to set up with 1. If
+   you use any other data ... the results are undefined".  It is step 3 of the
+   documented access procedure, ahead of setting the A-Bus registers, so every
+   title that uses the 8Mbit (ID 5Ah) or 32Mbit (ID 5Ch) cartridge performs it.
 
-	map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
-	map(0x40000000, 0x46ffffff).nopw(); // associative purge page
-	map(0x60000000, 0x600003ff).nopw(); // cache address array
-	map(0xc0000000, 0xc0000fff).ram(); // cache data array, Dragon Ball Z sprites relies on this
+   The DRAM windows installed in machine_start() are deliberately not gated on
+   this strobe: the cartridge RAM is allocated when the cart is loaded, and
+   staying permissive keeps the titles that do perform the sequence working
+   without depending on its timing relative to their first access.  Recognising
+   the write still matters - it was falling through to the unmapped A-Bus hole
+   and being reported as a bad access, for an operation the hardware requires.
+
+   The neighbouring SIMM disable register at 257FFFCh is intentionally absent.
+   TB47 documents it only for the Programming Box, where a SIMM's address
+   collides with the expanded RAM cartridge, and says "use this program with a
+   debugger, and do not incorporate it into the commercial version". */
+void sat_console_state::ext_ram_init_w(offs_t offset, uint16_t data,
+                                       uint16_t mem_mask) {
+  if (mem_mask != 0xffff || data != 1)
+    logerror("Extended RAM cart: initialisation write %04x & %04x to "
+             "257EFFFEh, expected a word write of 0001 (results undefined)\n",
+             data, mem_mask);
 }
 
-// NOTE: waitstate weights should be +2/+1, going +2 for both r/w kills BIOS startup sound already.
-void sat_console_state::sound_mem(address_map &map)
-{
-	map(0x000000, 0x0fffff).before_delay(NAME([](offs_t) { return 1; })).ram().share("sound_ram");
-	map(0x100000, 0x100fff).before_delay(NAME([](offs_t) { return 1; })).rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write));
+void sat_console_state::saturn_mem(address_map &map) {
+  map(0x00000000, 0x0007ffff)
+      .rom()
+      .mirror(0x20080000)
+      .region("bios", 0)
+      .nopw(); // bios, mirrored across the 1MB CS0 window
+  map(0x00100000, 0x0010007f)
+      .mirror(0x2007ff80)
+      .m(m_smpc_hle, FUNC(smpc_hle_device::io_map));
+  map(0x00180000, 0x0018ffff)
+      .rw(FUNC(sat_console_state::backupram_r),
+          FUNC(sat_console_state::backupram_w))
+      .mirror(0x20070000)
+      .share("share1"); // mirrored across the 512KB window
+  map(0x00200000, 0x002fffff).ram().mirror(0x20100000).share("workram_l");
+  map(0x00400000, 0x00400001).lr16(NAME([this](offs_t offset, u16 mem_mask) {
+    // avoid trying to test an unknown device in A-Bus CS2 area with -bios 1
+    // https://github.com/mamedev/mame/issues/15891#issuecomment-5319402851
+    logerror("Unknown read ID at %08x & %08x\n", offset * 2 + 0x00400000,
+             mem_mask);
+    return 0xffff;
+  }));
+  /* The FRT init windows read back 0xffff and pass writes straight to the FRT.
+     Both also have cache-through aliases at 21000000H / 21800000H, which matter
+     here rather than just for consistency: MINIT and SINIT are write-only
+     triggers, so a title that wants the write to reach the bus rather than sit
+     in the SH-2's write-back cache has to use the alias. */
+  map(0x01000000, 0x017fffff)
+      .mirror(0x20000000)
+      .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
+      .w("dcc", FUNC(saturn_dcc_device::minit_w));
+  map(0x01800000, 0x01ffffff)
+      .mirror(0x20000000)
+      .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
+      .w("dcc", FUNC(saturn_dcc_device::sinit_w));
+  //  map(0x02000000, 0x023fffff).rom().mirror(0x20000000); // Cartridge area
+  //  map(0x02400000, 0x027fffff).ram(); // External Data RAM area
+  //  map(0x04000000, 0x047fffff).ram(); // External Battery RAM area
+  map(0x04ffffff, 0x04ffffff).r(FUNC(sat_console_state::saturn_cart_type_r));
+  map(0x05000000, 0x057fffff).r(FUNC(sat_console_state::abus_dummy_r));
+  // extended RAM cartridge initialisation strobe (Technical Bulletin #47 sec
+  // 4): a word write of exactly 1 to 257EFFFEh, step 3 of the access procedure
+  map(0x057efffe, 0x057effff).w(FUNC(sat_console_state::ext_ram_init_w));
+  map(0x05800000, 0x0589ffff)
+      .m(m_saturn_cd_hle, FUNC(saturn_cd_hle_device::amap));
+  /* Sound */
+  map(0x05a00000, 0x05a7ffff)
+      .rw(FUNC(sat_console_state::soundram_r),
+          FUNC(sat_console_state::soundram_w))
+      .mirror(0x80000); // the SCSP has 512KB of sound RAM; the top of the 1MB
+                        // window mirrors it
+  map(0x05b00000, 0x05b00fff)
+      .rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write))
+      .mirror(0x000ff000); // SCSP registers are mirrored across the 1MB window
+  /* VDP1 */
+  map(0x05c00000, 0x05c7ffff)
+      .rw(FUNC(sat_console_state::vdp1_vram_r),
+          FUNC(sat_console_state::vdp1_vram_w));
+  map(0x05c80000, 0x05cbffff)
+      .mirror(0x40000)
+      .rw(FUNC(sat_console_state::vdp1_framebuffer0_r),
+          FUNC(sat_console_state::
+                   vdp1_framebuffer0_w)); // only the back buffer is visible,
+                                          // mirrored across the 512KB window
+  map(0x05d00000, 0x05d0001f)
+      .rw(FUNC(sat_console_state::vdp1_regs_r),
+          FUNC(sat_console_state::vdp1_regs_w));
+  /* VDP2 */
+  // The handlers apply VRSIZE-dependent physical wrapping. A fixed map
+  // mirror would discard the upper address bit even in 8-Mbit mode.
+  map(0x05e00000, 0x05efffff)
+      .rw(FUNC(sat_console_state::vdp2_vram_r),
+          FUNC(sat_console_state::vdp2_vram_w));
+  map(0x05f00000, 0x05f7ffff)
+      .rw(FUNC(sat_console_state::vdp2_cram_r),
+          FUNC(sat_console_state::vdp2_cram_w));
+  map(0x05f80000, 0x05fbffff)
+      .rw(FUNC(sat_console_state::vdp2_regs_r),
+          FUNC(sat_console_state::vdp2_regs_w));
+  map(0x05f80000, 0x05fbffff).m(m_vdp2, FUNC(saturn_vdp2_device::regs_map));
+  /* SCU */
+  map(0x05fc0000, 0x05fdffff).lr32(NAME([](offs_t offset, u32 mem_mask) {
+    return u32(0x000e0000);
+  })); // unused part of the SCU window reads a constant
+  map(0x05fe0000, 0x05fe00cf).m(m_scu, FUNC(saturn_scu_device::regs_map));
+
+  map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
+  map(0x40000000, 0x46ffffff).nopw(); // associative purge page
+  map(0x60000000, 0x600003ff).nopw(); // cache address array
+  map(0xc0000000, 0xc0000fff)
+      .ram(); // cache data array, Dragon Ball Z sprites relies on this
 }
 
-void sat_console_state::scsp_mem(address_map &map)
-{
-	map(0x000000, 0x0fffff).ram().share("sound_ram");
+// NOTE: waitstate weights should be +2/+1, going +2 for both r/w kills BIOS
+// startup sound already.
+void sat_console_state::sound_mem(address_map &map) {
+  map(0x000000, 0x07ffff)
+      .before_delay(NAME([](offs_t) { return 1; }))
+      .ram()
+      .share("sound_ram");
+  // ST-077 Figure 1.3: the upper 512 KiB is uninstalled expansion RAM,
+  // not a mirror. Writes here must not overwrite the sound program below.
+  map(0x080000, 0x0fffff).nopw();
+  map(0x100000, 0x100fff)
+      .before_delay(NAME([](offs_t) { return 1; }))
+      .rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write))
+      .mirror(0x000ff000);
 }
 
-
-INPUT_CHANGED_MEMBER(sat_console_state::tray_open)
-{
-	if(newval)
-		m_saturn_cd_hle->set_tray_open();
+void sat_console_state::scsp_mem(address_map &map) {
+  map(0x000000, 0x07ffff).ram().mirror(0x80000).share("sound_ram");
 }
 
-INPUT_CHANGED_MEMBER(sat_console_state::tray_close)
-{
-	if(newval)
-		m_saturn_cd_hle->set_tray_close();
+INPUT_CHANGED_MEMBER(sat_console_state::tray_open) {
+  if (newval)
+    m_saturn_cd_hle->set_tray_open();
 }
 
-static INPUT_PORTS_START( saturn )
-	PORT_START("RESET") /* hardwired buttons */
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CHANGED_MEMBER("smpc", FUNC(smpc_hle_device::trigger_nmi_r), 0) PORT_NAME("Reset Button")
-	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(sat_console_state::tray_open), 0) PORT_NAME("Tray Open Button")
-	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(sat_console_state::tray_close), 0) PORT_NAME("Tray Close")
-INPUT_PORTS_END
-
-
-/* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
-void sat_console_state::nvram_init(nvram_device &nvram, void *data, size_t size)
-{
-	static const uint8_t init[64] = {
-	'B', 'a', 'c', 'k', 'U', 'p', 'R', 'a', 'm', ' ', 'F', 'o', 'r', 'm', 'a', 't',
-	'B', 'a', 'c', 'k', 'U', 'p', 'R', 'a', 'm', ' ', 'F', 'o', 'r', 'm', 'a', 't',
-	'B', 'a', 'c', 'k', 'U', 'p', 'R', 'a', 'm', ' ', 'F', 'o', 'r', 'm', 'a', 't',
-	'B', 'a', 'c', 'k', 'U', 'p', 'R', 'a', 'm', ' ', 'F', 'o', 'r', 'm', 'a', 't', };
-
-	memset(data, 0x00, size);
-	memcpy(data, init, sizeof(init));
+INPUT_CHANGED_MEMBER(sat_console_state::tray_close) {
+  if (newval)
+    m_saturn_cd_hle->set_tray_close();
 }
 
+static INPUT_PORTS_START(saturn) PORT_START("RESET") /* hardwired buttons */
+    PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER)
+        PORT_CHANGED_MEMBER("smpc", FUNC(smpc_hle_device::trigger_nmi_r), 0)
+            PORT_NAME("Reset Button") PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_OTHER)
+                PORT_CHANGED_MEMBER(DEVICE_SELF,
+                                    FUNC(sat_console_state::tray_open),
+                                    0) PORT_NAME("Tray Open Button")
+                    PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_OTHER)
+                        PORT_CHANGED_MEMBER(DEVICE_SELF,
+                                            FUNC(sat_console_state::tray_close),
+                                            0)
+                            PORT_NAME("Tray Close") INPUT_PORTS_END
 
-void sat_console_state::machine_start()
-{
-	saturn_state::machine_start();
+    /* TODO: if you change the driver configuration then NVRAM contents gets
+       screwed, needs mods in MAME framework */
+    void sat_console_state::nvram_init(nvram_device &nvram, void *data,
+                                       size_t size) {
+  static const uint8_t init[64] = {
+      'B', 'a', 'c', 'k', 'U', 'p', 'R', 'a', 'm', ' ', 'F', 'o', 'r',
+      'm', 'a', 't', 'B', 'a', 'c', 'k', 'U', 'p', 'R', 'a', 'm', ' ',
+      'F', 'o', 'r', 'm', 'a', 't', 'B', 'a', 'c', 'k', 'U', 'p', 'R',
+      'a', 'm', ' ', 'F', 'o', 'r', 'm', 'a', 't', 'B', 'a', 'c', 'k',
+      'U', 'p', 'R', 'a', 'm', ' ', 'F', 'o', 'r', 'm', 'a', 't',
+  };
 
-	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x02400000, 0x027fffff, read32smo_delegate(*this, FUNC(sat_console_state::saturn_null_ram_r)), write32smo_delegate(*this, FUNC(sat_console_state::saturn_null_ram_w)));
-	m_slave->space(AS_PROGRAM).install_readwrite_handler(0x02400000, 0x027fffff, read32smo_delegate(*this, FUNC(sat_console_state::saturn_null_ram_r)), write32smo_delegate(*this, FUNC(sat_console_state::saturn_null_ram_w)));
+  memset(data, 0x00, size);
+  memcpy(data, init, sizeof(init));
+}
 
-	m_maincpu->space(AS_PROGRAM).nop_readwrite(0x04000000, 0x047fffff);
-	m_slave->space(AS_PROGRAM).nop_readwrite(0x04000000, 0x047fffff);
+uint32_t sat_console_state::main_bus_wait_r(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, false, SATURN_MASTER_MAIN_SH2); }
+uint32_t sat_console_state::main_bus_wait_w(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, true, SATURN_MASTER_MAIN_SH2); }
+uint32_t sat_console_state::slave_bus_wait_r(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, false, SATURN_MASTER_SLAVE_SH2); }
+uint32_t sat_console_state::slave_bus_wait_w(offs_t offset) { return m_bus->get_cpu_wait(offset << 2, true, SATURN_MASTER_SLAVE_SH2); }
 
-	m_nvram->set_base(m_backupram.get(), 0x8000);
+void sat_console_state::machine_start() {
+  saturn_state::machine_start();
 
-	if (m_exp)
-	{
-		switch (m_exp->get_cart_type())
-		{
-			case 0x21:  // Battery RAM cart
-			case 0x22:
-			case 0x23:
-			case 0x24:
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x04000000, 0x047fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_bram)));
-				m_maincpu->space(AS_PROGRAM).install_write_handler(0x04000000, 0x047fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_bram)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x04000000, 0x047fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_bram)));
-				m_slave->space(AS_PROGRAM).install_write_handler(0x04000000, 0x047fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_bram)));
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x24000000, 0x247fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_bram)));
-				m_maincpu->space(AS_PROGRAM).install_write_handler(0x24000000, 0x247fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_bram)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x24000000, 0x247fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_bram)));
-				m_slave->space(AS_PROGRAM).install_write_handler(0x24000000, 0x247fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_bram)));
-				break;
-			case 0x5a:  // Data RAM cart
-			case 0x5c:
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x02400000, 0x025fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram0)));
-				m_maincpu->space(AS_PROGRAM).install_write_handler(0x02400000, 0x025fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram0)));
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x02600000, 0x027fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram1)));
-				m_maincpu->space(AS_PROGRAM).install_write_handler(0x02600000, 0x027fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram1)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x02400000, 0x025fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram0)));
-				m_slave->space(AS_PROGRAM).install_write_handler(0x02400000, 0x025fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram0)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x02600000, 0x027fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram1)));
-				m_slave->space(AS_PROGRAM).install_write_handler(0x02600000, 0x027fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram1)));
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x22400000, 0x225fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram0)));
-				m_maincpu->space(AS_PROGRAM).install_write_handler(0x22400000, 0x225fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram0)));
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x22600000, 0x227fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram1)));
-				m_maincpu->space(AS_PROGRAM).install_write_handler(0x22600000, 0x227fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram1)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x22400000, 0x225fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram0)));
-				m_slave->space(AS_PROGRAM).install_write_handler(0x22400000, 0x225fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram0)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x22600000, 0x227fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_ext_dram1)));
-				m_slave->space(AS_PROGRAM).install_write_handler(0x22600000, 0x227fffff, write32s_delegate(*m_exp, FUNC(sat_cart_slot_device::write_ext_dram1)));
-				break;
-			case 0xff: // ROM cart + mirror
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x02000000, 0x023fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
-				m_maincpu->space(AS_PROGRAM).install_read_handler(0x22000000, 0x223fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x02000000, 0x023fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
-				m_slave->space(AS_PROGRAM).install_read_handler(0x22000000, 0x223fffff, read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
-				break;
-		}
-	}
+  // BUS-01: install CPU wait before_delay for A/B/C buses
+  // A-Bus 0x02000000-0x05ffffff (cart, dummy, CD, sound, VDP1/2, SCU) and
+  // C-Bus 0x06000000-0x07ffffff (WorkRAM-H). 0x002/0x004 already mapped but
+  // also need wait for C-Bus contention.
+  auto install_bus_wait = [this](address_space &space, bool is_main) {
+    // A-Bus + B-Bus
+    space.install_read_before_delay(0x02000000 >> 2, 0x05ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_r))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_r)));
+    space.install_write_before_delay(0x02000000 >> 2, 0x05ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_w))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_w)));
+    // C-Bus WorkRAM-H
+    space.install_read_before_delay(0x06000000 >> 2, 0x07ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_r))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_r)));
+    space.install_write_before_delay(0x06000000 >> 2, 0x07ffffff >> 2,
+      is_main ? ws_delay_delegate(*this, FUNC(sat_console_state::main_bus_wait_w))
+              : ws_delay_delegate(*this, FUNC(sat_console_state::slave_bus_wait_w)));
+  };
+  install_bus_wait(m_maincpu->space(AS_PROGRAM), true);
+  install_bus_wait(m_slave->space(AS_PROGRAM), false);
 
-	// save states
-	save_item(NAME(m_en_68k));
-	save_item(NAME(m_scsp_last_line));
+  // BUS-02: B-Bus device readiness (VDP1 drawing stall, VDP2 cycle slots)
+  m_bus->set_ready_cb(SATURN_BUS_B, [this](const saturn_bus_transaction &t) -> bool {
+    uint16_t flags = t.flags;
+    uint32_t addr = t.address;
+    if (flags == saturn_scu_device::B_BUS_VDP1) {
+      return is_vdp1_cpu_accessible(addr);
+    }
+    if (flags == saturn_scu_device::B_BUS_VDP2) {
+      return is_vdp2_cpu_accessible(addr);
+    }
+    // SCSP and SCU always ready for CPU (penalty handles wait)
+    return true;
+  });
+
+  m_maincpu->space(AS_PROGRAM)
+      .install_readwrite_handler(
+          0x02400000, 0x027fffff,
+          read32smo_delegate(*this, FUNC(sat_console_state::saturn_null_ram_r)),
+          write32smo_delegate(*this,
+                              FUNC(sat_console_state::saturn_null_ram_w)));
+  m_slave->space(AS_PROGRAM)
+      .install_readwrite_handler(
+          0x02400000, 0x027fffff,
+          read32smo_delegate(*this, FUNC(sat_console_state::saturn_null_ram_r)),
+          write32smo_delegate(*this,
+                              FUNC(sat_console_state::saturn_null_ram_w)));
+
+  m_maincpu->space(AS_PROGRAM).nop_readwrite(0x04000000, 0x047fffff);
+  m_slave->space(AS_PROGRAM).nop_readwrite(0x04000000, 0x047fffff);
+
+  m_nvram->set_base(m_backupram.get(), 0x8000);
+
+  if (m_exp) {
+    switch (m_exp->get_cart_type()) {
+    case 0x21: // Battery RAM cart
+    case 0x22:
+    case 0x23:
+    case 0x24:
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x04000000, 0x047fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_bram)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_write_handler(
+              0x04000000, 0x047fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_bram)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x04000000, 0x047fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_bram)));
+      m_slave->space(AS_PROGRAM)
+          .install_write_handler(
+              0x04000000, 0x047fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_bram)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x24000000, 0x247fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_bram)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_write_handler(
+              0x24000000, 0x247fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_bram)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x24000000, 0x247fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_bram)));
+      m_slave->space(AS_PROGRAM)
+          .install_write_handler(
+              0x24000000, 0x247fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_bram)));
+      break;
+    case 0x5a: // Data RAM cart
+    case 0x5c:
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x02400000, 0x025fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram0)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_write_handler(
+              0x02400000, 0x025fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram0)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x02600000, 0x027fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram1)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_write_handler(
+              0x02600000, 0x027fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram1)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x02400000, 0x025fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram0)));
+      m_slave->space(AS_PROGRAM)
+          .install_write_handler(
+              0x02400000, 0x025fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram0)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x02600000, 0x027fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram1)));
+      m_slave->space(AS_PROGRAM)
+          .install_write_handler(
+              0x02600000, 0x027fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram1)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x22400000, 0x225fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram0)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_write_handler(
+              0x22400000, 0x225fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram0)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x22600000, 0x227fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram1)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_write_handler(
+              0x22600000, 0x227fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram1)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x22400000, 0x225fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram0)));
+      m_slave->space(AS_PROGRAM)
+          .install_write_handler(
+              0x22400000, 0x225fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram0)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x22600000, 0x227fffff,
+              read32sm_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::read_ext_dram1)));
+      m_slave->space(AS_PROGRAM)
+          .install_write_handler(
+              0x22600000, 0x227fffff,
+              write32s_delegate(*m_exp,
+                                FUNC(sat_cart_slot_device::write_ext_dram1)));
+      break;
+    case 0xff: // ROM cart + mirror
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x02000000, 0x023fffff,
+              read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
+      m_maincpu->space(AS_PROGRAM)
+          .install_read_handler(
+              0x22000000, 0x223fffff,
+              read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x02000000, 0x023fffff,
+              read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
+      m_slave->space(AS_PROGRAM)
+          .install_read_handler(
+              0x22000000, 0x223fffff,
+              read32sm_delegate(*m_exp, FUNC(sat_cart_slot_device::read_rom)));
+      break;
+    }
+  }
+
+  // save states
+  save_item(NAME(m_en_68k));
+  save_item(NAME(m_scsp_last_line));
+  // the guest programs these once and saturn_direct_port_read() keeps using
+  // them, so a state load has to restore them or input comes back in the
+  // wrong mode
+  save_item(NAME(m_direct_mux));
 }
 
 // diehardt tests RAM address $25e7ffe bit 2 with Slave during FRT minit irq
 // in-development tool for breaking execution of it?
-uint32_t sat_console_state::saturn_null_ram_r()
-{
-	return 0xffffffff;
+uint32_t sat_console_state::saturn_null_ram_r() { return 0xffffffff; }
+
+void sat_console_state::saturn_null_ram_w(uint32_t data) {}
+
+void sat_console_state::machine_reset() {
+  saturn_state::machine_reset();
+
+  // memset(stv_m_workram_l, 0, 0x100000);
+  // memset(stv_m_workram_h, 0, 0x100000);
 }
 
-void sat_console_state::saturn_null_ram_w(uint32_t data)
-{
+uint8_t sat_console_state::saturn_pdr1_direct_r() {
+  return saturn_direct_port_read(false);
 }
 
-void sat_console_state::machine_reset()
-{
-	saturn_state::machine_reset();
-
-	//memset(stv_m_workram_l, 0, 0x100000);
-	//memset(stv_m_workram_h, 0, 0x100000);
+uint8_t sat_console_state::saturn_pdr2_direct_r() {
+  return saturn_direct_port_read(true);
 }
 
-uint8_t sat_console_state::saturn_pdr1_direct_r()
-{
-	return saturn_direct_port_read(false);
+void sat_console_state::saturn_pdr1_direct_w(uint8_t data) {
+  m_direct_mux[0] = data;
 }
 
-uint8_t sat_console_state::saturn_pdr2_direct_r()
-{
-	return saturn_direct_port_read(true);
+void sat_console_state::saturn_pdr2_direct_w(uint8_t data) {
+  m_direct_mux[1] = data;
 }
 
-void sat_console_state::saturn_pdr1_direct_w(uint8_t data)
-{
-	m_direct_mux[0] = data;
+inline uint8_t sat_console_state::saturn_direct_port_read(bool which) {
+  // bail out if direct mode is disabled
+  if (m_smpc_hle->get_iosel(which) == false)
+    return 0xff;
+
+  saturn_control_port_device *port = which == true ? m_ctrl2 : m_ctrl1;
+  uint8_t cur_mode = m_smpc_hle->get_ddr(which);
+  uint8_t res = 0;
+  uint8_t pdr_res;
+
+  // devices that speak their own line protocol (cfr. the Virtua Gun) are
+  // not decoded as control pads
+  if (port->read_pdr(cur_mode, m_direct_mux[which], pdr_res))
+    return pdr_res;
+
+  uint16_t ctrl_read = port->read_direct();
+
+  //  check for control method
+  switch (cur_mode & 0x60) {
+  case 0:
+    break;
+  case 0x40:
+    res = smpc_th_control_mode(ctrl_read, which);
+    break;
+  case 0x60:
+    res = smpc_direct_mode(ctrl_read, which);
+    break;
+  default:
+    popmessage("SMPC: unemulated control method %02x", cur_mode & 0x60);
+    break;
+  }
+
+  return res;
 }
 
-void sat_console_state::saturn_pdr2_direct_w(uint8_t data)
-{
-	m_direct_mux[1] = data;
+uint8_t sat_console_state::smpc_th_control_mode(uint16_t in_value, bool which) {
+  uint8_t res = 0;
+  uint8_t th = (m_direct_mux[which] >> 5) & 3;
+
+  switch (th) {
+  /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the
+   * ID, needs HW tests.  */
+  case 3:
+    res = th << 6;
+    res |= 0x14;
+    res |= (in_value & 8); // L
+    break;
+  case 2:
+    res = th << 6;
+    //  1 C B Right Left Down Up
+    //  WHP actually has a very specific code at 0x6015f30, doesn't like bits
+    //  0-1 active here ...
+    res |= ((in_value >> 4) & 0x30); // C & B
+    res |= ((in_value >> 12) & 0xc);
+    break;
+  case 1:
+    res = th << 6;
+    res |= 0x10;
+    res |= ((in_value >> 4) & 0xf); // R, X, Y, Z
+    break;
+  case 0:
+    res = th << 6;
+    //  0 Start A 0 0    Down Up
+    res |= ((in_value >> 6) & 0x30); // Start & A
+    res |= ((in_value >> 12) & 0x03);
+    //  ... and it actually wants bits 2 - 3 active here.
+    res |= 0xc;
+    break;
+  }
+
+  return res;
 }
 
-inline uint8_t sat_console_state::saturn_direct_port_read(bool which)
-{
-	// bail out if direct mode is disabled
-	if(m_smpc_hle->get_iosel(which) == false)
-		return 0xff;
+uint8_t sat_console_state::smpc_direct_mode(uint16_t in_value, bool which) {
+  uint8_t hshake = (m_direct_mux[which] >> 5) & 3;
+  const int shift_bit[4] = {4, 12, 8, 0};
 
-	saturn_control_port_device *port = which == true ? m_ctrl2 : m_ctrl1;
-	uint8_t cur_mode = m_smpc_hle->get_ddr(which);
-	uint8_t res = 0;
-	uint16_t ctrl_read = port->read_direct();
-
-//  check for control method
-	switch(cur_mode & 0x60)
-	{
-		case 0: break;
-		case 0x40: res = smpc_th_control_mode(ctrl_read,which); break;
-		case 0x60: res = smpc_direct_mode(ctrl_read,which); break;
-		default:
-			popmessage("SMPC: unemulated control method %02x",cur_mode & 0x60);
-			break;
-	}
-
-	return res;
+  return 0x80 | 0x10 | ((in_value >> shift_bit[hshake]) & 0xf);
 }
 
-uint8_t sat_console_state::smpc_th_control_mode(uint16_t in_value, bool which)
-{
-	uint8_t res = 0;
-	uint8_t th = (m_direct_mux[which] >> 5) & 3;
-
-	switch (th)
-	{
-		/* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
-		case 3:
-			res = th << 6;
-			res |= 0x14;
-			res |= (in_value & 8); // L
-			break;
-		case 2:
-			res = th << 6;
-			//  1 C B Right Left Down Up
-			//  WHP actually has a very specific code at 0x6015f30, doesn't like bits 0-1 active here ...
-			res|= ((in_value >>  4) & 0x30); // C & B
-			res|= ((in_value >> 12) & 0xc);
-			break;
-		case 1:
-			res = th << 6;
-			res |= 0x10;
-			res |= ((in_value >> 4) & 0xf); // R, X, Y, Z
-			break;
-		case 0:
-			res = th << 6;
-			//  0 Start A 0 0    Down Up
-			res |= ((in_value >>  6) & 0x30); // Start & A
-			res |= ((in_value >> 12) & 0x03);
-			//  ... and it actually wants bits 2 - 3 active here.
-			res |= 0xc;
-			break;
-	}
-
-	return res;
+void sat_console_state::gun_latch(bool which) {
+  // a light gun pulls the port's latch line: the SMPC routes it to the VDP2
+  // external latch input when the matching EXLE bit is set
+  if (m_smpc_hle->get_exle(which))
+    m_vdp2->external_latch();
 }
 
-uint8_t sat_console_state::smpc_direct_mode(uint16_t in_value,bool which)
-{
-	uint8_t hshake = (m_direct_mux[which] >> 5) & 3;
-	const int shift_bit[4] = { 4, 12, 8, 0 };
+void sat_console_state::gun1_latch() { gun_latch(false); }
 
-	return 0x80 | 0x10 | ((in_value >> shift_bit[hshake]) & 0xf);
+void sat_console_state::gun2_latch() { gun_latch(true); }
+
+void sat_console_state::saturn(machine_config &config) {
+  /* basic machine hardware */
+  SH7604(config, m_maincpu, MASTER_CLOCK_352 / 2); // 28.6364 MHz
+  m_maincpu->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
+  m_maincpu->set_is_slave(0);
+  m_maincpu->set_irq_acknowledge_callback(m_scu,
+                                          FUNC(saturn_scu_device::irq_ack_cb));
+  TIMER(config, "scantimer")
+      .configure_scanline(FUNC(sat_console_state::saturn_scanline), "screen", 0,
+                          1);
+
+  SH7604(config, m_slave, MASTER_CLOCK_352 / 2); // 28.6364 MHz
+  m_slave->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
+  m_slave->set_is_slave(1);
+  m_slave->set_irq_acknowledge_callback(m_dcc,
+                                        FUNC(saturn_dcc_device::irq_ack_cb));
+
+  SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
+  m_dcc->set_master_cpu(m_maincpu);
+  m_dcc->set_slave_cpu(m_slave);
+
+  M68000(config, m_audiocpu, 11289600); // 256 x 44100 Hz = 11.2896 MHz
+  m_audiocpu->set_addrmap(AS_PROGRAM, &sat_console_state::sound_mem);
+  m_audiocpu->reset_cb().set(FUNC(sat_console_state::m68k_reset_callback));
+
+  SATURN_BUS(config, m_bus, 0);
+
+  SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
+  m_scu->set_hostcpu(m_maincpu);
+  m_scu->set_bus(m_bus);
+  m_scu->main_dtack_cb().set(FUNC(sat_console_state::main_dma_halt_w));
+  m_scu->sound_dtack_cb().set(FUNC(sat_console_state::sound_dma_halt_w));
+  m_scu->main_steal_cb().set([this](u8 data) {
+    m_maincpu->adjust_icount(-data);
+    m_slave->adjust_icount(-data);
+  });
+  m_scu->sound_steal_cb().set(
+      [this](u8 data) { m_audiocpu->adjust_icount(-data); });
+
+  //  SH-1
+
+  //  SMPC MCU, running at 4 MHz (+ custom RTC device that runs at 32.768 KHz)
+  SMPC_HLE(config, m_smpc_hle, XTAL(4'000'000));
+  m_smpc_hle->set_screen_tag("screen");
+  m_smpc_hle->set_control_port_tags("ctrl1", "ctrl2");
+  m_smpc_hle->pdr1_in_handler().set(
+      FUNC(sat_console_state::saturn_pdr1_direct_r));
+  m_smpc_hle->pdr2_in_handler().set(
+      FUNC(sat_console_state::saturn_pdr2_direct_r));
+  m_smpc_hle->pdr1_out_handler().set(
+      FUNC(sat_console_state::saturn_pdr1_direct_w));
+  m_smpc_hle->pdr2_out_handler().set(
+      FUNC(sat_console_state::saturn_pdr2_direct_w));
+  m_smpc_hle->master_reset_handler().set(
+      FUNC(sat_console_state::master_sh2_reset_w));
+  m_smpc_hle->master_nmi_handler().set(
+      FUNC(sat_console_state::master_sh2_nmi_w));
+  m_smpc_hle->slave_reset_handler().set(
+      FUNC(sat_console_state::slave_sh2_reset_w));
+  m_smpc_hle->sound_reset_handler().set(
+      FUNC(sat_console_state::sound_68k_reset_w));
+  m_smpc_hle->system_reset_handler().set(
+      FUNC(sat_console_state::system_reset_w));
+  m_smpc_hle->system_halt_handler().set(FUNC(sat_console_state::system_halt_w));
+  m_smpc_hle->dot_select_handler().set(FUNC(sat_console_state::dot_select_w));
+  m_smpc_hle->interrupt_handler().set(m_scu,
+                                      FUNC(saturn_scu_device::smpc_irq_w));
+
+  NVRAM(config, "nvram")
+      .set_custom_handler(FUNC(sat_console_state::nvram_init));
+
+  /* video hardware */
+  SCREEN(config, m_screen);
+  m_screen->set_raw(MASTER_CLOCK_320 / 8, 427, 0, 320, 263, 0, 224);
+  m_screen->set_screen_update(FUNC(sat_console_state::screen_update_vdp2));
+
+  //  SATURN_VDP1(config, m_vdp1, MASTER_CLOCK_320);
+
+  SATURN_VDP2(config, m_vdp2, MASTER_CLOCK_320);
+  m_vdp2->set_screen_tag("screen");
+  m_vdp2->set_is_pal(false);
+  m_vdp2->vint_cb().set(FUNC(sat_console_state::vint_callback));
+  m_vdp2->hint_cb().set(FUNC(sat_console_state::hint_callback));
+
+  PALETTE(config, m_palette)
+      .set_entries(
+          2048 +
+          (2048 * 2)); // standard palette + extra memory for rgb brightness.
+
+  GFXDECODE(config, m_gfxdecode, m_palette, gfx_stv);
+
+  MCFG_VIDEO_START_OVERRIDE(sat_console_state, vdp2_video_start)
+
+  SPEAKER(config, "speaker", 2).front();
+
+  SCSP(config, m_scsp,
+       8467200 * 8 / 3); // 8.4672 MHz EXTCLK * 8 / 3 = 22.5792 MHz
+  m_scsp->set_addrmap(0, &sat_console_state::scsp_mem);
+  m_scsp->irq_cb().set(FUNC(sat_console_state::scsp_irq));
+  m_scsp->main_irq_cb().set(m_scu, FUNC(saturn_scu_device::sound_req_w));
+  m_scsp->add_route(0, "speaker", 1.0, 0);
+  m_scsp->add_route(1, "speaker", 1.0, 1);
+
+  SATURN_CD_HLE(config, m_saturn_cd_hle);
+  m_saturn_cd_hle->add_route(0, "scsp", 1.0, 0);
+  m_saturn_cd_hle->add_route(1, "scsp", 1.0, 1);
+  m_saturn_cd_hle->host_irq_cb().set(m_scu,
+                                     FUNC(saturn_scu_device::cd_block_irq_w));
+
+  SATURN_CONTROL_PORT(config, m_ctrl1, saturn_controls, "joypad")
+      .set_screen_tag("screen");
+  m_ctrl1->set_latch_callback(FUNC(sat_console_state::gun1_latch));
+  SATURN_CONTROL_PORT(config, m_ctrl2, saturn_controls, "joypad")
+      .set_screen_tag("screen");
+  m_ctrl2->set_latch_callback(FUNC(sat_console_state::gun2_latch));
 }
 
-void sat_console_state::saturn(machine_config &config)
-{
-	/* basic machine hardware */
-	SH7604(config, m_maincpu, MASTER_CLOCK_352 / 2); // 28.6364 MHz
-	m_maincpu->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
-	m_maincpu->set_is_slave(0);
-	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
-	TIMER(config, "scantimer").configure_scanline(FUNC(sat_console_state::saturn_scanline), "screen", 0, 1);
-
-	SH7604(config, m_slave, MASTER_CLOCK_352 / 2); // 28.6364 MHz
-	m_slave->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
-	m_slave->set_is_slave(1);
-	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
-
-	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
-	m_dcc->set_master_cpu(m_maincpu);
-	m_dcc->set_slave_cpu(m_slave);
-
-	M68000(config, m_audiocpu, 11289600); //256 x 44100 Hz = 11.2896 MHz
-	m_audiocpu->set_addrmap(AS_PROGRAM, &sat_console_state::sound_mem);
-	m_audiocpu->reset_cb().set(FUNC(sat_console_state::m68k_reset_callback));
-
-	SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
-	m_scu->set_hostcpu(m_maincpu);
-	m_scu->main_dtack_cb().set_inputline(m_maincpu, INPUT_LINE_HALT);
-	m_scu->main_dtack_cb().append_inputline(m_slave, INPUT_LINE_HALT);
-	m_scu->sound_dtack_cb().set_inputline(m_audiocpu, INPUT_LINE_HALT);
-	m_scu->main_steal_cb().set([this] (u8 data) {
-		m_maincpu->adjust_icount(-data);
-		m_slave->adjust_icount(-data);
-	});
-	m_scu->sound_steal_cb().set([this] (u8 data) {
-		m_audiocpu->adjust_icount(-data);
-	});
-
-
-//  SH-1
-
-//  SMPC MCU, running at 4 MHz (+ custom RTC device that runs at 32.768 KHz)
-	SMPC_HLE(config, m_smpc_hle, XTAL(4'000'000));
-	m_smpc_hle->set_screen_tag("screen");
-	m_smpc_hle->set_control_port_tags("ctrl1", "ctrl2");
-	m_smpc_hle->pdr1_in_handler().set(FUNC(sat_console_state::saturn_pdr1_direct_r));
-	m_smpc_hle->pdr2_in_handler().set(FUNC(sat_console_state::saturn_pdr2_direct_r));
-	m_smpc_hle->pdr1_out_handler().set(FUNC(sat_console_state::saturn_pdr1_direct_w));
-	m_smpc_hle->pdr2_out_handler().set(FUNC(sat_console_state::saturn_pdr2_direct_w));
-	m_smpc_hle->master_reset_handler().set(FUNC(sat_console_state::master_sh2_reset_w));
-	m_smpc_hle->master_nmi_handler().set(FUNC(sat_console_state::master_sh2_nmi_w));
-	m_smpc_hle->slave_reset_handler().set(FUNC(sat_console_state::slave_sh2_reset_w));
-	m_smpc_hle->sound_reset_handler().set(FUNC(sat_console_state::sound_68k_reset_w));
-	m_smpc_hle->system_reset_handler().set(FUNC(sat_console_state::system_reset_w));
-	m_smpc_hle->system_halt_handler().set(FUNC(sat_console_state::system_halt_w));
-	m_smpc_hle->dot_select_handler().set(FUNC(sat_console_state::dot_select_w));
-	m_smpc_hle->interrupt_handler().set(m_scu, FUNC(saturn_scu_device::smpc_irq_w));
-
-	NVRAM(config, "nvram").set_custom_handler(FUNC(sat_console_state::nvram_init));
-
-	/* video hardware */
-	SCREEN(config, m_screen);
-	m_screen->set_raw(MASTER_CLOCK_320/8, 427, 0, 320, 263, 0, 224);
-	m_screen->set_screen_update(FUNC(sat_console_state::screen_update_vdp2));
-
-//  SATURN_VDP1(config, m_vdp1, MASTER_CLOCK_320);
-
-	SATURN_VDP2(config, m_vdp2, MASTER_CLOCK_320);
-	m_vdp2->set_screen_tag("screen");
-	m_vdp2->set_is_pal(false);
-	m_vdp2->vint_cb().set(FUNC(sat_console_state::vint_callback));
-	m_vdp2->hint_cb().set(FUNC(sat_console_state::hint_callback));
-
-	PALETTE(config, m_palette).set_entries(2048+(2048*2)); //standard palette + extra memory for rgb brightness.
-
-	GFXDECODE(config, m_gfxdecode, m_palette, gfx_stv);
-
-	MCFG_VIDEO_START_OVERRIDE(sat_console_state,vdp2_video_start)
-
-	SPEAKER(config, "speaker", 2).front();
-
-	SCSP(config, m_scsp, 8467200*8/3); // 8.4672 MHz EXTCLK * 8 / 3 = 22.5792 MHz
-	m_scsp->set_addrmap(0, &sat_console_state::scsp_mem);
-	m_scsp->irq_cb().set(FUNC(sat_console_state::scsp_irq));
-	m_scsp->main_irq_cb().set(m_scu, FUNC(saturn_scu_device::sound_req_w));
-	m_scsp->add_route(0, "speaker", 1.0, 0);
-	m_scsp->add_route(1, "speaker", 1.0, 1);
-
-	SATURN_CD_HLE(config, m_saturn_cd_hle);
-	m_saturn_cd_hle->add_route(0, "scsp", 1.0, 0);
-	m_saturn_cd_hle->add_route(1, "scsp", 1.0, 1);
-
-	SATURN_CONTROL_PORT(config, "ctrl1", saturn_controls, "joypad");
-	SATURN_CONTROL_PORT(config, "ctrl2", saturn_controls, "joypad");
+static void saturn_cart(device_slot_interface &device) {
+  device.option_add_internal("rom", SATURN_ROM);
+  device.option_add_internal("ram8", SATURN_DRAM_8MB);
+  device.option_add_internal("ram32", SATURN_DRAM_32MB);
+  device.option_add_internal("bram4", SATURN_BRAM_4MB);
+  device.option_add_internal("bram8", SATURN_BRAM_8MB);
+  device.option_add_internal("bram16", SATURN_BRAM_16MB);
+  device.option_add_internal("bram32", SATURN_BRAM_32MB);
 }
 
-static void saturn_cart(device_slot_interface &device)
-{
-	device.option_add_internal("rom",    SATURN_ROM);
-	device.option_add_internal("ram8",   SATURN_DRAM_8MB);
-	device.option_add_internal("ram32",  SATURN_DRAM_32MB);
-	device.option_add_internal("bram4",  SATURN_BRAM_4MB);
-	device.option_add_internal("bram8",  SATURN_BRAM_8MB);
-	device.option_add_internal("bram16", SATURN_BRAM_16MB);
-	device.option_add_internal("bram32", SATURN_BRAM_32MB);
+void sat_console_state::saturnus(machine_config &config) {
+  saturn(config);
+  SATURN_CDB(config, "saturn_cdb", 16000000);
+
+  SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-U");
+  SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+
+  SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
+  SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
+
+  m_smpc_hle->set_region_code(REGION_NTSC_USA);
 }
 
+void sat_console_state::saturneu(machine_config &config) {
+  saturn(config);
+  m_vdp2->set_is_pal(true);
 
-void sat_console_state::saturnus(machine_config &config)
-{
-	saturn(config);
-	SATURN_CDB(config, "saturn_cdb", 16000000);
+  SATURN_CDB(config, "saturn_cdb", 16000000);
 
-	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-U");
-	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+  SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("PAL");
+  SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 
-	SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
-	SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
+  SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
+  SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
 
-	m_smpc_hle->set_region_code(REGION_NTSC_USA);
+  m_smpc_hle->set_region_code(REGION_PAL_EUROPE);
 }
 
-void sat_console_state::saturneu(machine_config &config)
-{
-	saturn(config);
-	m_vdp2->set_is_pal(true);
+void sat_console_state::saturnjp(machine_config &config) {
+  saturn(config);
+  SATURN_CDB(config, "saturn_cdb", 16000000);
 
-	SATURN_CDB(config, "saturn_cdb", 16000000);
+  SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-J");
+  SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 
-	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("PAL");
-	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+  SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
+  SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
 
-	SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
-	SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
-
-	m_smpc_hle->set_region_code(REGION_PAL_EUROPE);
+  m_smpc_hle->set_region_code(REGION_NTSC_JAPAN);
 }
 
-void sat_console_state::saturnjp(machine_config &config)
-{
-	saturn(config);
-	SATURN_CDB(config, "saturn_cdb", 16000000);
+void sat_console_state::saturnkr(machine_config &config) {
+  saturn(config);
+  SATURN_CDB(config, "saturn_cdb", 16000000);
 
-	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-J");
-	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+  SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-K");
 
-	SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
-	SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
+  SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
+  SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
 
-	m_smpc_hle->set_region_code(REGION_NTSC_JAPAN);
+  m_smpc_hle->set_region_code(REGION_NTSC_KOREA);
 }
 
-void sat_console_state::saturnkr(machine_config &config)
-{
-	saturn(config);
-	SATURN_CDB(config, "saturn_cdb", 16000000);
+void sat_console_state::init_saturn() {
+  // set compatible options
+  m_maincpu->sh2drc_set_options(SH2DRC_STRICT_VERIFY | SH2DRC_STRICT_PCREL);
+  m_slave->sh2drc_set_options(SH2DRC_STRICT_VERIFY | SH2DRC_STRICT_PCREL);
 
-	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-K");
+  // BUS-01/04: keep only BIOS ROM as fastram. WorkRAM L/H are A/C bus
+  // masters that must go through before_delay so DRC respects bus arbiter
+  // stalls (C-BUS WorkRAM-H stack push/pop double-R15 fix). Removing them
+  // from fastram forces DRC memory accessors to call read/write handlers
+  // which trigger access_before_delay and abort/retry.
+  m_maincpu->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
+  m_slave->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
 
-	SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);
-	SOFTWARE_LIST(config, "cart_list").set_original("sat_cart");
-
-	m_smpc_hle->set_region_code(REGION_NTSC_KOREA);
+  m_backupram = make_unique_clear<uint8_t[]>(0x8000);
 }
 
-
-void sat_console_state::init_saturn()
-{
-	// set compatible options
-	m_maincpu->sh2drc_set_options(SH2DRC_STRICT_VERIFY|SH2DRC_STRICT_PCREL);
-	m_slave->sh2drc_set_options(SH2DRC_STRICT_VERIFY|SH2DRC_STRICT_PCREL);
-
-	m_maincpu->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
-	m_maincpu->sh2drc_add_fastram(0x00200000, 0x002fffff, 0, &m_workram_l[0]);
-	m_maincpu->sh2drc_add_fastram(0x06000000, 0x060fffff, 0, &m_workram_h[0]);
-	m_slave->sh2drc_add_fastram(0x00000000, 0x0007ffff, 1, &m_rom[0]);
-	m_slave->sh2drc_add_fastram(0x00200000, 0x002fffff, 0, &m_workram_l[0]);
-	m_slave->sh2drc_add_fastram(0x06000000, 0x060fffff, 0, &m_workram_h[0]);
-
-	m_backupram = make_unique_clear<uint8_t[]>(0x8000);
-}
-
-ROM_START( saturnjp )
-	ROM_REGION32_BE( 0x80000, "bios", ROMREGION_ERASEFF )
-	ROM_SYSTEM_BIOS(0, "101", "Japan v1.01 (941228)")
-	ROMX_LOAD("sega_101.bin", 0x00000000, 0x00080000, CRC(224b752c) SHA1(df94c5b4d47eb3cc404d88b33a8fda237eaf4720), ROM_BIOS(0))
-	ROM_SYSTEM_BIOS(1, "1003", "Japan v1.003 (941012)")
-	ROMX_LOAD("sega1003.bin", 0x00000000, 0x00080000, CRC(b3c63c25) SHA1(7b23b53d62de0f29a23e423d0fe751dfb469c2fa), ROM_BIOS(1))
-	ROM_SYSTEM_BIOS(2, "100", "Japan v1.00 (940921)")
-	ROMX_LOAD("sega_100.bin", 0x00000000, 0x00080000, CRC(2aba43c2) SHA1(2b8cb4f87580683eb4d760e4ed210813d667f0a2), ROM_BIOS(2))
+ROM_START(saturnjp)
+ROM_REGION32_BE(0x80000, "bios", ROMREGION_ERASEFF)
+ROM_SYSTEM_BIOS(0, "101", "Japan v1.01 (941228)")
+ROMX_LOAD("sega_101.bin", 0x00000000, 0x00080000,
+          CRC(224b752c) SHA1(df94c5b4d47eb3cc404d88b33a8fda237eaf4720),
+          ROM_BIOS(0))
+ROM_SYSTEM_BIOS(1, "1003", "Japan v1.003 (941012)")
+ROMX_LOAD("sega1003.bin", 0x00000000, 0x00080000,
+          CRC(b3c63c25) SHA1(7b23b53d62de0f29a23e423d0fe751dfb469c2fa),
+          ROM_BIOS(1))
+ROM_SYSTEM_BIOS(2, "100", "Japan v1.00 (940921)")
+ROMX_LOAD("sega_100.bin", 0x00000000, 0x00080000,
+          CRC(2aba43c2) SHA1(2b8cb4f87580683eb4d760e4ed210813d667f0a2),
+          ROM_BIOS(2))
 ROM_END
 
-ROM_START( saturn )
-	ROM_REGION32_BE( 0x80000, "bios", ROMREGION_ERASEFF )
-	ROM_SYSTEM_BIOS(0, "101a", "Overseas v1.01a (941115)")
-	/* Confirmed by ElBarto */
-	ROMX_LOAD("mpr-17933.bin", 0x00000000, 0x00080000, CRC(4afcf0fa) SHA1(faa8ea183a6d7bbe5d4e03bb1332519800d3fbc3), ROM_BIOS(0))
-	ROM_SYSTEM_BIOS(1, "100a", "Overseas v1.00a (941115)")
-	ROMX_LOAD("sega_100a.bin", 0x00000000, 0x00080000, CRC(f90f0089) SHA1(3bb41feb82838ab9a35601ac666de5aacfd17a58), ROM_BIOS(1))
+ROM_START(saturn)
+ROM_REGION32_BE(0x80000, "bios", ROMREGION_ERASEFF)
+ROM_SYSTEM_BIOS(0, "101a", "Overseas v1.01a (941115)")
+/* Confirmed by ElBarto */
+ROMX_LOAD("mpr-17933.bin", 0x00000000, 0x00080000,
+          CRC(4afcf0fa) SHA1(faa8ea183a6d7bbe5d4e03bb1332519800d3fbc3),
+          ROM_BIOS(0))
+ROM_SYSTEM_BIOS(1, "100a", "Overseas v1.00a (941115)")
+ROMX_LOAD("sega_100a.bin", 0x00000000, 0x00080000,
+          CRC(f90f0089) SHA1(3bb41feb82838ab9a35601ac666de5aacfd17a58),
+          ROM_BIOS(1))
 ROM_END
 
-ROM_START( saturneu )
-	ROM_REGION32_BE( 0x80000, "bios", ROMREGION_ERASEFF )
-	ROM_SYSTEM_BIOS(0, "101a", "Overseas v1.01a (941115)")
-	/* Confirmed by ElBarto */
-	ROMX_LOAD("mpr-17933.bin", 0x00000000, 0x00080000, CRC(4afcf0fa) SHA1(faa8ea183a6d7bbe5d4e03bb1332519800d3fbc3), ROM_BIOS(0))
-	ROM_SYSTEM_BIOS(1, "100a", "Overseas v1.00a (941115)")
-	ROMX_LOAD("sega_100a.bin", 0x00000000, 0x00080000, CRC(f90f0089) SHA1(3bb41feb82838ab9a35601ac666de5aacfd17a58), ROM_BIOS(1))
+ROM_START(saturneu)
+ROM_REGION32_BE(0x80000, "bios", ROMREGION_ERASEFF)
+ROM_SYSTEM_BIOS(0, "101a", "Overseas v1.01a (941115)")
+/* Confirmed by ElBarto */
+ROMX_LOAD("mpr-17933.bin", 0x00000000, 0x00080000,
+          CRC(4afcf0fa) SHA1(faa8ea183a6d7bbe5d4e03bb1332519800d3fbc3),
+          ROM_BIOS(0))
+ROM_SYSTEM_BIOS(1, "100a", "Overseas v1.00a (941115)")
+ROMX_LOAD("sega_100a.bin", 0x00000000, 0x00080000,
+          CRC(f90f0089) SHA1(3bb41feb82838ab9a35601ac666de5aacfd17a58),
+          ROM_BIOS(1))
 ROM_END
 
-ROM_START( saturnkr )
-	ROM_REGION32_BE( 0x80000, "bios", ROMREGION_ERASEFF )
-	// undumped, uses Japanese VA1 motherboard with v1.02a BIOS rev,
-	// with extra checks for region jumpers that disables Japanese language if setting matches '2' (no Korea option tho)
-	ROM_LOAD("sega_101.bin", 0x00000000, 0x00080000, BAD_DUMP CRC(224b752c) SHA1(df94c5b4d47eb3cc404d88b33a8fda237eaf4720) )
+ROM_START(saturnkr)
+ROM_REGION32_BE(0x80000, "bios", ROMREGION_ERASEFF)
+// undumped, uses Japanese VA1 motherboard with v1.02a BIOS rev,
+// with extra checks for region jumpers that disables Japanese language if
+// setting matches '2' (no Korea option tho)
+ROM_LOAD("sega_101.bin", 0x00000000, 0x00080000,
+         BAD_DUMP CRC(224b752c) SHA1(df94c5b4d47eb3cc404d88b33a8fda237eaf4720))
 ROM_END
 
-ROM_START( vsaturn )
-	ROM_REGION32_BE( 0x80000, "bios", ROMREGION_ERASEFF )
-	ROM_LOAD("vsaturn.bin", 0x00000000, 0x00080000, CRC(e4d61811) SHA1(4154e11959f3d5639b11d7902b3a393a99fb5776))
+ROM_START(vsaturn)
+ROM_REGION32_BE(0x80000, "bios", ROMREGION_ERASEFF)
+ROM_LOAD("vsaturn.bin", 0x00000000, 0x00080000,
+         CRC(e4d61811) SHA1(4154e11959f3d5639b11d7902b3a393a99fb5776))
 ROM_END
 
-ROM_START( hisaturn )
-	ROM_REGION32_BE( 0x80000, "bios", ROMREGION_ERASEFF )
-	ROM_SYSTEM_BIOS(0, "102", "v1.02 (950519)")
-	ROMX_LOAD("mpr-18100.bin", 0x000000, 0x080000, CRC(3408dbf4) SHA1(8a22710e09ce75f39625894366cafe503ed1942d), ROM_BIOS(0))
-	ROM_SYSTEM_BIOS(1, "101", "v1.01 (950130)")
-	ROMX_LOAD("hisaturn.bin", 0x00000000, 0x00080000, CRC(721e1b60) SHA1(49d8493008fa715ca0c94d99817a5439d6f2c796), ROM_BIOS(1))
+ROM_START(hisaturn)
+ROM_REGION32_BE(0x80000, "bios", ROMREGION_ERASEFF)
+ROM_SYSTEM_BIOS(0, "102", "v1.02 (950519)")
+ROMX_LOAD("mpr-18100.bin", 0x000000, 0x080000,
+          CRC(3408dbf4) SHA1(8a22710e09ce75f39625894366cafe503ed1942d),
+          ROM_BIOS(0))
+ROM_SYSTEM_BIOS(1, "101", "v1.01 (950130)")
+ROMX_LOAD("hisaturn.bin", 0x00000000, 0x00080000,
+          CRC(721e1b60) SHA1(49d8493008fa715ca0c94d99817a5439d6f2c796),
+          ROM_BIOS(1))
 ROM_END
 
 } // anonymous namespace
 
-
-/*    YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT   CLASS              INIT           COMPANY    FULLNAME            FLAGS */
-CONS( 1994, saturn,   0,      0,      saturnus, saturn, sat_console_state, init_saturn, "Sega",    "Saturn (USA)",     MACHINE_NOT_WORKING )
-CONS( 1994, saturnjp, saturn, 0,      saturnjp, saturn, sat_console_state, init_saturn, "Sega",    "Saturn (Japan)",   MACHINE_NOT_WORKING )
-CONS( 1994, saturneu, saturn, 0,      saturneu, saturn, sat_console_state, init_saturn, "Sega",    "Saturn (PAL)",     MACHINE_NOT_WORKING )
-CONS( 1995, saturnkr, saturn, 0,      saturnkr, saturn, sat_console_state, init_saturn, "Samsung", "Saturn (Korea)",   MACHINE_NOT_WORKING )
-CONS( 1995, vsaturn,  saturn, 0,      saturnjp, saturn, sat_console_state, init_saturn, "JVC",     "V-Saturn",         MACHINE_NOT_WORKING )
-CONS( 1995, hisaturn, saturn, 0,      saturnjp, saturn, sat_console_state, init_saturn, "Hitachi", "HiSaturn",         MACHINE_NOT_WORKING )
+/*    YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT   CLASS              INIT
+ * COMPANY    FULLNAME            FLAGS */
+CONS(1994, saturn, 0, 0, saturnus, saturn, sat_console_state, init_saturn,
+     "Sega", "Saturn (USA)", MACHINE_NOT_WORKING)
+CONS(1994, saturnjp, saturn, 0, saturnjp, saturn, sat_console_state,
+     init_saturn, "Sega", "Saturn (Japan)", MACHINE_NOT_WORKING)
+CONS(1994, saturneu, saturn, 0, saturneu, saturn, sat_console_state,
+     init_saturn, "Sega", "Saturn (PAL)", MACHINE_NOT_WORKING)
+CONS(1995, saturnkr, saturn, 0, saturnkr, saturn, sat_console_state,
+     init_saturn, "Samsung", "Saturn (Korea)", MACHINE_NOT_WORKING)
+CONS(1995, vsaturn, saturn, 0, saturnjp, saturn, sat_console_state, init_saturn,
+     "JVC", "V-Saturn", MACHINE_NOT_WORKING)
+CONS(1995, hisaturn, saturn, 0, saturnjp, saturn, sat_console_state,
+     init_saturn, "Hitachi", "HiSaturn", MACHINE_NOT_WORKING)
