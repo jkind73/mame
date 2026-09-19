@@ -34,6 +34,7 @@ public:
 
 	auto txd_wr_callback() { return m_write_txd.bind(); }
 	auto rxd_rd_callback() { return m_read_rxd.bind(); }
+	void sck_w(int state);
 
 	void sh2_notify_dma_data_available();
 
@@ -83,7 +84,7 @@ private:
 	void ssr_w(uint8_t data);
 	uint8_t rdr_r();
 
-	// SCI transfer engine (internal-clock asynchronous mode)
+	// SCI transfer engine (internal async / external synchronous receive)
 	attotime sci_bit_period() const;
 	void sci_recalc_rates();
 	void sci_transmit_start();
@@ -211,6 +212,7 @@ private:
 	uint8_t m_sci_rx_bitcnt;    // data bits collected count
 	uint8_t m_sci_rx_phase;     // oversample phase 0-15 within a bit
 	uint8_t m_sci_rx_vote;      // majority-vote accumulator
+	bool m_sci_sck;            // external SCK input level (edge history)
 	emu_timer *m_sci_tx_timer;
 	emu_timer *m_sci_rx_timer;
 
