@@ -2661,3 +2661,113 @@
 - not covered: pulse callback/wiring, electrical drive/high-Z, external RES
   priority during a pending internal reset, reset-vector selection and
   active-reset save/load. Existing candidates remain UNVALIDATED.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0035 | CPU-03 | 0aec8567 | UNVALIDATED | INT64_MIN/-1 enters the existing DIVU overflow path without executing overflowing host signed division |
+
+### IMPL-0035 — CPU-03 — DIVU signed-64 minimum guard
+
+- branch/commit: `arena/01a0b897-mame` @ **0aec8567** (base: 557a609f).
+- files: `src/devices/cpu/sh/sh7604.cpp`, `dvdntl_w` host-division guard;
+  `saturn_pending/impl_checks/check_sh7604_divu_min64.py`.
+- contract: starting 64/32 division with DVDNTH=80000000, DVDNTL=00000000
+  and DVSR=FFFFFFFF must not evaluate host INT64_MIN/-1 or its remainder.
+  It is a positive quotient overflow: set OVF and enter the existing
+  overflow path. With OVFIE=0, DVDNTL is the documented positive saturation
+  value 7FFFFFFF. No other overflow-result or operation-timing behavior
+  is added by this safety guard.
+- primary source: SH7604 ADE-602-085C Rev.4, section 10.3.1 p.292
+  (signed 64/32 operation with 32-bit quotient), section 10.3.3 p.293
+  (out-of-range quotient sets OVF; positive overflow saturates to 7FFFFFFF
+  when OVFIE=0), section 10.4.2 p.294/Table 10.2 (sticky overflow and
+  distinct intermediate-result requirements). SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:186-190,227-237`, guards
+  this exact signed-64 pair and takes overflow, saturating by sign when
+  interrupts are disabled. Blob `6b31b7d029449d63f68ef281dc04958d17d74339`.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1178-1187`, and fork base `557a609f`
+  perform the host division before checking 32-bit quotient range.
+  No reference code imported; the guard precedes that undefined operation.
+- expected observable: no host arithmetic exception/UB on the initiating
+  write; OVF=1, unchanged DVSR and OVFIE; with OVFIE=0, quotient=7FFFFFFF.
+  In-range controls retain ordinary signed quotient/remainder and sticky
+  old OVF. Exact register bits; six-cycle completion is NOT implemented
+  or claimed by this change.
+- suggested method: native longword writes to DVSR, DVDNTH and DVDNTL,
+  then inspect DVCR and the disabled-interrupt quotient after completion.
+  Repeat with old OVF both clear/set and OVFIE both ways; qualify enabled-
+  interrupt intermediate results and vector delivery separately. Use
+  fail-fast UBSan to expose host arithmetic before native qualification.
+- falsifier: host division trap/UB, OVF remaining clear for this 64-bit
+  pair, wrong disabled-interrupt positive saturation, or changed in-range
+  division results rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `4 INT64_MIN/-1 cases; 65585 in-range quotient/remainder controls;
+  65540 operand-state-copy replays; 5 zero-divisor status controls`.
+  Pre-change `557a609f` method exits 1 under fail-fast UBSan:
+  `runtime error: division of -9223372036854775808 by -1 cannot be represented
+  in type 'long int'` (generated line 25). The independent in-range oracle
+  uses 128-bit arithmetic; it does not assert unknown overflow intermediates.
+  Twenty-three prior scripts exit 0; the unchanged `frt_stop`, `frt_phase`
+  and `wdt_access` expectation conflicts remain at lines 438, 374, 132.
+  Current total 27 SH7604 scripts: 24 exit 0, 3 exit 1. Warning-enabled TU
+  syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes)
+  and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new fields or save-layout change.
+  The legacy overflow path still writes an inaccurate placeholder to
+  DVDNTH and does not implement OVFIE=1 intermediate results. Other
+  overflow signs/boundaries, 39/6-cycle latency, busy-access stalls,
+  register aliases and native DIVU interrupt delivery remain incomplete.
+  The distinct signed-32 minimum/-1 behavior is not inferred from this
+  guard: pinned Ymir explicitly wraps it without new OVF, unlike a plain
+  signed-range reading of the manual; see the next blocker entry. No
+  native/MinGW qualification or complete DIVU claim. Frozen DMA, delay-slot
+  IRQ, sound/game paths, validator assets and expected values untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0036 | CPU-03 | — | BLOCKED(SH7604 signed-32 minimum/-1 OVF and result trace) | Resolve the signed-32 boundary separately instead of assuming the signed-64 overflow rule applies |
+
+### IMPL-0036 — CPU-03 — signed-32 DIVU boundary disagreement
+
+- branch/base: `arena/01a0b897-mame` @ 0aec8567; no production change.
+- files: `src/devices/cpu/sh/sh7604.cpp`, `dvdnt_w`; its host signed-32
+  INT32_MIN/-1 expression is still unsafe and is explicitly not repaired
+  by IMPL-0035.
+- primary source: SH7604 ADE-602-085C Rev.4, sections 10.3.2/10.3.3
+  pp.292-293 and Table 10.2 p.294 give general signed-range overflow rules
+  but do not clearly resolve the reference's exact-zero-remainder boundary
+  exception. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:139-146`, returns 80000000
+  and remainder zero without setting new OVF for signed-32 minimum/-1.
+  Its `tests/ymir-core-tests/src/hw/sh2/sh2_divu_tests.cpp:72-83` explicitly
+  expects that result with OVFIE both clear and set, also distinguishing
+  different 64-bit high words. Test blob
+  `ad18c3f2b2b986f9e32315ddd3d6d653d4ab09cc`. Hardware provenance for that
+  fixture was not established here; it is not treated as a silicon trace.
+- expected observable to resolve: quotient, remainder and DVCR for
+  80000000/FFFFFFFF via DVDNT, with OVFIE=0/1 and old OVF=0/1, plus the
+  corresponding DVDNTH=FFFFFFFF/DVDNTL=80000000 64-bit form and nearby
+  boundary/remainder controls. Values must come from a hardware trace or
+  precise primary erratum, not C++ signed-overflow behavior.
+- suggested method: execute on an SH7604 with operations separated by at
+  least the documented 39 cycles; capture register state for both start
+  registers, avoiding unrelated timing/alias assumptions.
+- falsifier for a future candidate: disagreement in quotient, remainder
+  or OVF with those captured boundary cases, or any host arithmetic trap.
+- self-check run: primary/reference inspection only; no hardware capture.
+- state: **BLOCKED(SH7604 signed-32 minimum/-1 OVF and result trace)**.
+  A documented erratum or attributable hardware result can resolve the
+  exception. Other DIVU work can continue without choosing it by guess.
+- not covered: this blocker does not qualify Ymir's broader overflow
+  algorithm or the current MAME output; the known unsafe expression remains
+  a visible limitation, not an accepted hardware behavior.
