@@ -21,6 +21,7 @@
 | IMPL-0007 | CPU-03/IO-02 | e860f29a | UNVALIDATED | SCI SSR flags require a prior CPU read; TEND/MPB remain read-only, MPBT writes replace bit 0 |
 | IMPL-0008 | CPU-03/IO-02 | 23eb938a | UNVALIDATED | SCI asynchronous TX reloads at the final stop bit, chains queued frames and preserves a full stop interval |
 | IMPL-0009 | CPU-03/IO-02 | ca0432ea | UNVALIDATED | SCI receives parity/framing/overrun errors together at stop; unread RDR survives every overrun |
+| IMPL-0010 | CPU-03/IO-02 | 3d18666d | UNVALIDATED | SCI MP receive mode discards non-address frames under MPIE and wakes on MPB=1 |
 
 ---
 
@@ -650,3 +651,81 @@
   this commit. External clock/synchronous RX and SCI DMA remain absent.
   No frozen DMA acknowledgement, delay-slot IRQ, sound or video path is
   changed. Method-level state-copy replay is not a save-manager claim.
+
+
+### IMPL-0010 — CPU-03/IO-02 — SCI multiprocessor receive filtering
+
+- branch/commit: `arena/01a0b897-mame` @ **3d18666d** (base: ca06f866;
+  depends on IMPL-0009's receive-completion/error behavior).
+- files: `src/devices/cpu/sh/sh7604.cpp:119,249` (save/reset),
+  `:1124-1134,1167-1196` (MP capture and completion filter),
+  `src/devices/cpu/sh/sh7604.h:213` (pending MP bit),
+  `saturn_pending/impl_checks/check_sh7604_multiprocessor.py`.
+  `check_sh7604_rx_errors.py` gains only a mock state declaration;
+  no existing expected values or validator assets were changed.
+- contract: in asynchronous MP format, latch the received multiprocessor
+  bit and publish it in SSR.MPB at character completion (both 0 and 1).
+  While SCR.MPIE=1, an MPB=0 character does not modify RDR, set RDRF,
+  generate receive errors, or request RXI/ERI. MPB=1 automatically clears
+  MPIE and that address character undergoes normal receive/error handling.
+  Software may inspect the ID and re-arm MPIE; hardware does not compare
+  the ID itself. MPIE has no filtering effect when SMR.MP=0.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.2.6 printed pp.340-341 (SCR.MPIE), section 13.2.7 p.345
+  (SSR.MPB), section 13.3.3 pp.367-371, Figure 13.12 receive procedure
+  and Figure 13.13's ID-match/mismatch streams. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. The manual's MPIE paragraph
+  mentions TIE/RIE together; receive interrupt enabling here follows the
+  explicit RIE descriptions and receive flow, not transmit enable TIE.
+- cross-checks: MAME upstream pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:102,150,202-222` names MP/MPIE and
+  preserves software-read-only MPB, but has no receive wake filter to
+  port. MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:232-341`, resets MPB but likewise supplies no
+  MPIE receive-filter implementation. These checks expose reference
+  omissions, not independent corroboration of filter timing. Primary
+  SCR semantics and Figure 13.13 are the implementation basis.
+- expected observable: exact register bytes, tolerance zero. With MP=1,
+  RE=RIE=MPIE=1 (SCR=0x58), old RDR=0xa5 and no RX flags: receiving
+  data 0x23 with MPB=0 leaves RDR=0xa5, MPIE=1 and flags clear, even
+  if its stop bit is bad. Receiving 0x23 with MPB=1 and good stop
+  gives SCR=0x50, RDR=0x23, RDRF=MPB=1 and an RXI request. After
+  acknowledging RDRF, a normal MPB=0 data frame is received and clears
+  MPB. Re-arming MPIE restores the discard behavior. With MP=0, setting
+  MPIE must not filter ordinary asynchronous frames.
+- suggested method: independent RxD address/data streams plus mapped SSR,
+  SCR and RDR reads, 7/8-bit formats and 1/2 stops; include pending RDRF,
+  bad stop, software re-arm and non-MP controls. Save/load between MP
+  sampling and stop while asleep and waking. Compare actual ERI/RXI
+  delivery with RIE=0/1; TIE must not control receive interrupt delivery.
+- falsifier: a non-address frame changing RDR/RDRF or reporting an error
+  while MPIE=1, address reception failing to clear MPIE, MPB stuck at 1,
+  filtering when MP=0, or loss of the pending MP bit on save/load
+  contradicts this candidate. Silicon showing MPB publication or MPIE
+  clearing before the stop sample would falsify that chosen latch edge;
+  exact edge qualification remains open even if byte-level results agree.
+- self-check run: `python3 saturn_pending/impl_checks/check_sh7604_multiprocessor.py`
+  raw output (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 32768 MP-format/filter/error/data cases and state-copy replay
+  method-level, unvalidated: address/data, software re-arm and non-MP controls exercised
+  method-level, unvalidated: pending MP bit reset/save registration present
+  ```
+  Pre-change `ca06f866` source copy with the same new script exits 1:
+  `line 194: d.m_ssr==expected`. RX-error/SSR/TX-chain scripts rerun
+  with unchanged expected values, exit 0 (524,288 table cases plus
+  16,384 RX frames; 33,554,432 SSR transitions; 4,096 TX cases).
+  Extracted checks use UBSan. TU `sh7604.cpp` syntax with the standard
+  include set: exit 0; `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: exact MPB/MPIE sub-bit latch timing is
+  not specified by the byte-level descriptions; completion-edge choice
+  needs a hardware capture. No native IRQ or save-manager execution.
+  `m_sci_rx_mp` is saved/reset in this production commit; old save files
+  are incompatible. TX MPBT update timing, external SCK/synchronous
+  operation, SCI DMA and actual external peripherals remain incomplete.
+  Configuration inventory is now explicit in
+  `saturn_pending/IO_DEVICE_INVENTORY.md`: present controller/cart/arcade
+  devices are distinguished from missing modem, cable and peer support;
+  SCI progress is not an external-device acceptance claim.
