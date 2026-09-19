@@ -3842,104 +3842,38 @@ void saturn_cd_hle_device::cd_readTOC(void) {
   put_u24be(&tocbuf[tocptr + 9], fad);
 }
 
+// ST-162 section 5.3: a true output selects a partition, while a false
+// output selects another filter. Stored subheaders are zero outside Mode 2.
+uint8_t saturn_cd_hle_device::cd_filter_destination(uint8_t fnum, const blockT &sector) const {
+  // A repeated filter cannot change its verdict for this sector. Bound the
+  // walk for malformed cyclic configurations rather than hanging the host.
+  for (unsigned visited = 0; visited < MAX_FILTERS && fnum < MAX_FILTERS; ++visited) {
+    const filterT &filter = filters[fnum];
+    bool match = (!(filter.mode & 1) || sector.fnum == filter.fid) &&
+                 (!(filter.mode & 2) || sector.chan == filter.chan) &&
+                 (!(filter.mode & 4) || (sector.subm & filter.smmask) == filter.smval) &&
+                 (!(filter.mode & 8) || (sector.cinf & filter.cimask) == filter.cival);
+    if (filter.mode & 0x10)
+      match = !match;
+    // Frame-address selection is outside subheader inversion.
+    if ((filter.mode & 0x40) &&
+        (uint32_t(sector.FAD) < filter.fad || uint32_t(sector.FAD) >= filter.fad + filter.range))
+      match = false;
+    if (match)
+      return filter.condtrue < MAX_FILTERS ? filter.condtrue : 0xff;
+    fnum = filter.condfalse;
+  }
+  return 0xff;
+}
+
 saturn_cd_hle_device::partitionT *
 saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
-  int match, keepgoing;
-  partitionT *filterprt;
-
-  LOG("cd_filterdata, trktype %d\n", trktype);
-  match = 1;
-  keepgoing = 2;
-  lastbuf = flt->condtrue;
-
-  // loop on the filters
-  do {
-    // FAD range check?
-    // reject and try on the other filter connection
-    // - sfz2 and sonicjamj wouldn't repeat BGMs properly
-    // - timegal, falcom2 also uses this at very least
-    if (flt->mode & 0x40) {
-      if ((cd_curfad < flt->fad) || (cd_curfad >= (flt->fad + flt->range))) {
-        LOGWARN("curfad reject %08x %08x %08x %08x\n", cd_curfad, fadstoplay,
-                flt->fad, flt->fad + flt->range);
-        match = 0;
-        // lastbuf = flt->condfalse;
-        // flt = &filters[lastbuf];
-      }
-    }
-
-    /* The four subheader conditions combine into their own verdict which
-       mode bit 4 inverts; the frame-address range check above stays
-       outside the inversion ("Invert subheader conditions (all but frame
-       address range)" per Ymir's cdblock_filter).  Inverting the combined
-       match instead, as this used to, also flipped a range rejection into
-       an accept. */
-    if ((trktype != cdrom_file::CD_TRACK_AUDIO) && (curblock.data[15] == 2)) {
-      int sh_match = 1;
-
-      if (flt->mode & 1) // file number
-      {
-        if (curblock.fnum != flt->fid) {
-          LOGWARN("fnum reject\n");
-          sh_match = 0;
-        }
-      }
-
-      if (flt->mode & 2) // channel number
-      {
-        if (curblock.chan != flt->chan) {
-          LOGWARN("channel number reject\n");
-          sh_match = 0;
-        }
-      }
-
-      if (flt->mode & 4) // sub mode
-      {
-        if ((curblock.subm & flt->smmask) != flt->smval) {
-          LOGWARN("sub mode reject\n");
-          sh_match = 0;
-        }
-      }
-
-      if (flt->mode & 8) // coding information
-      {
-        if ((curblock.cinf & flt->cimask) != flt->cival) {
-          LOGWARN("coding information reject\n");
-          sh_match = 0;
-        }
-      }
-
-      if (flt->mode & 0x10) // reverse subheader conditions
-        sh_match ^= 1;
-
-      if (!sh_match)
-        match = 0;
-    }
-
-    if (match) {
-      // lastbuf = flt->condtrue;
-      // filterprt = &partitions[lastbuf];
-      //  we're done
-      keepgoing = 0;
-    } else {
-      lastbuf = flt->condfalse;
-
-      // reject sector if no match on either connector
-      if ((lastbuf == 0xff) || (keepgoing == 0)) {
-        *p_ok = 0;
-        return (partitionT *)nullptr;
-      }
-
-      // try again using the filter that was on the "false" connector
-      flt = &filters[lastbuf];
-      match = 1;
-
-      // and exit if we fail
-      keepgoing--;
-    }
-  } while (keepgoing);
-
-  filterprt = &partitions[lastbuf];
+  const uint8_t destination = cd_filter_destination(uint8_t(flt - filters), curblock);
+  if (destination == 0xff) {
+    *p_ok = 0;
+    return nullptr;
+  }
+  partitionT *const filterprt = &partitions[destination];
 
   // a partition holds at most MAX_BLOCKS blocks, and blocks[]/bnum[] are
   // indexed here before cd_alloc_block() gets any chance to report
@@ -4007,6 +3941,9 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
   filterprt->size += filterprt->blocks[filterprt->numblks]->size;
   filterprt->numblks++;
 
+  // Get Last Buffer Destination describes the last sector actually stored
+  // by the CD device, not a discarded sector or a failed allocation.
+  lastbuf = destination;
   *p_ok = 1;
   return filterprt;
 }
@@ -4050,6 +3987,10 @@ saturn_cd_hle_device::cd_read_filtered_sector(int32_t fad, uint8_t *p_ok) {
       if (curblock.subm & 0x20) {
         curblock.size = 2324;
       }
+    } else {
+      // ST-162 section 5.4: non-Mode-2 subheaders are treated as zero.
+      // Do not inherit metadata from the previous Mode 2 sector.
+      curblock.chan = curblock.fnum = curblock.subm = curblock.cinf = 0;
     }
 
     return cd_filterdata(cddevice, trktype, &*p_ok);
