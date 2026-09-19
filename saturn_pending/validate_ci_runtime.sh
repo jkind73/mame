@@ -327,13 +327,22 @@ phase=cdda
 python3 regtests/saturn/test_cdda_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
 grep -q 'CDDA PASS' "$LOG_DIR/$phase/runtime.log"
-for system in saturnjp saturneu stvbios; do
+# Only the CD capable configurations can be asked about Red Book output: an
+# ST-V cartridge configuration has no CD image device, and the fixture records
+# a CDDA SKIP line in its log instead of a PASS.  Require the skip to be the
+# expected one so the phase still fails on a silent error.
+for system in saturnjp saturneu; do
     phase="cdda-$system-drc"
     python3 regtests/saturn/test_cdda_runtime.py --executable "$ARTIFACT/saturn" \
         --rompath "$ROOT/regtests" --system "$system" --drc \
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'CDDA PASS' "$LOG_DIR/$phase/runtime.log"
 done
+phase="cdda-stvbios-drc"
+python3 regtests/saturn/test_cdda_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --system stvbios --drc \
+    --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'CDDA SKIP: stvbios has no -cdrom option' "$LOG_DIR/$phase/runtime.log"
 phase=scsp-continuity
 python3 saturn_pending/test_scsp_continuity_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1

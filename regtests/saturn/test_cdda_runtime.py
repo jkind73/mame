@@ -578,7 +578,12 @@ def main():
     text = (out / 'runtime.log').read_text(errors='replace')
     if 'unknown option: -cdrom' in text:
         # a configuration with no CD image device (ST-V cartridges) cannot be
-        # asked about Red Book output at all
+        # asked about Red Book output at all.  The reason goes back into the
+        # log so the CI gate can tell an intentional skip from a silent
+        # failure and still hold the CD capable configurations to a PASS.
+        line = 'CDDA SKIP: %s has no -cdrom option' % args.system
+        with (out / 'runtime.log').open('a') as log:
+            log.write(line + '\n')
         print('SKIP: %s has no -cdrom option' % args.system)
         return 0
     for line in text.splitlines():
