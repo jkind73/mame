@@ -120,6 +120,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_sci_rx_bitcnt));
 	save_item(NAME(m_sci_rx_phase));
 	save_item(NAME(m_sci_rx_vote));
+	save_item(NAME(m_sci_sck));
 
 	// FRT / FRC
 	save_item(NAME(m_tier));
@@ -249,6 +250,7 @@ void sh7604_device::device_reset()
 	m_sci_rx_bitcnt = 0;
 	m_sci_rx_phase = 0;
 	m_sci_rx_vote = 0;
+	m_sci_sck = true;
 	m_sci_tx_timer->adjust(attotime::never);
 	m_sci_rx_timer->adjust(attotime::never);
 	m_write_txd(1); // TxD idles high
@@ -875,7 +877,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: clocked synchronous mode and external (SCK) clock are not implemented
+// TODO: internal synchronous clock, synchronous TX and external-clock async mode
 
 uint8_t sh7604_device::smr_r()
 {
@@ -924,11 +926,13 @@ void sh7604_device::scr_w(uint8_t data)
 	if (!BIT(m_scr, 4))
 	{
 		m_sci_rx_enabled = false;
+		m_sci_rx_state = 0;
 		m_sci_rx_timer->adjust(attotime::never);
 		// clearing RE does not affect RDRF/FER/PER/ORER (p.340)
 	}
 	else if (!old_re)
 	{
+		m_sci_rx_state = 0; // a synchronous receiver waits for a new falling edge
 		// receiver enable: start oversampling (internal clock only)
 		if (!BIT(m_scr, 1) && !BIT(m_smr, 7))
 		{
@@ -994,6 +998,43 @@ void sh7604_device::ssr_w(uint8_t data)
 uint8_t sh7604_device::rdr_r()
 {
 	return m_rdr;
+}
+
+void sh7604_device::sck_w(int state)
+{
+	bool const level = state != 0;
+	bool const previous = m_sci_sck;
+	m_sci_sck = level;
+	if (level == previous || !BIT(m_smr, 7) || !BIT(m_scr, 1) || !BIT(m_scr, 4))
+		return;
+
+	// SH7604 section 13.3.4, pp.372, 375-378: external synchronous
+	// receive starts on a falling SCK edge and samples on rising edges.
+	// A character is always eight data bits, without start/parity/stop/MP.
+	if (m_ssr & (SSR_ORER | SSR_FER | SSR_PER))
+	{
+		m_sci_rx_state = 0;
+		return;
+	}
+
+	if (!level)
+	{
+		if (!m_sci_rx_state)
+		{
+			m_sci_rx_state = 1;
+			m_sci_rx_bitcnt = 0;
+			m_sci_rx_shift = 0;
+		}
+	}
+	else if (m_sci_rx_state)
+	{
+		m_sci_rx_shift |= (m_read_rxd(0) != 0) << m_sci_rx_bitcnt;
+		if (++m_sci_rx_bitcnt == 8)
+		{
+			m_sci_rx_state = 0;
+			sci_rx_complete(m_sci_rx_shift, false, false);
+		}
+	}
 }
 
 attotime sh7604_device::sci_bit_period() const
