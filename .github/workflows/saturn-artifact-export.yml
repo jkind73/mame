@@ -24,7 +24,12 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: jkind73/mame
-      # Draft pre-created through gh: this integration cannot create it in CI.
+      # Draft pre-created through gh: this integration cannot create it in CI
+      # (`gh release create` is not permitted to the workflow token, and
+      # workflow_dispatch is refused as well, so a push to this file is the
+      # trigger).  Pre-create with, for the source SHA below:
+      #   gh release create arena-saturn-validation-<sha> --draft \
+      #     --target <sha> --title 'Saturn validation <sha8> (unreleased)'
       SOURCE_RUN: '35422729391'
       SOURCE_SHA: '7bebd19760966d5e557e8ecaf8e2ae93b255065c'
     steps:
