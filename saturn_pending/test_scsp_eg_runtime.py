@@ -276,10 +276,10 @@ def check_case(case, q, n):
     name, kind, ar, d1r, d2r, rr, dl, krs, oct, eghold, ms = case
     # emu.wait() is frame-granular, so the capture is a whole number of audio
     # frames at or above the requested window
-    if not 0.9 * ms * 44.1 <= n <= (ms + 40) * 44.1:
+    if not 0.9 * ms * 44.1 <= n <= (ms + 80) * 44.1:
         raise RuntimeError('%s: capture is %d samples, expected %d..%d at '
                            '44.1 kHz' % (name, n, 0.9 * ms * 44.1,
-                                         (ms + 40) * 44.1))
+                                         (ms + 80) * 44.1))
     e0 = find_anchor(q, case)
     if e0 is None:
         raise RuntimeError('%s: the trigger leaves no visible edge in the trace'
@@ -531,13 +531,13 @@ local function test()
             emu.wait(ms(10))
             begin_levels()
             key_on()
-            emu.wait(ms(c.ms))
+            emu.wait(ms(c.ms + 40))
         else
             key_on()
             emu.wait(ms(c.ms + 400))
             begin_levels()
             key_off()
-            emu.wait(ms(c.ms))
+            emu.wait(ms(c.ms + 40))
         end
         end_levels(c.name)
         settle()

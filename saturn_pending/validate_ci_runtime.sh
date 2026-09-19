@@ -253,6 +253,20 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP LFO: 39 native amplitude/phase-modulation cases passed live' "$LOG_DIR/$phase.log"
 done
+phase=scsp-eg
+python3 saturn_pending/test_scsp_eg_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP EG: 22 native envelope cases matched the tabulated rate model' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-eg-$system-drc"
+    python3 saturn_pending/test_scsp_eg_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP EG: 22 native envelope cases matched the tabulated rate model' "$LOG_DIR/$phase.log"
+done
+phase=scsp-eg-parser
+python3 saturn_pending/test_scsp_eg_runner.py > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP EG result-parser controls passed: 16 mutants rejected' "$LOG_DIR/$phase.log"
 phase=scsp-dma-save
 python3 saturn_pending/test_scsp_dma_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
