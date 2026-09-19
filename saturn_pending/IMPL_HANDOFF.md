@@ -5587,3 +5587,63 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   acceptance/ECC and FIFO timing remain open; no new state/layout change.
   The0074 validator mock compilation limitation is unchanged. No validator
   asset/expectation, frozen-path or milestone-status edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0076 | CD-01 | 51a73beb | UNVALIDATED | Set Sector Length rejects unsupported operands atomically and completes only after its response is populated |
+
+### IMPL-0076 — CD-01 — sector-length command validation and publication
+
+- branch/commit/base: `arena/01a0b897-mame` @ **51a73beb**; base **d5f452d3**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1826-1849`;
+  `saturn_pending/impl_checks/check_cd_sector_length.py`.
+- contract: validate both fetching and writing length operands before changing
+  either. Encodings00/01/02/03 select2048/2336/2340/2352 bytes; FF preserves
+  that direction. Any other encoding rejects the whole request: preserve
+  both lengths and pending causes, return REJECT with CMOK, no new ESEL.
+  Accepted requests return the current standard status and CMOK|ESEL.
+  Populate response before the IRQ callback. Do not change0074's latched
+  active-sector geometry when updating the direction defaults.
+- primary source: ST-162-062094 printed p.95 section8.2.7/function7.1 lists
+  the four lengths and NOCHG; p.31 section3.3 defines malformed-command
+  REJECT; p.30 Table3.2 assigns Set Sector Length to ESEL. SDK pin
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. REJECT report payload is invalid
+  per p.31, so its low report words are not claimed as a hardware contract.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3445-3468,1872-1886`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, validates both byte encodings
+  before applying either and generates ESEL only on the accepted branch;
+  BasicResults publishes words before CMOK. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2833-2862`, ignores invalid
+  encodings and still completes with ESEL: not adopted. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d CD method at1553ff and local base
+  likewise silently ignore unsupported operands, can change the other
+  direction, and publish after the callback. No reference block imported.
+- expected observable: starting GET2336/PUT2340, command60 requesting GET0
+  and PUT4 leaves both unchanged and returns REJECT/CMOK without new ESEL.
+  GET0/PUTFF instead selects GET2048 while retaining PUT2340, with ESEL.
+  Pending ESEL remains pending even on rejection. Exact bytes/cause bits,
+  zero tolerance; callback sees the completed status rather than command60.
+- suggested method: native command-port sweep of00..FF in both operand bytes
+  with previously distinct lengths, pending ESEL both clear/set, and an
+  active raw view; observe response, causes and subsequent GET/PUT lengths.
+- falsifier: either direction changes on rejection, FF changes its direction,
+  malformed input produces new ESEL, pending causes disappear, the callback
+  sees stale response, or an active sector changes halfway through its view.
+- self-check run (method-level, unvalidated):4194304 operand/previous-length/
+  pending-cause images exit0 with fail-fast UBSan, actual setter and mock
+  report/IRQ callback. Historicald5f452d3 fails combined completion/order
+  predicate at generated line67; adapting only that historical callback
+  order still fails the rejection-status predicate at line66. All20 own CD
+  probes, warning-enabled CD TU syntax and diff checks exit0. No full build.
+- state: **UNVALIDATED**.
+- not covered/known doubts: native command latency, unsupported encodings on
+  physical hardware, raw PUT/routing and all0074 exclusions remain open;
+  reserved pending causes in the sweep are storage diagnostics. Existing
+  length fields already saved; no new field/layout change. Validator mock
+  declaration break from0074 remains reported, original expectations and
+  frozen paths untouched. No completion-report status changes.
