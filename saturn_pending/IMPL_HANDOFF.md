@@ -4696,3 +4696,54 @@ correct template but omitted its numeric line span. No contract/state change.
   graphs. No new fields or additional save-layout break; no validator or
   existing expectation edits, host-transfer algorithms or frozen CPU/
   sound/video paths changed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0062 | CD-01 | 6d66e5d2 | UNVALIDATED | Command 47 returns a selector's true/false connections instead of reaching unknown-command dispatch |
+
+### IMPL-0062 — CD-01 — Get Filter Connection command
+
+- branch/commit/base: `arena/01a0b897-mame` @ **6d66e5d2**; base **06b9ca36**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1566-1579` and command dispatch
+  case 47; matching declaration in `saturn_cd_hle.h`;
+  `saturn_pending/impl_checks/check_cd_get_filter_connection.py`.
+- contract: command 47, filter number CR3 high byte, returns current status
+  in CR1, true connection/false connection in CR2 high/low bytes, filter
+  number in CR3 high byte and zero CR4. FF means disconnected. Complete
+  with CMOK, preserving existing HIRQ causes without newly setting ESEL.
+  The query does not change selector conditions/connections. Invalid filter
+  indices use the existing standard REJECT response helper, without indexing
+  outside the 24 selectors.
+- primary source: ST-162-062094 printed p.90 function 5.8 Get Filter
+  Connection; p.30 Table 3.2 lists setting commands (not this query) under
+  ESEL. SDK blob `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3176-3193`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  supplies the exact register layout/bounds. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2519-2545`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, agrees. Local history/base and
+  upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d command dispatch
+  were checked: no case 47/handler existed. No reference block imported.
+- expected observable: for filter 7 true->23/false->FF while paused,
+  response CR1=0100, CR2=17FF, CR3=0700, CR4=0000, with CMOK asserted
+  and no new ESEL. Exact response bits and unchanged graph, zero tolerance.
+- suggested method: mapped Set Filter Connection followed by command 47
+  for each selector and disconnected endpoints; read all four response
+  registers/HIRQ. Also check queued command execution and native IRQ/DRC
+  behavior rather than treating the extracted dispatch arm as a scheduler.
+- falsifier: wrong selector/byte order, changed graph, newly generated ESEL,
+  missing CMOK, unmapped dispatch or out-of-bounds invalid-filter access.
+- self-check run (method-level, unvalidated): 30,000 valid connector/status
+  readbacks and 232 invalid-index controls through the actual handler and
+  extracted production dispatch arm, fail-fast UBSan exit 0. Historical
+  06b9ca36 is rejected structurally for missing case 47; this is not a
+  historical native execution. CD warning-enabled C++20 syntax/diff checks
+  exit 0. No full build, existing fixture changes or native qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: mapped transport/timing, complete command
+  scheduler, native IRQ/firmware/gameplay and save-manager behavior. No new
+  fields/additional save-layout change; no modifications to existing data
+  transfer/HIRQ handlers or frozen SH/sound/video paths.
