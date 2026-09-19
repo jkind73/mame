@@ -2896,3 +2896,62 @@
   No implementation of memory grants/waits is implied by register access
   handling. Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths,
   validator assets and existing expected values unchanged.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0039 | CPU-02 | 80e493d5 | UNVALIDATED | BSC longword reads return zero above bit 15 rather than exposing retained write-key bits |
+
+### IMPL-0039 — CPU-02 — BSC read width
+
+- branch/commit: `arena/01a0b897-mame` @ **80e493d5** (base: c5853d00).
+- files: `src/devices/cpu/sh/sh7604.cpp`, BCR1/BCR2/WCR/MCR read handlers;
+  `saturn_pending/impl_checks/check_sh7604_bsc_read.py`.
+- contract: BSC registers are 16 bits; a 32-bit read returns zero in the
+  upper half. Mask those bits at the read boundary while retaining existing
+  low-field behavior and BCR1's configured master/slave bit. The refresh
+  register getters already narrow their result and remain unchanged.
+- primary source: SH7604 ADE-602-085C Rev.4, section 7.1.4 p.134/Table 7.2:
+  register size 16 bits, upper 16 bits zero on 32-bit reads; word reads at
+  the listed longword address+2. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1240-1246`, returns the 16-bit
+  BSC storage through the longword read path. Blob
+  `9746b438b8a71de63ff65cd2d4325bc582a5114b`. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1368-1424`, and fork base `c5853d00`
+  do not consistently narrow these getters; valid WCR/MCR writes leave
+  A55A in their saved upper storage and expose it on subsequent reads.
+  No reference code imported.
+- expected observable: after A55A1234 is written to WCR, a longword read
+  returns 00001234, not A55A1234. MCR similarly returns only its existing
+  lower readable bits. BCR1 still reports master/slave configuration in
+  bit 15, never in the high word. Exact bits; no bus latency assertion.
+- suggested method: valid keyed writes followed by native longword and
+  low-word reads, including save/load of state that retains upper key
+  bits internally. Confirm that reads do not modify the register payload.
+- falsifier: any BSC longword read exposing nonzero upper bits, incorrect
+  lower values for legal field patterns, or changed master/slave indication
+  rejects this read-width candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `3670016 raw-state read-width cases; 917504 keyed-write/read controls;
+  917504 state-copy replays`. Lower reserved bits are kept zero and CMF
+  clear so this is not an oracle for their separate write semantics.
+  Pre-change `c5853d00` methods exit 1 at line 99,
+  `key.wcr_r()==0x1234`. UBSan enabled. Twenty-six prior scripts exit 0;
+  unchanged `frt_stop`, `frt_phase`, `wdt_access` expectation conflicts
+  remain at lines 444, 380, 132. Current working series: 30 SH7604 scripts,
+  27 exit 0 and 3 exit 1. Warning-enabled TU syntax
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes) and
+  `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new fields/save-layout change. Saved
+  internal storage is deliberately unchanged; upper bits are ignored at
+  the architectural read boundary. Native byte/word lane routing, lower
+  reserved-bit handling, reset defaults, CMF acknowledgement, refresh
+  engine and bus timing/grants remain separate. Getter-level state-copy
+  checks do not qualify native save-manager or debugger integration.
+  Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths, validator
+  assets and existing expected values untouched.
