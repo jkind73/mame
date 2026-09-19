@@ -1,0 +1,34 @@
+SCSP FM voice mixing: native run against the fix
+(7bebd19760966d5e557e8ecaf8e2ae93b255065c, CI run 35422729391, binary
+sha256 9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4).
+
+The same fixture on the previous qualified binary (803be0ad, see
+../prefix-803be0ad/) reproduced the old doubled-store formula case by case,
+so the two runs bracket the change: the measurement reports the old code's
+values and the new code's values, not a re-reading of one binary.
+
+Result: all 26 cases match ST-077-R2-052594 Table 4.17 within the fixture's
+1 word tolerance (measured steps are exact - the shift is a whole number of
+wave form words at FNS=0, so a one word tolerance is already a loose bound).
+
+  case      before      after      Table 4.17
+  wrap3      -4.0        0.0        0 (MDL 0-4 do not modulate, Table 4.15)
+  wrap4      -8.0        0.0        0
+  wrap5     -16.0       16.0        16
+  wrap6     -32.0       32.0        32
+  wrap7     -64.0       64.0        64
+  wrap8    -128.0      128.0       128
+  wrap9    -256.0      256.0       256
+  wrap9b   -128.0      384.0       384
+  boundA     -8.0     1016.0      1016
+  deepE   -1024.0        0.0        0 (4096 words wraps to 0)
+  halfA    -256.0      256.0       256 (averaging unit: ZD = level/2, MDL=A)
+  injA      252.0      504.0       504 (a software written SOUS word)
+  inj4        7.0        0.0        0
+  inj9      126.0      252.0       252
+  injC      256.0      512.0       512
+  injF    -1152.0     -256.0      -256
+
+Cases that already agreed on the old binary (m5..mA2, deepB, clipB, clipF)
+still agree, and the two zero checks are exact on both runs (0.00 words, the
+unmodulated carrier pair is in phase), so neither run is measuring noise.
