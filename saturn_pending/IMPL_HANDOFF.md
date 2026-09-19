@@ -22,6 +22,7 @@
 | IMPL-0008 | CPU-03/IO-02 | 23eb938a | UNVALIDATED | SCI asynchronous TX reloads at the final stop bit, chains queued frames and preserves a full stop interval |
 | IMPL-0009 | CPU-03/IO-02 | ca0432ea | UNVALIDATED | SCI receives parity/framing/overrun errors together at stop; unread RDR survives every overrun |
 | IMPL-0010 | CPU-03/IO-02 | 3d18666d | UNVALIDATED | SCI MP receive mode discards non-address frames under MPIE and wakes on MPB=1 |
+| IMPL-0011 | CPU-03/IO-02 | 25302858 | UNVALIDATED | SCI async RX samples eight 16x clock pulses after start detection, then every sixteen |
 
 ---
 
@@ -729,3 +730,70 @@
   `saturn_pending/IO_DEVICE_INVENTORY.md`: present controller/cart/arcade
   devices are distinguished from missing modem, cable and peer support;
   SCI progress is not an external-device acceptance claim.
+
+
+### IMPL-0011 — CPU-03/IO-02 — SCI asynchronous RX sample phase
+
+- branch/commit: `arena/01a0b897-mame` @ **25302858** (base: 4c10d3f3).
+- files: `src/devices/cpu/sh/sh7604.cpp:1126-1138` (start detection),
+  `saturn_pending/impl_checks/check_sh7604_rx_phase.py`.
+- contract: after detecting low at a receiver oversampling tick, confirm
+  the start at the eighth following tick; sample each successive frame
+  bit sixteen ticks later. Initialize the phase of the next callback to
+  one rather than zero, since the existing callback checks the phase
+  before incrementing. Former behavior sampled nine ticks after detection.
+  A high line at the start sample rejects the false start without RDRF
+  or an error. No other register or bit-period behavior is changed.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.3.2 printed p.354, section 13.5 pp.381-382 and Figure
+  13.21: synchronization is sampled on the 16x base clock, the first
+  sample is eight clocks later and subsequent samples sixteen apart.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MAME upstream pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:705-709,718-725`, uses phase eight
+  of sixteen and rejects a high start sample. Its counter is incremented
+  before the phase check, unlike this SH7604 callback. Its pin-edge and
+  clock-start scheduling (`:457-489`) differ, so those lines are not
+  evidence of an identical edge-to-first-pulse latency. MiSTer's pinned
+  SH7604 SCI (`a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:275-307`) uses SCE_R and supplies no directly
+  comparable 16x asynchronous start-detection counter. Primary Figure
+  13.21 governs this candidate's phase; no external code imported.
+- expected observable: let t0 be the first 16x clock tick observing a
+  low start bit, Q=B/16 be one oversampling interval. Start validation
+  occurs at t0+8Q; data bit0 at t0+24Q; bit7 at t0+136Q; 8N1 receive
+  completion at t0+152Q. The old engine was one Q late at each point.
+  Tolerance: exact tick index in the model; a physical falling edge may
+  precede t0 by up to one Q due to asynchronous detection. Native
+  attotime probes may accumulate one attosecond of rounding per tick.
+- suggested method: independently drive RxD transitions around sample
+  instants, rather than loopback through the same transmitter. Probe
+  SSR/RDR before and after the first-stop sample; include 7/8 data,
+  parity none/even/odd, MP format, both STOP settings, false starts and
+  one-oversample pulses on each side of data midpoints. A serial hardware
+  trace should distinguish detection quantization from sampling delay.
+- falsifier: start confirmation at the ninth rather than eighth pulse,
+  or data bit n sampled at t0+(25+16n)Q instead of t0+(24+16n)Q is the
+  prior defect. A high start sample accepted as a frame or a seventh/
+  ninth-pulse-only glitch sampled as data also contradicts this candidate.
+  Hardware requiring a different synchronization delay would falsify
+  the chosen phase model.
+- self-check run: `python3 saturn_pending/impl_checks/check_sh7604_rx_phase.py`
+  raw output (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 4096 frame sample schedules; 24 midpoint glitch probes; false-start edge
+  ```
+  Pre-change `4c10d3f3` source copy exits 1 with the same new script:
+  `line 149: rejected.m_sci_rx_state==0 && rejected.irqs==0`.
+  RX-error, multiprocessor, SSR and TX-chain checks rerun unchanged,
+  exit 0. These are extracted methods with UBSan and mock timers, not
+  native execution. TU `sh7604.cpp` syntax with the session include set:
+  exit 0; `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: no hardware edge-margin, native timer,
+  clock-change or external-SCK qualification. Existing periodic sampling
+  starts when RE is enabled; physical falling-edge detection is quantized
+  to that timer, not a new pin-edge device. No state field or save layout
+  added by this commit; IMPL-0009/0010 already changed the save layout.
+  Freeze rules and validator assets remain untouched.
