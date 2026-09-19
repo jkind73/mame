@@ -128,7 +128,20 @@ and `lfo-truncate-not-round`. The pre-change source
 oscillation assertion; the harness adapts its old no-flag step signatures so the
 control fails an assertion rather than the build.
 
-Full-translation-unit `g++ -fsyntax-only` on `scsp.cpp` passes.
+Full-translation-unit `g++ -fsyntax-only` on `scsp.cpp` passes, and the whole
+local regression batch passes with this harness included (`regressions.log`:
+72 scripts, "All Saturn regression scripts passed").
+
+## Blocked native qualification
+
+GitHub authentication in this sandbox expired (`gh auth status`: "The
+github.com token in GH_TOKEN is no longer valid"), so commit `969da1a6` could
+not be pushed, no CI build/export could be started and no artifact could be
+fetched. Native qualification of this change is therefore **BLOCKED**, not
+done: the required cycle is push → `saturn-integration.yml` build →
+draft-release export → `saturn_pending/validate_ci_runtime.sh` (which re-runs
+every prior gate plus the four BIOS/background replay configurations). A local
+build is not an option here (2 CPUs / 3 GB RAM).
 
 ## What this is not
 
