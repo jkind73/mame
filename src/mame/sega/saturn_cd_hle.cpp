@@ -159,6 +159,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(cd_fad_seek));
   save_item(NAME(fadstoplay));
   save_item(NAME(buffull));
+  save_item(NAME(buffull_temp_pause));
   save_item(NAME(m_seek_ticks_left));
   save_item(NAME(sectorstore));
   save_item(NAME(freeblocks));
@@ -169,6 +170,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(cdda_repeat_count));
   save_item(NAME(tray_is_closed));
   save_item(NAME(m_status_change_in_progress));
+  save_item(NAME(m_seek_in_progress));
   save_item(NAME(numfiles));
   save_item(NAME(firstfile));
   // the transfer type gives the saved xfercount/xferoffs/xfersect* positions
