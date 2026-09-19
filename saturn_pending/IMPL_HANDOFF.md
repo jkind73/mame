@@ -4555,3 +4555,85 @@ correct template but omitted its numeric line span. No contract/state change.
   reset command details, active transfer interruption timing, actual media
   mechanics, native save-manager and game/boot acceptance. No new fields or
   save-layout change; no validator/expected-value/frozen CPU/sound/video edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0060 | CD-05 | 30da470f | UNVALIDATED | Save the CD sector/selector backing state with transfer positions and reconstruct process-local ownership pointers on load |
+
+### IMPL-0060 — CD-05 — sector-buffer save-state coherence
+
+- branch/commit/base: `arena/01a0b897-mame` @ **30da470f**; base **a4fd43bc**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:179-231,277-301`,
+  `src/mame/sega/saturn_cd_hle.h:36-37,230-231`;
+  `saturn_pending/impl_checks/check_cd_buffer_save.py`;
+  reset probe mock declaration adapter only (expectations unchanged).
+- contract: save every filter predicate/connector; every partition's size,
+  count and block-ID array; all 200 sector records, metadata and payload;
+  and the current scratch record. Presave encodes active host-partition
+  and CD-filter pointers as two saved indices. Postload rebuilds each
+  partition pointer from its saved block ID and restores active consumers,
+  including null consumers. No raw pointers are serialized and pointer
+  repair performs no transfers or IRQ callbacks. Empty record storage is
+  zero-initialized on reset for deterministic serialization; this is not
+  a newly asserted hardware value for inaccessible free-sector metadata.
+- primary source: ST-162-062094 printed pp.43-49 (selector, partition,
+  sector format/state), pp.94-97 functions 7.1-7.7 (data retained/removed
+  and transferred through host/selector operations), SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`. Saving/restoring that state
+  coherently is an emulator lifecycle obligation, not a claimed hardware
+  save instruction or new chip timing behavior.
+- cross-checks/provenance: Ymir pin
+  `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:331-400,475-527`, blob
+  `e8fedadb2d7374db35667bd064bb47fdc14b41a8`, saves/restores transfer,
+  sector, metadata, scratch and filter state; partition manager
+  `cdblock_partition_manager.cpp:170-218`, blob
+  `17fcd0f0d6f1aacf87463ca215f9f89d3eb88bc2`, restores ownership.
+  Mednafen pin f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:4228-4270` registers its buffer/link/partition state.
+  Local MAME `src/emu/save.h:185-197` defines strided STRUCT_MEMBER
+  registration; native syntax instantiates those actual templates.
+  Upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d and local a4fd43bc
+  device_start were inspected: these backing arrays/pointer hooks were
+  absent while transfer positions/free counts were already saved.
+- expected observable: saving during GET/GETDELETE/PUT, changing buffers
+  and selectors, then loading reproduces the original remaining words,
+  modified-sector image, completion count and ownership/deletion exactly.
+  Zero byte/metadata/count tolerance, no extra HIRQ edge solely from load.
+  Restored pointer identities refer to this device's pool, not old process
+  addresses; null CD/host consumers remain null.
+- suggested method: native file save/mutate/load during host transfers at
+  byte-zero, last-word-before-boundary, sector boundary and end cuts; use
+  noncontiguous pool IDs and each partition. Read remaining data or finish
+  writing, compare all bytes/metadata/counts and final GETDELETE freeing,
+  then perform a routed copy/move. Also restore disconnected consumers and
+  nondefault selectors. Run across interpreter/DRC, NTSC/PAL and relevant
+  native game configurations. The mock serializer below is not that test.
+- falsifier: changed remaining words, stale data from the post-save mutation,
+  lost metadata/ownership, duplicate deletion, process-local pointer
+  restoration, reconnection of a disconnected consumer, load-only IRQ
+  callback, or native save-manager rejection of the current layout.
+- self-check run (method-level, unvalidated): actual registration statements,
+  actual pre/post hooks and host transfer/EndTransfer/cleanup methods through
+  a byte-copy serializer: **504 GET/GETDELETE/PUT replays**, 24 partitions,
+  seven cuts, noncontiguous IDs 0/67/199, payload/metadata/ownership mutation,
+  null-consumer and no-IRQ-edge controls; ASan/fail-fast UBSan exit 0.
+  Historical a4fd43bc fails restored active pointers (generated line 387).
+  Missing payload, missing ownership and reconnect-from-visible-ID mutants
+  fail at lines 435/434/439. All three preceding CD probes and existing
+  CD transfer/HIRQ/trace method checks exit 0. CD TU warning-enabled C++20
+  syntax and diff checks exit 0. No full build/native file qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: **save-state layout break**: new registrations
+  and two saved index fields mean older files are not claimed compatible.
+  Both new fields are registered in this same commit and initialized/reset.
+  This is NOT complete CD-05: TOC/subcode/file-info staging buffers,
+  directory state, MPEG model, some drive-phase flags and whole-system
+  event/IRQ reconstruction still need separate work. No native binary was
+  available or built. No host-transfer algorithm/HIRQ handler, validator
+  asset, existing expectation or frozen SH/sound/video edits. A transient
+  write-tool timeout created no file; the probe was subsequently written
+  and run. An ignored-path staging warning was resolved with deliberate
+  `git add -f`; implementation and adapter are committed/pushed.
