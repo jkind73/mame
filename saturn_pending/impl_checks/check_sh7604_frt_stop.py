@@ -30,6 +30,8 @@ functions = '\n'.join(extract(n, t) for n, t in (
 # Preserve pre-change reset bodies for the negative control.
 if 'void sh7604_device::frt_reset()' in source:
     functions += '\n' + extract('frt_reset', 'void')
+if 'void sh7604_device::frt_compare_tick(' in source:
+    functions += '\n' + extract('frt_compare_tick', 'void')
 match = re.search(r'^TIMER_CALLBACK_MEMBER\(sh7604_device::sh2_timer_callback\)\n\{.*?^\}', source, re.M | re.S)
 assert match
 functions += '\nvoid sh2_timer_callback(int param)\n' + match[0].split('\n', 1)[1]
@@ -59,6 +61,7 @@ struct Callback { bool isnull() const { return true; } void operator()(uint32_t)
 struct sh2_device { void device_reset() {} };
 struct Device : sh2_device {
  static constexpr uint8_t ICF=0x80, OCFA=8, OCFB=4, OVF=2, CCLRA=1;
+ bool m_frt_clock_input=false;
  uint8_t m_frt_temp=0;
  uint8_t m_ftcsr_read=0;
  Device &machine() { return *this; }
