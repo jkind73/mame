@@ -39,6 +39,7 @@ struct Device {
  uint8_t m_scr=0x50, m_smr=0, m_ssr=0x84, m_sci_ssr_read=0, m_tsr=0, m_tdr=0xff, m_rdr=0xa5;
  uint8_t m_sci_rx_state=0, m_sci_rx_phase=0, m_sci_rx_shift=0, m_sci_rx_bitcnt=0;
  bool m_sci_tx_active=false, m_sci_rx_enabled=true, m_sci_rx_parity_error=false;
+ bool m_sci_rx_mp=false;
  Timer timer; Timer *m_sci_rx_timer=&timer;
  int line=1, irqs=0;
  Device &machine() { return *this; }
