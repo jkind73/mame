@@ -226,6 +226,10 @@ void sh7604_device::device_reset()
 	m_intc_icr = 0;
 	m_nmie = m_vecmd = false;
 
+	// CCR resets to zero (section 8.2); this disables the cache without
+	// implying a purge of cache memory, which reset does not initialize.
+	m_ccr = 0;
+
 	// IPRA/IPRB reset to priority zero on power-on and manual reset
 	// (sections 5.3.1-5.3.2). Clear the decoded levels before peripherals reset.
 	m_ipra = m_iprb = 0;
