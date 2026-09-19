@@ -3095,3 +3095,83 @@
   unqualified. Reserved encodings and prohibited reconfiguration are
   not declared supported. Frozen DMA, delay-slot IRQ, sound/game paths,
   validator assets and existing expected values untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0042 | CPU-02 | df2780fe | UNVALIDATED | RTCSR.CMF requires a legal status read as one before a keyed zero write can clear it |
+
+### IMPL-0042 — CPU-02 — RTCSR compare-match acknowledgement
+
+- branch/commit: `arena/01a0b897-mame` @ **df2780fe** (base: 07a275a3).
+- files: `src/devices/cpu/sh/sh7604.cpp:52,217,2175-2195`;
+  `src/devices/cpu/sh/sh7604.h:200,297`;
+  `saturn_pending/impl_checks/check_sh7604_rtcsr.py`. Shared BSC mock
+  declarations and read-extraction signatures are adapted mechanically;
+  existing expected values remain unchanged.
+- contract: CMF cannot be set by software. A legal longword or low-word
+  RTCSR read observing CMF=1 qualifies a subsequent keyed CMF=0 write.
+  A successful clear consumes the qualification. Reading a clear flag
+  removes old qualification; debugger inspection and an upper-word read
+  do not change it. Rejected writes preserve history. CMIE/CKS retain
+  their ordinary write behavior regardless of CMF acknowledgement.
+- primary source: SH7604 ADE-602-085C Rev.4, section 7.2.5 p.146 gives
+  the explicit read-one/write-zero clear condition and match set condition;
+  section 7.2.7 p.148 says CMF clearing affects the interrupt, not the
+  separate refresh request. Section 7.1.4 p.134/Table 7.2 defines permitted
+  longword/low-word reads and keyed longword writes. The descriptive
+  match/non-match labels in the p.146 bit table appear reversed; this
+  candidate follows its explicit set/clear conditions, not those labels.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1748-1752`, preserves CMF from
+  software setting but explicitly leaves clear rules TODO. Blob
+  `9746b438b8a71de63ff65cd2d4325bc582a5114b`. Saturn_MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/BSC.sv:998-1004,1030-1036`, directly assigns/reads the
+  masked register without this read-history protocol. Blob
+  `87400001ce983a1a02add311897fd482a90c00bb`. These omissions do not
+  override the primary rule. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1426-1434`, and fork base `07a275a3`
+  lack the qualification. No reference code imported.
+- expected observable: a keyed CMF=0 write after an unread match leaves
+  CMF set; a legal status read followed by that write clears it. A
+  subsequent match needs a fresh read. Writing CMF=1 cannot synthesize a
+  match. Upper-word/debugger reads cannot authorize clearing. Exact bits;
+  no refresh-counter, memory-request or CMI-delivery timing claim.
+- suggested method: generate a match with a native refresh engine when
+  available, exercise longword and address+2 word reads, debugger peeks,
+  ignored partial/wrong-key writes and save/load between read and clear.
+  Observe the independent refresh request separately from the interrupt
+  flag; this candidate does not implement the request engine.
+- falsifier: unread CMF clearing, software setting CMF, invalid-lane or
+  debugger reads qualifying a clear, consumed history clearing a later
+  event, or lost qualification across save/load rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `128 CMF write cases; 128 state-copy replays;
+  56 read-mask/debugger cases; 48 rejected-command controls`.
+  Match events are seeded explicitly, not produced by a simulated refresh
+  engine. Pre-change `07a275a3` methods, with read signature adapted only,
+  exit 1 at line 33, `unread.rtcsr_r(0,0xffff)&0x80`. UBSan enabled.
+  Twenty-eight prior scripts exit 0. **Four unchanged expectation conflicts
+  remain visible:** `frt_stop` line 444, `frt_phase` line 380,
+  `wdt_access` line 132, and now `bsc_access` line 98,
+  `d.snapshot()==expected.snapshot()`. Its legacy valid-write storage
+  control expects a software CMF set; that old behavior is superseded
+  here, not silently retained or its expected value edited. Current working
+  series: 33 SH7604 scripts, 29 exit 0 and 4 exit 1. Warning-enabled TU
+  syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes)
+  and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: **save-state layout break**, new saved bool
+  `m_rtcsr_read` with cold constructor initialization. Existing BSC storage
+  and generic-reset behavior remain unchanged; warm power-on reinitialization
+  and manual-reset read-history retention need cause-aware native qualification.
+  Unsupported byte/partial reads are not qualified as architectural data
+  accesses. Native lane dispatch, debugger integration and file-save replay
+  remain open. Refresh counting, match production, independent refresh
+  requests, CMI interrupt integration and memory grants are still absent/
+  unqualified; no IRQ arbitration or DMA acknowledgement code was changed.
+  Frozen delay-slot IRQ, sound/game paths and validator assets untouched.
