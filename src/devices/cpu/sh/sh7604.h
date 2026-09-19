@@ -85,7 +85,7 @@ private:
 	void ssr_w(uint8_t data);
 	uint8_t rdr_r();
 
-	// SCI transfer engine (internal async / internal and external synchronous)
+	// SCI transfer engine (async RX: internal/external; async TX: internal; sync: both)
 	attotime sci_bit_period() const;
 	void sci_recalc_rates();
 	void sci_sync_edge(bool level);

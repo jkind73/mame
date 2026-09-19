@@ -886,7 +886,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: external-clock asynchronous mode and asynchronous SCK output
+// TODO: external-clock asynchronous transmit and asynchronous SCK output
 
 uint8_t sh7604_device::smr_r()
 {
@@ -942,13 +942,14 @@ void sh7604_device::scr_w(uint8_t data)
 	else if (!old_re)
 	{
 		m_sci_rx_state = 0; // a synchronous receiver waits for a new falling edge
-		// receiver enable: start oversampling (internal clock only)
-		if (!BIT(m_scr, 1) && !BIT(m_smr, 7))
+		// Async reception uses either the timer or external 16x SCK pulses.
+		if (!BIT(m_smr, 7))
 		{
 			m_sci_rx_enabled = true;
 			m_sci_rx_state = 0;
 			m_sci_rx_phase = 0;
-			m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+			if (!BIT(m_scr, 1))
+				m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
 		}
 	}
 
@@ -1019,10 +1020,15 @@ void sh7604_device::sck_w(int state)
 	bool const level = state != 0;
 	bool const previous = m_sci_sck;
 	m_sci_sck = level;
-	if (level == previous || !BIT(m_smr, 7) || !BIT(m_scr, 1))
+	if (level == previous || !BIT(m_scr, 1))
 		return;
 
-	sci_sync_edge(level);
+	if (BIT(m_smr, 7))
+		sci_sync_edge(level);
+	else if (level)
+		// External async SCK is the 16x base clock; receive sampling uses
+		// its rising edges (section 13.3.2 p.356 / Figure 13.21 p.382).
+		sci_rx_tick(0);
 }
 
 void sh7604_device::sci_sync_edge(bool level)
@@ -1149,8 +1155,10 @@ void sh7604_device::sci_recalc_rates()
 		return;
 	if (m_sci_tx_active && BIT(m_scr, 5))
 		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
-	if (m_sci_rx_enabled)
+	if (m_sci_rx_enabled && !BIT(m_scr, 1))
 		m_sci_rx_timer->adjust(sci_bit_period() / 16, m_sci_rx_phase);
+	else
+		m_sci_rx_timer->adjust(attotime::never);
 }
 
 void sh7604_device::sci_transmit_start()
@@ -1246,13 +1254,14 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 {
-	if (!m_sci_rx_enabled || !BIT(m_scr, 4))
+	if (!m_sci_rx_enabled || !BIT(m_scr, 4) || BIT(m_smr, 7))
 		return;
 
 	// a latched error stops reception until the flag is cleared (pp.344-345)
 	if (m_ssr & (SSR_ORER | SSR_FER | SSR_PER))
 	{
-		m_sci_rx_timer->adjust(sci_bit_period() / 16, m_sci_rx_phase);
+		if (!BIT(m_scr, 1))
+			m_sci_rx_timer->adjust(sci_bit_period() / 16, m_sci_rx_phase);
 		return;
 	}
 
@@ -1330,7 +1339,8 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 					if (!mp_mode || !BIT(m_scr, 3))
 						sci_rx_complete(m_sci_rx_shift, m_sci_rx_parity_error, !bit);
 					m_sci_rx_state = 0;
-					m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+					if (!BIT(m_scr, 1))
+						m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
 					return;
 				}
 				m_sci_rx_bitcnt++;
@@ -1341,7 +1351,8 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
 		break;
 	}
 
-	m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
+	if (!BIT(m_scr, 1))
+		m_sci_rx_timer->adjust(sci_bit_period() / 16, 0);
 }
 
 void sh7604_device::sci_rx_complete(uint8_t data, bool parity_error, bool framing_error)
