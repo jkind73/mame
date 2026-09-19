@@ -136,8 +136,11 @@ int main(){
   assert(s->freeblocks==198&&s->partition.size==28);++cases;
  }
  for(auto mode : {saturn_cd_hle_device::XFERTYPE32_GETSECTOR,saturn_cd_hle_device::XFERTYPE32_PUTSECTOR}){
+  // ST-162-062094 printed p.81 (CDC_DataEnd): an interrupted read reports the
+  // CD block's word number (the two buffered blocks hold 12+16 bytes = 14
+  // words), a write reports the host's 4 bytes = 2 words.
   auto s=std::make_unique<saturn_cd_hle_device>();s->setup();s->xfertype32=mode;s->xferdnum=4;
-  s->cmd_end_data_transfer();assert(s->cr2==2&&!(s->cd_stat&CD_STAT_TRANS)&&(s->hirqreg&EHST));
+  s->cmd_end_data_transfer();assert(s->cr2==(mode==saturn_cd_hle_device::XFERTYPE32_GETSECTOR?14:2)&&!(s->cd_stat&CD_STAT_TRANS)&&(s->hirqreg&EHST));
   assert(s->xfertype32==s->XFERTYPE32_INVALID);s->dataxfer_long_w(0xaabbccdd);
   assert(s->dataxfer_long_r()==0xffffffff&&s->xferdnum==0&&s->blocks[1].data[0]==0);++cases;
  }

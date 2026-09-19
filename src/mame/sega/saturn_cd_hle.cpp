@@ -1012,9 +1012,37 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
   // clear the "transfer" flag
   cd_stat &= ~CD_STAT_TRANS;
 
-  if (xferdnum) {
-    cr1 = (cd_stat) | ((xferdnum >> 17) & 0xff);
-    cr2 = (xferdnum >> 1) & 0xffff;
+  /* ST-162-062094 printed p.81 (CDC_DataEnd) separates the host's transfer word
+     number from the CD block's.  Reading from the CD, the block has the whole
+     range buffered, so an interrupted read reports the block's larger count
+     ("cdwnum > host word number") capped at the normal word number - the whole
+     number of words that should be transferred, which for this device is the
+     sector data actually sitting in the partition.  Writing to the CD, the
+     block can only have accepted what the host wrote, so "cdwnum = host word
+     number", which is what it already reported.  Both are 24 bit word counts:
+     the low byte of CR1 is the top byte and CR2 the low 16 bits. */
+  uint32_t cdwnum = xferdnum;
+  if (xfertype32 == XFERTYPE32_GETSECTOR ||
+      xfertype32 == XFERTYPE32_GETDELETESECTOR) {
+    uint32_t normal = 0;
+    if (transpart != nullptr) {
+      for (uint32_t i = 0; i < xfersectnum; i++) {
+        uint32_t const pos = xfersectpos + i;
+        if (pos >= MAX_BLOCKS)
+          break;
+        blockT const *const blk = transpart->blocks[pos];
+        if (blk != nullptr && blk->size >= 4 &&
+            uint32_t(blk->size) <= sizeof(blk->data))
+          normal += uint32_t(blk->size);
+      }
+    }
+    if (normal > cdwnum)
+      cdwnum = normal;
+  }
+
+  if (cdwnum) {
+    cr1 = (cd_stat) | ((cdwnum >> 17) & 0xff);
+    cr2 = (cdwnum >> 1) & 0xffff;
     cr3 = 0;
     cr4 = 0;
   } else {
