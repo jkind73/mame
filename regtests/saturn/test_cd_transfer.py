@@ -20,15 +20,22 @@ functions = '\n'.join(extract(source, s) for s in (
     'void saturn_cd_hle_device::trace_host_read(', 'void saturn_cd_hle_device::trace_boot_state(',
     'uint16_t saturn_cd_hle_device::dr1_r()', 'uint16_t saturn_cd_hle_device::dr2_r()',
     'uint16_t saturn_cd_hle_device::dr3_r()', 'uint16_t saturn_cd_hle_device::dr4_r()',
+    'saturn_cd_hle_device::blockT *\nsaturn_cd_hle_device::xfer_block(',
+    'void saturn_cd_hle_device::xfer_advance(',
     'inline u32 saturn_cd_hle_device::dataxfer_long_r()',
     'inline void saturn_cd_hle_device::dataxfer_long_w(',
+    'inline u16 saturn_cd_hle_device::dataxfer_sector_word_r()',
+    'inline void saturn_cd_hle_device::dataxfer_sector_word_w(',
+    'u32 saturn_cd_hle_device::datatrns_r(',
+    'void saturn_cd_hle_device::datatrns_w(',
+    'inline u16 saturn_cd_hle_device::dataxfer_word_r()',
     'void saturn_cd_hle_device::finish_get_delete()',
     'void saturn_cd_hle_device::cmd_end_data_transfer()',
     'void saturn_cd_hle_device::cd_free_block(',
     'void saturn_cd_hle_device::cd_defragblocks('))
 if os.environ.get('MUTATE_CD_HIRQ') == '1':
     functions = functions.replace('rv = hirqreg;', 'rv = hirqreg & ~DCHG;', 1)
-types = '\n'.join(extract(header, s)+';' for s in ('struct blockT', 'struct partitionT', 'enum transT', 'enum trans32T'))
+types = '\n'.join(extract(header, s)+';' for s in ('struct blockT', 'struct partitionT', 'struct direntryT', 'enum transT', 'enum trans32T'))
 harness = r'''
 #include <algorithm>
 #include <cassert>
@@ -38,7 +45,9 @@ harness = r'''
 #include <cstdio>
 #include <string>
 #include <vector>
-using u8=uint8_t; using u16=uint16_t; using u32=uint32_t;
+using u8=uint8_t; using u16=uint16_t; using u32=uint32_t; using offs_t=uint32_t;
+u16 get_u16be(const u8 *p){return u16(u16(p[0])<<8|p[1]);}
+void put_u16be(u8 *p,u16 v){p[0]=v>>8;p[1]=v;}
 constexpr int DCHG=0x20, CSCT=4;
 constexpr int MAX_BLOCKS=200, EHST=0x80, CMOK=1, BFUL=8, CD_STAT_TRANS=0x4000;
 constexpr int STATE_GENPC=0, CD_STAT_PERI=0x2000;
@@ -74,6 +83,12 @@ struct saturn_cd_hle_device {
  auto &machine(){return *this;} bool side_effects_disabled(){return debug;}
  void update_hirq(){++irqs;}
  u32 dataxfer_long_r();void dataxfer_long_w(u32);
+ u16 dataxfer_sector_word_r();void dataxfer_sector_word_w(u16);
+ u32 datatrns_r(offs_t,uint32_t);void datatrns_w(offs_t,uint32_t,uint32_t);
+ u16 dataxfer_word_r();
+ blockT *xfer_block(unsigned width);void xfer_advance(unsigned width);
+ u8 tocbuf[102*4]{};u8 subqbuf[5*2]{};u8 subrwbuf[12*2]{};u8 finfbuf[256]{};
+ u32 xfercount=0;std::vector<direntryT> curdir;
  void finish_get_delete();void cmd_end_data_transfer();
  void cd_free_block(blockT *);void cd_defragblocks(partitionT *);
  void setup(){
@@ -165,6 +180,58 @@ int main(){
   t->present=false;t->trace_boot_state("file-complete",true);assert(t->logs.size()==8&&t->logs[6].find("mainpc=00000000")!=std::string::npos);
   t->trace_boot_state("periodic");assert(t->logs.size()==8&&t->cd_stat==status&&t->fadstoplay==18&&t->cd_curfad==0xab);
   std::cout<<"CD boot trace: opt-in, debugger, register, rate-limit and observational checks passed\n";
+ }
+ // ST-162-062094 printed p.27 (Table 3.1) makes the data port one 16 bit word
+ // wide, so a 16 bit access moves two bytes and a 32 bit access moves four -
+ // two word transfers.  Compare the two widths against each other on the same
+ // data and check the cursor, the count and the sector advance.
+ {
+  auto s=std::make_unique<saturn_cd_hle_device>();
+  u8 pattern[2*8];for(unsigned i=0;i<sizeof(pattern);++i)pattern[i]=u8(0x40+i);
+  s->blocks[0].size=8;s->blocks[1].size=8;
+  std::copy(pattern,pattern+8,s->blocks[0].data);
+  std::copy(pattern+8,pattern+16,s->blocks[1].data);
+  s->partition.blocks[0]=&s->blocks[0];s->partition.blocks[1]=&s->blocks[1];
+  s->partition.numblks=2;s->partition.size=16;s->xfersectpos=0;s->xfersectnum=2;
+  s->transpart=&s->partition;
+
+  s->xfertype32=s->XFERTYPE32_GETSECTOR;
+  // a longword read is two word reads: 0x40414243 then 0x44454647
+  assert(s->datatrns_r(0,0xffffffffu)==0x40414243u&&s->xferdnum==4&&s->xferoffs==4&&s->xfersect==0);
+  // the low half of the window hands over the next word
+  assert(s->datatrns_r(0,0x0000ffffu)==0x4445u&&s->xferdnum==6&&s->xferoffs==6&&s->xfersect==0);
+  assert(s->datatrns_r(0,0x0000ffffu)==0x4647u&&s->xferdnum==8&&s->xferoffs==0&&s->xfersect==1);
+  // ... and so does the high half: the address does not select a byte
+  assert(s->datatrns_r(0,0xffff0000u)==0x48490000u&&s->xferdnum==10&&s->xfersect==1);
+  assert(s->datatrns_r(0,0x0000ffffu)==0x4a4bu&&s->xferdnum==12);
+
+  assert(s->datatrns_r(0,0x0000ffffu)==0x4c4du&&s->xferdnum==14);
+  assert(s->datatrns_r(0,0x0000ffffu)==0x4e4fu&&s->xferdnum==16&&s->xfersect==2);
+  // a word read past the end of the range reports the idle value and leaves
+  // the cursor where it was instead of walking off the end of the partition
+  for(unsigned i=0;i<4;++i)assert(s->datatrns_r(0,0x0000ffffu)==0xffffu);
+  assert(s->xferdnum==16&&s->xfersect==2&&s->xferoffs==0);++cases;
+
+  // the write direction is symmetric
+  auto w=std::make_unique<saturn_cd_hle_device>();
+  w->blocks[0].size=8;w->partition.blocks[0]=&w->blocks[0];w->partition.numblks=1;
+  w->xfersectpos=0;w->xfersectnum=1;w->transpart=&w->partition;
+  w->xfertype32=w->XFERTYPE32_PUTSECTOR;
+  w->datatrns_w(0,0x1234,0x0000ffffu);
+  w->datatrns_w(0,0x5678,0x0000ffffu);
+  w->datatrns_w(0,0x9abc,0xffff0000u);
+  w->datatrns_w(0,0xdef0,0xffff0000u);
+  assert(w->xferdnum==8&&w->xferoffs==0&&w->xfersect==1);
+  assert(w->blocks[0].data[0]==0x12&&w->blocks[0].data[1]==0x34);
+  assert(w->blocks[0].data[2]==0x56&&w->blocks[0].data[3]==0x78);
+  assert(w->blocks[0].data[4]==0x9a&&w->blocks[0].data[5]==0xbc);
+  assert(w->blocks[0].data[6]==0xde&&w->blocks[0].data[7]==0xf0);
+  // and a word write during a read transfer is not a transfer at all
+  w->xfertype32=w->XFERTYPE32_GETSECTOR;w->xferdnum=0;w->xferoffs=0;w->xfersect=0;
+  w->datatrns_w(0,0x1111,0x0000ffffu);
+  assert(w->xferdnum==0&&w->blocks[0].data[0]==0x12);++cases;
+  std::cout<<"CD port width: 16 bit and 32 bit accesses move two and four \
+bytes over the same cursor\n";
  }
  std::cout<<"CD transfer: "<<cases<<" cases passed\n";
 }

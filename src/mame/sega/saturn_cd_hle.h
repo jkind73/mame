@@ -384,6 +384,10 @@ private:
   void datatrns_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
   inline u32 dataxfer_long_r();
   inline u16 dataxfer_word_r();
+  inline u16 dataxfer_sector_word_r();
+  inline void dataxfer_sector_word_w(u16 data);
+  blockT *xfer_block(unsigned width);
+  void xfer_advance(unsigned width);
   inline void dataxfer_long_w(u32 data);
   uint16_t dr1_r();
   uint16_t dr2_r();

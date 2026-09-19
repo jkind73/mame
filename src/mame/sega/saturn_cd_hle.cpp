@@ -305,12 +305,20 @@ void saturn_cd_hle_device::amap(address_map &map) {
 u32 saturn_cd_hle_device::datatrns_r(offs_t offset, uint32_t mem_mask) {
   u32 rv;
 
+  /* The port is one 16 bit word wide, so a word access is native and a 32 bit
+     access is two of them.  A sector transfer is dispatched by width; the
+     remaining transfers (TOC, subcode, directory records) are word lists and
+     keep their own word reader. */
+  bool const sector = (xfertype32 == XFERTYPE32_GETSECTOR ||
+                       xfertype32 == XFERTYPE32_GETDELETESECTOR ||
+                       xfertype32 == XFERTYPE32_PUTSECTOR);
+
   if (mem_mask == 0xffffffff) {
     rv = dataxfer_long_r();
   } else if (mem_mask == 0xffff0000) {
-    rv = dataxfer_word_r() << 16;
+    rv = u32(sector ? dataxfer_sector_word_r() : dataxfer_word_r()) << 16;
   } else if (mem_mask == 0x0000ffff) {
-    rv = dataxfer_word_r();
+    rv = sector ? dataxfer_sector_word_r() : dataxfer_word_r();
   } else {
     if (!machine().side_effects_disabled())
       LOGWARN("CD: Unknown data buffer read with mask = %08x\n", mem_mask);
@@ -321,10 +329,61 @@ u32 saturn_cd_hle_device::datatrns_r(offs_t offset, uint32_t mem_mask) {
 
 void saturn_cd_hle_device::datatrns_w(offs_t offset, uint32_t data,
                                       uint32_t mem_mask) {
-  if (mem_mask == 0xffffffff)
+  bool const sector = (xfertype32 == XFERTYPE32_PUTSECTOR);
+
+  if (mem_mask == 0xffffffff) {
     dataxfer_long_w(data);
-  else
+  } else if (sector && (mem_mask == 0xffff0000 || mem_mask == 0x0000ffff)) {
+    // half of a 32 bit window: the FIFO is 16 bits wide and the address does
+    // not select which half of it the host is writing
+    dataxfer_sector_word_w(u16(data));
+  } else {
     LOGWARN("CD: Unknown data buffer write with mask = %08x\n", mem_mask);
+  }
+}
+
+/* ST-162-062094 printed p.27 (Table 3.1) says every communication register,
+   DATATRNS included, is one 16 bit word wide, so a 16 bit access is the native
+   width of the port and a 32 bit access is two of them.  The transfer cursor
+   is therefore kept in bytes and both widths walk it by the number of bytes
+   the host asked for, big endian within each accessed unit:
+
+     mov.w  -> the next 2 bytes of the stream
+     mov.l  -> the next 4 bytes, i.e. two consecutive word transfers
+
+   The two halves of the 32 bit window address the same FIFO; the address does
+   not select a byte within a word.  A block that cannot cover the requested
+   width is a hole and is skipped, which is what the longword path already
+   did. */
+saturn_cd_hle_device::blockT *
+saturn_cd_hle_device::xfer_block(unsigned width) {
+  if (transpart == nullptr || xfersectpos >= MAX_BLOCKS ||
+      xfersect >= xfersectnum || xfersect >= MAX_BLOCKS - xfersectpos)
+    return nullptr;
+
+  blockT *const blk = transpart->blocks[xfersectpos + xfersect];
+  if (blk == nullptr || blk->size < int(width) ||
+      uint32_t(blk->size) > sizeof(blk->data) ||
+      xferoffs > uint32_t(blk->size) - width)
+    return nullptr;
+
+  return blk;
+}
+
+/* Advance the cursor past `width` bytes, starting the next sector when the
+   current one is exhausted. */
+void saturn_cd_hle_device::xfer_advance(unsigned width) {
+  blockT *const blk = xfer_block(width);
+
+  xferdnum += width;
+  xferoffs += width;
+
+  if (blk != nullptr && xferoffs >= uint32_t(blk->size)) {
+    LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
+
+    xferoffs = 0;
+    xfersect++;
+  }
 }
 
 inline u32 saturn_cd_hle_device::dataxfer_long_r() {
@@ -339,14 +398,11 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
     // make sure we have sectors left
     if (transpart && xfersectpos < MAX_BLOCKS &&
         xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
-      blockT *const blk = transpart->blocks[xfersectpos + xfersect];
-
       // a hole in the partition has nothing to hand over; leave the port at
       // its idle value and move on to the next sector rather than chasing a
       // null pointer or running off a block with a nonsense size
-      if (blk == nullptr || blk->size < 4 ||
-          uint32_t(blk->size) > sizeof(blk->data) ||
-          xferoffs > uint32_t(blk->size) - 4) {
+      blockT *const blk = xfer_block(4);
+      if (blk == nullptr) {
         LOGWARN("CD: Get Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -355,20 +411,10 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
         break;
       }
 
-      // get next longword
+      // next two words
       rv = get_u32be(&blk->data[xferoffs]);
 
-      xferdnum += 4;
-      xferoffs += 4;
-
-      // did we run out of sector? (this tested blocks[xfersect], missing the
-      // partition offset the data read above uses)
-      if (xferoffs >= blk->size) {
-        LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
-
-        xferoffs = 0;
-        xfersect++;
-      }
+      xfer_advance(4);
     } else // sectors are done, kill 'em all if we can
     {
       if (xfertype32 == XFERTYPE32_GETDELETESECTOR) {
@@ -396,12 +442,9 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
     // make sure we have sectors left
     if (transpart && xfersectpos < MAX_BLOCKS &&
         xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
-      blockT *const blk = transpart->blocks[xfersectpos + xfersect];
-
       // as above: skip anything we cannot safely write into
-      if (blk == nullptr || blk->size < 4 ||
-          uint32_t(blk->size) > sizeof(blk->data) ||
-          xferoffs > uint32_t(blk->size) - 4) {
+      blockT *const blk = xfer_block(4);
+      if (blk == nullptr) {
         LOGWARN("CD: Put Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -410,19 +453,9 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
         break;
       }
 
-      // get next longword
       put_u32be(&blk->data[xferoffs], data);
 
-      xferdnum += 4;
-      xferoffs += 4;
-
-      // did we run out of sector?
-      if (xferoffs >= blk->size) {
-        LOG("Finished xfer of block %d of %d\n", xfersect + 1, xfersectnum);
-
-        xferoffs = 0;
-        xfersect++;
-      }
+      xfer_advance(4);
     } else // sectors are done
     {
       /* Virtual On doesnt want this to be resetted. */
@@ -434,6 +467,45 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
     LOGWARN("CD: unhandled 32-bit transfer type write %d\n", (int)xfertype32);
     break;
   }
+}
+
+/* A 16 bit transfer through the data port during a sector transfer: the word
+   at the cursor, with the cursor walking one word.  Both halves of the 32 bit
+   window address the same FIFO, so the offset is ignored here. */
+inline u16 saturn_cd_hle_device::dataxfer_sector_word_r() {
+  blockT *const blk = xfer_block(2);
+  if (blk == nullptr) {
+    /* A hole inside the range is skipped like the longword path does.  Past
+       the end of the range there is no sector to walk to, so the cursor stays
+       where it is and the port keeps returning the idle value (a host that
+       reads past its own transfer is reading dummy data, not a new sector). */
+    if (transpart != nullptr && xfersect < xfersectnum &&
+        xfersectpos + xfersect < MAX_BLOCKS) {
+      LOGWARN("CD: Get Sector Data skipping invalid block %d of %d\n",
+              xfersect + 1, xfersectnum);
+      xferoffs = 0;
+      xfersect++;
+    }
+    return 0xffff;
+  }
+
+  u16 const rv = get_u16be(&blk->data[xferoffs]);
+  xfer_advance(2);
+  return rv;
+}
+
+inline void saturn_cd_hle_device::dataxfer_sector_word_w(u16 data) {
+  blockT *const blk = xfer_block(2);
+  if (blk == nullptr) {
+    LOGWARN("CD: Put Sector Data skipping invalid block %d of %d\n",
+            xfersect + 1, xfersectnum);
+    xferoffs = 0;
+    xfersect++;
+    return;
+  }
+
+  put_u16be(&blk->data[xferoffs], data);
+  xfer_advance(2);
 }
 
 inline u16 saturn_cd_hle_device::dataxfer_word_r() {
