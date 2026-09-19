@@ -20,13 +20,15 @@ for name in names:
         match=re.search(r'^'+result+r' sh7604_device::'+name+suffix+r'\([^)]*\)\n\{.*?^\}',source,re.M|re.S)
         assert match,name+suffix
         functions+=match[0].replace('sh7604_device::','')+'\n'
+functions=functions.replace('rtcsr_r(offs_t offset, uint32_t mem_mask)', 'rtcsr_r(offs_t offset=0, uint32_t mem_mask=~0U)')
+functions+=' uint32_t rtcsr_full_r() { return rtcsr_r(); }\n'
 tail=r'''
 };
 int main() {
  Device key; key.wcr_w(0,0xa55a1234,0xffffffff); CHECK(key.wcr_r()==0x1234);
  using Reader=uint32_t (Device::*)();
  using Writer=void (Device::*)(offs_t,uint32_t,uint32_t);
- const Reader reads[]={&Device::bcr1_r,&Device::bcr2_r,&Device::wcr_r,&Device::mcr_r,&Device::rtcsr_r,&Device::rtcnt_r,&Device::rtcor_r};
+ const Reader reads[]={&Device::bcr1_r,&Device::bcr2_r,&Device::wcr_r,&Device::mcr_r,&Device::rtcsr_full_r,&Device::rtcnt_r,&Device::rtcor_r};
  const Writer writes[]={&Device::bcr1_w,&Device::bcr2_w,&Device::wcr_w,&Device::mcr_w,&Device::rtcsr_w,&Device::rtcnt_w,&Device::rtcor_w};
  uint32_t Device::* const fields[]={&Device::m_bcr1,&Device::m_bcr2,&Device::m_wcr,&Device::m_mcr,&Device::m_rtcsr,&Device::m_rtcnt,&Device::m_rtcor};
  // Retain existing low-field semantics. This is not a new reserved-bit or

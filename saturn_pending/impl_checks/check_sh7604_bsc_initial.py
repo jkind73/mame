@@ -25,9 +25,10 @@ for name in names:
     match=re.search(r'm_'+name+r'\(([^()]*)\)',constructor)
     assert match,name
     initializers.append('m_'+name+'('+match[1]+')')
-    match=re.search(r'^uint32_t sh7604_device::'+name+r'_r\(\)\n\{.*?^\}',source,re.M|re.S)
+    match=re.search(r'^uint32_t sh7604_device::'+name+r'_r\([^)]*\)\n\{.*?^\}',source,re.M|re.S)
     assert match,name
     functions+=match[0].replace('sh7604_device::','')+'\n'
+functions=functions.replace('rtcsr_r(offs_t offset, uint32_t mem_mask)', 'rtcsr_r(offs_t offset=0, uint32_t mem_mask=~0U)')
 head+=' Device() : '+','.join(initializers)+' {}\n'
 tail=r'''
 };
@@ -52,4 +53,4 @@ with tempfile.TemporaryDirectory(prefix='impl-bsc-initial-') as directory:
     subprocess.run([str(exe)],check=True)
 for name in names:
     assert 'save_item(NAME(m_'+name+'));' in source,name
-print('method-level, unvalidated: existing BSC save registration retained; no new fields')
+print('method-level, unvalidated: original BSC register save registrations retained')

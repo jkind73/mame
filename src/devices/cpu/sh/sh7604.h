@@ -197,7 +197,7 @@ private:
 	void wcr_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	uint32_t mcr_r();
 	void mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
-	uint32_t rtcsr_r();
+	uint32_t rtcsr_r(offs_t offset = 0, uint32_t mem_mask = ~0);
 	void rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	uint32_t rtcor_r();
 	void rtcor_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
@@ -294,6 +294,7 @@ private:
 
 	// BSC
 	uint32_t m_bcr1, m_bcr2, m_wcr, m_mcr, m_rtcsr, m_rtcor, m_rtcnt;
+	bool m_rtcsr_read;
 
 	uint64_t m_frc_base; // epoch of last internal counter tick (preserves prescaler remainder)
 

@@ -30,6 +30,9 @@ head=r'''
 #define ACCESSING_BITS_0_15 (mem_mask & 0xffff)
 using offs_t=unsigned;
 struct Device {
+ bool m_rtcsr_read=false, inspect=false;
+ Device &machine() { return *this; }
+ bool side_effects_disabled() const { return inspect; }
  uint32_t m_bcr1=0x03f0,m_bcr2=0x00fc,m_wcr=0xaaff,m_mcr=0x5000,m_rtcsr=0x38,m_rtcnt=0x56,m_rtcor=0xab;
  auto snapshot() const { return std::make_tuple(m_bcr1,m_bcr2,m_wcr,m_mcr,m_rtcsr,m_rtcnt,m_rtcor); }
 '''
