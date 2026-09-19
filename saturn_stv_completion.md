@@ -221,8 +221,31 @@
   isolated probe measures a healthy triangle for the same registers; it is
   reported and not asserted, because that is a difference between two test
   harnesses until it is understood. Evidence:
-  `saturn_pending/evidence/scsp-pcm/README.md`. Mixer gain/master volume and
-  CD-DA/effects-heavy playback remain open under this parent.
+  `saturn_pending/evidence/scsp-pcm/README.md`. The final mixer master volume
+  (MVOL) and the DAC interface width (DAC18B) are now native-qualified with no
+  defect found. ST-077-R2-052594 p.100 gives both fields in the common control
+  word at 100400H and states the ordering ("lowering the MVOL for an output that
+  has overflowed to a lower level will not remove the clipping noise"), but no
+  numeric table, so the curve rests on the three implementations agreeing: this
+  checkout's `update_master_volume()` Q8 table, the Ymir "3 dB per step, 0.5
+  bits per step" lambda and the MiSTer `MVolCalc` shift/quarter pair all
+  compute 2/3/4/6/8/12/16/24/32/48/64/96/128/192/256 over 256 for MVOL 1..15
+  with 0 muting. `saturn_pending/test_scsp_mvol_runtime.py` measures it through
+  the same per-device sound hook on four profiles (all PASS): all fifteen gains
+  match the table exactly (mvol08 = 0.09375, mvol15 = 1.00000), MVOL 0 mutes,
+  both channels attenuate identically, three overflowing centre panned slots
+  clip to 2/3 of their linear sum and are then scaled by exactly the MVOL gain
+  (clip08 = 0.09374, clip04 = 0.02342 of the clipped level, so the clip precedes
+  the attenuator), DAC18B leaves the level unchanged (ratio 1.00000) while the
+  16 bit path keeps only the top 16 bits of the 18 bit accumulator (a 64 step
+  ramp at a send level with low bits: every 16 bit sample on the 4/131072 grid,
+  worst deviation 0.0655, the 18 bit samples off it at 1.9976, 253 distinct
+  levels each and no truncated 18 bit level missing from the 16 bit capture).
+  The fixture records rather than adopts the one reference disagreement - Ymir
+  and MiSTer scale the output by four when DAC18B is set because their output
+  domain is 16 bit, which the ST-077 interface-width reading does not. Evidence:
+  `saturn_pending/evidence/scsp-mvol/README.md`. CD-DA/effects-heavy playback
+  (the EXTS and DSP effect return paths) remains open under this parent.
   - Investigate historical stuck-envelope/pitch reports against current recordings and configurations before declaring an engine defect.
 - [ ] **SND-03 — Complete timing, DMA and interrupt qualification. [P/V]**
   - Current integration: Integrated timer phase-preserving rearm and attotime-boundary fix; extracted deadline/reset checks and the live24 timer/divisor plus three clear/reassert paths pass in the complete native consumer. Fractional hardware phase and broader sound acceptance remain open. See `regtests/saturn/handoff/integration.md`.
