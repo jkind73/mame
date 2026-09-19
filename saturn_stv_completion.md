@@ -219,11 +219,25 @@
   constant control word silently switched slots back to PCM8B + normal loop
   (fixture bug, not an emulator defect - `key_reg()` now preserves LPCTL/PCM8B),
   and the ~250 ms key-on transient must be excluded from measurements. The
-  ping-pong case (`LPCTL=3`) captures a railed constant in the fixture while the
-  isolated probe measures a healthy triangle for the same registers; it is
-  reported and not asserted, because that is a difference between two test
-  harnesses until it is understood. Evidence:
-  `saturn_pending/evidence/scsp-pcm/README.md`. The final mixer master volume
+  ping-pong case (`LPCTL=3`) is now resolved and fixed instead of recorded as an
+  open question: an address watermark in sound RAM (byte value `(offset % 64) +
+  1`, plus a 16 bit version with 32 units per word) showed the slot reading one
+  fixed address for 1200 samples - or alternating between two - where a triangle
+  belongs, while `LSA=16` swept correctly and turned at LSA. That locates the
+  defect in the loop fold: it tested `addr >= LEA` *before* the
+  direction-selected boundary, and a phase that ran past LSA wraps to a huge
+  unsigned address, so the wrapped address satisfied the LEA test and the loop
+  mirrored about LEA instead of LSA; with `LSA=0` it could never come back. The
+  fold is now direction-first (forward leg turns at LEA, backward leg at LSA),
+  matching MiSTer `SCSP.sv` "Alternative loop" (`CUR_SO - (LEA<<1)` out,
+  `CUR_SO + (LSA<<1)` back, selected by `CUR_SADIR`) and ST-077-R2-052594
+  section 4.3; a standalone model of the corrected arithmetic holds the address
+  inside LSA..LEA with one pass per 256 samples at 0.25 words/sample. The
+  isolated probe's "healthy triangle" was the same ping-pong trap from the other
+  side: its key-on write is the constant `0x3830`, whose LPCTL field is 1, so it
+  measured a normal loop. The fixture now asserts the ping-pong triangle
+  (`loopP:turns`, `loopP:period`) and fails on the pre-fix binary exactly there.
+  Evidence: `saturn_pending/evidence/scsp-pcm/README.md`. The final mixer master volume
   (MVOL) and the DAC interface width (DAC18B) are now native-qualified with no
   defect found. ST-077-R2-052594 p.100 gives both fields in the common control
   word at 100400H and states the ordering ("lowering the MVOL for an output that

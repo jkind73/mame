@@ -1496,21 +1496,38 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
         *slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
       }
       break;
-    case 3:                                // ping-pong
-      if (*addr[addr_select] >= LEA(slot)) // reached end, reverse till start
-      {
-        rem_addr = *slot_addr[addr_select] - (LEA(slot) << SHIFT);
-        *slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
-        slot->Backwards = 1;
-      } else if ((*addr[addr_select] < LSA(slot) ||
-                  (*slot_addr[addr_select] & 0x80000000)) &&
-                 slot->Backwards) // reached start or negative
+    case 3: // ping-pong ("alternative loop", ST-077-R2-052594 section 4.3)
+    {
+      // The boundary test has to follow the playback direction: the forward
+      // leg turns at LEA and the backward leg turns at LSA (MiSTer
+      // SCSP.sv "Alternative loop" mirrors with CUR_SO - (LEA<<1) on the way
+      // out and CUR_SO + (LSA<<1) on the way back, selected by CUR_SADIR).
+      // Testing LEA first, as the inherited code did, made a phase that ran
+      // past LSA satisfy the LEA test instead: the fixed point address wraps
+      // to a huge unsigned value, so the fold bounced off LEA and the loop
+      // never came back to LSA.  Measured with an eight bit address watermark
+      // in sound RAM: with LSA=0, LEA=64 the slot read the same offset for
+      // 1200 samples instead of a triangle (LSA=16 was unaffected, because
+      // then the wrapped address really is below LSA).
+      // The direction is sampled once per sample so both addresses of the
+      // interpolation pair fold the same way.
+      bool const backwards = slot->Backwards;
+      if (!backwards) {
+        if (*addr[addr_select] >= LEA(slot)) // reached end, reverse to start
+        {
+          rem_addr = *slot_addr[addr_select] - (LEA(slot) << SHIFT);
+          *slot_addr[addr_select] = (LEA(slot) << SHIFT) - rem_addr;
+          slot->Backwards = 1;
+        }
+      } else if (*addr[addr_select] < LSA(slot) ||
+                 (*slot_addr[addr_select] & 0x80000000)) // reached start
       {
         rem_addr = (LSA(slot) << SHIFT) - *slot_addr[addr_select];
         *slot_addr[addr_select] = (LSA(slot) << SHIFT) + rem_addr;
         slot->Backwards = 0;
       }
       break;
+    }
     }
   }
 

@@ -276,13 +276,15 @@ local function test()
          {sa = ramp8, lea = lea, lpctl = 1, pcm8b = true, oct = PITCH})
     play("loopR", 4096,
          {sa = ramp8, lea = lea, lpctl = 2, pcm8b = true, oct = PITCH})
-    -- OPEN: this fixture measures a railed constant for the ping-pong case,
-    -- while the isolated probe (saturn_pending/evidence/scsp-pcm/) measures a
-    -- healthy triangle for the same registers, including with LSA = 0 and
-    -- after reverse-loop cases.  Not asserted until that difference is
-    -- understood; the loop mode itself is not claimed to be broken.
+    -- Ping-pong starts at its own window: LSA = 0 and LEA = 64 put the loop at
+    -- the first ramp cycle, so SA is that cycle's first byte.  (The earlier
+    -- version played from word 1024, outside the window, and measured a railed
+    -- constant.  An address watermark probe showed the rail is not caused by
+    -- that choice: with LSA = 0 and either SA value the slot read one fixed
+    -- offset for 1200 samples instead of sweeping, because the fold tested LEA
+    -- before the direction-selected boundary - see the loop engine fix.)
     play("loopP", 4096,
-         {sa = ramp8, lea = lea, lpctl = 3, pcm8b = true, oct = PITCH})
+         {sa = @@WAVE_WS@@, lea = lea, lpctl = 3, pcm8b = true, oct = PITCH})
     -- a no-loop slot plays one pass and stops: measured from its own key-on,
     -- so the capture contains the pass and then the silence after LEA
     play("loopOff", 4096,
@@ -485,13 +487,23 @@ def validate_output(stdout, rc):
                 'both LSA and LEA'
                 % (tag, n_turns,
                    'reverse' if tag == 'loopR' else 'ping-pong'))
-    s = span(results['loopP'])
+    left = results['loopP']
+    s = span(left)
+    n_turns = turns(left, median_step(left) / 2.0)
     results['loopP:span'] = s
+    results['loopP:turns'] = n_turns
+    results['loopP:period'] = len(left) / n_turns if n_turns else 0.0
     if s <= 0:
-        print('  note: loopP (ping-pong) measured a railed constant in this '
-              'fixture; the isolated probe measures a healthy triangle for the '
-              'same registers, so this is recorded as an open question, not an '
-              'emulator claim')
+        failures.append('loopP: the measured channel is silent or railed')
+    elif n_turns < 4:
+        failures.append(
+            'loopP: the ramp turns around %d times; a ping-pong loop over one '
+            '%d sample cycle must turn at both LSA and LEA' % (n_turns, RAMP))
+    elif not (0.9 < results['loopP:period'] / loop_samples < 1.1):
+        failures.append(
+            'loopP: a ping-pong pass over one %d sample cycle took %.1f '
+            'samples, expected %.0f' % (RAMP, results['loopP:period'],
+                                        loop_samples))
 
     left = results['loopOff']
     s = span(left)
@@ -523,6 +535,7 @@ def main():
         return 0
 
     lua = (LUA.replace('@@WAVE@@', lua_waveforms())
+              .replace('@@WAVE_WS@@', hex(WS))
               .replace('@@PITCH@@', hex(PITCH_OCT_E))
               .replace('@@PITCH_UP@@', hex(PITCH_UP))
               .replace('@@RAMP@@', str(RAMP))
