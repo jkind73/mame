@@ -242,6 +242,17 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP MIDI FIFO: 24 depth/status/drain-window cases passed live' "$LOG_DIR/$phase.log"
 done
+phase=scsp-lfo
+python3 saturn_pending/test_scsp_lfo_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'SCSP LFO: 39 native amplitude/phase-modulation cases passed live' "$LOG_DIR/$phase.log"
+for system in saturnjp saturneu stvbios; do
+    phase="scsp-lfo-$system-drc"
+    python3 saturn_pending/test_scsp_lfo_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'SCSP LFO: 39 native amplitude/phase-modulation cases passed live' "$LOG_DIR/$phase.log"
+done
 phase=scsp-dma-save
 python3 saturn_pending/test_scsp_dma_save_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
