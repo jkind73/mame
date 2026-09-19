@@ -25,6 +25,7 @@
 | IMPL-0011 | CPU-03/IO-02 | 25302858 | UNVALIDATED | SCI async RX samples eight 16x clock pulses after start detection, then every sixteen |
 | IMPL-0012 | CPU-03/IO-02 | 7f895a95 | UNVALIDATED | SCI callback constructor initializers follow declaration order without suppressing reorder diagnostics |
 | IMPL-0013 | CPU-03/IO-02 | ef6a191e | UNVALIDATED | External SCK clocks synchronous SCI receive: eight LSB-first rising-edge samples per character |
+| IMPL-0014 | CPU-03/IO-02 | 5a128134 | UNVALIDATED | External synchronous SCI TX changes on falling SCK, chains at MSB and supports concurrent RX |
 
 ---
 
@@ -918,3 +919,84 @@
   transmit, internal synchronous clock generation, external-clock async,
   SCI DMA and actual modem/cable wiring remain absent in this commit.
   No Saturn/ST-V configuration is claimed to have an attached SCI peer.
+
+
+### IMPL-0014 — CPU-03/IO-02 — external synchronous SCI TX/full duplex
+
+- branch/commit: `arena/01a0b897-mame` @ **5a128134** (base: 30d94d4e;
+  depends on IMPL-0013's external SCK edge input).
+- files: `src/devices/cpu/sh/sh7604.cpp:987-998` (pending TX start),
+  `:1006-1068` (SCK edges), `:1088-1110` (rate/start handling),
+  `src/devices/cpu/sh/sh7604.h:91,205` (comments),
+  `saturn_pending/impl_checks/check_sh7604_sync_tx.py`. Existing SSR,
+  async TX and sync RX mocks gain declarations only; no existing expected
+  value or validator asset is changed.
+- contract: in C/A=1, CKE1=1 mode, read-qualified TDRE clear loads TSR
+  when TE=1 and receive errors are clear. No TxD change happens until a
+  falling SCK edge. Eight falling edges emit bits 0..7; CHR/PE/OE/STOP/MP
+  do not add framing. At MSB output, pending TDR reloads TSR and raises
+  TDRE, or TEND rises and TxD holds that MSB. Rising edges concurrently
+  sample the independent receiver when RE=1. Receive errors inhibit
+  synchronous transfers; clearing them allows pending data to resume.
+  TE=0 cancels queued/current TX and returns TxD to mark. No internal
+  timer supplies clocks for this external mode.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.3.4 pp.372-373/Figures 13.14-13.15 (falling-edge output,
+  eight-bit format, MSB reload/TEND/hold), pp.375-378/Figures 13.19-13.20
+  (error handling and simultaneous TX/RX); section 13.5 p.381 prohibits
+  synchronous transfer with receive errors set. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:171-180,193-206` emits synchronous LSB-first
+  data at SCE_F and implements LAST_BIT reload/TEND; its status decisions
+  occur at SCE_R, unlike this candidate's MSB-output-edge decision from
+  p.373. This phase difference requires hardware qualification. Upstream
+  MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:626-659` emits data at the falling
+  clock phase; it returns TxD high after completion, unlike SH7604's
+  explicitly documented MSB hold. That H8 behavior is not adopted.
+  Upstream SH7604 still provides no transfer engine to port.
+- expected observable: in SMR=0x80/SCR=0x22, queue 0x96 and then 0x69
+  through the SSR handshake. Falling edges 1..8 emit 0,1,1,0,1,0,0,1;
+  edge 8 reloads TSR and raises TDRE, with TEND=0. Edges 9..16 emit
+  1,0,0,1,0,1,1,0; edge 16 sets TEND and TxD stays at 0 even if
+  additional idle clocks arrive. No start/parity/stop bit is inserted.
+  With RE enabled, RDR updates after the eighth rising edge independently
+  of the transmitted value. Tolerance: exact edge/data/status counts;
+  physical pin propagation delay is not claimed.
+- suggested method: mapped-register fixture plus bound TxD/RxD endpoints
+  and an independent SCK driver; queue before MSB and just after MSB,
+  drive a distinct simultaneous receive byte, cause RX overrun, then
+  acknowledge/restart. Capture actual TXI/TEI/RXI/ERI under both CPU
+  engines. Save/load at each half-edge with both TSR and TDR occupied.
+- falsifier: TxD changing on a rising edge or before the first falling
+  edge, a non-eight-bit frame, dropped/duplicated queued byte, early TEND,
+  forced mark instead of MSB hold, corrupted independent RX, transmission
+  through a latched receive error, or extra output after TE=0 contradicts
+  this candidate. A hardware status edge matching MiSTer's alternate
+  phase rather than the primary-text interpretation falsifies that edge.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 65536 synchronous three-frame TX cases; 4096 half-edge state-copy replays
+  method-level, unvalidated: full duplex, MSB hold/reload, error recovery and TE cancellation exercised
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_sync_tx.py`.
+  Same script with pre-change `30d94d4e` source copy exits 1:
+  `line 185: d.m_ssr==0x80 && d.wire.empty()`.
+  Sync RX, SSR, async TX-chain, RX-error, MP and RX-phase scripts rerun
+  with unchanged expected values: exit 0. Extracted checks use UBSan.
+  Full `sh7604.cpp` TU syntax with
+  `-std=c++20 -Wall -Werror -Wno-sign-compare` and session includes:
+  exit 0, no diagnostics; reorder warnings enabled. `git diff --check`:
+  exit 0. No full build or native runtime run.
+- state: UNVALIDATED
+- not covered / known doubts: physical SCK setup/hold and status-edge
+  phase, native interrupt delivery and save-manager replay remain open.
+  Mid-frame injected receive-error recovery beyond natural byte-boundary
+  overrun is not hardware-qualified. Existing saved TX index/TSR/active
+  fields are reused; no new save field in this commit (IMPL-0013 changed
+  layout). Internal synchronous clock generation, external-clock async,
+  SCI DMA, and actual cable/modem/peer devices remain absent. Inventory
+  updated separately to avoid continuing to describe all sync operation
+  as absent; this is not optional-device acceptance.
