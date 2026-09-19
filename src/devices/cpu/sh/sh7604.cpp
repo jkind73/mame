@@ -877,7 +877,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: internal synchronous clock, synchronous TX and external-clock async mode
+// TODO: internal synchronous clock and external-clock asynchronous mode
 
 uint8_t sh7604_device::smr_r()
 {
@@ -986,7 +986,10 @@ void sh7604_device::ssr_w(uint8_t data)
 
 	// Section 13.3.2, p.359 steps 1-2: loading TSR makes TDR available
 	// again. A running transmitter consumes queued data at the stop bit.
-	if (tdre_clear && !m_sci_tx_active && !BIT(m_smr, 7))
+	// In externally clocked synchronous mode, a queued character can also
+	// start after receive errors are acknowledged (section 13.5, p.381).
+	if (BIT(m_scr, 5) && !m_sci_tx_active && !(m_ssr & SSR_TDRE) &&
+		(!BIT(m_smr, 7) || (BIT(m_scr, 1) && !(m_ssr & (SSR_ORER | SSR_FER | SSR_PER)))))
 	{
 		m_tsr = m_tdr;
 		m_ssr |= SSR_TDRE;
@@ -1005,7 +1008,7 @@ void sh7604_device::sck_w(int state)
 	bool const level = state != 0;
 	bool const previous = m_sci_sck;
 	m_sci_sck = level;
-	if (level == previous || !BIT(m_smr, 7) || !BIT(m_scr, 1) || !BIT(m_scr, 4))
+	if (level == previous || !BIT(m_smr, 7) || !BIT(m_scr, 1))
 		return;
 
 	// SH7604 section 13.3.4, pp.372, 375-378: external synchronous
@@ -1016,6 +1019,32 @@ void sh7604_device::sck_w(int state)
 		m_sci_rx_state = 0;
 		return;
 	}
+
+	// Section 13.3.4, pp.372-373: TX changes on falling SCK edges. Load
+	// the next byte or set TEND when the MSB is output; TxD then holds
+	// that MSB until another byte starts (or TE is cleared).
+	if (!level && BIT(m_scr, 5) && m_sci_tx_active)
+	{
+		m_write_txd(BIT(m_tsr, m_sci_tx_bit));
+		if (++m_sci_tx_bit == 8)
+		{
+			m_sci_tx_bit = 0;
+			if (!(m_ssr & SSR_TDRE))
+			{
+				m_tsr = m_tdr;
+				m_ssr |= SSR_TDRE;
+			}
+			else
+			{
+				m_sci_tx_active = false;
+				m_ssr |= SSR_TEND;
+			}
+			sh2_recalc_irq();
+		}
+	}
+
+	if (!BIT(m_scr, 4))
+		return;
 
 	if (!level)
 	{
@@ -1051,7 +1080,7 @@ attotime sh7604_device::sci_bit_period() const
 
 void sh7604_device::sci_recalc_rates()
 {
-	// keep a running transmitter on the new rate (C/A=1 unsupported here)
+	// External synchronous transfers follow SCK edges, not these timers.
 	if (BIT(m_smr, 7))
 		return;
 	if (m_sci_tx_active && BIT(m_scr, 5))
@@ -1062,9 +1091,9 @@ void sh7604_device::sci_recalc_rates()
 
 void sh7604_device::sci_transmit_start()
 {
-	// TDR has already been loaded into TSR by the TDRE-clear trigger;
-	// start shifting the frame LSB first from the start bit
-	m_sci_tx_bit = 1; // next timed event is the first data bit
+	// TDR is already in TSR. Sync waits for a falling external SCK edge;
+	// async emits a start bit and then shifts the frame LSB first.
+	m_sci_tx_bit = BIT(m_smr, 7) ? 0 : 1; // next sync data bit / async timer event
 	m_sci_tx_active = true;
 	m_sci_tx_loaded = false;
 	if (!BIT(m_smr, 7) && BIT(m_scr, 5))
