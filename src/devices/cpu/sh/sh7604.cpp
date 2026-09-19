@@ -1869,10 +1869,14 @@ void sh7604_device::dvdnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	else
 	{
 		m_divu_ovf = true;
-		m_dvdntl = 0x7fffffff;
-		m_dvdnth = 0x7fffffff;
+		// Three arithmetic steps follow flag setup (section 10.3.3).
+		// With a zero divisor, shift the sign-extended dividend and insert
+		// one quotient bit per step for a nonnegative dividend, zero otherwise.
+		uint64_t const partial = (uint64_t(int64_t(a)) << 3) | (a < 0 ? 0 : 7);
+		m_dvdnth = uint32_t(partial >> 32);
+		m_dvdntl = m_divu_ovfie ? uint32_t(partial) : (a < 0 ? 0x80000000 : 0x7fffffff);
 		sh2_recalc_irq();
-		// TODO: 8 cycles
+		// TODO: 6 cycles
 	}
 }
 
