@@ -43,6 +43,10 @@ sega_315_5649_device::sega_315_5649_device(const machine_config &mconfig, const 
 	m_analog_channel(0)
 {
 	std::fill(std::begin(m_port_value), std::end(m_port_value), 0xff);
+	std::fill(std::begin(m_serial_tx), std::end(m_serial_tx), 0);
+	std::fill(std::begin(m_serial_rx), std::end(m_serial_rx), 0);
+	std::fill(std::begin(m_serial_tx_full), std::end(m_serial_tx_full), false);
+	std::fill(std::begin(m_serial_rx_full), std::end(m_serial_rx_full), false);
 }
 
 //-------------------------------------------------
@@ -56,6 +60,10 @@ void sega_315_5649_device::device_start()
 	save_item(NAME(m_port_config));
 	save_item(NAME(m_analog_channel));
 	save_item(NAME(m_mode));
+	save_item(NAME(m_serial_tx));
+	save_item(NAME(m_serial_rx));
+	save_item(NAME(m_serial_tx_full));
+	save_item(NAME(m_serial_rx_full));
 }
 
 //-------------------------------------------------
@@ -67,8 +75,75 @@ void sega_315_5649_device::device_reset()
 	// set all ports to input on reset
 	m_port_config = 0xff;
 	m_mode = 0;
+
+	// flush both RS-422 channels
+	std::fill(std::begin(m_serial_tx), std::end(m_serial_tx), 0);
+	std::fill(std::begin(m_serial_rx), std::end(m_serial_rx), 0);
+	std::fill(std::begin(m_serial_tx_full), std::end(m_serial_tx_full), false);
+	std::fill(std::begin(m_serial_rx_full), std::end(m_serial_rx_full), false);
 }
 
+
+//**************************************************************************
+//  SERIAL INTERFACE
+//**************************************************************************
+
+uint8_t sega_315_5649_device::serial_pop_rx(int channel)
+{
+	uint8_t data;
+
+	if (m_serial_rx_full[channel])
+	{
+		// one holding register per channel: reading it empties it
+		data = m_serial_rx[channel];
+		m_serial_rx_full[channel] = false;
+	}
+	else
+	{
+		// no byte is pending: fall back to the polled external link
+		data = m_serial_rd_cb[channel](0);
+	}
+
+	return data;
+}
+
+void sega_315_5649_device::serial_rx_w(int channel, uint8_t data)
+{
+	// External link delivers a byte into the channel holding register.
+	// A byte arriving while the register is still full replaces it
+	// (no overrun/error latch is modelled).
+	m_serial_rx[channel] = data;
+	m_serial_rx_full[channel] = true;
+}
+
+void sega_315_5649_device::serial_transmit(int channel, uint8_t data)
+{
+	if (m_serial_tx_full[channel])
+	{
+		LOG("TX%d overrun, byte %02x dropped\n", channel + 1, data);
+		return;
+	}
+
+	m_serial_tx[channel] = data;
+	m_serial_tx_full[channel] = true;
+
+	if (BIT(m_mode, 4))
+	{
+		// RS-422 loopback: the transmitted byte is routed back into
+		// this channel's receiver instead of the external link
+		serial_rx_w(channel, data);
+	}
+	else
+	{
+		m_serial_wr_cb[channel](data);
+	}
+
+	// byte-level model: the shift register drains immediately, the
+	// transmit holding register empties as soon as the byte is on the
+	// wire. Bit-level transfer timing is not modelled.
+	m_serial_tx[channel] = 0;
+	m_serial_tx_full[channel] = false;
+}
 
 //**************************************************************************
 //  INTERFACE
@@ -103,8 +178,8 @@ uint8_t sega_315_5649_device::read(offs_t offset)
 		break;
 
 	// RS-422 channel 1/2 input
-	case 0x0b: data = m_serial_rd_cb[0](0); break;
-	case 0x0c: data = m_serial_rd_cb[1](0); break;
+	case 0x0b: data = serial_pop_rx(0); break;
+	case 0x0c: data = serial_pop_rx(1); break;
 
 	// RS-422 status
 	// 7--- ----  RX2IE
@@ -116,8 +191,16 @@ uint8_t sega_315_5649_device::read(offs_t offset)
 	// ---- --1-  TX2BF
 	// ---- ---0  TX1BF 1 = transmit buffer full
 	case 0x0d:
-		data = 0x0c; // HACK, recv buffers always full, transmit buffers always empty
+		// Buffer-occupancy bits track the real holding registers; the
+		// error/enable bits have no modelled source and read zero.
+		data = (m_serial_rx_full[1] ? 0x08 : 0x00) |
+				(m_serial_rx_full[0] ? 0x04 : 0x00) |
+				(m_serial_tx_full[1] ? 0x02 : 0x00) |
+				(m_serial_tx_full[0] ? 0x01 : 0x00);
 		break;
+
+	// mode register read-back
+	case 0x0e: data = m_mode; break;
 
 	// analog input, auto-increments
 	case 0x0f:
@@ -154,8 +237,8 @@ void sega_315_5649_device::write(offs_t offset, uint8_t data)
 	case 0x08: m_port_config = data; break;
 
 	// RS-422 channel 1/2 output
-	case 0x09: m_serial_wr_cb[0](data); break;
-	case 0x0a: m_serial_wr_cb[1](data); break;
+	case 0x09: serial_transmit(0, data); break;
+	case 0x0a: serial_transmit(1, data); break;
 
 	// mode register
 	// 7--- ----  port G counter mode
