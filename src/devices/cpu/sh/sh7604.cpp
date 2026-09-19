@@ -2437,7 +2437,8 @@ void sh7604_device::dmac_tcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 template <int Channel>
 uint32_t sh7604_device::chcr_r()
 {
-	return m_dmac[Channel].chcr;
+	// CHCR bits 31-16 are reserved and always read zero (section 9.2.4).
+	return m_dmac[Channel].chcr & 0x0000ffff;
 }
 
 template <int Channel>
