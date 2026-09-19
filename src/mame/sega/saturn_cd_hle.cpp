@@ -167,6 +167,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(cd_speed));
   save_item(NAME(cdda_maxrepeat));
   save_item(NAME(cdda_repeat_count));
+  save_item(NAME(cd_scan_dir));
   save_item(NAME(tray_is_closed));
   save_item(NAME(m_status_change_in_progress));
   save_item(NAME(numfiles));
@@ -250,6 +251,7 @@ void saturn_cd_hle_device::device_reset() {
   buffull = 0;
   cd_speed = 2;
   cdda_repeat_count = 0;
+  cd_scan_dir = 0;
 
   // the MPEG state is not registered for save states, following the convention
   // of the filter, partition and block arrays above; reset re-establishes it
@@ -676,23 +678,98 @@ int saturn_cd_hle_device::get_timing_command(void) {
   return 16667;
 }
 
-/* FIXME: assume Saturn CD-ROMs to have a 2 secs pre-gap for now. */
-int saturn_cd_hle_device::get_track_index(uint32_t fad) {
-  uint32_t rel_fad;
-  uint8_t track;
+/* FIXME: assume Saturn CD-ROMs to have a 2 secs pre-gap for now.
 
-  if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(fad)) !=
-      cdrom_file::CD_TRACK_AUDIO)
+   `lba` is a logical LBA (cd_curfad - 150): the image API's track numbers are
+   zero based and an index, not the host's track number. */
+int saturn_cd_hle_device::get_track_index(uint32_t lba) {
+  int const index = cd_track_at(lba + 150);
+  if (index < 0)
+    return 1; // outside the programme area: report the track proper
+  uint8_t const track = uint8_t(index);
+
+  if (m_cdrom_image->get_track_type(track) != cdrom_file::CD_TRACK_AUDIO)
     return 1;
 
-  track = m_cdrom_image->get_track(fad);
+  uint32_t const rel_lba = uint32_t(lba - m_cdrom_image->get_track_start(track));
 
-  rel_fad = fad - m_cdrom_image->get_track_start(track);
-
-  if (rel_fad < 150)
+  if (rel_lba < 150)
     return 0;
 
   return 1;
+}
+
+// FAD where a track begins.  The track table has one entry after the last
+// track (the lead-out), so out of range indices clamp to it.
+uint32_t saturn_cd_hle_device::cd_track_start_fad(uint32_t track_index) {
+  if (!m_cdrom_image->exists())
+    return 150;
+
+  uint32_t const count = cd_track_count();
+  if (track_index > count)
+    track_index = count;
+
+  // +150 converts the logical LBA the image API reports to a FAD
+  return m_cdrom_image->get_track_start(track_index) + 150;
+}
+
+uint32_t saturn_cd_hle_device::cd_track_count() {
+  if (!m_cdrom_image->exists())
+    return 0;
+  return uint32_t(m_cdrom_image->get_last_track());
+}
+
+/* Track index holding the sector at FAD `fad`, or -1 when that position is
+   outside the programme area.  The image API's get_track() returns its input
+   unchanged for a position past the lead-out (the loop simply never matches),
+   and feeding that value back into the track table reads out of bounds, so
+   every position that comes from the host - or from a drive state that could
+   not be reached - goes through here. */
+int saturn_cd_hle_device::cd_track_at(uint32_t fad) {
+  if (!m_cdrom_image->exists() || fad < 150)
+    return -1;
+
+  if (uint32_t(fad - 150) >= m_cdrom_image->get_track_start(cd_track_count()))
+    return -1;
+
+  return int(m_cdrom_image->get_track(fad - 150));
+}
+
+uint32_t saturn_cd_hle_device::cd_sectors_to_leadout() {
+  uint32_t const leadout = cd_track_start_fad(cd_track_count());
+  return (leadout > cd_curfad) ? (leadout - cd_curfad) : 0;
+}
+
+bool saturn_cd_hle_device::cd_is_audio(uint32_t fad) {
+  int const track = cd_track_at(fad);
+  if (track < 0)
+    return false;
+  return m_cdrom_image->get_track_type(track) == cdrom_file::CD_TRACK_AUDIO;
+}
+
+void saturn_cd_hle_device::cd_start_cdda() {
+  if (!cd_is_audio(cd_curfad)) {
+    cd_stop_cdda();
+    return;
+  }
+
+  /* Play out the rest of the requested range.  fadstoplay is a sector count
+     from the current position; when it is not set (or runs past the end of
+     the disc, which the drive cannot do) it becomes the distance to the
+     lead-out.  cdda keeps its own sector bookkeeping, so a wrapped count
+     would keep it reading a disc that is not there. */
+  uint32_t const remaining = cd_sectors_to_leadout();
+  uint32_t sectors = fadstoplay;
+  if (sectors == 0 || sectors == 0xffffffff || sectors > remaining)
+    sectors = remaining;
+
+  m_cdda->cancel_scan();
+  m_cdda->start_audio(cd_curfad - 150, sectors);
+}
+
+void saturn_cd_hle_device::cd_stop_cdda() {
+  m_cdda->cancel_scan();
+  m_cdda->stop_audio();
 }
 
 int saturn_cd_hle_device::sega_cdrom_get_adr_control(int track) {
@@ -709,24 +786,25 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
     // cr4 = 0;
   } else if ((cd_stat & 0x0f00) == CD_STAT_SEEK) {
     /* During seek state, values returned are from the target position */
-    uint8_t seek_track = m_cdrom_image->get_track(cd_fad_seek - 150);
+    int const seek_track = cd_track_at(cd_fad_seek);
 
     cr1 = cur_status | (playtype << 7) | 0x00 | (cdda_repeat_count & 0xf);
-    cr2 = (seek_track == 0xff)
+    cr2 = (seek_track < 0)
               ? 0xffff
               : ((sega_cdrom_get_adr_control(seek_track) << 8) | seek_track);
-    cr3 = (get_track_index(cd_fad_seek) << 8) |
+    cr3 = (get_track_index(cd_fad_seek - 150) << 8) |
           (cd_fad_seek >> 16); // index & 0xff00
     cr4 = cd_fad_seek;
   } else {
     cr1 = cur_status | (playtype << 7) | 0x00 |
           (cdda_repeat_count & 0xf); // options << 4 | repeat & 0xf
-    cr2 = (cur_track == 0xff)
+    int const cur_pos_track = cd_track_at(cd_curfad);
+    cr2 = ((cur_track == 0xff) || (cur_pos_track < 0))
               ? 0xffff
               : ((sega_cdrom_get_adr_control(cur_track) << 8) |
-                 (m_cdrom_image->get_track(cd_curfad - 150) + 1));
-    cr3 =
-        (get_track_index(cd_curfad) << 8) | (cd_curfad >> 16); // index & 0xff00
+                 (cur_pos_track + 1));
+    cr3 = (get_track_index(cd_curfad - 150) << 8) |
+          (cd_curfad >> 16); // index & 0xff00
     cr4 = cd_curfad;
   }
 }
@@ -745,6 +823,14 @@ void saturn_cd_hle_device::cd_change_status(u16 new_status) {
   cd_stat = CD_STAT_BUSY;
   cd_next_stat = new_status;
   m_status_change_in_progress = true;
+
+  /* The converter follows the pickup: PLAY and SCAN are the only states in
+     which the drive can be reading audio off the disc, and a pause, seek,
+     standby, init, tray or error has to silence it in the same step the
+     status changes rather than at the next sector tick.  The start side is
+     handled in cd_playdata()/the scan case, which own the position. */
+  if (new_status != CD_STAT_PLAY && new_status != CD_STAT_SCAN)
+    cd_stop_cdda();
   if (new_status == CD_STAT_SEEK)
     m_seek_ticks_left = 0; // retarget: re-measure the travel on the next tick
   // we are changing the status, definitely don't want PERI to interfere
@@ -985,15 +1071,15 @@ void saturn_cd_hle_device::cmd_play_disc() {
       }
 
       LOGCMD("\tFAD mode\n");
-      cur_track = m_cdrom_image->get_track(cd_curfad - 150);
+      cur_track = cd_track_at(cd_curfad);
     } else {
       // track mode
       if ((start_pos >> 8) != 0) {
-        cur_track = start_pos >> 8;
-        cd_fad_seek = m_cdrom_image->get_track_start(cur_track - 1);
+        // the host's track number is one based; cur_track is an index
+        cur_track = (start_pos >> 8) - 1;
+        cd_fad_seek = cd_track_start_fad(cur_track);
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PLAY;
-        // m_cdda->pause_audio(0);
       } else {
         // FIXME: Waku Waku 7 sets up track 0, that basically doesn't make any
         // sense. Just skip it for now.
@@ -1008,13 +1094,25 @@ void saturn_cd_hle_device::cmd_play_disc() {
     }
 
     if (end_pos & 0x800000) {
-      if (end_pos != 0xffffff)
-        fadstoplay = end_pos & 0x7f'ffff;
+      /* An end position given as a FAD.  0xFFFFFF is the "no end" encoding,
+         and a position behind the pickup cannot be a length.  This used to
+         keep the FAD itself as the count, which is a position measured from
+         FAD 0: a play from the middle of the disc then ran past the lead-out
+         before the count woke up. */
+      uint32_t const endfad = end_pos & 0x7f'ffff;
+      fadstoplay = (endfad != 0xffffff && endfad > cd_fad_seek)
+                       ? (endfad - cd_fad_seek)
+                       : 0;
     } else {
-      uint8_t end_track;
+      /* The end position is a track number: playback stops where that track
+         begins, so the boundary is the start of the track before it.  (This
+         used to add 150 sectors of lead-in twice and finish one track late,
+         playing through the following track.) */
+      uint32_t const end_track = end_pos >> 8;
 
-      end_track = (end_pos) >> 8;
-      fadstoplay = m_cdrom_image->get_track_start(end_track) - cd_fad_seek;
+      fadstoplay = (end_track > 0 ? cd_track_start_fad(end_track - 1)
+                                  : cd_curfad) -
+                   cd_fad_seek;
     }
   } else // play until the end of the disc
   {
@@ -1024,15 +1122,15 @@ void saturn_cd_hle_device::cmd_play_disc() {
     if (start_pos != 0xffffff) {
       /* Madou Monogatari sets 0xff80xxxx as end position, needs investigation
        * ... */
-      if (end_pos & 0x800000)
-        fadstoplay = end_pos & 0xfffff;
+      if (end_pos & 0x800000) {
+        uint32_t const endfad = end_pos & 0x7f'ffff;
+        fadstoplay = (endfad > cd_curfad) ? (endfad - cd_curfad) : 0;
+      }
       else {
         if (end_pos == 0)
-          fadstoplay = (m_cdrom_image->get_track_start(0xaa)) - cd_curfad;
+          fadstoplay = cd_track_start_fad(cd_track_count()) - cd_curfad;
         else
-          fadstoplay =
-              (m_cdrom_image->get_track_start((end_pos & 0xff00) >> 8)) -
-              cd_curfad;
+          fadstoplay = cd_track_start_fad((end_pos >> 8)) - cd_curfad;
       }
       LOGCMD("\ttrack mode %08x %08x -> %08x %08x\n", start_pos, end_pos,
              cd_curfad, fadstoplay);
@@ -1056,13 +1154,25 @@ void saturn_cd_hle_device::cmd_play_disc() {
         // (in said case, by playing until the end of disc rather than just one
         // track)
         // cd_curfad = m_cdrom_image->get_track_start(cur_track);
-        fadstoplay = m_cdrom_image->get_track_start(cur_track + 1) - cd_curfad;
+        fadstoplay = cd_track_start_fad(cur_track + 1) - cd_curfad;
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PLAY;
       }
       LOGCMD("\ttrack resume %08x %08x (%06x %06x)\n", cd_curfad, fadstoplay,
              start_pos, end_pos);
     }
+  }
+
+  /* A range that runs past the lead-out (or backwards, which underflows) is
+     clamped: the drive cannot play what is not on the disc.  The range starts
+     where the pickup is going (the pending seek target when this command
+     chained one, otherwise the current position). */
+  {
+    uint32_t const leadout = cd_track_start_fad(cd_track_count());
+    uint32_t const start = (cd_fad_seek > 150) ? cd_fad_seek : cd_curfad;
+    uint32_t const max_len = (leadout > start) ? (leadout - start) : 0;
+    if (fadstoplay == 0xffffffff || fadstoplay > max_len)
+      fadstoplay = max_len;
   }
 
   LOGCMD("\tPlay Disc: current %06x -> start %06x length %06x\n", cd_curfad,
@@ -1123,14 +1233,12 @@ void saturn_cd_hle_device::cmd_seek_disc() {
         cd_fad_seek = cd_curfad;
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PAUSE;
-        m_cdda->pause_audio(1);
       }
     } else if (temp == 0) {
       // a seek to 0 stops the drive, which leaves it in standby
       cd_fad_seek = 150;
       cd_change_status(CD_STAT_SEEK);
       cd_seek_stat = CD_STAT_STANDBY;
-      m_cdda->stop_audio();
       LOGCMD("\tdisc seek to 0: stop\n");
     } else {
       // Area 51 sets this up (TODO: retest me out)
@@ -1142,19 +1250,17 @@ void saturn_cd_hle_device::cmd_seek_disc() {
   } else {
     // is it a valid track?
     if (cr2 >> 8) {
-      cur_track = cr2 >> 8;
-      cd_fad_seek = m_cdrom_image->get_track_start(cur_track - 1);
+      // the host's track number is one based; cur_track is an index
+      cur_track = (cr2 >> 8) - 1;
+      cd_fad_seek = cd_track_start_fad(cur_track);
       cd_change_status(CD_STAT_SEEK);
       cd_seek_stat = CD_STAT_PAUSE;
-
-      m_cdda->pause_audio(1);
       // (index is cr2 low byte)
     } else // error!
     {
       cd_change_status(CD_STAT_STANDBY);
       cd_curfad = 0xffffffff;
       cur_track = 0xff;
-      m_cdda->stop_audio(); // stop any pending CD-DA
     }
   }
 
@@ -1170,6 +1276,8 @@ void saturn_cd_hle_device::cmd_ffwd_rew_disc() {
   // by holding on relevant keys
   LOGCMD("%s: %s disc\n", machine().describe_context(),
          (cr1 & 1) ? "Rewind" : "Fast forward");
+
+  cd_scan_dir = (cr1 & 1) ? 1 : 0;
 
   /* the drive reports scanning for as long as the command is in effect and
      stays there until the program asks for something else, so this is the
@@ -1219,7 +1327,7 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
     */
 
     msf_abs = cdrom_file::lba_to_msf_alt(cd_curfad - 150);
-    track = m_cdrom_image->get_track(cd_curfad);
+    track = uint8_t(std::max(0, cd_track_at(cd_curfad)));
     msf_rel = cdrom_file::lba_to_msf_alt(cd_curfad - 150 -
                                          m_cdrom_image->get_track_start(track));
 
@@ -1232,7 +1340,7 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
              ? 0x00
              : 0x40);
     subqbuf[1] = dec_2_bcd(track + 1);
-    subqbuf[2] = dec_2_bcd(get_track_index(cd_curfad));
+    subqbuf[2] = dec_2_bcd(get_track_index(cd_curfad - 150));
     subqbuf[3] = dec_2_bcd((msf_rel >> 16) & 0xff);
     subqbuf[4] = dec_2_bcd((msf_rel >> 8) & 0xff);
     subqbuf[5] = dec_2_bcd((msf_rel >> 0) & 0xff);
@@ -3420,8 +3528,11 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
   // rate; only streaming follows the cd_speed multiplier
   if ((cd_stat & 0x0f00) == CD_STAT_SEEK)
     m_sector_timer->adjust(attotime::from_hz(75));
-  else if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
-           cdrom_file::CD_TRACK_AUDIO)
+  else if ((cd_stat & 0x0f00) == CD_STAT_SCAN)
+    // two sectors per sector period is the audible scan rate, so the pickup
+    // and the Red Book decoder travel together in every track type
+    m_sector_timer->adjust(attotime::from_hz(75));
+  else if (cd_is_audio(cd_curfad))
     m_sector_timer->adjust(
         attotime::from_hz(75)); // 75 sectors / second = 150kBytes/second (cdda
                                 // track ignores cd_speed setting)
@@ -4108,16 +4219,67 @@ void saturn_cd_hle_device::cd_playdata() {
       break;
     }
 
-    cur_track = m_cdrom_image->get_track(cd_fad_seek);
+    cur_track = cd_track_at(cd_fad_seek);
     LOGSEEK("Ready (track %d)\n", cur_track + 1);
     cd_curfad = cd_fad_seek;
     cd_change_status(cd_seek_stat);
-    if (cd_seek_stat == CD_STAT_PLAY &&
-        m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
-            cdrom_file::CD_TRACK_AUDIO)
-      m_cdda->pause_audio(0);
+    // the converter is started from the PLAY branch of this function, which
+    // owns the position; a seek that lands on a data track must leave it off
+    if (cd_seek_stat != CD_STAT_PLAY)
+      cd_stop_cdda();
     m_seek_in_progress = false;
 
+    break;
+  }
+  case CD_STAT_SCAN: {
+    if (!m_cdrom_image->exists())
+      return;
+
+    /* Both the pickup and the Red Book decoder travel at double speed while
+       scanning, which is what cdda's own scan does (two sectors per sector
+       period), so moving the position here at the same rate keeps the
+       reported Q position and the audible scan together. */
+    uint32_t const first = cd_track_start_fad(0);
+    uint32_t const leadout = cd_track_start_fad(cd_track_count());
+    uint32_t next;
+
+    if (cd_scan_dir)
+      next = (cd_curfad > first + 2) ? (cd_curfad - 2) : first;
+    else
+      next = (cd_curfad + 2 < leadout) ? (cd_curfad + 2) : leadout;
+
+    bool const at_end =
+        (next == cd_curfad) || (next <= first && cd_scan_dir) ||
+        (next >= leadout && !cd_scan_dir);
+
+    cd_curfad = next;
+    if (cd_curfad >= first)
+      cur_track = cd_track_at(cd_curfad);
+
+    if (at_end) {
+      // the pickup ran off one end of the programme area
+      cd_change_status(CD_STAT_PAUSE);
+      hirqreg |= PEND;
+      update_hirq();
+      break;
+    }
+
+    if (cd_is_audio(cd_curfad)) {
+      if (!m_cdda->audio_active())
+        cd_start_cdda();
+      if (cd_scan_dir)
+        m_cdda->scan_reverse();
+      else
+        m_cdda->scan_forward();
+    } else {
+      /* a data sector has no Red Book output; the host hears the scan of the
+         audio tracks only, so silence while the pickup crosses the data area
+         is correct */
+      cd_stop_cdda();
+    }
+
+    if (cd_stat & CD_STAT_PERI)
+      cr_standard_return(cd_stat);
     break;
   }
   case CD_STAT_PAUSE: {
@@ -4140,15 +4302,21 @@ void saturn_cd_hle_device::cd_playdata() {
       if (m_cdrom_image->exists()) {
         uint8_t p_ok;
 
-        if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(
-                cd_curfad)) != cdrom_file::CD_TRACK_AUDIO) {
+        if (!cd_is_audio(cd_curfad)) {
           cd_read_filtered_sector(cd_curfad, &p_ok);
-          m_cdda->stop_audio(); // stop any pending CD-DA
+          cd_stop_cdda(); // stop any pending CD-DA
         } else {
           // TODO: pinpoint cases when this isn't okay
           // (out of bounds disc for example)
           p_ok = 1;
-          m_cdda->start_audio(cd_curfad, 1);
+          /* Start the converter once for the whole range and let it run: it
+             consumes 588 samples per sector period, exactly the rate this
+             countdown advances at, so the two stay together without being
+             restarted (and re-spliced) every tick.  A restart is still due if
+             it stopped early - the drive's timer and the 44.1 kHz stream do
+             not share a rounding rule. */
+          if (!m_cdda->audio_active() && !m_cdda->audio_paused())
+            cd_start_cdda();
         }
 
         if (p_ok) {
@@ -4183,11 +4351,13 @@ void saturn_cd_hle_device::cd_playdata() {
               // after seek
               // - girlpuz1 is an easy test case, on both title and Himekuri
               // mode NOTE: cur_track is -1 at this point vs. redbook spec
+              /* cur_track is a zero based index here, which every entry of
+                 the track table is.  A track 0 (a data-less disc whose first
+                 track is audio) is legitimate, so only the "no track" value
+                 is an error. */
               assert(cur_track >= 0 && cur_track != 0xff);
-              // cd_curfad = m_cdrom_image->get_track_start(cur_track);
-              cd_fad_seek = m_cdrom_image->get_track_start(cur_track);
-              fadstoplay =
-                  m_cdrom_image->get_track_start(cur_track + 1) - cd_fad_seek;
+              cd_fad_seek = cd_track_start_fad(cur_track);
+              fadstoplay = cd_track_start_fad(cur_track + 1) - cd_fad_seek;
               cd_change_status(CD_STAT_SEEK);
               cd_seek_stat = CD_STAT_PLAY;
               LOGCMD("Repeat hit track %d count %d/%d FAD %06x -> start %06x "

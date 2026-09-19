@@ -187,7 +187,28 @@ public:
   };
 
 private:
-  int get_track_index(uint32_t fad);
+  /* The drive keeps its position as a FAD (LBA + 150, the sector count from
+     the start of the programme area including the 150 sector lead-in), while
+     cdrom_file works in logical LBAs and numbers its tracks from zero with an
+     extra lead-out entry after the last one.  Every crossing between the two
+     goes through these helpers: mixing the two units silently seeks the
+     pickup two seconds off, which is what used to happen on the CD-DA path. */
+  uint32_t cd_track_start_fad(uint32_t track_index);
+  uint32_t cd_track_count();
+  int cd_track_at(uint32_t fad); // index, or -1 outside the programme area
+  bool cd_is_audio(uint32_t fad);
+  // sectors from the current position to the lead-out (0 when past it)
+  uint32_t cd_sectors_to_leadout();
+
+  /* Red Book output.  The CD block's D/A converter reads the same disc the
+     pickup does, so it is started once when the drive enters PLAY and left to
+     run; restarting it per sector (as this device used to) splices the
+     stream.  Anything that takes the drive out of PLAY or SCAN stops it. */
+  void cd_start_cdda();
+  void cd_stop_cdda();
+
+  // index of the track containing `lba`, as cdrom_file numbers them
+  int get_track_index(uint32_t lba);
   int sega_cdrom_get_adr_control(int track);
   void cr_standard_return(uint16_t cur_status);
   void mpeg_standard_return(uint16_t cur_status);
@@ -265,6 +286,7 @@ private:
   uint8_t cd_speed;
   uint8_t cdda_maxrepeat;
   uint8_t cdda_repeat_count;
+  uint8_t cd_scan_dir; // 0 = forward, 1 = rewind (Fast Forward / Rewind)
   uint8_t tray_is_closed;
   bool m_status_change_in_progress, m_seek_in_progress;
   int get_timing_command(void);
