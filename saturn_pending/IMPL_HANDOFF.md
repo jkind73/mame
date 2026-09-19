@@ -1466,3 +1466,110 @@
   implemented here. SCI DMA request/ack routing and actual external
   peripherals remain absent. Frozen DMA, delay-slot, sound and game
   paths and validator assets/expectations are untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0020 | CPU-03 | 85306c62 | UNVALIDATED | FRT reset/MSTP1 initialize documented registers; module stop suppresses counting/capture and release excludes stopped time |
+
+### IMPL-0020 — CPU-03 — FRT reset and module-standby lifecycle
+
+- branch/commit: `arena/01a0b897-mame` @ **85306c62** (base: 235c9f52).
+- files: `src/devices/cpu/sh/sh7604.cpp:210-218` (reset entry),
+  `:398-449` (FRT reset, resync and activation guards), `:480-503`
+  (timer callback guard), `:1890-1934` (MSTP1 entry/release),
+  `:2044-2052` (input-capture gate);
+  `src/devices/cpu/sh/sh7604.h:318` (helper declaration);
+  `saturn_pending/impl_checks/check_sh7604_frt_stop.py:1-185`.
+  The existing SCI module-stop method fixture gained mock declarations
+  for the shared SBYCR/reset handler's FRT calls, not changed expectations.
+- contract: device reset and SBYCR.MSTP1 entry initialize TIER=H'01,
+  FTCSR=H'00, TCR=H'00, TOCR=H'E0, FRC/ICR=H'0000 and OCRA/OCRB=H'FFFF.
+  MSTP1 stops the timer and suppresses counting and FTI capture. Incoming
+  FTI levels are tracked without generating capture events while stopped.
+  Module stop preserves FRT INTC vectors and priority. Clearing MSTP1
+  resumes from the initialized counter, with a fresh CPU-cycle epoch so
+  the stopped interval is not charged to FRC. Reset clears SBYCR and
+  activates the initialized free-running timer. Other SBYCR/FMR access
+  routing and the SCI MSTP0 behavior remain separate.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  Table 11.2 p.297 (complete initial register image), section 11.2
+  pp.298-303 (register initialization on reset/module standby, input
+  capture edge, default phi/8 counter clock), section 14.2.1 pp.387-388
+  (SBYCR reset value; MSTP1 resets FRT but preserves its INTC vector),
+  sections 14.5.1/14.5.2 p.393 (module stop/release and no register
+  accesses while stopped; halt the module or disable interrupts before
+  effecting a stop). SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:23-35,101-107,118-126,299-302,340-344`
+  resets the FRT counter/capture/compare and control fields consistently
+  with that initial image; blob `22868cc7792ede743d834dca5624c6cb5102f04e`.
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_power.hpp:17` describes MSTP1
+  as halt-and-reset, but its `src/ymir/hw/sh2/sh2.cpp:1451` only stores
+  SBYCR; no independent running MSTP1 implementation is claimed.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-189,367-383,1328-1345,1458-1483`
+  has zero compare reset values and no stop/capture gating. Inspected
+  fork history and base `235c9f52`: it inherits those FRT paths, with
+  IMPL-0019 adding SCI-only module reset. This extends the inline FRT
+  engine; no reference implementation was imported.
+- expected observable: immediately on reset or after legal MSTP1 release,
+  the register image above is exact. No FTI pulse during the stopped
+  interval changes ICR/ICF or raises an FRT interrupt. With default TCR
+  after release, FRC advances one count per eight CPU phi cycles and does
+  not include time spent stopped. Without reprogramming or captures,
+  compare A/B flag at count H'FFFF and overflow at the following count
+  H'0000; default TIER disables their interrupts. The method model
+  schedules these at release+524280 and +524288 phi ticks respectively.
+  Absolute first-divider phase is provisional: hardware comparison must
+  allow up to one prescaler period (8 phi ticks) relative to the register
+  write, then require the 8-tick spacing and exact counts/registers.
+- suggested method: disable timer interrupts, configure nondefault FRC,
+  compares/control and leave prior capture/status flags. Record vectors
+  and priority. Set MSTP1 via the SBYCR byte address, advance time and
+  send FTI pulses of at least six phi ticks (section 11.2.3), then clear
+  MSTP1 before reading timer registers. Check initial values, subsequent
+  phi/8 counting, compare/overflow ordering and new capture operation.
+  Repeat at nonzero CPU-cycle epochs, through reset and save/load during
+  stop. Include FMR byte/word and other-module bit controls. Native
+  validation should also exercise DCC input-capture handshakes with the
+  FRT running versus intentionally module-stopped on both SH-2s.
+- falsifier: stale control/compare/capture values after reset/release,
+  counter accumulation or ICF from a stopped interval, changed interrupt
+  vectors/priority on MSTP1, a spurious capture from a repeated held
+  level at release, or failure to resume the default-rate counter
+  contradicts this candidate. First-event phase differing by more than
+  one prescaler period would also reject its proposed timing bound.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 4096 MSTP1 entry/release cases; 4096 state-copy replays; 256 reset cases; 194 access-width/other-bit controls; 256 input-capture cases
+  method-level, unvalidated: initial register image, stopped-time exclusion, compare/overflow restart, vector preservation and capture gating exercised
+  method-level, unvalidated: existing FRT/SBYCR save registrations retained; no new state fields
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_frt_stop.py`.
+  Same new script against pre-change `235c9f52`, with method bodies
+  unchanged, exits 1:
+  `line 311: m_tier==1 && m_ftcsr==0 && m_frc_tcr==0 && m_tocr==0xe0`.
+  All twelve preceding SCI scripts rerun with unchanged expectations:
+  exit 0. Extracted method binaries use UBSan. Full `sh7604.cpp` syntax
+  check with session include paths and
+  `-std=c++20 -Wall -Werror -Wno-sign-compare`: exit 0, no diagnostics,
+  reorder enabled. `git diff --check`: exit 0. No full build run.
+- state: UNVALIDATED
+- not covered / known doubts: the method clock is CPU cycles, not a
+  native scheduler/DRC/interpreter timing qualification. Input synchronizer
+  latency, first-divider phase, CPU halt/clock transitions, native IRQ
+  arbitration/delivery, reset integration and on-disk save replay remain
+  open. All affected fields were already saved; no new fields or timer
+  callback identities were added, but cross-version save compatibility
+  is not asserted. External FTCI clock input, FTOA/FTOB output pins,
+  TEMP byte-access protocol, FTCSR read-before-clear qualification and
+  the existing normal-operation prescaler remainder behavior are not
+  completed by this change. Whole-chip sleep/standby and MSTP2-4 remain
+  outside scope. No behavior is specified for prohibited register accesses
+  while module-stopped. The general DMA request/grant/ack engine and
+  frozen delay-slot, sound and game paths were not edited; native game
+  regression acceptance remains with the validation agent. IO-02's
+  external-device inventory is unchanged: this does not add a peripheral
+  peer or imply serial DMA support.
