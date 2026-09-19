@@ -1563,6 +1563,21 @@ void saturn_cd_hle_device::cmd_set_filter_connection() {
   cr_standard_return(cd_stat);
 }
 
+void saturn_cd_hle_device::cmd_get_filter_connection() {
+  const uint8_t fnum = cr3 >> 8;
+  if (fnum >= MAX_FILTERS) {
+    cr_standard_return(CD_STAT_REJECT);
+  } else {
+    cr1 = cd_stat;
+    cr2 = (uint16_t(filters[fnum].condtrue) << 8) | filters[fnum].condfalse;
+    cr3 = uint16_t(fnum) << 8;
+    cr4 = 0;
+  }
+  // A query completes the command, not a selector-setting operation.
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
 void saturn_cd_hle_device::cmd_reset_selector() {
   int i, j;
   // Reset Selector
@@ -3238,6 +3253,9 @@ void saturn_cd_hle_device::cd_exec_command() {
     break;
   case 0x46:
     cmd_set_filter_connection();
+    break;
+  case 0x47:
+    cmd_get_filter_connection();
     break;
   case 0x48:
     cmd_reset_selector();

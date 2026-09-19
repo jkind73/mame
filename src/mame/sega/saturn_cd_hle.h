@@ -310,6 +310,7 @@ private:
   void cmd_set_filter_mode();
   void cmd_get_filter_mode();
   void cmd_set_filter_connection();
+  void cmd_get_filter_connection();
   void cmd_reset_selector();
   // 0x50
   void cmd_get_buffer_size();
