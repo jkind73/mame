@@ -2077,7 +2077,8 @@ void sh7604_device::rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 uint16_t sh7604_device::fmr_sbycr_r()
 {
-	return m_sbycr;
+	// SBYCR bit 5 is reserved and always reads zero (section 14.2.1).
+	return m_sbycr & 0xdf;
 }
 
 void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
