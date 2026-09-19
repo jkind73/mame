@@ -4322,3 +4322,83 @@ correct template but omitted its numeric line span. No contract/state change.
   frozen handler changes, peripheral additions or milestone-status claims.
   This is an implementation checkpoint, not completion of CPU-03 or a
   stopping point for the ongoing missing-emulation work.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0057 | CD-01 | 7027e048 | UNVALIDATED | CD selector chains follow false-filter and true-partition connectors using normalized sector metadata |
+
+### IMPL-0057 — CD-01 — selector-chain routing and non-Mode-2 metadata
+
+- branch/commit/base: `arena/01a0b897-mame` @ **7027e048**; base **4f655b1c**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:3845-3876,3944-3948,3990-3994`,
+  `src/mame/sega/saturn_cd_hle.h:218`, and
+  `saturn_pending/impl_checks/check_cd_filter_routing.py`.
+- contract: evaluate the sector's saved FAD/subheader conditions, follow
+  false outputs to other filters, and store through the accepting filter's
+  true partition connector. Support every acyclic chain through the 24
+  selectors rather than the previous two-link limit. Non-Mode-2 sectors
+  carry zero subheader fields, not the preceding Mode 2 sector's metadata;
+  their zero fields participate in selection. Subheader inversion remains
+  outside the FAD predicate. Retain the last successfully stored CD target
+  on discard/allocation failure. Normalization plus a pure routing helper
+  supplies the existing disc-read consumer and the forthcoming copy/move
+  consumer without reinterpreting trimmed payload bytes as headers.
+- primary source: ST-162-062094, CD Communication Interface/System Library
+  User's Guide, printed pp.43-47, sections 5.3.1-5.3.4/Figures 5.3-5.7 and
+  Table 5.1 (connector types, partition append, last stored CD target);
+  printed p.48 section 5.4 (non-Mode-2 subheaders are zero), p.88 function
+  5.5 (subheader inversion excludes FAD), p.93 function 6.5 (reported
+  sector metadata). SDK blob `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+  Extracted all 91 PDF pages by ignoring only the malformed null /Encrypt
+  entry; no encryption removed or document committed.
+- cross-checks/provenance: Mednafen pin
+  `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/cdb.cpp:1697-1781`,
+  blob `d367dd0c0500ff7b1e2637e748015543b0a3078e`: TestFilterCond normalizes
+  non-Mode-2 fields and FilterBuf walks false connectors, using TrueConn
+  for storage. Ymir pin `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/cdblock/cdblock_filter.hpp:41-74`, blob
+  `d1c51615ebf26ecb20c0b32c6d3b4f628fcf19e5`, corroborates condition
+  composition/inversion. For inversion with no enabled subheader tests,
+  Ymir/current MAME invert the empty conjunction, whereas Mednafen gates
+  inversion with mode&0F; existing MAME/Ymir behavior is retained and that
+  special configuration is NOT hardware-qualified. Upstream MAME pin
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/mame/sega/saturn_cd_hle.cpp:2597-2799`, and local base retain the
+  old two-link/index routing and stale non-Mode-2 fields. Local history
+  through 0e297cac/4101ca4f reviewed; no reference code block imported.
+- expected observable: exact destination IDs, block counts/metadata and
+  payload bytes, zero tolerance. For filter 0 false->1 and filter 1
+  true->7, a rejecting-first/accepting-second sector lands in partition 7,
+  not 1. An acyclic 24-filter chain can reach its last true connector.
+  After Mode 2 then Mode 1/audio, FN/CN/SM/CI are all zero in the stored
+  second sector. A required nonzero FN rejects that sector. Discard/full
+  buffer leaves the previous successful last-target ID unchanged.
+- suggested method: configure real filter connections/conditions through
+  mapped CD commands, then read controlled Mode 1/Mode 2 sectors and query
+  destination counts, Get Sector Information and Get Last Buffer
+  Destination. Use nonidentity true connectors, 1-24-link chains, FAD
+  boundary/inversion controls, disconnected outputs and full-buffer
+  conditions. Re-run frozen CD boot/gameplay acceptance before integration;
+  method-level success does not establish absence of game regressions.
+- falsifier: wrong connector target, inaccessible legal chain, stale
+  non-Mode-2 metadata, FAD inversion, lost payload, last-target change on
+  discarded/unstored data, or a regression in those native acceptance cases.
+- self-check run (method-level, unvalidated): 4,096 condition cases,
+  24 acyclic chain lengths, 765 Mode 2->Mode 1/audio transitions, redirected
+  connector and discard/full-buffer controls; fail-fast UBSan exit 0.
+  Historical 4f655b1c fails the first actual routed allocation at generated
+  line 315. Existing `regtests/saturn/test_cd_transfer.py` exits 0 with its
+  262,144 HIRQ overlay cases, 336 transfer cases and observational trace
+  checks; expectations unchanged. `test_cd_hirq.py` reported SKIP because
+  no native binary exists; that is NOT a native result. CD HLE TU
+  warning-enabled C++20 syntax-only and diff checks exit 0; no full build.
+- state: **UNVALIDATED**.
+- not covered/known doubts: selector timing, mid-sector reconfiguration,
+  input-connector ownership, copy/move/PUT command integration, malformed
+  cycles and native save state/firmware/gameplay. A bounded cyclic walk
+  discards defensively; it is not a claimed hardware cycle/deadlock model.
+  Stored metadata for raw host PUT remains an independent ingestion gap.
+  No new fields/save-layout change or edits to HIRQ, host-transfer methods,
+  validator assets, existing expectations, SH/DMA/IRQ or sound/video paths.
