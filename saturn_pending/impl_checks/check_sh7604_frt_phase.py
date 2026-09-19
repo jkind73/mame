@@ -21,7 +21,9 @@ head = next(ast.literal_eval(n.value) for n in ast.parse(mock.read_text()).body
 def extract(name, result):
     match = re.search(r'^' + result + r' sh7604_device::' + name + r'\([^)]*\)[^\n{]*\n\{.*?^\}', source, re.M | re.S)
     assert match, name
-    return match[0].replace('sh7604_device::', '')
+    return match[0].replace('sh7604_device::', '').replace(
+        'frc_r(offs_t offset, uint16_t mem_mask)', 'frc_r(offs_t offset = 0, uint16_t mem_mask = 0xffff)').replace(
+        'frc_icr_r(offs_t offset, uint16_t mem_mask)', 'frc_icr_r(offs_t offset = 0, uint16_t mem_mask = 0xffff)')
 
 functions = '\n'.join(extract(n, t) for n, t in (
     ('device_reset', 'void'), ('frt_reset', 'void'),

@@ -40,7 +40,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_write_txd(*this)
 	, m_read_rxd(*this, 1)
 	, m_write_sck(*this)
-	, m_tier(0), m_ftcsr(0), m_ftcsr_read(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
+	, m_tier(0), m_ftcsr(0), m_ftcsr_read(0), m_frc_tcr(0), m_tocr(0), m_frt_temp(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0)
@@ -134,6 +134,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_ftcsr_read));
 	save_item(NAME(m_frc_tcr));
 	save_item(NAME(m_tocr));
+	save_item(NAME(m_frt_temp));
 	save_item(NAME(m_frc));
 	save_item(NAME(m_ocra));
 	save_item(NAME(m_ocrb));
@@ -405,6 +406,7 @@ void sh7604_device::frt_reset()
 	m_ftcsr_read = 0;
 	m_frc_tcr = 0;
 	m_tocr = 0xe0;
+	m_frt_temp = 0;
 	m_frc = 0;
 	m_ocra = 0xffff;
 	m_ocrb = 0xffff;
@@ -1491,18 +1493,32 @@ void sh7604_device::ftcsr_w(uint8_t data)
 	sh2_recalc_irq();
 }
 
-uint16_t sh7604_device::frc_r()
+uint16_t sh7604_device::frc_r(offs_t offset, uint16_t mem_mask)
 {
 	sh2_timer_resync();
-	return m_frc;
+	if (machine().side_effects_disabled())
+		return m_frc;
+
+	// Section 11.3: the high-byte read snapshots the low byte in the
+	// single TEMP latch shared by FRC, ICR and OCR accesses.
+	if (mem_mask & 0xff00)
+		m_frt_temp = m_frc;
+	return (m_frc & 0xff00) | m_frt_temp;
 }
 
 void sh7604_device::frc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	sh2_timer_resync();
-	COMBINE_DATA(&m_frc);
-	sh2_timer_activate();
-	sh2_recalc_irq();
+	// High-byte writes only stage TEMP. The low-byte write commits the
+	// full counter; a full-width access executes both steps in order.
+	if (mem_mask & 0xff00)
+		m_frt_temp = data >> 8;
+	if (mem_mask & 0x00ff)
+	{
+		sh2_timer_resync();
+		m_frc = (uint16_t(m_frt_temp) << 8) | (data & 0xff);
+		sh2_timer_activate();
+		sh2_recalc_irq();
+	}
 }
 
 uint16_t sh7604_device::ocra_b_r()
@@ -1512,13 +1528,19 @@ uint16_t sh7604_device::ocra_b_r()
 
 void sh7604_device::ocra_b_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	sh2_timer_resync();
-	if (m_tocr & 0x10)
-		m_ocrb = (m_ocrb & ~mem_mask) | (data & mem_mask);
-	else
-		m_ocra = (m_ocra & ~mem_mask) | (data & mem_mask);
-	sh2_timer_activate();
-	sh2_recalc_irq();
+	if (mem_mask & 0xff00)
+		m_frt_temp = data >> 8;
+	if (mem_mask & 0x00ff)
+	{
+		sh2_timer_resync();
+		// OCRS selects the destination at commit; TEMP has no register tag.
+		if (m_tocr & 0x10)
+			m_ocrb = (uint16_t(m_frt_temp) << 8) | (data & 0xff);
+		else
+			m_ocra = (uint16_t(m_frt_temp) << 8) | (data & 0xff);
+		sh2_timer_activate();
+		sh2_recalc_irq();
+	}
 }
 
 uint8_t sh7604_device::frc_tcr_r()
@@ -1552,9 +1574,13 @@ void sh7604_device::tocr_w(uint8_t data)
 	sh2_recalc_irq();
 }
 
-uint16_t sh7604_device::frc_icr_r()
+uint16_t sh7604_device::frc_icr_r(offs_t offset, uint16_t mem_mask)
 {
-	return m_frc_icr;
+	if (machine().side_effects_disabled())
+		return m_frc_icr;
+	if (mem_mask & 0xff00)
+		m_frt_temp = m_frc_icr;
+	return (m_frc_icr & 0xff00) | m_frt_temp;
 }
 
 /*

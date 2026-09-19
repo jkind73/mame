@@ -16,7 +16,9 @@ source = (Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'src/devices/cpu/sh
 def extract(name, result):
     match = re.search(r'^' + result + r' sh7604_device::' + name + r'\([^)]*\)[^\n{]*\n\{.*?^\}', source, re.M | re.S)
     assert match, name
-    return match[0].replace('sh7604_device::', '')
+    return match[0].replace('sh7604_device::', '').replace(
+        'frc_r(offs_t offset, uint16_t mem_mask)', 'frc_r(offs_t offset = 0, uint16_t mem_mask = 0xffff)').replace(
+        'frc_icr_r(offs_t offset, uint16_t mem_mask)', 'frc_icr_r(offs_t offset = 0, uint16_t mem_mask = 0xffff)')
 
 functions = '\n'.join(extract(n, t) for n, t in (
     ('device_reset', 'void'), ('fmr_sbycr_w', 'void'), ('fmr_sbycr_r', 'uint16_t'),
@@ -57,6 +59,7 @@ struct Callback { bool isnull() const { return true; } void operator()(uint32_t)
 struct sh2_device { void device_reset() {} };
 struct Device : sh2_device {
  static constexpr uint8_t ICF=0x80, OCFA=8, OCFB=4, OVF=2, CCLRA=1;
+ uint8_t m_frt_temp=0;
  uint8_t m_ftcsr_read=0;
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
