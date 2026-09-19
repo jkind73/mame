@@ -20,6 +20,7 @@
 | IMPL-0006 | STV-03/STV-04 | d6043a22 | UNVALIDATED | 315-5649 PORT-G counter reset latches a difference base; counter inputs wired to PORTG.0-3 ioports (patocar trackball path) |
 | IMPL-0007 | CPU-03/IO-02 | e860f29a | UNVALIDATED | SCI SSR flags require a prior CPU read; TEND/MPB remain read-only, MPBT writes replace bit 0 |
 | IMPL-0008 | CPU-03/IO-02 | 23eb938a | UNVALIDATED | SCI asynchronous TX reloads at the final stop bit, chains queued frames and preserves a full stop interval |
+| IMPL-0009 | CPU-03/IO-02 | ca0432ea | UNVALIDATED | SCI receives parity/framing/overrun errors together at stop; unread RDR survives every overrun |
 
 ---
 
@@ -578,3 +579,74 @@
   parity/framing/overrun semantics, external SCK, synchronous transfer,
   SCI DMA routing and real peripheral wiring remain incomplete.
   No claim is made about external communication-device acceptance.
+
+
+### IMPL-0009 — CPU-03/IO-02 — SCI simultaneous receive errors
+
+- branch/commit: `arena/01a0b897-mame` @ **ca0432ea** (base: b3c853cc).
+- files: `src/devices/cpu/sh/sh7604.cpp:118,247` (save/reset),
+  `:1109-1215` (RX timer/completion), `src/devices/cpu/sh/sh7604.h:212`
+  (pending parity), `saturn_pending/impl_checks/check_sh7604_rx_errors.py`.
+- contract: the parity sample records a pending result, not a completed
+  receive operation. At the first stop-bit sample, latch PER, FER and
+  ORER independently, according to SH7604 Table 13.14. If RDRF was set,
+  retain unread RDR regardless of other errors; otherwise load received
+  data even on parity/framing errors, but set RDRF only for a good frame.
+  Recalculate IRQ status once at completion. Latched errors continue to
+  block further reception until acknowledged. This replaces IMPL-0002's
+  early parity-error completion and mutually exclusive error handling.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.3.2 printed p.363 (PDF379), steps 3-4 and Table 13.12;
+  section 13.5 printed p.381 (PDF397), Table 13.14 explicitly enumerates
+  all seven error combinations and RSR-to-RDR transfer rules. Section
+  13.2.7 pp.343-344 describes error flags and retaining unread data.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:677-701,743-762`: parity is collected
+  before STOP and reception finishes at STOP, corroborating staging.
+  **Disagreement:** its H8 implementation prioritizes FER/PER and does
+  not implement SH7604 Table 13.14's independent flags/data transfer.
+  MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:297-320` (blob
+  `14012b0605b00431137629d1cdd3f3ed63bfbe61`), records PER/FER
+  separately and checks RDRF before loading RDR. Its early PER/FER and
+  unconditional RDRF on non-overrun REC_END differ from the primary table;
+  those behaviors are not adopted. No reference code imported.
+- expected observable: exact values, no tolerance. Mask SSR by 0x78:
+  normal=0x40; PER=0x08; FER=0x10; FER+PER=0x18; overrun alone=0x60;
+  overrun+PER=0x68; overrun+FER=0x70; all three=0x78. For every overrun,
+  old RDR remains unchanged; for other rows RDR becomes the received
+  byte (7-bit reception clears bit7). No visible receive error/IRQ at
+  the parity sample; completion occurs at the first stop sample.
+- suggested method: drive RxD with independent 7/8-bit parity frames,
+  corrupt parity and/or stop and prefill RDRF independently. Observe
+  RDR/SSR/ERI before parity, after parity, and after stop. Save/load
+  between parity and stop, including all-three-error cases, then clear
+  errors through the read-qualified SSR handshake and send a clean frame.
+- falsifier: any missing combined error bit, overwrite of unread RDR on
+  overrun, RDRF set on a non-overrun bad frame, completion at parity
+  before stop, or pending parity lost across save/load contradicts this
+  candidate. A silicon trace differing from Table 13.14 is an explicit
+  reason to reject or revise the model, not adjust fixture expectations.
+- self-check run: `python3 saturn_pending/impl_checks/check_sh7604_rx_errors.py`
+  raw output (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 524288 Table 13.14 data/status cases; 16384 received parity frames
+  method-level, unvalidated: deferred errors, RDR retention, state-copy replay, stall/recovery exercised
+  method-level, unvalidated: pending parity reset/save registration present
+  ```
+  The same new script with a `git show b3c853cc:src/devices/cpu/sh/sh7604.cpp`
+  source copy exits 1: `line 185: d.m_ssr==(0x84|flags[error])`.
+  Current `check_sh7604_ssr.py` and `check_sh7604_tx_chain.py` rerun
+  unchanged, exit 0 (33,554,432 SSR transitions / 4,096 TX cases).
+  All extracted checks use UBSan. TU `sh7604.cpp` syntax with the
+  standard session include set: exit 0; `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: native IRQ delivery, actual save-manager
+  replay and physical sampling phase remain open. One new saved/reset
+  field `m_sci_rx_parity_error` changes the save layout; older save files
+  are incompatible. Multiprocessor wake filtering is still absent in
+  this commit. External clock/synchronous RX and SCI DMA remain absent.
+  No frozen DMA acknowledgement, delay-slot IRQ, sound or video path is
+  changed. Method-level state-copy replay is not a save-manager claim.
