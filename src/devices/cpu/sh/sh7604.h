@@ -86,6 +86,7 @@ private:
 	uint8_t rdr_r();
 
 	// SCI transfer engine (asynchronous/synchronous, internal/external clock)
+	void sci_reset();
 	attotime sci_bit_period() const;
 	void sci_recalc_rates();
 	void sci_sync_edge(bool level);

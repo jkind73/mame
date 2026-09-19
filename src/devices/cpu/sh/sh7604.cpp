@@ -234,37 +234,9 @@ void sh7604_device::device_reset()
 	m_wtcnt = 0;
 	m_wtcsr = 0;
 
-	// SCI: H'FFFFFE00 SMR=0, BRR=H'FF, SCR=0, TDR=H'FF, SSR=H'84, RDR=0
-	// (SH7604 Hardware Manual Table 13.2)
-	m_smr = 0;
-	m_brr = 0xff;
-	m_scr = 0;
-	m_tdr = 0xff;
-	m_ssr = SSR_TDRE | SSR_TEND;
-	m_sci_ssr_read = 0;
-	m_rdr = 0;
-	m_tsr = 0;
-	m_rsr = 0;
-	m_sci_tx_bit = 0;
-	m_sci_tx_phase = 0;
-	m_sci_tx_active = false;
-	m_sci_tx_loaded = false;
-	m_sci_rx_enabled = false;
-	m_sci_rx_state = 0;
-	m_sci_rx_shift = 0;
-	m_sci_rx_parity_error = false;
-	m_sci_rx_mp = false;
-	m_sci_rx_bitcnt = 0;
-	m_sci_rx_phase = 0;
-	m_sci_rx_vote = 0;
-	m_sci_sck = true;
-	m_sci_sck_out = true;
-	m_sci_clock_running = false;
-	m_sci_clock_timer->adjust(attotime::never);
-	m_sci_tx_timer->adjust(attotime::never);
-	m_sci_rx_timer->adjust(attotime::never);
-	m_write_txd(1); // TxD idles high
-	m_write_sck(1); // synchronous SCK idles high
+	// A reset also releases SCI module standby (section 14.5.2).
+	m_sbycr = 0;
+	sci_reset();
 
 	m_barah = 0;
 	m_baral = 0;
@@ -888,7 +860,42 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: SCI DMA request/ack routing and module-standby integration
+// TODO: SCI DMA request/ack routing and whole-chip standby integration
+
+void sh7604_device::sci_reset()
+{
+	// SCI: H'FFFFFE00 SMR=0, BRR=H'FF, SCR=0, TDR=H'FF, SSR=H'84, RDR=0
+	// (SH7604 Hardware Manual Table 13.2)
+	m_smr = 0;
+	m_brr = 0xff;
+	m_scr = 0;
+	m_tdr = 0xff;
+	m_ssr = SSR_TDRE | SSR_TEND;
+	m_sci_ssr_read = 0;
+	m_rdr = 0;
+	m_tsr = 0;
+	m_rsr = 0;
+	m_sci_tx_bit = 0;
+	m_sci_tx_phase = 0;
+	m_sci_tx_active = false;
+	m_sci_tx_loaded = false;
+	m_sci_rx_enabled = false;
+	m_sci_rx_state = 0;
+	m_sci_rx_shift = 0;
+	m_sci_rx_parity_error = false;
+	m_sci_rx_mp = false;
+	m_sci_rx_bitcnt = 0;
+	m_sci_rx_phase = 0;
+	m_sci_rx_vote = 0;
+	m_sci_sck = true;
+	m_sci_sck_out = true;
+	m_sci_clock_running = false;
+	m_sci_clock_timer->adjust(attotime::never);
+	m_sci_tx_timer->adjust(attotime::never);
+	m_sci_rx_timer->adjust(attotime::never);
+	m_write_txd(1); // TxD idles high
+	m_write_sck(1); // logical idle; the callbacks do not model high impedance
+}
 
 uint8_t sh7604_device::smr_r()
 {
@@ -1872,8 +1879,17 @@ void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		logerror("SH2 set clock multiplier x%d\n", 1 << (data & 3));
 		break;
 	case 0x00ff: // SBYCR
+		// MSTP0 initializes the SCI, but not its INTC vector registers
+		// (section 14.2.1 p.388). Clearing it leaves SCI at reset state.
+		// Section 14.5 forbids SCI accesses while stopped and switching
+		// a running module to standby; no paused-frame resume is implied.
+		if (BIT(data, 0) && !BIT(m_sbycr, 0))
+		{
+			sci_reset();
+			sh2_recalc_irq();
+		}
 		m_sbycr = data;
-		if (data & 0x1f)
+		if (data & 0x1e)
 			logerror("SH2 module stop selected %02x\n", data);
 		break;
 	}
