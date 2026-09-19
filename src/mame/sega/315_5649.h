@@ -54,12 +54,18 @@ public:
 	uint8_t read(offs_t offset);
 	void write(offs_t offset, uint8_t data);
 
+	// external RS-422 link delivers a receive byte into channel 0/1
+	void serial_rx_w(int channel, uint8_t data);
+
 protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 
 private:
+	uint8_t serial_pop_rx(int channel);
+	void serial_transmit(int channel, uint8_t data);
+
 	// callbacks
 	devcb_read8::array<7> m_in_port_cb;
 	devcb_write8::array<7> m_out_port_cb;
@@ -72,6 +78,13 @@ private:
 	uint8_t m_port_config;
 	uint8_t m_mode;
 	int m_analog_channel;
+
+	// RS-422 channel 1/2 holding registers (tx = awaiting transfer,
+	// rx = received byte awaiting CPU read)
+	uint8_t m_serial_tx[2];
+	uint8_t m_serial_rx[2];
+	bool m_serial_tx_full[2];
+	bool m_serial_rx_full[2];
 };
 
 // device type definition
