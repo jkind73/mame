@@ -3032,3 +3032,12 @@
 - Implementation work is paused at a clean committed checkpoint rather
   than accumulating more unpublishable changes. This is a delivery blocker,
   not evidence that remaining hardware work is complete or validated.
+
+### Publication blocker resolved — 2026-09-19
+
+- GitHub reconnection restored publication. The explicit push to
+  `origin arena/01a0b897-mame` succeeded through **a860a91d**, including
+  production **f97d3a7e** and the IMPL-0040 handoff.
+- The authentication delivery blocker above is resolved; its historical
+  failure record is retained. Implementation resumes on the same branch.
+  No hardware validation state changes are implied.
