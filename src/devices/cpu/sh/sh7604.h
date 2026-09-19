@@ -288,7 +288,7 @@ private:
 	// BSC
 	uint32_t m_bcr1, m_bcr2, m_wcr, m_mcr, m_rtcsr, m_rtcor, m_rtcnt;
 
-	uint64_t m_frc_base;
+	uint64_t m_frc_base; // epoch of last internal counter tick (preserves prescaler remainder)
 
 	int m_frt_input;
 

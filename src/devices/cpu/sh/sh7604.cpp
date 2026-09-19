@@ -423,13 +423,15 @@ void sh7604_device::sh2_timer_resync()
 	uint64_t cur_time = total_cycles();
 	uint64_t add = (cur_time - m_frc_base) >> divider;
 
-	if (add > 0)
+	if (divider)
 	{
-		if (divider)
-			m_frc += add;
-
-		m_frc_base = cur_time;
+		m_frc += add;
+		// Keep the fractional divider interval: reading FRC must not
+		// change the phi/8, phi/32 or phi/128 clock (section 11.4.1).
+		m_frc_base += add << divider;
 	}
+	else
+		m_frc_base = cur_time;
 }
 
 void sh7604_device::sh2_timer_activate()
@@ -467,9 +469,11 @@ void sh7604_device::sh2_timer_activate()
 		int divider = div_tab[m_frc_tcr & 3];
 		if (divider)
 		{
-			max_delta <<= divider;
-			m_frc_base = total_cycles();
-			m_timer->adjust(cycles_to_attotime(max_delta));
+			uint64_t const delta = uint64_t(max_delta) << divider;
+			uint64_t const elapsed = total_cycles() - m_frc_base;
+			// Scheduling is not a prescaler reset. Account for the partial
+			// interval already elapsed since the last counter tick.
+			m_timer->adjust(cycles_to_attotime(delta > elapsed ? delta - elapsed : 0));
 		}
 		else
 		{
@@ -1525,6 +1529,10 @@ uint8_t sh7604_device::frc_tcr_r()
 void sh7604_device::frc_tcr_w(uint8_t data)
 {
 	sh2_timer_resync();
+	// Retain the existing fresh-interval convention when changing clocks;
+	// writes to the input edge selector alone must preserve divider phase.
+	if ((m_frc_tcr ^ data) & 3)
+		m_frc_base = total_cycles();
 	m_frc_tcr = data & 0x83;
 	sh2_timer_activate();
 	sh2_recalc_irq();
