@@ -113,6 +113,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_tsr));
 	save_item(NAME(m_rsr));
 	save_item(NAME(m_sci_tx_bit));
+	save_item(NAME(m_sci_tx_phase));
 	save_item(NAME(m_sci_tx_active));
 	save_item(NAME(m_sci_tx_loaded));
 	save_item(NAME(m_sci_rx_enabled));
@@ -245,6 +246,7 @@ void sh7604_device::device_reset()
 	m_tsr = 0;
 	m_rsr = 0;
 	m_sci_tx_bit = 0;
+	m_sci_tx_phase = 0;
 	m_sci_tx_active = false;
 	m_sci_tx_loaded = false;
 	m_sci_rx_enabled = false;
@@ -886,7 +888,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: external-clock asynchronous transmit and asynchronous SCK output
+// TODO: asynchronous SCK output
 
 uint8_t sh7604_device::smr_r()
 {
@@ -928,6 +930,7 @@ void sh7604_device::scr_w(uint8_t data)
 		m_ssr |= SSR_TDRE;
 		m_ssr |= SSR_TEND;
 		m_sci_tx_active = false;
+		m_sci_tx_phase = 0;
 		m_sci_tx_loaded = false;
 		m_sci_tx_timer->adjust(attotime::never);
 		m_write_txd(1);
@@ -1026,9 +1029,16 @@ void sh7604_device::sck_w(int state)
 	if (BIT(m_smr, 7))
 		sci_sync_edge(level);
 	else if (level)
-		// External async SCK is the 16x base clock; receive sampling uses
-		// its rising edges (section 13.3.2 p.356 / Figure 13.21 p.382).
+	{
+		// External async SCK is the 16x base clock (section 13.3.2 p.356).
+		// TX advances once per sixteen rising edges, independently of RX.
+		if (m_sci_tx_active && BIT(m_scr, 5) && ++m_sci_tx_phase == 16)
+		{
+			m_sci_tx_phase = 0;
+			sci_tx_tick(m_sci_tx_bit);
+		}
 		sci_rx_tick(0);
+	}
 }
 
 void sh7604_device::sci_sync_edge(bool level)
@@ -1153,8 +1163,10 @@ void sh7604_device::sci_recalc_rates()
 	sci_update_sync_clock();
 	if (BIT(m_smr, 7))
 		return;
-	if (m_sci_tx_active && BIT(m_scr, 5))
+	if (m_sci_tx_active && BIT(m_scr, 5) && !BIT(m_scr, 1))
 		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
+	else
+		m_sci_tx_timer->adjust(attotime::never);
 	if (m_sci_rx_enabled && !BIT(m_scr, 1))
 		m_sci_rx_timer->adjust(sci_bit_period() / 16, m_sci_rx_phase);
 	else
@@ -1166,6 +1178,7 @@ void sh7604_device::sci_transmit_start()
 	// TDR is already in TSR. Sync waits for a falling SCK edge;
 	// async emits a start bit and then shifts the frame LSB first.
 	m_sci_tx_bit = BIT(m_smr, 7) ? 0 : 1; // next sync data bit / async timer event
+	m_sci_tx_phase = 0;
 	m_sci_tx_active = true;
 	m_sci_tx_loaded = false;
 	if (BIT(m_smr, 7))
@@ -1173,7 +1186,8 @@ void sh7604_device::sci_transmit_start()
 	else if (BIT(m_scr, 5))
 	{
 		m_write_txd(0); // start bit
-		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
+		if (!BIT(m_scr, 1))
+			m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
 	}
 }
 
@@ -1249,7 +1263,8 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_tick)
 	}
 
 	m_sci_tx_bit = param + 1;
-	m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
+	if (!BIT(m_scr, 1))
+		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
 }
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)

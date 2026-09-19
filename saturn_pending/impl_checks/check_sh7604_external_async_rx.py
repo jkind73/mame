@@ -24,7 +24,8 @@ struct attotime { static constexpr int never=-1; };
 struct Timer { unsigned arms=0; void adjust(int delay, int=0) { if (delay>=0) ++arms; } };''')
 head = head.replace('m_scr=0x50', 'm_scr=0').replace('m_sci_rx_enabled=true', 'm_sci_rx_enabled=false')
 head = head.replace('Timer timer; Timer *m_sci_rx_timer=&timer;', '''
- uint8_t m_brr=0, m_sci_tx_bit=0;
+ uint8_t m_brr=0, m_sci_tx_bit=0, m_sci_tx_phase=0;
+ void sci_tx_tick(int) { std::abort(); }
  bool m_sci_sck=true, m_sci_tx_loaded=false;
  Timer timer,tx; Timer *m_sci_rx_timer=&timer, *m_sci_tx_timer=&tx;
  void m_write_txd(int) {}
