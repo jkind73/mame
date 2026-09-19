@@ -14,6 +14,7 @@ def extract(text,signature):
     return text[start:end]
 head=r'''
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -35,10 +36,11 @@ struct saturn_cd_hle_device {
  void update_hirq(){++irqs;}
  void cr_standard_return(uint16_t);
  void cmd_set_cddevice_connection();void cmd_get_filter_connection();void cmd_get_sector_information();
- void cd_disconnect_filter_input(uint8_t);
+ void cd_disconnect_filter_input(uint8_t);void cd_connect_cddevice(uint8_t);
 };
 '''
 names=('cr_standard_return','cmd_set_cddevice_connection','cmd_get_filter_connection','cmd_get_sector_information','cd_disconnect_filter_input')
+if 'void saturn_cd_hle_device::cd_connect_cddevice(' in source:names+=('cd_connect_cddevice',)
 functions='\n'.join(extract(source,'void saturn_cd_hle_device::'+s+'(') for s in names)
 tail=r'''
 int main(){saturn_cd_hle_device d;unsigned images=0,commands=0,present=0;

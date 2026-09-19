@@ -17,7 +17,8 @@ head=next(ast.literal_eval(n.value) for n in ast.parse(Path(__file__).with_name(
           if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='head' for t in n.targets))
 head=head.replace('// TYPES','\n'.join(extract(header,s)+';' for s in ('struct direntryT','struct filterT','enum transT','enum trans32T')))
 head=head[:head.rfind('};')]+r'''
- filterT filters[24]{};filterT *cddevice=nullptr;
+ filterT filters[24]{};filterT *cddevice=nullptr;int cddevicenum=0xff;
+ void cd_disconnect_filter_input(uint8_t);void cd_connect_cddevice(uint8_t);
  uint32_t cd_curfad=900,fadstoplay=17;uint16_t cd_next_stat=0;
  int sectlenin=2048,m_seek_ticks_left=0;bool m_status_change_in_progress=false;
  void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
@@ -27,6 +28,9 @@ head=head[:head.rfind('};')]+r'''
 constexpr unsigned MAX_FILTERS=24,CD_STAT_BUSY=0,CD_STAT_PLAY=0x300,CD_STAT_SEEK=0x400,CD_STAT_PERI=0x2000;
 '''
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_read_file()', 'void saturn_cd_hle_device::cd_change_status('))
+head='#include <cassert>\n'+head
+if 'void saturn_cd_hle_device::cd_connect_cddevice(' in source:
+    functions+='\n'+extract(source,'void saturn_cd_hle_device::cd_connect_cddevice(')+'\n'+extract(source,'void saturn_cd_hle_device::cd_disconnect_filter_input(')
 tail=r'''
 using D=saturn_cd_hle_device;
 void issue(D &d,unsigned filter,unsigned fid,unsigned offset){d.cr1=0x7400|(offset>>16);d.cr2=offset;d.cr3=(filter<<8)|(fid>>16);d.cr4=fid;d.cmd_read_file();}

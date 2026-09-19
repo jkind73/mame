@@ -22,16 +22,17 @@ head=head[:head.rfind('};')]+r'''
  void update_hirq(){++irqs;}void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
  void cd_free_block(blockT*){CHECK(false);}void popmessage(const char*,unsigned){}
  void cmd_set_cddevice_connection();void cmd_get_cddevice_connection();void cmd_set_filter_connection();
- void cmd_reset_selector();void cd_reset_filter_conditions(filterT&);void cd_disconnect_filter_input(uint8_t);
+ void cmd_reset_selector();void cd_reset_filter_conditions(filterT&);void cd_disconnect_filter_input(uint8_t);void cd_connect_cddevice(uint8_t);
 };
 #define LOGCMD(...) ((void)0)
 #define LOGWARN(...) ((void)0)
 #define BIT(v,b) (((v)>>(b))&1)
 constexpr unsigned CMOK=1,ESEL=0x40,CD_STAT_REJECT=0xff00;
 '''
-head='#include <array>\n'+head
+head='#include <array>\n#include <cassert>\n'+head
 names=['cmd_set_cddevice_connection','cmd_get_cddevice_connection','cmd_set_filter_connection','cmd_reset_selector','cd_reset_filter_conditions']
 if 'void saturn_cd_hle_device::cd_disconnect_filter_input(' in source:names+=['cd_disconnect_filter_input']
+if 'void saturn_cd_hle_device::cd_connect_cddevice(' in source:names+=['cd_connect_cddevice']
 functions='\n'.join(extract(source,'void saturn_cd_hle_device::'+s+'(') for s in names)
 tail=r'''
 using D=saturn_cd_hle_device;using Image=std::array<D::filterT,24>;

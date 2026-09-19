@@ -1340,8 +1340,8 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
 }
 
 // Filter inputs have one producer; partition inputs may have many true
-// producers (ST-162 Table 5.1). Use the active pointer as authority because
-// legacy file commands can leave the visible connection number stale.
+// producers (ST-162 Table 5.1). Use the active pointer as authority when
+// repairing legacy/inconsistent connection images.
 void saturn_cd_hle_device::cd_disconnect_filter_input(uint8_t input) {
   if (input >= MAX_FILTERS)
     return;
@@ -1354,14 +1354,19 @@ void saturn_cd_hle_device::cd_disconnect_filter_input(uint8_t input) {
       filter.condfalse = 0xff;
 }
 
+void saturn_cd_hle_device::cd_connect_cddevice(uint8_t input) {
+  assert(input < MAX_FILTERS || input == 0xff);
+  cd_disconnect_filter_input(input);
+  cddevice = input < MAX_FILTERS ? &filters[input] : nullptr;
+  cddevicenum = input;
+}
+
 void saturn_cd_hle_device::cmd_set_cddevice_connection() {
   const uint8_t input = cr3 >> 8;
   if (input >= MAX_FILTERS && input != 0xff) {
     cr_standard_return(CD_STAT_REJECT);
   } else {
-    cd_disconnect_filter_input(input);
-    cddevice = input < MAX_FILTERS ? &filters[input] : nullptr;
-    cddevicenum = input;
+    cd_connect_cddevice(input);
     cr_standard_return(cd_stat);
   }
   hirqreg |= CMOK | ESEL;
@@ -2179,10 +2184,8 @@ void saturn_cd_hle_device::cmd_read_directory() {
 
   //  read_dir = ((cr3&0xff)<<16)|cr4;
 
-  if ((cr3 >> 8) < MAX_FILTERS)
-    cddevice = &filters[cr3 >> 8];
-  else
-    cddevice = (filterT *)nullptr;
+  const uint8_t input = cr3 >> 8;
+  cd_connect_cddevice(input < MAX_FILTERS ? input : 0xff);
 
   // TODO: how to actually read?
   // read_new_dir(read_dir - 2);
@@ -2308,10 +2311,7 @@ void saturn_cd_hle_device::cmd_read_file() {
   cd_change_status(CD_STAT_PLAY | 0x80); // set "cd-rom" bit
   cd_curfad = (curdir[file_id].firstfad + file_offset) & 0xffffff;
   fadstoplay = file_size;
-  if (file_filter < MAX_FILTERS)
-    cddevice = &filters[file_filter];
-  else
-    cddevice = (filterT *)nullptr;
+  cd_connect_cddevice(file_filter < MAX_FILTERS ? file_filter : 0xff);
 
   LOGWARN("Read file %08x (%08x %08x) %02x %d\n", curdir[file_id].firstfad,
           cd_curfad, fadstoplay, file_filter, sectlenin);
