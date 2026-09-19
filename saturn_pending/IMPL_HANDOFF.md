@@ -4498,3 +4498,60 @@ correct template but omitted its numeric line span. No contract/state change.
   persistent fields/save-layout change; no host-transfer/HIRQ handler,
   validator asset, existing fixture expectation, frozen SH/DMA/sound/video
   edits. These candidates require native game regression before integration.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0059 | CD-01 | dbca3640 | UNVALIDATED | Device reset restores default selector conditions/topology and disconnects stale CD/host consumers |
+
+### IMPL-0059 — CD-01 — reset selector topology
+
+- branch/commit/base: `arena/01a0b897-mame` @ **dbca3640**; base **2188263f**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:220-239` in `device_reset`;
+  `saturn_pending/impl_checks/check_cd_selector_reset.py`.
+- contract: device reset clears all 24 filter condition records, connects
+  true output i to partition i, disconnects false outputs, disconnects the
+  CD producer (pointer null/ID FF), and clears the stale host-transfer
+  partition pointer. Existing buffer emptying and transfer-type cancellation
+  remain unchanged. This does not reinterpret the separate Init-CD command.
+- primary source: ST-162-062094 printed p.43 section 5.3/Figure 5.3
+  (initial topology), p.49 section 5.5 (host information/selector/buffer
+  initialization), p.88 function 5.5 (zero initial filter conditions),
+  p.91 function 5.9 (selector initialization). SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Ymir pin
+  `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:147-157`, blob
+  `e8fedadb2d7374db35667bd064bb47fdc14b41a8`, resets filters/connections;
+  `cdblock_filter.hpp:21-39`, blob d1c51615ebf26ecb20c0b32c6d3b4f628fcf19e5,
+  supplies own true output, disconnected false and zero conditions.
+  Mednafen pin `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+  `src/ss/cdb.cpp:1441-1458`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  agrees. Upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d and local
+  2188263f reset were inspected: partition storage resets, filter topology
+  and the CD/host pointers do not. No reference code block imported.
+- expected observable: all filter condition values zero; true i/false FF
+  for each selector; CD connection FF; no old active host partition pointer.
+  Query commands and subsequent routing see defaults, not pre-reset chains.
+  Exact register/connection bits, zero tolerance; reset-edge latency excluded.
+- suggested method: program nondefault FAD/subheader conditions/connections,
+  populate buffers and start a host transfer; machine-reset and query all
+  selectors/connections, then reconnect and read a new sector. Repeat
+  cold/warm, with/without media, and native save/load after reset.
+- falsifier: retained pre-reset predicate/connection, routing to an old
+  target, stale host consumer, or changed documented default image rejects
+  the candidate. Native frozen boot/gameplay regression rejects integration.
+- self-check run (method-level, unvalidated): 512 poisoned reset images,
+  12,288 selector-default/routing observations, empty ownership/cancel
+  controls; fail-fast UBSan exit 0. Actual reset body, mocked media/timers/
+  MPEG/IRQ. First harness compile lacked a mock `playtype` declaration;
+  adding it fixed the harness, with no production/expectation change.
+  Historical 2188263f then fails at generated line 211 on stale consumers.
+  IMPL-0057/0058 probes and existing CD transfer/HIRQ/trace checks exit 0;
+  warning-enabled CD TU syntax/diff checks exit 0. No full build/native run.
+- state: **UNVALIDATED**.
+- not covered/known doubts: software Init-CD flag semantics/timing, selector
+  reset command details, active transfer interruption timing, actual media
+  mechanics, native save-manager and game/boot acceptance. No new fields or
+  save-layout change; no validator/expected-value/frozen CPU/sound/video edits.
