@@ -2613,3 +2613,51 @@
   exact non-A500 command decoding, WDTOVF and RSTE=1 internal reset remain
   separate. DMA acknowledgement machinery, delay-slot IRQ, sound/game
   paths, validator assets and existing expected values were not edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0034 | CPU-03 | — | BLOCKED(SH7604 RSTE=0 WDTOVF active-pulse re-enable/retrigger trace) | WDTOVF output needs the local-reset hold and overlapping-overflow contract, not an invented retrigger policy |
+
+### IMPL-0034 — CPU-03 — WDTOVF pulse/retrigger boundary
+
+- branch/base: `arena/01a0b897-mame` @ 403c6695; no production change.
+- files: `src/devices/cpu/sh/sh7604.cpp`, watchdog overflow callback TODO.
+- contract known: SH7604 ADE-602-085C Rev.4, section 12.3.1 pp.326-327/
+  Figure 12.4, specifies WDTOVF output for 128 phi and, with RSTE=1, an
+  internal reset for 512 phi. Sections 12.2.3 p.324 and 12.4.5 p.331
+  require a local WTCNT/WTCSR reset with RSTE=0. These passages do not
+  resolve acceptance of TME/counter writes during the output pulse or
+  suppression/retrigger/extension if software causes another overflow.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Saturn_MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/WDT.sv:74-83,164-183`, releases outputs on divided clock
+  enables and allows register writes after the local-reset assignment.
+  This is not sufficient evidence for a fixed-width retrigger policy;
+  phase/reset of those enables and hardware active-pulse access behavior
+  need qualification. Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_wdt.hpp:50-68`, does not supply
+  the external WDTOVF waveform. Neither resolves the missing contract.
+- expected observable once resolved: isolated pulse width 128 phi;
+  RSTE=0 retains CPU execution, with local-register behavior and any
+  overlapping pulse response recorded rather than assumed. RSTE=1's
+  512-phi internal reset additionally needs a reset-cause-aware CPU path
+  preserving RSTCSR; it cannot simply invoke the generic RES-style reset.
+- suggested measurement: hardware trace of phi/WDTOVF with RSTE=0,
+  CKS=0 and a near-overflow preload, followed by TME/counter writes at
+  several offsets inside the 128-phi pulse. Capture WTCSR/WTCNT/WOVF and
+  second-overflow time. Distinguish ignored writes, held local reset,
+  non-retriggerable output, restarted pulse and extended pulse.
+- falsifier for any future candidate: wrong isolated width, mismatched
+  active-pulse register acceptance or second-overflow waveform, or CPU
+  reset with RSTE=0. No arbitrary overlap behavior is queued as hardware.
+- self-check run: document/reference inspection only; no output model,
+  hardware trace, native test or validation claim.
+- state: **BLOCKED(SH7604 RSTE=0 WDTOVF active-pulse re-enable/retrigger trace)**.
+  Unblock with a hardware trace or additional primary timing/decode
+  documentation defining those transitions. Other implementation work
+  continues; this is not a claim that all CPU-03 work is blocked.
+- not covered: pulse callback/wiring, electrical drive/high-Z, external RES
+  priority during a pending internal reset, reset-vector selection and
+  active-reset save/load. Existing candidates remain UNVALIDATED.
