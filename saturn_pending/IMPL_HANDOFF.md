@@ -1877,3 +1877,82 @@
   sound and game paths and validator assets were not edited. This adds
   no external peripheral and changes no milestone status; IO-02's
   supported/not-supported inventory remains unchanged.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0024 | CPU-03 | 61268a62 | UNVALIDATED | FRT compares the pre-update count on a count edge; CCLRA keeps clearing even with OCFA latched |
+
+### IMPL-0024 — CPU-03 — compare edge and recurrent clear-on-A
+
+- branch/commit: `arena/01a0b897-mame` @ **61268a62** (base: 4044c049).
+- files: `src/devices/cpu/sh/sh7604.cpp:437-520` (event selection and
+  callback); `saturn_pending/impl_checks/check_sh7604_frt_compare.py:1-122`.
+- contract: compare flags are generated at the count-update edge after
+  FRC equals OCR, not when FRC first arrives at OCR or asynchronously on
+  programming an equal value. Compare distance is therefore unsigned
+  16-bit `(OCR-FRC)` plus one. CCLRA schedules every compare A regardless
+  of OCFA acknowledgement. B and overflow are eligible before the first
+  A clear when software starts FRC above OCRA; earliest-event scheduling,
+  rather than a static OCRA/OCRB ordering filter, handles reachability.
+  Overflow remains FFFF-to-0000; simultaneous A/B comparisons are retained.
+- primary source: SH7604 ADE-602-085C Rev.4, section 11.4.6 p.310 and
+  Figure 11.11 p.311 (match in the last state of equality on count update),
+  section 11.4.3 p.308/Figure 11.7 (counter clear), section 11.2.5
+  pp.301-302 (CCLRA separate from OCFA), section 11.4.7 p.311/Figure 11.12
+  (overflow), section 11.6 p.312/Figure 11.13 (recurrent pulse example).
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/FRT.sv:91-103,194-195,223-225`, compares pre-increment
+  FRC on FRC_CE and clears independently of the latched OCFA flag; blob
+  `5998fa70b8146b2791b6c26f983de0b173420393`. Ymir pinned
+  `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:54-78`, uses distance
+  less than elapsed steps (not less-than-or-equal); its bulk clear path
+  is not adopted as a multiple-period oracle. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:384-448`, and fork base `4044c049`
+  retain arrival-at-OCR scheduling and OCFA gating. No source imported.
+- expected observable: with initial FRC=0, OCRA=3 and phi/8, equality
+  occurs at tick 24 and the compare flag/CCLRA clear at tick 32, not 24.
+  With CCLRA=1, FRC repeats 0,1,2,3,0 with period 32 phi ticks even if
+  OCFA stays set. OCRA=0 clears on each count edge, never in a zero-time
+  callback loop. OCRA=B=FFFF from zero yields both compares and overflow
+  at count update 65536. Exact virtual counts/timestamps; native first
+  divider phase and observation granularity remain unqualified.
+- suggested method: run zero, ordinary and FFFF targets, with equal and
+  distinct A/B, CCLRA both clear/set, flags acknowledged and left latched.
+  Start above OCRA to expose B/overflow before the first clear. Check
+  reassertion after qualified flag acknowledgement and save/load across
+  repeated clear periods. Use an independent per-count-step reference.
+- falsifier: immediate equality-triggered compare, a match one count edge
+  early, a latched OCFA stopping periodic clear, a missed reachable B or
+  overflow before the first clear, or zero-time recurring events rejects
+  this candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `262144 full-range compare-edge windows; 9216 repeated-clear streams;
+  9216 state-copy replays; 9 first-pass wrap streams; 30 acknowledgement/reassertion cases`.
+  Same script with unmodified pre-change `4044c049` method bodies exits 1:
+  `line 315: d.timer.due>now`.
+  Fourteen prior SCI/FRT scripts exit 0. **Two prior scripts exit 1 and
+  their expectations are deliberately unchanged:**
+  - `check_sh7604_frt_stop.py`: `line 408: timer.due==release+65535*8`.
+    Initial FFFF compares now occur on update 65536, with overflow.
+  - `check_sh7604_frt_phase.py`: `line 344: polled.timer.due==epoch+(t<37*period?37:t<53*period?53:65536)*period`.
+    Targets 37/53 now compare on updates 38/54; this also supersedes its
+    immediate zero-distance timing control, not the phase-preservation rule.
+  These conflicts require validator review; they are not reported as
+  passing regressions. New method binary uses UBSan. Warning-enabled TU
+  syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare` and session include
+  paths) and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no native CPU/scheduler/IRQ or save-manager
+  qualification. No new saved fields; existing timer deadlines from old
+  saves cannot be assumed compatible with the changed match phase.
+  Same-cycle CPU register accesses versus timer updates and the write/
+  compare contention rules in section 11.7 are not implemented. CKS-switch
+  transients, FTCI/FTO pins and physical synchronization remain separate.
+  IMPL-0020/0022's earlier compare timestamp examples are superseded by
+  this candidate, not retroactively edited or qualified. Frozen DMA,
+  delay-slot, sound, game paths and validator assets/expectations untouched.
