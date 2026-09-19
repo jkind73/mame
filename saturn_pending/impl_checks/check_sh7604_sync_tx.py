@@ -27,7 +27,7 @@ def extract(name, result):
     return match[0].replace('sh7604_device::', '')
 
 functions = '\n'.join(extract(n, t) for n, t in (
-    ('sck_w', 'void'), ('scr_w', 'void'), ('ssr_r', 'uint8_t'), ('ssr_w', 'void'),
+    ('sck_w', 'void'), ('sci_sync_edge', 'void'), ('scr_w', 'void'), ('ssr_r', 'uint8_t'), ('ssr_w', 'void'),
     ('tdr_w', 'void'), ('sci_transmit_start', 'void'), ('sci_rx_complete', 'void')))
 tail = r'''
  void queue(uint8_t data) { const auto status=ssr_r(); CHECK(status & 0x80); tdr_w(data); ssr_w(status & ~0x80); }

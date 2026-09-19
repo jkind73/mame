@@ -42,6 +42,8 @@ struct Device {
  bool m_sci_rx_mp=false;
  Timer timer; Timer *m_sci_rx_timer=&timer;
  int line=1, irqs=0;
+ // This fixture exercises register/async/external-edge methods, not the internal clock.
+ void sci_update_sync_clock() {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
  int sci_bit_period() const { return 16; }

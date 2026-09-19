@@ -25,6 +25,8 @@ struct Device {
  uint8_t m_scr=0, m_smr=0, m_ssr=0x84, m_sci_ssr_read=0, m_tsr=0, m_tdr=0;
  bool m_sci_tx_active=false, inspect=false;
  int starts=0, irq_recalcs=0;
+ // This fixture exercises register/async/external-edge methods, not the internal clock.
+ void sci_update_sync_clock() {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return inspect; }
  void sci_transmit_start() { ++starts; m_sci_tx_active=true; }

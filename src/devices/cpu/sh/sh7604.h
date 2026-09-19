@@ -34,6 +34,7 @@ public:
 
 	auto txd_wr_callback() { return m_write_txd.bind(); }
 	auto rxd_rd_callback() { return m_read_rxd.bind(); }
+	auto sck_wr_callback() { return m_write_sck.bind(); }
 	void sck_w(int state);
 
 	void sh2_notify_dma_data_available();
@@ -84,9 +85,12 @@ private:
 	void ssr_w(uint8_t data);
 	uint8_t rdr_r();
 
-	// SCI transfer engine (internal async / external synchronous)
+	// SCI transfer engine (internal async / internal and external synchronous)
 	attotime sci_bit_period() const;
 	void sci_recalc_rates();
+	void sci_sync_edge(bool level);
+	void sci_update_sync_clock();
+	TIMER_CALLBACK_MEMBER(sci_sync_tick);
 	void sci_transmit_start();
 	TIMER_CALLBACK_MEMBER(sci_tx_tick);
 	TIMER_CALLBACK_MEMBER(sci_rx_tick);
@@ -213,12 +217,16 @@ private:
 	uint8_t m_sci_rx_phase;     // oversample phase 0-15 within a bit
 	uint8_t m_sci_rx_vote;      // majority-vote accumulator
 	bool m_sci_sck;            // external SCK input level (edge history)
+	bool m_sci_sck_out;        // internal synchronous clock output level
+	bool m_sci_clock_running;  // internal synchronous clock timer enabled
 	emu_timer *m_sci_tx_timer;
 	emu_timer *m_sci_rx_timer;
+	emu_timer *m_sci_clock_timer;
 
 	// SCI pin-level interface (unbound = TxD not connected, RxD idle)
 	devcb_write_line m_write_txd;
 	devcb_read_line m_read_rxd;
+	devcb_write_line m_write_sck;
 
 	// FRT / FRC
 	uint8_t m_tier, m_ftcsr, m_frc_tcr, m_tocr;
