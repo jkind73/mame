@@ -5110,3 +5110,62 @@ are method-level raw output, not native evidence.
   file number/attribute derivation, file-table window/count, native stream
   timing/gameplay/save-manager behavior remain separate. No new fields or
   layout break, validator/fixture or frozen-path edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0069 | CD-05 | 5da1c7fe | UNVALIDATED | Save staged TOC/subcode/single-file response bytes alongside their word-transfer cursors |
+
+### IMPL-0069 — CD-05 — word-transfer staging save coherence
+
+- branch/commit/base: `arena/01a0b897-mame` @ **5da1c7fe**; base **c6b66a01**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` device_start payload registrations;
+  `saturn_cd_hle.h` tocbuf/subqbuf/subrwbuf/finfbuf initializers;
+  `saturn_pending/impl_checks/check_cd_word_buffer_save.py`.
+- contract: register all698 staging bytes (408TOC,10subQ,24subRW,256file
+  staging) with the already registered transfer kind/byte counters. Loading
+  an image must restore the pending word payload, not retain bytes from a
+  later command. Initial backing arrays are zeroed for deterministic native
+  serialization; this does not assert a hardware value for unexposed bytes.
+- primary source: ST-162-062094 printed p.32 section3.4 data transfer,
+  p.77 function1.3 TOC, p.85 subcode functions3.1/3.2, p.100 file-info
+  function8.4 define the visible response streams; SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`. Save/load coherence is an
+  emulator lifecycle obligation, not an emulated CD hardware instruction.
+- cross-checks/provenance: Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:328-342,472-487`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, saves/restores transfer buffer
+  with position/count. Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:4309-4314,4355,4370-4372,4382`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, includes FIFO/TOC/subcode/file
+  backing. Native MAME src/emu/save.h typed array registrations are used,
+  not host-pointer serialization. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d and local base device_start
+  were reviewed: cursor/state saved, these response arrays absent.
+- expected observable: save after any word, issue another command that
+  overwrites staging, load and finish the old TOC/subQ/subRW/single-file
+  transfer: remaining words and final DataEnd response match uninterrupted
+  operation exactly. Zero word/byte/count tolerance and no load-only IRQ.
+- suggested method: native save/mutate/load for each of the four transfer
+  kinds, before/after final word and at all meaningful word boundaries;
+  compare response stream/count and actual save-manager acceptance.
+- falsifier: post-save payload leaks into restored transfer, type/cursor
+  payload mismatch, changed remaining word/count, load-only IRQ edge or
+  rejected native array registration.
+- self-check run (method-level, unvalidated): actual production registrations
+  and word-reader/DataEnd bodies through byte serializer;59,136 replay
+  images covering every word cut and256 payload patterns across all four
+  kinds, checking all backing bytes and responses; ASan/fail-fast UBSan
+  exit0. Historical c6b66a01 fails replay words at generated line245.
+  Warning-enabled CD C++20 syntax/diff checks exit0. No full build/native
+  save-file qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: **save-state layout break** from new registered
+  arrays; old files not claimed compatible. Full-table FILEINFO_254 still
+  depends on unsaved dynamic curdir/root, so this does NOT close complete
+  CD-05. Directory/MPEG/remaining drive-phase state, native event/IRQ/media
+  reconstruction and game regressions remain separate. No transfer
+  algorithms, reset-time compatibility exceptions, validator expectations
+  or frozen SH/sound/video behavior changed.
