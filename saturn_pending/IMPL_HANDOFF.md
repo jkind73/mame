@@ -1345,3 +1345,21 @@
   cross-version save compatibility is not established. SCI DMA, standby,
   CPU clock transitions and physical pin margins remain open. Frozen
   accepted paths and validator assets remain untouched.
+
+#### IMPL-0018 locator/provenance addendum
+
+- Production locators at `a515c1a4`: `src/devices/cpu/sh/sh7604.cpp:89`
+  (timer callback registration), `:1101-1162` (shared clock),
+  `:1176-1211` (rate selection and deferred launch), `:1213-1296`
+  (async bit output/chaining); `src/devices/cpu/sh/sh7604.h:90-95`
+  (helper declarations). Method fixture:
+  `saturn_pending/impl_checks/check_sh7604_async_clock_out.py:1-139`.
+- Fork history through base `1777a8b2` contains the existing internal
+  synchronous clock candidate `01374a7d` and external async candidates
+  `520b3f8a`/`ac368a39`; this change extends their shared inline engine,
+  rather than enabling the unused standalone SCI device or importing
+  another implementation. Upstream pinned `398bba74ed7997d29c2316316da230f6d85fda0d`
+  `src/devices/cpu/sh/sh7604.cpp:872-879` has register stubs, not an
+  asynchronous clock-output engine to adopt. The H8 phase relation and
+  MiSTer TX_RUN gate cited above were inspected directly; neither
+  establishes native SH7604 startup phase or save-state behavior.
