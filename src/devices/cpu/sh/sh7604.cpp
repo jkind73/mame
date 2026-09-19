@@ -47,7 +47,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_dmaor(0)
 	, m_sbycr(0), m_ccr(0)
 	, m_bcr1(0), m_bcr2(0), m_wcr(0), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
-	, m_frc_base(0), m_frt_input(0)
+	, m_frc_base(0), m_frt_input(0), m_frt_clock_input(false)
 	, m_timer(nullptr), m_wdtimer(nullptr)
 	, m_is_slave(0)
 	, m_dma_kludge_cb(*this)
@@ -141,6 +141,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_frc_icr));
 	save_item(NAME(m_frc_base));
 	save_item(NAME(m_frt_input));
+	save_item(NAME(m_frt_clock_input));
 
 	// INTC
 	save_item(NAME(m_irq_level.frc));
@@ -216,6 +217,7 @@ void sh7604_device::device_reset()
 	// Reset releases module standby before starting the free-running timer.
 	m_sbycr = 0;
 	m_frt_input = 0;
+	m_frt_clock_input = false;
 	frt_reset();
 	sh2_timer_activate();
 
@@ -420,7 +422,7 @@ void sh7604_device::sh2_timer_resync()
 	if (BIT(m_sbycr, 1))
 		return;
 
-	// TODO: setting 3 is "External clock: count on rising edge"
+	// External mode advances only through ftci_w, never CPU elapsed time.
 	int divider = div_tab[m_frc_tcr & 3];
 	uint64_t cur_time = total_cycles();
 	uint64_t add = (cur_time - m_frc_base) >> divider;
@@ -480,11 +482,6 @@ void sh7604_device::sh2_timer_activate()
 			// interval already elapsed since the last counter tick.
 			m_timer->adjust(cycles_to_attotime(delta > elapsed ? delta - elapsed : 0));
 		}
-		else
-		{
-			// TODO: saturn:pulirula on slave CPU (0 cycles)
-			logerror("SH2.%s: Timer event in %d cycles of external clock\n", tag(), max_delta);
-		}
 	}
 }
 
@@ -498,10 +495,19 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_timer_callback)
 	// before that edge; overflow still describes FFFF -> 0000.
 	uint16_t const previous = m_frc - 1;
 
+	frt_compare_tick(previous);
+
+	sh2_recalc_irq();
+	sh2_timer_activate();
+}
+
+// Shared count-edge behavior for internal and external FRT clocks.
+void sh7604_device::frt_compare_tick(uint16_t previous)
+{
 	if (previous == m_ocrb)
 		m_ftcsr |= OCFB;
 
-	if (m_frc == 0x0000)
+	if (previous == 0xffff)
 		m_ftcsr |= OVF;
 
 	if (previous == m_ocra)
@@ -512,8 +518,22 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_timer_callback)
 			m_frc = 0;
 	}
 
-	sh2_recalc_irq();
-	sh2_timer_activate();
+}
+
+void sh7604_device::ftci_w(int state)
+{
+	bool const level = state != 0;
+	bool const rising = level && !m_frt_clock_input;
+	m_frt_clock_input = level;
+	// Keep pin history even when another clock is selected or MSTP1 is set.
+	if (!rising || (m_frc_tcr & 3) != 3 || BIT(m_sbycr, 1))
+		return;
+
+	uint16_t const previous = m_frc++;
+	uint8_t const old_flags = m_ftcsr;
+	frt_compare_tick(previous);
+	if (old_flags != m_ftcsr)
+		sh2_recalc_irq();
 }
 
 void sh7604_device::sh2_wtcnt_recalc()

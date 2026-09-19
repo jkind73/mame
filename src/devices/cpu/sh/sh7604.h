@@ -36,6 +36,7 @@ public:
 	auto rxd_rd_callback() { return m_read_rxd.bind(); }
 	auto sck_wr_callback() { return m_write_sck.bind(); }
 	void sck_w(int state);
+	void ftci_w(int state);
 
 	void sh2_notify_dma_data_available();
 
@@ -291,6 +292,7 @@ private:
 	uint64_t m_frc_base; // epoch of last internal counter tick (preserves prescaler remainder)
 
 	int m_frt_input;
+	bool m_frt_clock_input;
 
 	emu_timer *m_timer;
 	emu_timer *m_wdtimer;
@@ -316,6 +318,7 @@ private:
 	TIMER_CALLBACK_MEMBER(sh2_wdtimer_callback);
 	TIMER_CALLBACK_MEMBER(sh2_dma_current_active_callback);
 	void frt_reset();
+	void frt_compare_tick(uint16_t previous);
 	void sh2_timer_resync();
 	void sh2_timer_activate();
 	void sh2_wtcnt_recalc();

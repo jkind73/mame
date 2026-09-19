@@ -37,6 +37,8 @@ functions = '\n'.join(extract(n, t) for n, t in (
     ('device_reset', 'void'), ('fmr_sbycr_w', 'void'),
     ('sh2_timer_resync', 'void'), ('sh2_timer_activate', 'void'), ('set_frt_input', 'void'),
     ('tier_w', 'void'), ('frc_w', 'void'), ('tocr_w', 'void'), ('ocra_b_w', 'void')))
+if 'void sh7604_device::frt_compare_tick(' in source:
+    functions += '\n' + extract('frt_compare_tick', 'void')
 match = re.search(r'^TIMER_CALLBACK_MEMBER\(sh7604_device::sh2_timer_callback\)\n\{.*?^\}', source, re.M | re.S)
 assert match
 functions += '\nvoid sh2_timer_callback(int param)\n' + match[0].split('\n', 1)[1]
