@@ -1825,41 +1825,27 @@ void saturn_cd_hle_device::cmd_get_sector_information() {
 }
 
 void saturn_cd_hle_device::cmd_set_sector_length() {
-  // set sector length
   LOGCMD("%s: Set sector length\n", machine().describe_context());
 
-  switch (cr1 & 0xff) {
-  case 0:
-    sectlenin = 2048;
-    break;
-  case 1:
-    sectlenin = 2336;
-    break;
-  case 2:
-    sectlenin = 2340;
-    break;
-  case 3:
-    sectlenin = 2352;
-    break;
+  const uint8_t get = cr1 & 0xff;
+  const uint8_t put = cr2 >> 8;
+  if ((get >= 4 && get != 0xff) || (put >= 4 && put != 0xff)) {
+    // Validate both operands before changing either direction.
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
   }
 
-  switch ((cr2 >> 8) & 0xff) {
-  case 0:
-    sectlenout = 2048;
-    break;
-  case 1:
-    sectlenout = 2336;
-    break;
-  case 2:
-    sectlenout = 2340;
-    break;
-  case 3:
-    sectlenout = 2352;
-    break;
-  }
+  static constexpr int lengths[] = {2048, 2336, 2340, 2352};
+  if (get != 0xff)
+    sectlenin = lengths[get];
+  if (put != 0xff)
+    sectlenout = lengths[put];
+
+  cr_standard_return(cd_stat);
   hirqreg |= (CMOK | ESEL);
   update_hirq();
-  cr_standard_return(cd_stat);
 }
 
 void saturn_cd_hle_device::cmd_get_sector_data() {
