@@ -544,8 +544,8 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
       put_u32be(&finfbuf[0], entry.firstfad);
       // second 4 bytes = length of file
       put_u32be(&finfbuf[4], entry.length);
-      finfbuf[8] = entry.interleave_gap_size;
-      finfbuf[9] = entry.file_unit_size;
+      finfbuf[8] = entry.file_unit_size;
+      finfbuf[9] = entry.interleave_gap_size;
       finfbuf[10] = temp;
       finfbuf[11] = entry.flags;
     }
@@ -2253,8 +2253,8 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     put_u32be(&finfbuf[0], entry.firstfad);
     // second 4 bytes = length of file
     put_u32be(&finfbuf[4], entry.length);
-    finfbuf[8] = entry.interleave_gap_size;
-    finfbuf[9] = entry.file_unit_size;
+    finfbuf[8] = entry.file_unit_size;
+    finfbuf[9] = entry.interleave_gap_size;
     finfbuf[10] = temp;
     finfbuf[11] = entry.flags;
 
