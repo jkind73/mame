@@ -25,8 +25,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: jkind73/mame
       # Draft pre-created through gh: this integration cannot create it in CI.
-      SOURCE_RUN: '35405593717'
-      SOURCE_SHA: 'ea928158472b7344cc11e3adb330f54349bcedbb'
+      SOURCE_RUN: '35409599120'
+      SOURCE_SHA: '7a86f4b76ad08c9eb77778530ba9a65714c036ba'
     steps:
       - name: Verify successful source run and export its exact ZIP to a draft
         shell: python
