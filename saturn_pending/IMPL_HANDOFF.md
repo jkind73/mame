@@ -29,6 +29,7 @@
 | IMPL-0015 | CPU-03/IO-02 | 01374a7d | UNVALIDATED | Internal synchronous SCI emits baud-derived SCK pulses, idles high and clocks TX/RX together |
 | IMPL-0016 | CPU-03/IO-02 | 520b3f8a | UNVALIDATED | External asynchronous receive advances only on rising 16x SCK edges, without RX timer pacing |
 | IMPL-0017 | CPU-03/IO-02 | ac368a39 | UNVALIDATED | External asynchronous TX advances once per sixteen rising SCK edges and never arms the internal bit timer |
+| IMPL-0018 | CPU-03/IO-02 | a515c1a4 | UNVALIDATED | Async CKE=01 outputs continuous baud-rate SCK, with rising edges at transmitted-bit centers |
 
 ---
 
@@ -1253,3 +1254,94 @@
   output, SCI DMA, standby/CPU-clock transitions, physical margins and
   real modem/cable/peer configuration remain open. Frozen accepted work
   and validator assets are untouched.
+
+
+### IMPL-0018 — CPU-03/IO-02 — asynchronous SCK output and TX phase
+
+- branch/commit: `arena/01a0b897-mame` @ **a515c1a4** (base: 1777a8b2).
+- files: `src/devices/cpu/sh/sh7604.cpp` (`sci_update_clock`,
+  `sci_clock_tick`, `sci_recalc_rates`, `sci_transmit_start`,
+  `sci_tx_tick` and renamed helper callers),
+  `src/devices/cpu/sh/sh7604.h` (helper names/state comments),
+  `saturn_pending/impl_checks/check_sh7604_async_clock_out.py`.
+  Six prior extraction/mock files follow the helper renames only;
+  no existing expected values or validator assets changed.
+- contract: C/A=0 and CKE=01 output a continuous SCK at the programmed
+  bit rate, even with TE and RE clear. Async receive errors and TE
+  cancellation do not stop that clock. TX in this mode waits for a
+  falling SCK edge to emit its start bit and changes each subsequent
+  bit on falling edges, placing rising edges at bit centers. The
+  final stop interval remains a full bit; a queued next character
+  starts on the same falling edge that ends that interval. There is
+  no competing async TX timer in clock-output mode. CKE=00 internal
+  TX and CKE=10/11 external TX retain their prior pacing paths.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 13.2.6 pp.341-342 CKE selection, section 13.3.2 p.356 and
+  Figure 13.3 (output frequency equals bit rate; rising edge at center
+  of transmit data), p.356 initialization step 3 (clock output starts
+  on SCR configuration with TE/RE still zero), p.357 initialization
+  step 4 (wait one bit before enabling transfers), p.359/Figure 13.6
+  for continuous frames. Bit period follows Table 13.3 pp.347-348 and
+  formula p.349. SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/h8/h8_sci.cpp:538-547,548-566` emits async data
+  at clock phase zero and raises SCK at phase eight, corroborating
+  center alignment. Its clock_start/clock_stop gating (`:457-514`)
+  is tied to transfers and is not evidence for the SH7604's documented
+  clock-only initialization. MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/SCI.sv:105-139,193-226,347` generates the baud clock
+  and transmits on SCE_F, but SCKO is gated by TX_RUN; that idle-clock
+  difference is not adopted. Primary initialization text governs it.
+  No reference code imported.
+- expected observable: for BRR=0, CKS=0 the bit period is 128 CPU phi
+  ticks and SCK toggles every 64 ticks, without enabling TX/RX. After
+  enabling TX and queuing a byte, start/data/parity/stop transitions
+  occur only at falling SCK edges; each corresponding rising edge
+  follows 64 ticks later. An 8N1 frame occupies ten full output-clock
+  periods; back-to-back frames add no idle period. Clock output remains
+  active after TEND or TE=0 until its mode is deselected. Exact bit
+  values/pulse counts; period tolerance is one accumulated attosecond
+  rounding per half-cycle in a native attotime probe. Initial divider
+  phase relative to the SCR write is not a silicon timing assertion.
+- suggested method: initialize SMR/BRR and CKE=01 with TE/RE clear;
+  observe free-running SCK before enabling TX. Queue at several phases
+  of an already-running clock and capture TxD/SCK together. Include
+  all frame formats, pending next bytes, late stop-interval writes,
+  independent/looped-back RX, error flags, interrupt-enable writes,
+  TE cancellation and disabling clock output. Save/load while a start
+  bit waits for a falling edge and between consecutive frames.
+- falsifier: no clock while TE/RE are zero, 16x rather than baud-rate
+  output, a rising edge not centered in an ordinary transmitted bit,
+  duplicate data from a second TX timer, truncated stop or extra idle
+  bit between queued frames, or TE/receive-error gating the async clock
+  contradicts this candidate. Silicon requiring a different launch
+  phase after register writes would revise the provisional first edge.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 1024 clock-divider cases; 16384 phase-aligned three-frame streams; 512 RX loopbacks; 4096 state-copy replays
+  method-level, unvalidated: idle clock, bit-center rising edges, no competing TX timer, continuous queueing and TE/error independence exercised
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_async_clock_out.py`.
+  Same new script with pre-change `1777a8b2` source, normalizing helper
+  names only, exits 1:
+  `line 543: d.m_sci_clock_running && d.sci_bit_period().value==bit`.
+  Ten preceding focused SCI scripts rerun with unchanged expected
+  values: exit 0. Extracted checks use UBSan. Full `sh7604.cpp` syntax
+  with `-std=c++20 -Wall -Werror -Wno-sign-compare` and session includes:
+  exit 0, no diagnostics; reorder enabled. `git diff --check`: exit 0.
+- state: UNVALIDATED
+- not covered / known doubts: no native CPU/IRQ/save-manager or hardware
+  capture. Exact initial baud-divider phase and simultaneous CPU-write/
+  SCK-edge ordering remain open. Clock-source/BRR changes mid-transfer
+  and clock-pin GPIO behavior outside SCI output mode are not qualified.
+  Output SCK is **1x** baud; external asynchronous SCK input is **16x**
+  baud, so directly wiring these two pins is not a valid async clock
+  link. No actual cable/modem device is claimed. Existing saved clock
+  level/running state, timer and TX bit index are reused, but bit index
+  zero now represents an async pending start and the timer callback was
+  renamed. Do not reuse pre-change active-SCI saves across this change;
+  cross-version save compatibility is not established. SCI DMA, standby,
+  CPU clock transitions and physical pin margins remain open. Frozen
+  accepted paths and validator assets remain untouched.
