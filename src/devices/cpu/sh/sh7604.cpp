@@ -1879,7 +1879,9 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		if (q != (int32_t)q)
 		{
 			m_divu_ovf = true;
-			m_dvdntl = 0x7fffffff;
+			// With OVFIE=0, the quotient saturates according to its sign
+			// (section 10.3.3). OVFIE=1 intermediate results remain TODO.
+			m_dvdntl = (!m_divu_ovfie && q < 0) ? 0x80000000 : 0x7fffffff;
 			m_dvdnth = 0x7fffffff;
 			sh2_recalc_irq();
 			// TODO: 6 cycles, plenty of these in saturn:vkyoute2
