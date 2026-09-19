@@ -3874,3 +3874,68 @@ No contract, implementation identity or state change.
   No new device fields or save-layout change; existing timer objects and
   control-register save registrations remain. No frozen transfer/ack,
   delay-slot IRQ, sound or video handler changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0052 | CPU-03 | 63d1bf91 | UNVALIDATED | CHCR0/1 read bits 31-16 as zero without changing control/status storage or DMA side effects |
+
+### IMPL-0052 — CPU-03 — CHCR reserved read bits
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `63d1bf91`,
+  base `8427e1aa`; committed and pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp`, `chcr_r` template;
+  `saturn_pending/impl_checks/check_sh7604_chcr_reserved.py` (new).
+- contract: CHCR reads expose only bits 15-0. Bits 31-16 are reserved and
+  always zero on read. Mask only the returned value; do not mutate backing
+  storage, TE, other channel state, write handling, transfer scheduling or
+  interrupt acknowledgements. No new fields or save-layout change.
+- primary source: SH7604 ADE-602-085C Rev.4 section 9.2.4 p.237 explicitly
+  identifies the upper 16 bits as reserved/read-zero and requires writing
+  zero there. Section 9.5 p.285 requires longword CHCR accesses. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/DMAC.sv:447,451` masks both CHCR reads with CHCRx_RMASK;
+  `rtl/SH/SH7604/SH7604_pkg.sv:405` defines it as 0000FFFF. Blobs
+  `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`.
+- provenance: local/fork getter and upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1613-1616`, return unmasked backing
+  storage. Local history reviewed; no external implementation imported.
+- expected observable: every CHCR longword read has upper half 0000 and
+  preserves all 16 low control/status bits. At method level, raw backing
+  FFFF5205 returns 00005205 and A55A0006 returns 00000006. These raw
+  injections are robustness diagnostics, NOT permitted software writes or
+  transfer configurations. Units: exact 32-bit words, zero bit tolerance.
+- suggested measurement: native longword readback for both channels after
+  legal disabled-channel programming, with independently produced TE status;
+  instrumented backing-state injection can discriminate the missing mask
+  without interpreting reserved-one writes as supported hardware use.
+  Check native save/load separately. No byte/word access contract is added.
+- falsifier: a read loses a meaningful low bit, changes TE or the other
+  channel, or reads upper-half ones under an applicable documented hardware
+  contract. An attributable erratum making upper bits meaningful would
+  also invalidate this mask. Illegal-write results alone are not a legal
+  programming contract.
+- self-check run (method-level, unvalidated): actual template getters and
+  writer, mocked DMA start/check, fail-fast UBSan; 524,288 raw-storage masks,
+  524,288 state-copy replays and 288 disabled-channel write/status controls;
+  exit 0. Raw sweeps exercise all low-word images and four upper-word
+  patterns on both channels; prohibited low encodings are diagnostic only.
+  Defined-field write controls use DE=0 and TE=1 writes to preserve seeded
+  status, not software-set it. Historical `8427e1aa` source fails the first
+  poisoned-backing read (generated line 54).
+  Prior selected 40-script series: 36 exit 0/four conflicts. Including the
+  new probe: selected 41-script series, 37 exit 0/four unchanged semantic
+  conflicts (frt_stop generated line 474, frt_phase 410, wdt_access 132,
+  bsc_access 98). Existing expectations and validator assets untouched.
+  Warning-enabled C++20 TU syntax-only and `git diff --check`: exit 0.
+  No full build or native qualification.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: native mapping/access widths, TE read-qualified
+  clearing, live transfer timing, IRQ acknowledgement and save-manager
+  behavior. No DMA consumer, arbitration or completion path changed; no
+  frozen DMA acknowledgement, delay-slot IRQ, sound or video handler edits.
