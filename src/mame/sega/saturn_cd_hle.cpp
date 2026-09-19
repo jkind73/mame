@@ -765,8 +765,10 @@ int saturn_cd_hle_device::sega_cdrom_get_adr_control(int track) {
 
 void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
   if (!m_cdrom_image->exists()) {
-    // preserve whatever command is currently set
-    cr1 = cd_stat | (cr1 & 0xff);
+    // A missing image does not turn a REJECT/WAIT into a normal drive
+    // status. Keep the legacy low response byte, but honor the caller's
+    // command status just as the media-present paths below do.
+    cr1 = cur_status | (cr1 & 0xff);
     // cr2 = 0;
     // cr3 = 0;
     // cr4 = 0;
