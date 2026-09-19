@@ -2131,7 +2131,8 @@ void sh7604_device::bcr1_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::bcr2_r()
 {
-	return m_bcr2 & 0xffff;
+	// Only A3SZ, A2SZ and A1SZ are readable; reserved bits read zero.
+	return m_bcr2 & 0x00fc;
 }
 
 void sh7604_device::bcr2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
