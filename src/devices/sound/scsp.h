@@ -74,7 +74,10 @@ private:
   };
 
   struct SCSP_LFO_t {
-    u16 phase;
+    // 8.24 accumulator: one wrap is one LFO cycle, so the table index is
+    // phase >> LFO_PHASE_SHIFT. 8 fractional bits rounded every Table 4.21
+    // setting below 0.68 Hz down to a zero increment, i.e. no modulation.
+    u32 phase;
     u32 phase_step;
     int *table;
     int *scale;
@@ -220,8 +223,9 @@ private:
 
   // LFO
   void LFO_Init();
-  s32 PLFO_Step(SCSP_LFO_t *LFO);
-  s32 ALFO_Step(SCSP_LFO_t *LFO);
+  bool LFO_ResetHold(SCSP_SLOT *slot);
+  s32 PLFO_Step(SCSP_LFO_t *LFO, bool hold);
+  s32 ALFO_Step(SCSP_LFO_t *LFO, bool hold);
   void LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS, u32 LFOS,
                        int ALFO);
 };

@@ -60,6 +60,12 @@ ST-077-R2-052594, SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, PDF blob
   blob `402dcb6eedca98547c34a799fea3dc56eddbca5a` and the whole tree contain no
   MIDI register logic at all.
 
+The bit positions have a third, in-tree corroboration: the pre-existing (and
+unused) `MOFULL/MOEMPTY/MIOVF/MIFULL/MIEMPTY` macros in `scsp.cpp` placed those
+flags at 0x1000/0x0800/0x0400/0x0200/0x0100 — bits 12/11/10/9/8 — identical to
+the Figure 4.3 geometry and Beetle's shift. They were removed in the follow-up
+LFO change (`../scsp-lfo/README.md`) because derived status superseded them.
+
 So the primary manual plus Beetle agree on depth, bit positions and full-FIFO
 rejection. Beetle is the only reference for the overflow-clear edge, and it
 flags that behaviour as untested.
