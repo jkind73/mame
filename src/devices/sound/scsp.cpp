@@ -1802,13 +1802,16 @@ void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS,
                                   u32 LFOS, int ALFO) {
   // Steps are per output sample: use the actual stream rate instead of
   // assuming 44100 (ST-V runs the chip slightly faster, and the rate is
-  // programmable through the clock). Round to nearest so the slow end of
-  // Table 4.21 survives: at 0.17 Hz the increment is ~65/2^24 per sample,
-  // which the old 8.8 accumulator truncated to zero. Beetle and MiSTer both
-  // reach the same low frequencies with an integer sample divider instead.
+  // programmable through the clock). The accumulator wraps once per LFO
+  // cycle and the 8-bit table index is the top byte (phase >> LFO_PHASE_SHIFT),
+  // so one cycle is 2^32 phase units and the per-sample increment is
+  // frequency * 2^32 / rate. Round to nearest so the slow end of Table 4.21
+  // survives: at 0.17 Hz the increment is ~16552/2^32 per sample, which the
+  // old 8.8 accumulator truncated to zero. Beetle and MiSTer both reach the
+  // same low frequencies with an integer sample divider instead.
   double const rate = double(clock()) / SAMPLE_CLOCKS;
-  LFO->phase_step =
-      (u32)std::llround(double(LFOFreq[LFOF]) * double(1u << LFO_PHASE_SHIFT) / rate);
+  LFO->phase_step = (u32)std::llround(
+      double(LFOFreq[LFOF]) * 4294967296.0 / rate);
   if (ALFO) {
     switch (LFOWS) {
     case 0:

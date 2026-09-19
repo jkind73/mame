@@ -74,9 +74,10 @@ private:
   };
 
   struct SCSP_LFO_t {
-    // 8.24 accumulator: one wrap is one LFO cycle, so the table index is
-    // phase >> LFO_PHASE_SHIFT. 8 fractional bits rounded every Table 4.21
-    // setting below 0.68 Hz down to a zero increment, i.e. no modulation.
+    // 32-bit phase accumulator: one wrap is one LFO cycle, so the 8-bit
+    // table index is phase >> LFO_PHASE_SHIFT. 24 fractional bits keep every
+    // Table 4.21 frequency (down to 0.17 Hz) a non-zero per-sample increment,
+    // which the old 8.8 accumulator truncated to zero below 0.68 Hz.
     u32 phase;
     u32 phase_step;
     int *table;
