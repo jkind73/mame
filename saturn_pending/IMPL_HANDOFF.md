@@ -4243,3 +4243,82 @@ correct template but omitted its numeric line span. No contract/state change.
   qualification. No new fields/save-layout change. Frozen DMA
   acknowledgement, delay-slot IRQ and sound/video/game paths unchanged;
   no peripheral additions or inventory/milestone-status changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0056 | CPU-03 | afc75c2e | UNVALIDATED | The 64/32 zero-divisor and INT64_MIN/-1 overflow branches return the three-step intermediate image instead of constants |
+
+### IMPL-0056 — CPU-03 — exceptional 64-bit DIVU result paths
+
+- branch/commit/base: `arena/01a0b897-mame` @ **afc75c2e**;
+  base **7e474f77137384ec682292be3d3dac2360cd64b0**.
+- files: `src/devices/cpu/sh/sh7604.cpp:1898-1958` (`dvdntl_w`);
+  `saturn_pending/impl_checks/check_sh7604_divu_zero64.py`.
+- contract: reuse IMPL-0054's unsigned three-step overflow recurrence for
+  DVSR=0 and the guarded INT64_MIN/-1 pair. DVDNTH always receives the
+  intermediate high word; OVFIE=1 selects the intermediate low word while
+  OVFIE=0 selects signed saturation from operand signs. Set sticky OVF
+  and retain DVSR/OVFIE. Never evaluate host INT64_MIN/-1 division or
+  remainder. A local lambda shares the result path without new persistent
+  state. In-range arithmetic, the disputed +2^31 exclusion and existing
+  IRQ-recalculation call counts remain unchanged.
+- primary source: SH7604 ADE-602-085C Rev.4, section 10.3.1 p.292,
+  section 10.3.3 p.293 (zero divisor and quotient overflow; three setup
+  plus three division cycles; enabled intermediate versus disabled
+  saturation), section 10.4.2 p.294/Table 10.2 (sticky OVF, register
+  selection/retention). SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+  Exact internal bit recurrence remains reference-derived, not spelled out
+  in that manual or asserted here to be captured from silicon.
+- cross-checks/provenance: Ymir pin
+  `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:179-188,208-237`,
+  blob `6b31b7d029449d63f68ef281dc04958d17d74339`, routes both exceptional
+  cases into the same partial calculation. Saturn_MiSTer pin
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/DIVU.sv:49-50,97-127,196-205`, blob
+  `09b259b5f91888dc0363884fd3b2c5d81644c118`, supplies the matching
+  SUM64/R64 recurrence and output selection. Upstream MAME pin
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1178-1209`, has constant placeholders.
+  Local base 7e474f77 retains them only on the paths extended here;
+  prior local recurrence is reused, not an imported reference code block.
+- expected observable: exact 32-bit words, zero bit tolerance. For a
+  zero divisor and dividend bit pattern A, the image is
+  `((A * 8) + ((~A >> 61) & 7)) modulo 2^64`; use its upper word for
+  DVDNTH and, when OVFIE=1, its lower word for DVDNTL. For A=0: high=0,
+  low=7. For A=8000000000000000: high=0, low=3; disabled quotient is
+  80000000. For INT64_MIN/-1: high=0000000A, enabled low=00000004,
+  disabled low=7FFFFFFF. These are reference-derived examples, not
+  hardware captures. OVF=1, unchanged operands/control; no host exception.
+- suggested method: legal longword DVSR/DVDNTH/DVDNTL writes; both OVFIE
+  and initial OVF settings, with CPU interrupt acceptance masked when
+  observing enabled results. Wait at least 39 cycles using non-DIVU
+  instructions after the start, then capture DVCR and all result words.
+  Cover all eight original top-three-bit combinations for a zero divisor,
+  both operand signs, and the signed-64 guard. Compare after native
+  save/load separately; measure busy/completion timing independently.
+- falsifier: attributable hardware result mismatch; wrong disabled sign,
+  lost sticky OVF, changed in-range or existing strict-overflow images,
+  extra IRQ-refresh invocation, or host arithmetic UB rejects this
+  candidate. Two agreeing references do not qualify the native device.
+- self-check run (method-level, unvalidated): fail-fast UBSan exit 0:
+  **262,912 zero-divisor images, four INT64_MIN/-1 images, 262,916
+  operand-state-copy replays**. The zero-divisor oracle uses a widened
+  multiply/add closed form rather than the production iterative recurrence.
+  Historical 7e474f77 exits 1 at generated line 90 on the first remainder
+  check. Prior selected 44 scripts: 40 exit 0/four unchanged conflicts;
+  including this script: **45 selected, 41 exit 0/four conflicts**
+  (frt_stop 475, frt_phase 410, wdt_access 132, bsc_access 98).
+  `check_sh7604_sci.py` remains excluded from the selected series.
+  Warning-enabled C++20 TU syntax-only and `git diff --check` exit 0.
+  No full build, native qualification or fixture expectation edits.
+- state: **UNVALIDATED**.
+- not covered/known doubts: disputed exact-limit classification, unsafe
+  signed-32 minimum/-1 (IMPL-0036), actual six/39-cycle availability,
+  restartable busy accesses, native DIVU IRQ delivery, aliases and native
+  save-manager/DRC/MinGW acceptance. No new fields/save-layout change,
+  frozen handler changes, peripheral additions or milestone-status claims.
+  This is an implementation checkpoint, not completion of CPU-03 or a
+  stopping point for the ongoing missing-emulation work.
