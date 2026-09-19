@@ -296,8 +296,9 @@ void sh7604_device::sh7604_map(address_map &map)
 	map(0xfffffe72, 0xfffffe72).rw(FUNC(sh7604_device::drcr_r<1>), FUNC(sh7604_device::drcr_w<1>));
 
 	// WTC
-	map(0xfffffe80, 0xfffffe81).rw(FUNC(sh7604_device::wtcnt_r), FUNC(sh7604_device::wtcnt_w));
-	map(0xfffffe82, 0xfffffe83).rw(FUNC(sh7604_device::rstcsr_r), FUNC(sh7604_device::rstcsr_w));
+	map(0xfffffe80, 0xfffffe81).r(FUNC(sh7604_device::wtcnt_r));
+	map(0xfffffe82, 0xfffffe83).r(FUNC(sh7604_device::rstcsr_r));
+	map(0xfffffe80, 0xfffffe83).w(FUNC(sh7604_device::wdt_w));
 
 	// standby and cache control
 	map(0xfffffe90, 0xfffffe91).rw(FUNC(sh7604_device::fmr_sbycr_r), FUNC(sh7604_device::fmr_sbycr_w));
@@ -1957,6 +1958,17 @@ uint16_t sh7604_device::rstcsr_r(offs_t offset, uint16_t mem_mask)
 	if ((mem_mask & 0x00ff) && !machine().side_effects_disabled())
 		m_wdt_read = (m_wdt_read & ~2) | (BIT(m_rstcsr, 7) << 1);
 	return (m_rstcsr & 0xe0) | 0x1f;
+}
+
+void sh7604_device::wdt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	// Section 12.2.4 requires a keyed word, not a byte or longword write.
+	// Check at the native 32-bit map boundary before a longword can be
+	// decomposed into two apparently valid word commands. SH-2 is big-endian.
+	if (mem_mask == 0xffff0000)
+		wtcnt_w(0, data >> 16, 0xffff);
+	else if (mem_mask == 0x0000ffff)
+		rstcsr_w(0, data, 0xffff);
 }
 
 void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
