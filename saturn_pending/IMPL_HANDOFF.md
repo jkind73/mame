@@ -1672,3 +1672,107 @@
   acknowledgement, delay-slot, sound and game paths and validator assets
   were not edited. No new external-device availability or completion
   status is claimed; IO-02's inventory remains unchanged.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0022 | CPU-03 | bbdb90a5 | UNVALIDATED | FRT internal-clock counting and event deadlines preserve prescaler phase across polling and non-clock-changing accesses |
+
+### IMPL-0022 — CPU-03 — FRT prescaler remainder preservation
+
+- branch/commit: `arena/01a0b897-mame` @ **bbdb90a5** (base: cbb50769).
+- files: `src/devices/cpu/sh/sh7604.cpp:416-434` (counter synchronization),
+  `:467-476` (event delay), `:1529-1538` (TCR clock-change handling);
+  `src/devices/cpu/sh/sh7604.h:291` (cycle-epoch meaning);
+  `saturn_pending/impl_checks/check_sh7604_frt_phase.py:1-165`.
+  Existing fixture expectations and validator assets were not edited.
+- contract: for a fixed internal CKS selection, FRC advances at phi/8,
+  phi/32 or phi/128 regardless of the cadence of software counter reads.
+  Counter synchronization consumes only whole divider intervals and
+  preserves the remaining fractional interval. Scheduling a pending
+  compare/overflow subtracts the already elapsed fraction instead of
+  restarting the divider. Writes that leave the clock selection unchanged
+  (including IEDG-only TCR writes) and input-capture events preserve the
+  running phase. An actual CKS change explicitly establishes the existing
+  fresh-interval software convention; its silicon startup phase is not
+  newly specified or qualified. This candidate addresses the steady-clock
+  remainder-loss item left open in IMPL-0020/0021, not every timer issue.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 11.2.6 p.302 (independent IEDG and CKS fields; internal clock
+  selections), section 11.4.1 p.307/Figure 11.4 (one FRC increment per
+  divided clock input). This is the basis for a continuous internal
+  clock, not a clock whose rate depends on CPU register-read partitioning.
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`. No explicit
+  clock-selection transition phase is inferred from these passages.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:38-51` counts the
+  difference between divided absolute cycle timestamps, preserving phase
+  across arbitrary advances. Blob `22868cc7792ede743d834dca5624c6cb5102f04e`.
+  Its absolute-cycle phase differs from this fork's reset/release-relative
+  epoch, so it supports partition independence, not first-edge alignment.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:367-381,420-428` resets the epoch to
+  current cycles on synchronization/activation, discarding a remainder.
+  Inspected fork history through `cbb50769`: those arithmetic paths
+  remain, with IMPL-0020 adding module-stop guards. No reference code
+  imported; existing event selection/flag-setting logic is unchanged.
+- expected observable: with phi/8 and an established epoch at cycle zero,
+  reads at cycles 9, 18 and 24 return counts 1, 2 and 3, rather than
+  allowing the read at 9 to discard one cycle. With OCRA=37, a TIER write
+  at cycle 9 leaves the candidate's compare deadline at cycle 296, not
+  297. Similarly, TOCR changes, unchanged OCR writes and IEDG-only writes
+  retain the existing divider phase. Polled and unpolled instances with
+  identical initialization produce identical counts and event times.
+  Virtual-cycle comparisons are exact; native measurements should use
+  CPU-phi resolution (at most one phi tick observation granularity).
+  Absolute reset/clock-change startup phase remains provisional and must
+  not be confused with cumulative drift caused by accesses.
+- suggested method: run each internal divider with a known count and
+  nonzero compare targets. Poll at cadences not divisible by that divider,
+  then compare with an otherwise identical unpolled run. At every residual
+  phase, write interrupt enables, output-control or IEDG while keeping CKS
+  constant, and capture the next compare/overflow timestamp. Include
+  counter wraparound and already-latched flags with no timer callback
+  scheduled. Save/load at a fractional interval and continue. Exercise
+  clock switches separately as software-convention controls; physical
+  divider-switch transients need independent hardware evidence.
+- falsifier: a counter value or pending-event deadline differing between
+  polled and unpolled runs solely because of read cadence, non-clock-
+  changing writes delaying the divider, lost fractional time after a
+  capture or save/load, or an unsigned far-future delay from an already-due
+  compare contradicts this candidate. Silicon showing access-dependent
+  prescaler reset would require revising this contract rather than
+  silently adjusting fixture expectations.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 684 polling partitions; 1008 fractional-phase register/capture cases; 1008 state-copy replays; 171 unscheduled-counter cases; 171 wraparound schedules
+  method-level, unvalidated: 528 clock-switch software-convention controls; three zero-distance delay-underflow controls
+  method-level, unvalidated: absolute count/event oracles and no-polling comparison exercised; native timing and clock-switch silicon phase not qualified
+  method-level, unvalidated: existing saved/reset cycle epoch reused; no new state fields
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_frt_phase.py`.
+  Same script against pre-change `cbb50769` source, without modifying
+  method bodies, exits 1 on the observable counter value:
+  `line 308: polled.frc_r()==t/period`.
+  All fourteen preceding focused SCI/FRT scripts rerun with unchanged
+  expected values: exit 0. Extracted binaries use UBSan. Full
+  `sh7604.cpp` syntax with session includes and
+  `-std=c++20 -Wall -Werror -Wno-sign-compare`: exit 0, no diagnostics,
+  reorder enabled. `git diff --check`: exit 0. No full build run.
+- state: UNVALIDATED
+- not covered / known doubts: native scheduler/CPU cycle accounting,
+  DRC/interpreter consistency, clock changes/halt behavior, physical
+  capture synchronizers and on-disk save replay are not qualified.
+  The saved `m_frc_base` now retains the last whole-tick epoch rather than
+  dropping the fractional interval; there are no new fields or save-layout
+  additions, but cross-version save phase compatibility is not assumed.
+  Actual CKS switches retain a provisional fresh-period convention;
+  absolute phase is not established by the Ymir cross-check. The existing
+  immediate zero-distance compare behavior is retained and guarded against
+  delay underflow, not accepted as silicon timing. Compare flag/clear-on-
+  match semantics, FRC-write count inhibition, TEMP accesses, FTCI input
+  and FTOA/FTOB outputs remain separate work. This is not a full FRT timing
+  qualification. Frozen DMA acknowledgement, delay-slot, sound and game
+  paths were not edited. No milestone status or external-device inventory
+  claim changes; validation remains with the separate agent.
