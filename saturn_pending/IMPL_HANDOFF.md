@@ -2330,3 +2330,82 @@
   12.2.3/12.4.5) remains separate from this RES path. This changes no
   sound-reset or board-clock code, DMA acknowledgement, delay-slot IRQ,
   game-specific paths, validator assets or fixture expected values.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0030 | CPU-03 | 92c86000 | UNVALIDATED | Watchdog overflow with RSTE=0 resets WTCNT/WTCSR locally, preserving RSTCSR and avoiding CPU reset |
+
+### IMPL-0030 — CPU-03 — watchdog-local overflow reset
+
+- branch/commit: `arena/01a0b897-mame` @ **92c86000** (base: f86da106).
+- files: `src/devices/cpu/sh/sh7604.cpp:577-603`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_local_reset.py`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_flags.py` gains an explicit
+  re-enable stimulus before generating a second watchdog overflow.
+- contract: in watchdog mode with RSTE=0, overflow sets WOVF and resets
+  WTCNT/WTCSR within the WDT; it does not reset the CPU. Thus WTCNT reads
+  00 and WTCSR reads 18, TME is clear, and no new counter overflow occurs
+  without another enable. RSTCSR, including RSTS and newly set WOVF, is
+  preserved. Clearing WTCSR consumes its old OVF-read qualification and
+  refreshes IRQ arbitration; RSTCSR's qualification is independent.
+- primary source: SH7604 ADE-602-085C Rev.4, section 12.2.3 p.324 RSTE=0
+  table entry and section 12.4.5 p.331 explicitly require the local WTCNT/
+  WTCSR reset without internal chip reset. Sections 12.2.1-12.2.2
+  pp.321-322 specify reset register values. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Saturn_MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/WDT.sv:151-168` wraps WTCNT, sets RSTCSR.WOVF and assigns
+  WTCSR=18 at watchdog overflow; `:76-89` gates the internal reset output
+  on RSTE. Blob `fc0d4d397dd42e2a37313e7a91919006cca0f4da`. Its pulse,
+  standby, flag-ack and bus details are not imported. Ymir pinned
+  `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_wdt.hpp:50-68`, sets WOVF and
+  requests a chip reset only when RSTE=1, but omits this RSTE=0 local
+  reset; it is a documented cross-check difference, not an oracle.
+  Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:462-475`, and fork base
+  `f86da106:src/devices/cpu/sh/sh7604.cpp:577-591` only set WOVF and leave
+  a reset/output TODO. No reference code imported.
+- expected observable: at the overflow event with RSTE=0, WTCNT=00,
+  WTCSR=18, and RSTCSR=9F or BF depending on RSTS. There is no chip reset,
+  no unrelated FRT/SCI/UBC/INTC register initialization, and the stopped
+  WDT does not produce a later overflow until explicitly re-enabled.
+  Exact register/event comparisons; no physical reset/output timing
+  tolerance claimed by a callback-level observation.
+- suggested method: set RSTE=0, sweep both RSTS values and all eight CKS
+  selections, load near overflow, and inspect byte registers plus CPU
+  progress after overflow. Repeat after explicitly re-enabling the WDT.
+  Interleave prior OVF/WOVF status reads and save/load before overflow.
+  Separately qualify interval mode, which must continue periodic operation.
+- falsifier: CPU reset with RSTE=0, WTCSR remaining enabled after watchdog
+  overflow, RSTCSR losing WOVF/RSTS, unrelated peripheral initialization,
+  a repeated overflow while stopped, or failed explicit restart rejects
+  this candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `65536 watchdog-local resets; 65536 state-copy replays;
+  65536 explicit restart cases; 96 interval controls`. Real WDT methods;
+  mocks record base reset calls, selected unrelated registers and IRQ
+  refresh count (not native IRQ delivery). Pre-change `f86da106` methods
+  exit 1 at line 242, WTCNT/WTCSR/RSTCSR local-reset image assertion.
+  UBSan enabled. The first rerun of `wdt_flags` exited 1 at line 194:
+  its stimulus directly invoked another callback without re-enabling the
+  now-stopped watchdog. Added a documented keyed enable before that second
+  event; all its assertions/expected values remain unchanged. It exits 0
+  again, and this new script separately asserts that no event occurs while
+  stopped. Current total 23 SH7604 scripts: 20 exit 0; the three unchanged
+  expectation conflicts remain (`frt_stop` line 438, `frt_phase` line 374,
+  `wdt_access` line 132), as described in IMPL-0028/0029.
+  Warning-enabled TU syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare`,
+  session includes) and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new state fields or save-layout change.
+  This is only RSTE=0 local reset; RSTE=1 internal CPU reset and WDTOVF
+  output/pulse handling remain TODO. Generic RES reset remains distinct
+  (IMPL-0029). Physical reset-hold timing, accesses during an active WDTOVF
+  pulse, counter phase/read rounding, native IRQ priority/delivery and
+  actual save-manager restoration remain unqualified. Re-enable probes
+  wait beyond the documented output-pulse interval; they do not establish
+  active-pulse write behavior. Frozen DMA, delay-slot IRQ, sound/game paths,
+  validator assets and existing expected values were not edited.
