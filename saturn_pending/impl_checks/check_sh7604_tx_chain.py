@@ -57,6 +57,8 @@ struct Device {
  Timer tx, rx;
  Timer *m_sci_tx_timer=&tx, *m_sci_rx_timer=&rx;
  std::vector<std::pair<tick_t,int>> wire, irqs;
+ // This fixture exercises register/async/external-edge methods, not the internal clock.
+ void sci_update_sync_clock() {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
  unsigned clock() const { return 1; } // attotime mock measures CPU phi ticks

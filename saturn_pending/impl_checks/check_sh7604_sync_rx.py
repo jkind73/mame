@@ -19,7 +19,7 @@ def extract(name, result):
     return match[0].replace('sh7604_device::', '')
 
 functions = '\n'.join(extract(n, t) for n, t in (
-    ('sck_w', 'void'), ('scr_w', 'void'), ('ssr_r', 'uint8_t'),
+    ('sck_w', 'void'), ('sci_sync_edge', 'void'), ('scr_w', 'void'), ('ssr_r', 'uint8_t'),
     ('ssr_w', 'void'), ('sci_rx_complete', 'void')))
 head = r'''
 #include <cstdint>
@@ -38,6 +38,8 @@ struct Device {
  bool m_sci_tx_active=false, m_sci_tx_loaded=false, m_sci_rx_enabled=false, m_sci_sck=true;
  Timer timer; Timer *m_sci_rx_timer=&timer, *m_sci_tx_timer=&timer;
  int line=1, irqs=0, rate_changes=0;
+ // This fixture exercises register/async/external-edge methods, not the internal clock.
+ void sci_update_sync_clock() {}
  Device &machine() { return *this; }
  bool side_effects_disabled() const { return false; }
  int sci_bit_period() const { return 16; }

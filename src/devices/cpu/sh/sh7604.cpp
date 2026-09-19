@@ -39,6 +39,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_smr(0), m_brr(0), m_scr(0), m_tdr(0), m_ssr(0)
 	, m_write_txd(*this)
 	, m_read_rxd(*this, 1)
+	, m_write_sck(*this)
 	, m_tier(0), m_ftcsr(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
@@ -85,6 +86,8 @@ void sh7604_device::device_start()
 	m_wdtimer->adjust(attotime::never);
 	m_sci_tx_timer = timer_alloc(FUNC(sh7604_device::sci_tx_tick), this);
 	m_sci_tx_timer->adjust(attotime::never);
+	m_sci_clock_timer = timer_alloc(FUNC(sh7604_device::sci_sync_tick), this);
+	m_sci_clock_timer->adjust(attotime::never);
 	m_sci_rx_timer = timer_alloc(FUNC(sh7604_device::sci_rx_tick), this);
 	m_sci_rx_timer->adjust(attotime::never);
 
@@ -121,6 +124,8 @@ void sh7604_device::device_start()
 	save_item(NAME(m_sci_rx_phase));
 	save_item(NAME(m_sci_rx_vote));
 	save_item(NAME(m_sci_sck));
+	save_item(NAME(m_sci_sck_out));
+	save_item(NAME(m_sci_clock_running));
 
 	// FRT / FRC
 	save_item(NAME(m_tier));
@@ -251,9 +256,13 @@ void sh7604_device::device_reset()
 	m_sci_rx_phase = 0;
 	m_sci_rx_vote = 0;
 	m_sci_sck = true;
+	m_sci_sck_out = true;
+	m_sci_clock_running = false;
+	m_sci_clock_timer->adjust(attotime::never);
 	m_sci_tx_timer->adjust(attotime::never);
 	m_sci_rx_timer->adjust(attotime::never);
 	m_write_txd(1); // TxD idles high
+	m_write_sck(1); // synchronous SCK idles high
 
 	m_barah = 0;
 	m_baral = 0;
@@ -877,7 +886,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
  * TXI/RXI/ERI/TEI with ERI>RXI>TXI>TEI priority (p.~360 Table 13.13) and
  * vectors in VCRA/VCRB (p.91-92).
  */
-// TODO: internal synchronous clock and external-clock asynchronous mode
+// TODO: external-clock asynchronous mode and asynchronous SCK output
 
 uint8_t sh7604_device::smr_r()
 {
@@ -946,6 +955,7 @@ void sh7604_device::scr_w(uint8_t data)
 	// Interrupt-enable writes must not restart the in-flight bit period.
 	if ((old_scr ^ m_scr) & 3)
 		sci_recalc_rates();
+	sci_update_sync_clock();
 	sh2_recalc_irq();
 }
 
@@ -986,15 +996,16 @@ void sh7604_device::ssr_w(uint8_t data)
 
 	// Section 13.3.2, p.359 steps 1-2: loading TSR makes TDR available
 	// again. A running transmitter consumes queued data at the stop bit.
-	// In externally clocked synchronous mode, a queued character can also
+	// In synchronous mode, a queued character can also
 	// start after receive errors are acknowledged (section 13.5, p.381).
 	if (BIT(m_scr, 5) && !m_sci_tx_active && !(m_ssr & SSR_TDRE) &&
-		(!BIT(m_smr, 7) || (BIT(m_scr, 1) && !(m_ssr & (SSR_ORER | SSR_FER | SSR_PER)))))
+		(!BIT(m_smr, 7) || !(m_ssr & (SSR_ORER | SSR_FER | SSR_PER))))
 	{
 		m_tsr = m_tdr;
 		m_ssr |= SSR_TDRE;
 		sci_transmit_start();
 	}
+	sci_update_sync_clock();
 	sh2_recalc_irq();
 }
 
@@ -1011,7 +1022,12 @@ void sh7604_device::sck_w(int state)
 	if (level == previous || !BIT(m_smr, 7) || !BIT(m_scr, 1))
 		return;
 
-	// SH7604 section 13.3.4, pp.372, 375-378: external synchronous
+	sci_sync_edge(level);
+}
+
+void sh7604_device::sci_sync_edge(bool level)
+{
+	// SH7604 section 13.3.4, pp.372, 375-378: synchronous
 	// receive starts on a falling SCK edge and samples on rising edges.
 	// A character is always eight data bits, without start/parity/stop/MP.
 	if (m_ssr & (SSR_ORER | SSR_FER | SSR_PER))
@@ -1066,6 +1082,53 @@ void sh7604_device::sck_w(int state)
 	}
 }
 
+void sh7604_device::sci_update_sync_clock()
+{
+	bool const internal = BIT(m_smr, 7) && !BIT(m_scr, 1);
+	bool const error = m_ssr & (SSR_ORER | SSR_FER | SSR_PER);
+	bool const enabled = BIT(m_scr, 5) || BIT(m_scr, 4);
+	// Receive-only mode clocks while RE is set. In full duplex, TX starts
+	// the shared clock and RX must finish sampling the final transmitted bit.
+	bool const work = (BIT(m_scr, 5) && m_sci_tx_active) ||
+		(BIT(m_scr, 4) && (!BIT(m_scr, 5) || m_sci_rx_state));
+	if (!internal || !enabled || error || (!work && m_sci_sck_out))
+	{
+		m_sci_clock_running = false;
+		m_sci_clock_timer->adjust(attotime::never);
+		if (!m_sci_sck_out)
+		{
+			m_sci_sck_out = true;
+			m_write_sck(1);
+		}
+	}
+	else if (!m_sci_clock_running)
+	{
+		m_sci_clock_running = true;
+		m_sci_clock_timer->adjust(sci_bit_period() / 2);
+	}
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_sync_tick)
+{
+	if (!m_sci_clock_running)
+		return;
+
+	m_sci_sck_out = !m_sci_sck_out;
+	// Make TX data valid before notifying the peer of a falling edge.
+	// On rising edges, notify the peer before sampling its receive data.
+	if (!m_sci_sck_out)
+		sci_sync_edge(false);
+	m_write_sck(m_sci_sck_out);
+	if (m_sci_sck_out)
+		sci_sync_edge(true);
+
+	// Always finish the last low half-period: TEND rises on MSB output,
+	// but its rising sample edge still belongs to this character (p.373).
+	sci_update_sync_clock();
+	if (m_sci_clock_running)
+		m_sci_clock_timer->adjust(sci_bit_period() / 2);
+}
+
 attotime sh7604_device::sci_bit_period() const
 {
 	// B = phi / ((N+1) * 2^(7+2n)) in asynchronous mode and
@@ -1080,7 +1143,8 @@ attotime sh7604_device::sci_bit_period() const
 
 void sh7604_device::sci_recalc_rates()
 {
-	// External synchronous transfers follow SCK edges, not these timers.
+	// Synchronous modes use the shared clock/edge engine below.
+	sci_update_sync_clock();
 	if (BIT(m_smr, 7))
 		return;
 	if (m_sci_tx_active && BIT(m_scr, 5))
@@ -1091,12 +1155,14 @@ void sh7604_device::sci_recalc_rates()
 
 void sh7604_device::sci_transmit_start()
 {
-	// TDR is already in TSR. Sync waits for a falling external SCK edge;
+	// TDR is already in TSR. Sync waits for a falling SCK edge;
 	// async emits a start bit and then shifts the frame LSB first.
 	m_sci_tx_bit = BIT(m_smr, 7) ? 0 : 1; // next sync data bit / async timer event
 	m_sci_tx_active = true;
 	m_sci_tx_loaded = false;
-	if (!BIT(m_smr, 7) && BIT(m_scr, 5))
+	if (BIT(m_smr, 7))
+		sci_update_sync_clock();
+	else if (BIT(m_scr, 5))
 	{
 		m_write_txd(0); // start bit
 		m_sci_tx_timer->adjust(sci_bit_period(), m_sci_tx_bit);
