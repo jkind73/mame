@@ -1573,3 +1573,102 @@
   regression acceptance remains with the validation agent. IO-02's
   external-device inventory is unchanged: this does not add a peripheral
   peer or imply serial DMA support.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0021 | CPU-03 | 7c6b9dfe | UNVALIDATED | FTCSR event flags require read-one/write-zero acknowledgement; debugger reads do not arm clears |
+
+### IMPL-0021 — CPU-03 — FRT status read-qualified acknowledgements
+
+- branch/commit: `arena/01a0b897-mame` @ **7c6b9dfe** (base: ae5ece72).
+- files: `src/devices/cpu/sh/sh7604.cpp:43,134,405` (read-history
+  initialization/save/reset), `:1463-1488` (FTCSR read/write handlers);
+  `src/devices/cpu/sh/sh7604.h:234` (saved byte);
+  `saturn_pending/impl_checks/check_sh7604_ftcsr.py:1-157`.
+  The existing FRT module-stop fixture only gained mock declarations
+  for the new field/debugger accessor and a clarified save-audit output
+  label; its expected values and scenarios were not changed.
+- contract: FTCSR ICF/OCFA/OCFB/OVF (bits 7,3,2,1) are cleared only by
+  writing zero after a CPU status read observed that flag set. Writing
+  one cannot set a flag. Clearing a flag consumes its qualification, so
+  a later event needs a fresh status read. CCLRA bit 0 remains ordinary
+  read/write; reserved bits 6-4 remain zero. Debugger inspection returns
+  the status without changing read history or invoking the legacy
+  CPU-read callback. Reset/MSTP1 entry clears read history together with
+  FTCSR. Counter resynchronization, event scheduling and IRQ refresh
+  remain in the write path.
+- primary source: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4,
+  section 11.2.5 pp.300-302, especially p.301's per-flag clear conditions
+  (read one, then write zero), flag set conditions and reserved-bit rule;
+  p.302 CCLRA read/write behavior. Table 11.2 p.297 and section 11.2.5
+  p.300 specify the reset/module-standby image. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:153-170,173-202`
+  maintains a read mask, distinguishes peek reads, and qualifies/consumes
+  each flag's clear with that mask. Blob
+  `22868cc7792ede743d834dca5624c6cb5102f04e`. The implementation here
+  keeps only the four flags in its mask; it does not import Ymir's
+  debugger-poke interface. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:899-916`, has no read qualification and
+  invokes the read callback unconditionally. Fork history through base
+  `ae5ece72` retains those handlers; IMPL-0020 supplies the shared reset
+  entry now extended for the read-history byte. No reference code
+  imported. An in-tree search for `set_ftcsr_read_callback` found only
+  its declaration, not a configured consumer.
+- expected observable: after a capture sets ICF=1, writing FTCSR=0
+  without a qualifying read leaves ICF=1. A debugger status inspection
+  followed by that write also leaves ICF=1. A CPU read followed by the
+  write clears ICF; a subsequent capture remains pending until another
+  CPU read/write-zero sequence. The same rule applies independently
+  to OCFA, OCFB and OVF. Selectively clearing one observed flag preserves
+  the others and their unconsumed qualifications. CCLRA changes without
+  any read prerequisite. All observations are exact bits/callback counts;
+  this change asserts no additional latency or hardware timing tolerance.
+- suggested method: generate capture, compare and overflow flags; attempt
+  unread and read-qualified writes, including a flag first raised after
+  a read of zero. Exercise selective acknowledgements while multiple
+  sources are pending. Insert debugger status inspection before a clear
+  and compare with a CPU status read. Save/load between the read and
+  write, and between acknowledgement and the next event. Repeat after
+  device reset and legal MSTP1 entry/release. Check native IRQ delivery
+  separately; the method harness only observes recalculation/state.
+- falsifier: an unread event flag clearing, debugger inspection arming a
+  clear, writing one creating a flag, a previously consumed qualification
+  clearing a new event, one flag's acknowledgement consuming another's,
+  or stale read history surviving reset/module stop contradicts this
+  candidate. A save/load that loses an outstanding qualification also
+  contradicts its state contract.
+- self-check run (method-level, unvalidated):
+  ```text
+  method-level, unvalidated: 16384 status/read-history/write transitions; 16385 state-copy replays; 512 CPU/debugger read cases; 32 reset/module-stop cases
+  method-level, unvalidated: real compare/overflow/capture producers, selective clear, consumed acknowledgements, CPU-read callback and reserved-bit mask controls exercised
+  method-level, unvalidated: FTCSR read-history constructor/reset/save registration present; save layout changed
+  ```
+  Command: `python3 saturn_pending/impl_checks/check_sh7604_ftcsr.py`.
+  Same script against pre-change `ae5ece72` source, without changing its
+  method bodies, exits 1:
+  `line 344: d.m_ftcsr==expected && d.m_ftcsr_read==qualified`.
+  All thirteen preceding focused SCI/FRT scripts rerun with unchanged
+  expected values: exit 0. Extracted binaries use UBSan. Full
+  `sh7604.cpp` syntax with session includes and
+  `-std=c++20 -Wall -Werror -Wno-sign-compare`: exit 0, no diagnostics,
+  reorder enabled. `git diff --check`: exit 0. No full build run.
+- state: UNVALIDATED
+- not covered / known doubts: **save-state layout break** — new byte
+  `m_ftcsr_read` is initialized in the constructor and shared FRT reset
+  and registered by `save_item` in this change. Do not assume old saves
+  are compatible. State-copy replay is not native save-manager evidence.
+  Native CPU/DRC/IRQ/debugger execution and hardware captures remain
+  unqualified. Same-cycle event/write ordering, first prescaler phase,
+  the existing remainder-loss/scheduling behavior, TEMP byte accesses,
+  FTCI input and FTOA/FTOB pins are not repaired by this patch. Direct
+  method probes of reserved-bit writes only constrain the stored mask;
+  they do not qualify prohibited silicon accesses. Register accesses
+  while module-stopped remain outside the contract. The frozen DMA
+  acknowledgement, delay-slot, sound and game paths and validator assets
+  were not edited. No new external-device availability or completion
+  status is claimed; IO-02's inventory remains unchanged.
