@@ -2409,3 +2409,66 @@
   wait beyond the documented output-pulse interval; they do not establish
   active-pulse write behavior. Frozen DMA, delay-slot IRQ, sound/game paths,
   validator assets and existing expected values were not edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0031 | CPU-03 | 919bc219 | UNVALIDATED | WTCNT sampling rounds remaining selected-clock periods upward so whole-phi reads do not expose the next count early |
+
+### IMPL-0031 — CPU-03 — watchdog counter observation between edges
+
+- branch/commit: `arena/01a0b897-mame` @ **919bc219** (base: 91e20684).
+- files: `src/devices/cpu/sh/sh7604.cpp:566-577`;
+  `saturn_pending/impl_checks/check_sh7604_wdt_count.py`.
+- contract: WTCNT counts selected internal clock pulses, not partially
+  elapsed selected-clock periods. Given the existing overflow deadline,
+  whole-system-clock samples between counter edges must retain the old
+  count. The remaining period count is rounded up before subtracting it
+  from 256. A counter read itself must not move the timer deadline.
+- primary source: SH7604 ADE-602-085C Rev.4, section 12.2.1 p.321
+  (WTCNT counts pulses of the selected internal clock), section 12.2.2
+  p.323 CKS table (phi/2, /64, /128, /256, /512, /1024, /4096, /8192),
+  section 12.3.2 p.328/Figure 12.5 (successive interval overflows).
+  SDK blob `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_wdt.hpp:35-66`, derives increments
+  from complete divider steps. Its absolute clock-grid alignment is not
+  imported or established here. Saturn_MiSTer pinned
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/WDT.sv:48-60,155-168`, increments on the selected clock
+  enable. Upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:451-455`, and fork base `91e20684`
+  floor the remaining period count, exposing the next counter value early.
+  No reference code imported.
+- expected observable: with counter 00, divider 2 and the current deadline
+  at 512 phi, byte reads at elapsed 0/1/2 phi return 0/0/1. With divider
+  64 and deadline 16384 phi, reads at elapsed 1 and 63 phi remain 0, then
+  become 1 at 64 phi. The prior calculation could expose the next value
+  up to P-1 phi early for divider P. Exact integer-phi sample values;
+  this entry does not specify initial prescaler phase relative to RES.
+- suggested method: establish an overflow deadline, sample WTCNT throughout
+  the preceding counter periods without writes, compare polling and idle
+  instances, and repeat across save/load. Native measurement must resolve
+  CPU bus-read phase relative to the selected clock independently.
+- falsifier: early/late counter values at the established whole-phi edges,
+  polling moving the deadline, or state-copy/native save replay changing
+  the sampled count rejects the candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `45900 counter samples; 45900 state-copy replays;
+  57096 exhaustive whole-phi period positions`. Pre-change `91e20684`
+  methods exit 1 at line 241, counter sample/replay assertion. UBSan
+  enabled. Twenty prior scripts exit 0; the unchanged `frt_stop`,
+  `frt_phase` and `wdt_access` expectation conflicts remain (lines 438,
+  374, 132). Current total 24 SH7604 scripts: 21 exit 0, 3 exit 1.
+  Warning-enabled TU syntax (`-std=c++20 -Wall -Werror -Wno-sign-compare`,
+  session includes) and `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new fields or save-layout change.
+  Timer-to-CPU-cycle conversion still quantizes to whole phi; native
+  fractional-cycle/attosecond rounding and access exactly coincident with
+  an unserviced expiry remain unqualified. Clock-grid startup, active
+  WTCSR/WTCNT-write phase preservation, CKS changes, WDTOVF and RSTE=1
+  internal reset remain separate. This fixes observation relative to the
+  existing deadline, not all watchdog timing. No validator assets,
+  expected values, frozen DMA, delay-slot or sound/game paths changed.
