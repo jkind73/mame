@@ -3444,3 +3444,78 @@ and UNVALIDATED status are unchanged. No milestone ID is renamed.
   priority cache avoids stale nonzero levels; it is not a claim that the
   overall interrupt controller or DMA behavior is qualified. Frozen DMA
   acknowledgements and delay-slot IRQ implementation remain untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0047 | CPU-03 | 4b1e7720 | UNVALIDATED | Device reset clears VCRA-D/VCRWDT and the three decoded FRT vectors |
+
+### IMPL-0047 — CPU-03 — documented INTC vector reset image
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `4b1e7720`,
+  base `44382a5b`. Production, new method probe and mechanical mock
+  declarations committed/pushed together.
+- files: `src/devices/cpu/sh/sh7604.cpp:229-232`, `device_reset`;
+  `saturn_pending/impl_checks/check_sh7604_intc_vector_reset.py` (new);
+  declaration-only additions to existing `check_sh7604_frt_stop.py` and
+  `check_sh7604_module_stop.py`. No existing expectations changed.
+- contract: device reset initializes VCRA, VCRB, VCRC, VCRD and VCRWDT
+  to 0000 and clears cached FRT ICI/OCI/OVI vector numbers. The reset
+  assignments precede peripheral reset helpers. Peripheral module-stop
+  retention and vector writes/readback are unchanged. VCRDIV/VCRDMA and
+  their decoded vector fields are deliberately not assigned a new reset
+  value. No new IRQ refresh, arbitration or acknowledgement behavior.
+- primary source: SH7604 ADE-602-085C Rev.4 sections 5.3.3-5.3.7 pp.91-94,
+  Table 5.6 pp.94-95 and reset statement p.95; SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. These five registers reset
+  to 0000 and are not initialized in standby. Sections 9.2.5 pp.241-242
+  and 10.2.4 p.291/Table 10.1 p.289 separately specify undefined initial
+  vector bits for VCRDMA and VCRDIV; those are not zero-reset targets here.
+- pinned cross-check: Saturn_MiSTer
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/INTC.sv:253-272` initializes these five registers on
+  RST_N and RES_N. `rtl/SH/SH7604/SH7604_pkg.sv:34,45,56,67,77`
+  defines their initial values as zero. Blobs
+  `3018e750e3ff0c10b1bad5e7ca3f12ba67461301` and
+  `3c2220d46fb623925b15a5e23d96a73378de6042`.
+- provenance: local vector handlers already decode FRT vectors into saved
+  fields; constructor initializes registers/caches once, but the reset
+  handler omitted them. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:180-211`, likewise omits these vector
+  resets. No external code imported or fork history rewritten.
+- expected observable: program five nonzero legal vector words, assert
+  and release reset, then read each as 0000. After re-enabling a FRT
+  source, its decoded vector must no longer be the pre-reset value unless
+  software reprograms it. Units: exact 16-bit words and 7-bit vector
+  fields, zero bit tolerance after reset completion. No reset-edge timing
+  or actual exception-delivery latency is established by this candidate.
+- suggested measurement: native master/slave SH7604 register test with
+  power-on/manual reset, legal writes, post-reset reads and reprogramming;
+  isolated FRT/SCI/WDT sources and native save/load as separate delivery
+  checks. Avoid interpreting undefined DIVU/DMAC vector values as zeros.
+  Check whole-chip standby independently of peripheral module stop.
+- falsifier: any of the five documented zero-reset vector registers or
+  cached FRT vectors retains the programmed nonzero value after completed
+  reset; reprogramming fails to select the written vector; or module stop
+  unexpectedly clears the INTC vector registers.
+- self-check run (method-level, unvalidated): actual reset, five pairs of
+  vector read/write handlers and SBYCR handler, fail-fast UBSan; 262,144
+  five-register reset images, 524,288 module-stop retention controls,
+  524,288 reprogramming controls and 262,144 operand-state-copy replays;
+  exit 0. Existing register/cache save registrations checked. Historical
+  `44382a5b` source fails the first reset observation (generated line 351).
+  Prior selected 35-script series: 31 exit 0/four conflicts. Including
+  this new probe: selected 36-script series, 32 exit 0/four unchanged
+  semantic conflicts: frt_stop generated line 454, frt_phase 390,
+  wdt_access 132, bsc_access 98. No expected values or validator assets
+  changed. Warning-enabled C++20 TU syntax-only and `git diff --check`:
+  exit 0. No full build or native validation.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: base CPU/peripheral reset helpers and IRQ
+  refresh are mocked; native reset routing, WDT internal reset, system
+  standby, live save/load and actual interrupt vectors/delivery remain
+  unqualified. ICR reset/NMI behavior and VCRDIV readback disagreement
+  remain separate. No new saved state or layout change. No changes to
+  frozen DMA acknowledgement, delay-slot IRQ, sound or video paths.
