@@ -1956,3 +1956,83 @@
   IMPL-0020/0022's earlier compare timestamp examples are superseded by
   this candidate, not retroactively edited or qualified. Frozen DMA,
   delay-slot, sound, game paths and validator assets/expectations untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0025 | CPU-03/IO-02 | 3fbbe2fe | UNVALIDATED | External FTCI rising edges clock FRC and its compare/clear/overflow logic without internal timer pacing |
+
+### IMPL-0025 — CPU-03/IO-02 — external FTCI clock input
+
+- branch/commit: `arena/01a0b897-mame` @ **3fbbe2fe** (base: 235bd161);
+  shared-reset mock declaration follow-up **83412e4c**.
+- files: `src/devices/cpu/sh/sh7604.cpp:50,144,220` (pin-history state),
+  `:425-538` (timer/shared compare/pin clock); `src/devices/cpu/sh/sh7604.h:39,295,321`;
+  `saturn_pending/impl_checks/check_sh7604_frt_external.py`.
+  Prior extracted fixtures only gain helper extraction/mock declarations,
+  never changed expected values.
+- contract: TCR.CKS=11 selects rising-edge FTCI counting. Each distinct
+  rising edge increments FRC and runs the same pre-update compare/CCLRA/
+  overflow behavior as IMPL-0024. Falling/repeated levels do not count;
+  internal CKS selections and MSTP1 suppress counting while retaining pin
+  history. FTI remains a separate capture input. Elapsed CPU time does not
+  pace external mode, and no positive FRT timer arm occurs while that mode
+  stays selected. No Saturn/ST-V board wiring or new peer device is added.
+- primary source: SH7604 ADE-602-085C Rev.4, section 11.2.6 p.302
+  (external rising-edge CKS selection), section 11.4.1 p.307/Figure 11.5
+  (external clock counting and minimum pulse width of six system clocks),
+  section 11.1.3/Table 11.1 p.297 (FTCI versus FTI pins), sections
+  11.4.3/11.4.6/11.4.7 pp.308-311 (common counter events), section
+  14.2.1 p.388 (module stop). SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: MiSTer pinned `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/SH/SH7604/FRT.sv:47-61,91-103,194-195,223-225` selects a rising
+  FTCI edge and shares count/compare logic. Its physical sampling pipeline
+  is not imported. Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:291-293` comments that
+  Saturn ties FTCI high and models external selection as no clock; that
+  is not corroboration for a working external-pin engine. Upstream MAME
+  pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:369,431-435`, and fork base `235bd161`
+  leave external counting as a TODO. No reference code imported.
+- expected observable: with CKS=11 and FRC=0, N rising edges produce N
+  increments (modulo 65536, unless CCLRA clears). Holding FTCI at either
+  level for arbitrary CPU cycles produces zero additional increments.
+  OCRA=3, CCLRA=1 yields 1,2,3,0 on the first four rising edges and repeats
+  even with OCFA latched. A repeated high call after a held-high mode
+  transition must not count as an edge. Counts/flags exact; input latency
+  and setup/hold tolerance are not asserted.
+- suggested method: drive valid high/low pulses at least six phi ticks
+  wide, vary spacing and pause the clock; compare to a per-edge oracle.
+  Include wrap, equal A/B, CCLRA, latched flags, FTI capture, mode changes,
+  module stop, and save/load at both pin levels. Native board qualification
+  must distinguish an unconnected API from an actually configured source.
+- falsifier: time-based increments, falling/repeated-edge counts, count
+  changes under internal CKS/MSTP1, missing compare/clear/overflow events,
+  or an invented rising edge after state restoration rejects this candidate.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `262144 external-clock streams; 2048 pin-history state-copy replays;
+  770 clock-select/module-stop controls; 256 independent FTI captures`.
+  With pre-change `235bd161` methods and only a no-op shim for the absent
+  FTCI entry point, it exits 1:
+  `line 378: d.frc_r(0,0xffff)==o.counter && d.m_ftcsr==o.status`.
+  Fifteen preceding checks exit 0 after the SCI module-stop harness's
+  missing new-state declaration was added in `83412e4c` (its first run
+  was a mock compile failure, not a production syntax failure).
+  The two IMPL-0024 conflicts remain: `frt_stop` exits 1 at
+  `line 410: timer.due==release+65535*8`; `frt_phase` exits 1 at its old
+  compare-deadline expression, line 346. Expectations remain untouched.
+  New method binary uses UBSan. Warning-enabled TU syntax with session
+  includes (`-std=c++20 -Wall -Werror -Wno-sign-compare`) and
+  `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: **save-state layout break**, new saved/reset
+  `m_frt_clock_input`. No old-save compatibility or native save-manager
+  claim. Synchronizer latency, minimum-width rejection and physical pin
+  margins are not emulated; pulse-step checks are not electrical evidence.
+  No actual FTCI source is configured for Saturn/ST-V. CKS switch
+  transients, CPU-register/event contention, whole-chip standby, native IRQ
+  delivery and FTO outputs remain separate. The two old timing expectation
+  conflicts remain visible. Frozen DMA, delay-slot, sound and game paths
+  and validator assets were not edited.
