@@ -566,7 +566,13 @@ void sh7604_device::ftci_w(int state)
 void sh7604_device::sh2_wtcnt_recalc()
 {
 	if (m_wdtimer->expire() != attotime::never)
-		m_wtcnt = 0x100 - (attotime_to_cycles(m_wdtimer->remaining()) >> wdtclk_tab[m_wtcsr & 7]);
+	{
+		// A partially elapsed selected-clock period has not incremented
+		// WTCNT yet: round the number of remaining counter ticks upward.
+		uint64_t const remaining = attotime_to_cycles(m_wdtimer->remaining());
+		unsigned const shift = wdtclk_tab[m_wtcsr & 7];
+		m_wtcnt = 0x100 - ((remaining + (1U << shift) - 1) >> shift);
+	}
 }
 
 void sh7604_device::sh2_wdt_activate()
