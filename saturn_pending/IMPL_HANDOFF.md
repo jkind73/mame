@@ -5445,3 +5445,92 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   timing/scheduler/bus/IRQ and gameplay remain separate. Reserved cause
   combinations are storage diagnostics. No new fields/save-layout change,
   validator expectations, HIRQ handler or frozen-path changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0074 | CD-01 | 546f6024 | UNVALIDATED | Preserve raw media data sectors and select GET/actual-size views using the fetching sector length |
+
+### IMPL-0074 — CD-01 — lossless media backing and host sector views
+
+- branch/commit/base: `arena/01a0b897-mame` @ **546f6024**; base **39b7c18e**.
+- files: `src/mame/sega/saturn_cd_hle.h:82-107,269-270`;
+  `src/mame/sega/saturn_cd_hle.cpp:148-150,216-224,294-295,419-460,
+  1750-1782,1901-1912,2018-2029,3544-3545,3986-4024,4065-4077`;
+  `saturn_pending/impl_checks/check_cd_raw_sector_views.py`; declaration/save
+  adapters in implementation-owned buffer-save and selector-reset probes.
+- contract: non-audio media data sectors retain all2352 bytes instead of
+  destructively extracting the view selected at buffering time. For ordinary
+  Mode1/Mode2 media, GET and GetDelete use the selected fetching length:
+  2048-byte selection gives2048@byte16 for Mode1,2048@byte24 for Mode2Form1,
+  and2324@byte24 for Mode2Form2;2336/2340/2352 select2336@16/2340@12/2352@0.
+  Calculate Actual Data Size sums the current host-view sizes in16-bit words,
+  rather than physical backing sizes. Latch the first view at GET acceptance
+  and subsequent views at this HLE's logical sector boundaries; changes do
+  not reinterpret a partially transferred view. Preserve legacy cooked
+  audio/PUT representation and clear the raw marker when allocating anew.
+  Copy/move carry the raw representation; GetDelete removes physical pool
+  sizes, not variable host-view sizes. No reconstruction of discarded bytes.
+- primary source: ST-162-062094 printed p.48 section5.4/Figure5.8 (sector
+  layout), p.95 section8.2.7/function7.1 (four fetching/writing lengths,
+  Mode2Form2 exception, fetching length reflected in actual-size calculation).
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`, retrieved/extracted again.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1333-1380,1416-1424,3307-3333,3509-3514`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e: raw byte views, first/next-sector
+  setup and actual-size word counts. Its FIFO prefetch timing is NOT modeled
+  here. Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:1316-1328,1478-1502`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, also starts a view at GET setup;
+  its Mode2Form1 GetDelete extension to2324 disagrees with the primary's
+  Form2-only exception and is NOT adopted. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d CD blob
+  40be16847538ed7bd72934a55ab766e35b66ec20:1492-1514,2711-2747,2779-2793
+  and local base39b7c18e retain buffer-time extraction/size accounting.
+  Local available file history inspected; no reference source block imported.
+- expected observable: buffer once at2048, then GET at2352 returns the original
+  complete sector, not shifted payload/stale trailing bytes; subsequent GETs
+  can select any of the four views without another media read. Actual-size
+  per-sector words are1024 (Mode1/Form1) or1162 (Form2) at selection0,
+  then1168/1170/1176 for selections1/2/3. Exact bytes/words, zero tolerance.
+  Save/reload a partially read view after changing the fetching length:
+  remaining bytes retain the old current view and the next sector uses the
+  new view; no restoration IRQ. Physical block counts remain consistent.
+- suggested method: native buffered mixed Mode1/Form1/Form2 media, all
+  ingestion/fetching lengths, command52/53 counts and61/63 reads, length
+  changes before first data access and within a sector, copy/move, native
+  save/load at those cuts and DataEnd deletion/free-block accounting.
+  Separately measure FIFO-prefetch boundaries; do not infer timing from the
+  longword method's cursor boundary.
+- falsifier: any retained raw byte missing/shifted, wrong Form2 byte count,
+  count/stream disagreement for a fresh GET, mid-view reinterpretation,
+  copy/move losing the marker/data, physical accounting leak, or a changed
+  remaining stream/cause after state restoration.
+- self-check run (method-level, unvalidated): ASan/fail-fast UBSan raw probe
+  exits0:288 media/view/size/GETDELETE images,384 registered state replays
+  with initial/mid-sector length changes,24 raw COPY/MOVE view controls and
+  allocation-reuse control. Historical39b7c18e fails preservation at generated
+  line928. Per-word geometry, missing geometry-save, missing marker-save,
+  and late-first-view mutants fail at generated lines983/981/1001/983.
+  All18 implementation-owned CD probes exit0. CD TU warning-enabled C++20
+  syntax and diff checks exit0; no full build.
+  **Fixture compilation break:** unmodified
+  `regtests/saturn/test_cd_transfer.py` exits1 before behavioral assertions:
+  its hand-written mock lacks `sectlenin`, `m_xfer_raw_offset`,
+  `m_xfer_raw_size`, `m_xfer_raw_sector`. Validator-owned declaration adapter
+  required; original file and expectations were NOT edited. A temporary,
+  declaration-only in-memory adapter executes unchanged336 transfer,
+  262144 HIRQ and observational trace assertions with exit0; this is not an
+  unmodified-fixture or native-runtime result.
+- state: **UNVALIDATED**.
+- not covered/known doubts: **save-state layout break**: new pool/scratch
+  raw markers and three transfer latches registered in this same change;
+  old-save compatibility not claimed. Audio extraction, raw PUT layout,
+  nonstandard mode-byte fallback, actual-size range/WAIT policy, active
+  buffer mutations, native FIFO/bus/timer/DRQ timing, media read failure/ECC,
+  firmware/gameplay and previously listed filesystem blockers remain open.
+  The sector latch models logical HLE boundaries, not Mednafen's prefetched
+  FIFO boundary. No validator expectations, frozen CPU/sound/video paths
+  or milestone status changes.
