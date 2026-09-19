@@ -235,10 +235,10 @@ private:
   blockT blocks[MAX_BLOCKS];
   blockT curblock;
 
-  uint8_t tocbuf[102 * 4];
-  uint8_t subqbuf[5 * 2];
-  uint8_t subrwbuf[12 * 2];
-  uint8_t finfbuf[256];
+  uint8_t tocbuf[102 * 4]{};
+  uint8_t subqbuf[5 * 2]{};
+  uint8_t subrwbuf[12 * 2]{};
+  uint8_t finfbuf[256]{};
 
   int32_t sectlenin, sectlenout;
 

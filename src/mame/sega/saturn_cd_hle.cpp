@@ -176,6 +176,14 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(xfertype));
   save_item(NAME(xfertype32));
 
+  // Word-transfer cursors must be restored with the staged response bytes.
+  // Full-directory transfers additionally depend on curdir (saved separately
+  // once the directory model supports native save-state serialization).
+  save_item(NAME(tocbuf));
+  save_item(NAME(subqbuf));
+  save_item(NAME(subrwbuf));
+  save_item(NAME(finfbuf));
+
   // Save ownership by indices, never process-local pointers.
   save_item(NAME(m_saved_transpart));
   save_item(NAME(m_saved_cddevice));
