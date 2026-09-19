@@ -85,6 +85,10 @@ private:
 	uint8_t m_serial_rx[2];
 	bool m_serial_tx_full[2];
 	bool m_serial_rx_full[2];
+
+	// PORT-G counter-mode difference bases, latched by a port G write
+	// with bit 7 == 0 (counter reset)
+	uint16_t m_cnt_base[4];
 };
 
 // device type definition
