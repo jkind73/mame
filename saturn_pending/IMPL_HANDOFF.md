@@ -3230,3 +3230,76 @@
   BUS-01/02; an immediate nominal-time refresh is not an arbiter. CMI
   delivery and reset-cause handling are separate. This blocker does not
   prevent unrelated implementation work or alter existing candidates.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0044 | CPU-02 | ef70c104 | UNVALIDATED | OVFIE=0 strictly negative out-of-range 64/32 quotients saturate to 80000000 |
+
+### IMPL-0044 — CPU-02 — negative quotient overflow saturation
+
+- branch/commit/base: `arena/01a0b897-mame`; implementation `ef70c104`,
+  base `c66f1816`. Production and independent method probe committed/pushed.
+- files: `src/devices/cpu/sh/sh7604.cpp:1870-1913`, `dvdntl_w`;
+  `saturn_pending/impl_checks/check_sh7604_divu_saturation.py` (new).
+- contract: for nonzero divisors with a finite signed-64 host quotient
+  strictly less than INT32_MIN, the existing overflow path writes
+  DVDNTL=80000000 when OVFIE=0, rather than the positive limit 7FFFFFFF.
+  Positive saturation, OVFIE=1 legacy intermediates, overflow classification,
+  sticky OVF, IRQ refresh and overflow remainder placeholder are unchanged.
+  No new state fields; no save-state layout change in this candidate.
+- primary source: SH7604 ADE-602-085C Rev.4, section 10.3.3 p.293 and
+  section 10.4.2/Table 10.2 p.294; SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. Disabled-interrupt quotient
+  saturation follows overflow sign; the remainder is an intermediate result,
+  not the mathematical remainder. The latter is expressly NOT implemented
+  by this change.
+- cross-check: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:208-237`, specifically
+  228-234, selects signed saturation with OVFIE=0. Blob
+  `6b31b7d029449d63f68ef281dc04958d17d74339`. Its exact-limit overflow
+  classification at 193-200 differs from MAME, and its intermediate
+  algorithm is not imported or used as a mathematical oracle here.
+- provenance: existing local handler and IMPL-0035 host-overflow guard;
+  upstream MAME pinned `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp:1178-1209`, still uses 7FFFFFFF regardless
+  of sign. This is a bounded source correction, not a reference-code port.
+- expected observable: DVSR=00000001, DVDNTH=FFFFFFFF and DVDNTL=7FFFFFFF
+  (signed dividend -2147483649), OVFIE=0, yield OVF=1 and DVDNTL=80000000.
+  Units: exact 32-bit register words, zero bit tolerance after completion.
+  Positive strict overflow remains 7FFFFFFF. Saturation does not clear
+  pre-existing OVF. Primary latency is six CPU clocks, but this candidate
+  does not implement/claim that latency or busy-access stalls.
+- suggested measurement: isolated native SH7604 64/32 division program,
+  legal 32-bit accesses, OVFIE=0, separating launch/readback by at least
+  39 CPU clocks. Exercise both divisor signs and quotient signs, strict
+  out-of-range values and undisputed in-range controls; capture DVCR and
+  DVDNTL. Repeat with OVF initially set and cleared and across native saves.
+  Do not use this probe's IRQ-refresh mock as evidence of interrupt delivery.
+- falsifier: a strictly negative overflowing nonzero-divisor quotient with
+  OVFIE=0 finishes with any DVDNTL value other than 80000000; or this change
+  alters positive saturation, undisputed in-range results or sticky OVF.
+- self-check run (method-level, unvalidated): actual handler extraction,
+  signed-128 oracle and fail-fast UBSan: 49,414 negative saturations,
+  49,088 positive saturation controls, 65,412 in-range results, 98,502
+  enabled-overflow status controls, 262,416 operand-state-copy replays;
+  exit 0. Enabled-overflow outputs and overflow remainders have NO hardware
+  oracle assertions. Exact-limit detection ambiguities are excluded.
+  Historical `c66f1816` source fails the first targeted negative-overflow
+  observation (generated line 56); it still returns 7FFFFFFF.
+  Prior 33 SH7604 scripts: 29 exit 0, four unchanged conflicts. Including
+  the new script: 34 scripts, 30 exit 0 and four conflicts, NOT qualification.
+  Conflict locations: frt_stop:444, frt_phase:380, wdt_access:132,
+  bsc_access:98. Expectations unchanged; no validator assets edited.
+  Warning-enabled C++20 TU syntax-only check and `git diff --check`: exit 0.
+  No full build or native validation was run.
+- state: **UNVALIDATED** — validator owns qualification and milestone status.
+- not covered/known doubts: divisor zero, signed-32 minimum/-1 (IMPL-0036),
+  exact-limit overflow detection with/without nonzero remainder, OVFIE=1
+  intermediate quotient, all overflowing intermediate remainders, cycle
+  timing, busy stalls, mapped access widths, actual IRQ delivery and native
+  save/load execution. INT64_MIN/-1 retains the IMPL-0035 guard and legacy
+  positive result; it is a regression control, not this correction's target.
+  Operand-object copies are not native save-manager tests. No frozen DMA,
+  delay-slot, sound, video or title-specific paths changed.
