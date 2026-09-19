@@ -577,7 +577,17 @@ void sh7604_device::sh2_wtcnt_recalc()
 
 void sh7604_device::sh2_wdt_activate()
 {
-	m_wdtimer->adjust(cycles_to_attotime((0x100 - m_wtcnt) << wdtclk_tab[m_wtcsr & 7]));
+	uint64_t const divider = 1U << wdtclk_tab[m_wtcsr & 7];
+	uint64_t clocks = (0x100 - m_wtcnt) * divider;
+	if (m_wdtimer->expire() != attotime::never)
+	{
+		// Register writes while enabled do not restart the selected clock.
+		// Retain its partial period from the old deadline. CKS/mode changes
+		// must be made with TME=0 (sections 12.4.2 and 12.4.3).
+		uint64_t const remaining = attotime_to_cycles(m_wdtimer->remaining());
+		clocks -= (divider - remaining % divider) % divider;
+	}
+	m_wdtimer->adjust(cycles_to_attotime(clocks));
 }
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sh2_wdtimer_callback)
