@@ -243,8 +243,10 @@ int main() {
   chk(d->cd_sectors_to_leadout() == 0, "to_leadout_past_end",
       d->cd_sectors_to_leadout(), 0);
 
-  // ---- Play Disc, track mode: play track 2 up to track 3.  The requested
-  //      length has to be track 2's own 300 sectors.
+  // ---- Play Disc, track mode: play tracks 2 and 3.  An end position is the
+  //      *last* index of the named track (ST-162-062094 printed p.53), so the
+  //      range runs to the start of the track after track 3 - the lead-out of
+  //      a three track disc - and has to be 600 sectors.
   auto reset = [&]() {
     d->cd_curfad = 150;
     d->cd_fad_seek = 150;
@@ -261,15 +263,53 @@ int main() {
   d->cmd_play_disc();
   chk(d->cd_fad_seek == 332, "play_track_seek", d->cd_fad_seek, 332);
   chk(d->cur_track == 1, "play_track_index", d->cur_track, 1);
-  chk(d->fadstoplay == 300, "play_track_range", d->fadstoplay, 300);
+  chk(d->fadstoplay == 600, "play_track_range", d->fadstoplay, 600);
 
-  // ---- Play Disc, FAD mode: an end position is a position, not a length
+  // ---- a single track: start and end name the same track, so the range is
+  //      that track's own length and not an empty "will not play" range
+  reset();
+  d->cr1 = 0x1000; d->cr2 = (2 << 8); d->cr3 = 0; d->cr4 = (2 << 8);
+  d->cmd_play_disc();
+  chk(d->cd_fad_seek == 332, "play_one_track_seek", d->cd_fad_seek, 332);
+  chk(d->fadstoplay == 300, "play_one_track_range", d->fadstoplay, 300);
+
+  // ---- and the last track plays up to the lead-out
+  reset();
+  d->cr1 = 0x1000; d->cr2 = (3 << 8); d->cr3 = 0; d->cr4 = (3 << 8);
+  d->cmd_play_disc();
+  chk(d->fadstoplay == 300, "play_last_track_range", d->fadstoplay, 300);
+
+  // ---- end track 0 is the default position: the end of the disc
+  reset();
+  d->cr1 = 0x1000; d->cr2 = (2 << 8); d->cr3 = 0; d->cr4 = 0;
+  d->cmd_play_disc();
+  chk(d->fadstoplay == 600, "play_track_default_end", d->fadstoplay, 600);
+
+  // ---- start track 0 is also a default: the first track of the disc
+  reset();
+  d->cr1 = 0x1000; d->cr2 = 0; d->cr3 = 0; d->cr4 = (2 << 8);
+  d->cmd_play_disc();
+  chk(d->cd_fad_seek == 150, "play_default_start_seek", d->cd_fad_seek, 150);
+  chk(d->fadstoplay == 482, "play_default_start_range", d->fadstoplay, 482);
+
+  // ---- Play Disc, FAD mode: an end position is a *sector count* from the
+  //      start position ("the end position is designated by sector number
+  //      (FAD sector number) from the starting FAD", printed p.53; the manual
+  //      states the range as End FAD = Start FAD + count - 1)
   reset();
   d->cr1 = 0x1080; d->cr2 = 332;              // start FAD 0x80014C
-  d->cr3 = 0x0080; d->cr4 = 0x03a4;          // end FAD 0x8003A4 = 932
+  d->cr3 = 0x0080; d->cr4 = 600;              // 600 sectors
   d->cmd_play_disc();
   chk(d->cd_fad_seek == 332, "play_fad_seek", d->cd_fad_seek, 332);
   chk(d->fadstoplay == 600, "play_fad_range", d->fadstoplay, 600);
+
+  // ---- a count smaller than the start position is a short range, not the
+  //      negative difference a position reading would produce
+  reset();
+  d->cr1 = 0x1080; d->cr2 = 332;
+  d->cr3 = 0x0080; d->cr4 = 50;
+  d->cmd_play_disc();
+  chk(d->fadstoplay == 50, "play_fad_short_range", d->fadstoplay, 50);
 
   // ---- the 0xFFFFFF "no end" encoding means play to the lead-out
   reset();

@@ -254,7 +254,8 @@ local function test()
         string.format('%02x', t2.control))
     chk('toc_track3_fad', t3.fad == @@TRACK3@@, string.format('%06x', t3.fad))
 
-    -- play track 2 to the start of track 3
+    -- play tracks 2 and 3: an end position names the last index of that
+    -- track, so track 3 is included (ST-162-062094 printed p.53)
     chk('play_accepted', play_track(2, 3), 'no CMOK')
     for _ = 1, 200 do
         if state() == STAT.PLAY then break end
@@ -282,20 +283,37 @@ local function test()
         tone(playing, @@TONE@@), 'second harmonic dominates')
     chk('play_q_track', q.track == 2, q.track)
 
-    -- the requested range ends at track 3: PEND and silence
-    local ended, tones = false, {}
-    for _ = 1, 60 do
-        emu.wait(ms(150))
-        tones[#tones + 1] = rms(capture(60))
-        if (sp:read_u16(HIRQ) & 0x0010) ~= 0 then ended = true end
+    -- a single track plays for exactly its own length: track 3 is the last
+    -- track, so its range runs to the lead-out and covers 300 sectors, i.e.
+    -- four seconds at the audio rate the converter runs at (75 sectors/s)
+    local ended, play_t0 = false, false
+    chk('range_accepted', play_track(3, 3), 'no CMOK')
+    for _ = 1, 200 do
+        if state() == STAT.PLAY then
+            if not play_t0 then play_t0 = emu.time() end
+            break
+        end
+        emu.wait(ms(10))
+    end
+    local end_at = false
+    for _ = 1, 90 do
+        emu.wait(ms(100))
+        if (sp:read_u16(HIRQ) & 0x0010) ~= 0 then
+            ended = true
+            if not end_at then end_at = emu.time() end
+        end
         if ended and state() == STAT.PAUSE then break end
     end
     local tail = capture(150)
-    print(string.format('CDDA range ended=%s state=%03x tail_rms=%.6f',
-                        tostring(ended), state(), rms(tail)))
+    local played = (play_t0 and end_at) and (end_at - play_t0) or -1
+    print(string.format('CDDA range ended=%s state=%03x tail_rms=%.6f '
+                        .. 'seconds=%.3f', tostring(ended), state(),
+                        rms(tail), played))
     chk('range_pend', ended, 'PEND never raised')
     chk('range_pause', state() == STAT.PAUSE, string.format('%03x', state()))
     chk('range_silent', rms(tail) < 0.01, string.format('%.6f', rms(tail)))
+    chk('range_length', played > 3.5 and played < 4.7,
+        string.format('%.3f s', played))
 
     -- seek to the start of track 2 then pause, and resume from the pause
     cmd(0x1100, 0x0200, 0, 0)               -- Seek Disc, track mode
@@ -400,8 +418,9 @@ local function test()
     chk('scan_audible', rms(scann) > 0.02, string.format('%.6f', rms(scann)))
     chk('scan_moves', q2.abs > q1.abs, string.format('%d -> %d', q1.abs, q2.abs))
 
-    -- playing the data track must stay silent
-    chk('data_play_accepted', play_track(1, 2), 'no CMOK')
+    -- playing the data track must stay silent (track 1 alone: an end of 2
+    -- would include the audio track that follows it)
+    chk('data_play_accepted', play_track(1, 1), 'no CMOK')
     for _ = 1, 200 do
         if state() == STAT.PLAY then break end
         emu.wait(ms(10))

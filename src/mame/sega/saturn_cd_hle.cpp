@@ -1053,7 +1053,26 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
 }
 
 void saturn_cd_hle_device::cmd_play_disc() {
-  // Play Disc. FAD is in lowest 7 bits of cr1 and all of cr2.
+  /* Play Disc.  Position parameters follow ST-162-062094 printed pp.53-55
+     (CDC_POS_*): a position is either a frame address (FAD, bit 23 of the
+     24 bit field set), a track/index pair, or a "no change" mark (all ones).
+     Two readings there differ from what this device used to do:
+
+       * an end position given as a frame address is a *sector count* from the
+         start position ("the end position is designated by sector number (FAD
+         sector number) from the starting FAD"; End FAD = Start FAD + count -
+         1), not a second absolute FAD;
+       * the default position (track 0 / index 0) is the start of the disc for
+         a start position and the end of the disc for an end position, so a
+         track mode play that leaves the end field empty plays the rest of the
+         disc rather than being refused;
+       * "the play range is retained if the end position is smaller than the
+         start position, but the CD will not play" - an empty range is
+         accepted and stored, and leaves the drive where it is.
+
+     Play mode is CR3's high byte: its low nibble is the maximum repeat count
+     (0x7f = "does not change maximum repeat count") and bit 7 - CR3 bit 15 -
+     is "does not move the pickup to the start position". */
   uint32_t start_pos, end_pos;
   uint8_t play_mode;
 
@@ -1061,14 +1080,19 @@ void saturn_cd_hle_device::cmd_play_disc() {
 
   play_mode = (cr3 >> 8) & 0x7f;
 
-  // preserve current position if bit 7 set
+  // CR3 bit 15 (bit 7 of the play mode byte) is the manual's "does not move
+  // the pickup to the start position"
   if (!(cr3 & 0x8000)) {
     start_pos = ((cr1 & 0xff) << 16) | cr2;
     end_pos = ((cr3 & 0xff) << 16) | cr4;
 
+    uint32_t range_start = cd_curfad;
+
     if (start_pos & 0x800000) {
-      if (start_pos != 0xffffff) {
+      // frame address start; 0xFFFFFF is the no-change mark (pause cancel)
+      if ((start_pos & 0x7f'ffff) != 0xffffff) {
         cd_fad_seek = start_pos & 0x7f'ffff;
+        range_start = cd_fad_seek;
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PLAY;
       }
@@ -1076,46 +1100,51 @@ void saturn_cd_hle_device::cmd_play_disc() {
       LOGCMD("\tFAD mode\n");
       cur_track = cd_track_at(cd_curfad);
     } else {
-      // track mode
+      // track/index start; the host's track number is one based
       if ((start_pos >> 8) != 0) {
-        // the host's track number is one based; cur_track is an index
         cur_track = (start_pos >> 8) - 1;
-        cd_fad_seek = cd_track_start_fad(cur_track);
-        cd_change_status(CD_STAT_SEEK);
-        cd_seek_stat = CD_STAT_PLAY;
       } else {
-        // FIXME: Waku Waku 7 sets up track 0, that basically doesn't make any
-        // sense. Just skip it for now.
-        popmessage("Warning: track mode == 0");
-        cr_standard_return(cd_stat);
-        hirqreg |= (CMOK);
-        update_hirq();
-        return;
+        // default position: the start of the disc
+        cur_track = 0;
       }
+
+      cd_fad_seek = cd_track_start_fad(cur_track);
+      range_start = cd_fad_seek;
+      cd_change_status(CD_STAT_SEEK);
+      cd_seek_stat = CD_STAT_PLAY;
 
       LOGCMD("\ttrack mode %d\n", cur_track);
     }
 
+    // end position
     if (end_pos & 0x800000) {
-      /* An end position given as a FAD.  0xFFFFFF is the "no end" encoding,
-         and a position behind the pickup cannot be a length.  This used to
-         keep the FAD itself as the count, which is a position measured from
-         FAD 0: a play from the middle of the disc then ran past the lead-out
-         before the count woke up. */
-      uint32_t const endfad = end_pos & 0x7f'ffff;
-      fadstoplay = (endfad != 0xffffff && endfad > cd_fad_seek)
-                       ? (endfad - cd_fad_seek)
-                       : 0;
+      // a sector count from the start position
+      uint32_t const count = end_pos & 0x7f'ffff;
+      if (count != 0xffffff)
+        fadstoplay = count; // 0xFFFFFF = no change: keep the current range
+      LOGCMD("\tFAD end, %d sectors\n", fadstoplay);
     } else {
-      /* The end position is a track number: playback stops where that track
-         begins, so the boundary is the start of the track before it.  (This
-         used to add 150 sectors of lead-in twice and finish one track late,
-         playing through the following track.) */
+      /* A track/index end position is the *last* index of that track - index
+         0 means "designation of the track only, track start/last index" - so
+         the range runs to the end of track E, i.e. to the start of the track
+         after it.  That is also the only reading consistent with the table's
+         "TNO = 0 -> TNO = disc last track" default: an exclusive end would
+         stop before the last track instead of playing it.  This used to feed
+         the host's one based track number to the image API's zero based
+         get_track_start() - which by luck gave this same boundary - and then
+         subtract a logical LBA from a FAD, ending every range 150 sectors
+         (two seconds) early. */
       uint32_t const end_track = end_pos >> 8;
 
-      fadstoplay = (end_track > 0 ? cd_track_start_fad(end_track - 1)
-                                  : cd_curfad) -
-                   cd_fad_seek;
+      if (end_track > 0) {
+        uint32_t const boundary = cd_track_start_fad(end_track);
+        fadstoplay = (boundary > range_start) ? (boundary - range_start) : 0;
+      } else {
+        // default position: the end of the disc
+        uint32_t const leadout = cd_track_start_fad(cd_track_count());
+        fadstoplay = (leadout > range_start) ? (leadout - range_start) : 0;
+      }
+      LOGCMD("\ttrack end %d -> %d sectors\n", end_track, fadstoplay);
     }
   } else // play until the end of the disc
   {
@@ -1126,14 +1155,18 @@ void saturn_cd_hle_device::cmd_play_disc() {
       /* Madou Monogatari sets 0xff80xxxx as end position, needs investigation
        * ... */
       if (end_pos & 0x800000) {
-        uint32_t const endfad = end_pos & 0x7f'ffff;
-        fadstoplay = (endfad > cd_curfad) ? (endfad - cd_curfad) : 0;
-      }
-      else {
-        if (end_pos == 0)
-          fadstoplay = cd_track_start_fad(cd_track_count()) - cd_curfad;
-        else
-          fadstoplay = cd_track_start_fad((end_pos >> 8)) - cd_curfad;
+        uint32_t const count = end_pos & 0x7f'ffff;
+        if (count != 0xffffff)
+          fadstoplay = count;
+      } else {
+        uint32_t const end_track = end_pos >> 8;
+        if (end_track > 0) {
+          uint32_t const boundary = cd_track_start_fad(end_track);
+          fadstoplay = (boundary > cd_curfad) ? (boundary - cd_curfad) : 0;
+        } else {
+          uint32_t const leadout = cd_track_start_fad(cd_track_count());
+          fadstoplay = (leadout > cd_curfad) ? (leadout - cd_curfad) : 0;
+        }
       }
       LOGCMD("\ttrack mode %08x %08x -> %08x %08x\n", start_pos, end_pos,
              cd_curfad, fadstoplay);
@@ -1156,7 +1189,6 @@ void saturn_cd_hle_device::cmd_play_disc() {
         // TODO: need to preserve previous fadstoplay
         // (in said case, by playing until the end of disc rather than just one
         // track)
-        // cd_curfad = m_cdrom_image->get_track_start(cur_track);
         fadstoplay = cd_track_start_fad(cur_track + 1) - cd_curfad;
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PLAY;
@@ -1166,19 +1198,24 @@ void saturn_cd_hle_device::cmd_play_disc() {
     }
   }
 
-  /* The range is measured from where the pickup is going - the seek target
-     this command chained, or the current position when it did not - and it
-     cannot leave the disc.  An unset or backwards end (0, the 0xFFFFFF "no
-     end" encoding, or a position behind the start) is an open range: the
-     drive plays to the lead-out, which is the only sensible reading of a
-     protocol that cannot ask for a zero length play. */
+  /* The drive cannot play past the end of the disc, so a range that would
+     leave it is cut at the lead-out.  An empty range is the manual's "will
+     not play" case: the parameters stay as given and the drive is left where
+     it is instead of being sent to the start of an empty range. */
   {
     uint32_t const start = (cd_fad_seek > 150) ? cd_fad_seek : cd_curfad;
-    uint32_t const max_len = (cd_track_start_fad(cd_track_count()) > start)
-                                 ? (cd_track_start_fad(cd_track_count()) - start)
-                                 : 0;
-    if (fadstoplay == 0 || fadstoplay == 0xffffffff || fadstoplay > max_len)
+    uint32_t const leadout = cd_track_start_fad(cd_track_count());
+    uint32_t const max_len = (leadout > start) ? (leadout - start) : 0;
+
+    if (fadstoplay == 0xffffffff)
       fadstoplay = max_len;
+    else if (fadstoplay > max_len)
+      fadstoplay = max_len;
+  }
+
+  if (fadstoplay == 0 && (cd_stat & 0x0f00) == CD_STAT_BUSY) {
+    // an empty range: retain the parameters, do not play
+    cd_seek_stat = CD_STAT_PAUSE;
   }
 
   LOGCMD("\tPlay Disc: current %06x -> start %06x length %06x\n", cd_curfad,
@@ -1190,14 +1227,11 @@ void saturn_cd_hle_device::cmd_play_disc() {
 
   playtype = 0;
 
-  // cdda
-  // if(m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
-  // cdrom_file::CD_TRACK_AUDIO)
-  //{
-  //	m_cdda->pause_audio(0);
-  //	//m_cdda->start_audio(cd_curfad, fadstoplay);
-  //	//cdda_repeat_count = 0;
-  //}
+  /* Red Book output is not started here: the command only arms the seek, and
+     the converter is started when the drive actually reaches PLAY (see
+     cd_start_cdda()), at the position the pickup reports.  It also keeps the
+     decoder off while the pickup travels, which is what a host reading the
+     status expects. */
 
   if (play_mode != 0x7f)
     cdda_maxrepeat = play_mode & 0xf;
