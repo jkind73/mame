@@ -5397,3 +5397,51 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   selectors are legal file commands. Native firmware/game/timer/IRQ and
   directory save acceptance remain open. No new fields/layout break,
   validator expectations or frozen CPU/sound/video changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0073 | CD-01 | da1ca7c5 | UNVALIDATED | File-scope queries publish their response and CMOK without manufacturing filesystem completion |
+
+### IMPL-0073 — CD-01 — file-scope query completion
+
+- branch/commit/base: `arena/01a0b897-mame` @ **da1ca7c5**; base **5b9e738a**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` cmd_get_file_scope;
+  `saturn_pending/impl_checks/check_cd_file_scope_completion.py`.
+- contract: a Get File Scope query completes its command with CMOK, not a
+  new EFLS event. Preserve all already pending causes. Populate its existing
+  response words before the completion callback. Remove the unconditional
+  four-register diagnostic dump; scope data calculations are unchanged.
+- primary source: ST-162-062094 printed p.30 Table3.2 lists Move Directory,
+  Hold File Information and Read File under EFLS, not Get File Scope;
+  p.100 function8.3 is the scope query. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3785-3803,1872-1886`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, returns scope via BasicResults
+  (CMOK without EFLS). Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:3160-3188`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, disagrees by setting EFLS;
+  this candidate follows the primary flag table/Mednafen, not that behavior.
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d and local base
+  had EFLS and callback-before-response. No reference block imported.
+- expected observable: with EFLS clear, command72 leaves it clear and sets
+  CMOK; with EFLS pending, it remains pending. Query completion does not
+  falsely satisfy a wait for an outstanding filesystem operation. Exact
+  cause bits, zero tolerance; no command72 change to directory state.
+- suggested method: native query while observing/acknowledging completion
+  causes, including previously pending EFLS; distinguish query CMOK from
+  a genuine Read File/Read Directory end event and inspect response words.
+- falsifier: query generates EFLS, loses a pending cause, fails to set CMOK,
+  mutates filesystem state, or completion callback sees incomplete response.
+- self-check run (method-level, unvalidated):262,144 status/pending-cause
+  images using the actual getter and recording callback, fail-fast UBSan
+  exit0. Historical5b9e738a fails cause comparison at generated line31.
+  Warning-enabled CD C++20 syntax/diff checks exit0.
+- state: **UNVALIDATED**.
+- not covered/known doubts: existing scope count/first-ID/end-of-directory
+  calculations, held-table validity/window, FLS-active WAIT policy, native
+  timing/scheduler/bus/IRQ and gameplay remain separate. Reserved cause
+  combinations are storage diagnostics. No new fields/save-layout change,
+  validator expectations, HIRQ handler or frozen-path changes.
