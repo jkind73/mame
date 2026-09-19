@@ -105,6 +105,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_scr));
 	save_item(NAME(m_tdr));
 	save_item(NAME(m_ssr));
+	save_item(NAME(m_sci_ssr_read));
 	save_item(NAME(m_rdr));
 	save_item(NAME(m_tsr));
 	save_item(NAME(m_rsr));
@@ -230,6 +231,7 @@ void sh7604_device::device_reset()
 	m_scr = 0;
 	m_tdr = 0xff;
 	m_ssr = SSR_TDRE | SSR_TEND;
+	m_sci_ssr_read = 0;
 	m_rdr = 0;
 	m_tsr = 0;
 	m_rsr = 0;
@@ -947,21 +949,29 @@ void sh7604_device::tdr_w(uint8_t data)
 
 uint8_t sh7604_device::ssr_r()
 {
+	// Only a CPU status read arms write-zero acknowledgements. Debugger
+	// inspection must not make a later write consume a newly raised flag.
+	if (!machine().side_effects_disabled())
+		m_sci_ssr_read = m_ssr;
 	return m_ssr;
 }
 
 void sh7604_device::ssr_w(uint8_t data)
 {
-	// SSR is write-1-to-keep / write-0-to-clear for flags 7-2; MPB (bit 1)
-	// is read-only and MPBT (bit 0) is read/write (pp.344-345). TDRE is
-	// locked at 1 while TE is 0 (p.340), so only flags 6-2 are clearable.
-	uint8_t const clearable = BIT(m_scr, 5) ? 0xfc : 0x7c;
-	bool const tdre_clear = BIT(m_ssr, 7) && !BIT(data, 7) && BIT(m_scr, 5);
-	m_ssr = (m_ssr & (data | (uint8_t)~clearable)) | (m_ssr & SSR_MPB) | (data & 0x01);
+	// SH7604 manual section 13.2.7, pp.342-345: flags 7-3 can only be
+	// cleared after being read as one. TEND/MPB are read-only; MPBT is
+	// ordinary read/write. TE=0 locks TDRE at one (section 13.2.6).
+	bool const tdre_clear = BIT(m_scr, 5) &&
+		(m_ssr & m_sci_ssr_read & SSR_TDRE) && !BIT(data, 7);
+	if (tdre_clear)
+		m_ssr &= ~(SSR_TDRE | SSR_TEND);
+	m_ssr = (m_ssr & (~m_sci_ssr_read | data | SSR_TDRE | SSR_TEND | SSR_MPB) & 0xfe)
+		| (data & 0x01);
+	// Consume acknowledgements before TSR loading can raise TDRE again.
+	m_sci_ssr_read &= m_ssr;
 
-	// "When TDRE is cleared to 0 the SCI recognizes that TDR contains new
-	// data and loads this data from TDR into TSR", then sets TDRE again
-	// (p.372 step 1-2)
+	// Section 13.3.2, p.359 steps 1-2: loading TSR makes TDR available
+	// again. A running transmitter consumes queued data at the stop bit.
 	if (tdre_clear && !m_sci_tx_active && !BIT(m_smr, 7))
 	{
 		m_tsr = m_tdr;
