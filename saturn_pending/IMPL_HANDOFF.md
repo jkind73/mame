@@ -2771,3 +2771,65 @@
 - not covered: this blocker does not qualify Ymir's broader overflow
   algorithm or the current MAME output; the known unsafe expression remains
   a visible limitation, not an accepted hardware behavior.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0037 | CPU-03 | 8c231d4a | UNVALIDATED | Device reset clears DIVU DVCR.OVF and OVFIE without assigning dividend/divisor reset values |
+
+### IMPL-0037 — CPU-03 — DIVU control reset image
+
+- branch/commit: `arena/01a0b897-mame` @ **8c231d4a** (base: 0c09f1a4).
+- files: `src/devices/cpu/sh/sh7604.cpp:242-246`;
+  `saturn_pending/impl_checks/check_sh7604_divu_reset.py`;
+  two shared reset-extraction mocks gain DIVU flag declarations only.
+- contract: DVCR is initialized to zero by power-on or manual reset,
+  clearing both overflow and its interrupt-enable bit. Module standby
+  does not initialize DVCR. This candidate adds those flag assignments
+  to generic device reset only; it does not assign documented-undefined
+  reset values to dividend, divisor or vector registers.
+- primary source: SH7604 ADE-602-085C Rev.4, section 10.2.3 p.290:
+  DVCR=00000000 on power-on/manual reset, not initialized in standby or
+  module standby; sections 10.2.1/10.2.2 pp.289-290 and 10.2.4-10.2.6
+  pp.291-292 distinguish other registers' reset values. SDK blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- cross-checks: Ymir pinned `6d779960127ced72087a418c1daefc637d0aaa80`,
+  `libs/ymir-core/include/ymir/hw/sh2/sh2_divu.hpp:38-41,99-106`, clears
+  DVCR flags during DIVU reset. Its chosen zero values for undefined
+  registers are not imported. Blob
+  `6b31b7d029449d63f68ef281dc04958d17d74339`. Upstream MAME pinned
+  `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  `src/devices/cpu/sh/sh7604.cpp` device_reset, and fork base `0c09f1a4`
+  do not reset these constructor-initialized/saved flags on later resets.
+  No reference code imported.
+- expected observable: after setting any combination of DVCR bits 1:0,
+  device reset produces DVCR=00000000. Ordinary SCI/FRT module-stop
+  entry/release must not clear DIVU flags. Exact bits; native reset-pin
+  pulse timing and division completion latency are not asserted here.
+- suggested method: set DVCR with legal longword/word access, perform
+  power-on/manual reset and read it back; repeat after an actual overflow
+  and with OVFIE set. Exercise module standby separately. Keep undefined
+  dividend/vector initial values out of the reset oracle.
+- falsifier: either DVCR bit surviving power-on/manual reset, or module
+  standby alone clearing DVCR, rejects the corresponding contract.
+- self-check run (method-level, unvalidated): new script exits 0:
+  `64 DVCR full-reset images; 128 SCI/FRT module-stop retention controls;
+  64 operand-state-copy replays`. Real device_reset/DVCR/SBYCR methods;
+  base CPU and unrelated peripheral reset helpers are mocked. Pre-change
+  `0c09f1a4` methods exit 1 at line 315, `d.dvcr_r()==0 && replay.dvcr_r()==0`.
+  UBSan enabled; existing save registration checked. Twenty-four prior
+  scripts exit 0; unchanged `frt_stop`, `frt_phase`, `wdt_access`
+  expectation conflicts remain at lines 444, 380, 132. Current total 28
+  SH7604 scripts: 25 exit 0, 3 exit 1. Warning-enabled TU syntax
+  (`-std=c++20 -Wall -Werror -Wno-sign-compare`, session includes) and
+  `git diff --check` exit 0. No full build.
+- state: UNVALIDATED
+- not covered / known doubts: no new state fields/save-layout change;
+  both flags already have save_item registration. Native reset entry,
+  actual standby transitions, in-flight DIVU abort/busy behavior, interrupt
+  delivery and actual save-manager replay remain unqualified. Undefined
+  register values are deliberately not qualified as retained hardware
+  values. Signed-32 boundary and WDTOVF blockers remain as recorded.
+  Frozen DMA acknowledgement, delay-slot IRQ, sound/game paths, validator
+  assets and existing expected values unchanged.
