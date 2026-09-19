@@ -5232,3 +5232,113 @@ are method-level raw output, not native evidence.
   events and native IRQ delivery are mocked/excluded. Directory/MPEG and
   whole-CD save acceptance remain open. No new fields, changed drive
   algorithms, validator expectations or frozen-path edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0071 | CD-01 | c802ea54 | UNVALIDATED | Read File decodes 24-bit offset/identifier and derives an untruncated range in 2048-byte logical sectors |
+
+### IMPL-0071 — CD-01 — Read File packet/range widths
+
+- branch/commit/base: `arena/01a0b897-mame` @ **c802ea54**; base **945275fe**.
+- files: `src/mame/sega/saturn_cd_hle.cpp` cmd_read_file;
+  `saturn_pending/impl_checks/check_cd_read_file_range.py`.
+- contract (existing directory entry, valid offset within the file): assemble
+  offset from CR1 low byte/CR2 and file identifier from CR3 low byte/CR4
+  without truncation. Derive remaining logical sectors as ceil(length/2048)
+  minus offset, independently of host Get Sector Length; widen rounding
+  before addition and retain counts above65535. Start FAD is the24-bit sum
+  of the entry FAD and logical offset. High file-ID bytes must not alias a
+  smaller cached entry before the existing bounds guard.
+- primary source: ST-162-062094 printed p.100 function8.5 specifies file
+  identifier and logical-sector offset; p.95 function7.1 limits host sector
+  length selection to fetch/write and actual-data-size behavior, SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`. ST-040-R4-051795 printed
+  p.23 section3.3 defines file-sector accounting converted to2048 bytes,
+  SDK blob `2e56c214c756ec98944dfca9a843c6b1bbeaf8d3`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3865-3888`, blob d367dd0c0500ff7b1e2637e748015543b0a3078e,
+  has24-bit offset/ID,24-bit FAD and2048-byte sector accounting. Its own
+  beyond-EOF FIXME is not a hardware oracle. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:3227-3247,928-934`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, agrees on packet widths and
+ 2048 accounting, but its full end-position formula is NOT adopted.
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d and local
+  history/base were inspected: offset lost CR2 high bits/placed CR1 at bit8,
+  file ID/remaining count used16-bit locals, and file length used sectlenin.
+- expected observable: offset000100 starts at entryFAD+256 rather than
+  entryFAD, regardless of2048/2336/2340/2352 host fetch selection. A70000
+  logical-sector file at offset0 keeps70000 remaining sectors, not4464.
+  ID010002 cannot read cached ID000002. Exact FAD/count/ID, zero tolerance.
+- suggested method: native Read File over ordinary noninterleaved files,
+  including offsets with bits8-23 set and files above128MiB; compare first
+  stored FAD and remaining/end range across host fetch sizes. Separate
+  diagnostic24-bit FAD-wrap/max-byte-size cases from valid physical discs.
+- falsifier: discarded command bits, high-ID aliasing, host fetch size
+  changes file geometry, truncated remaining range, overflow during byte
+  rounding, or wrong24-bit start FAD.
+- self-check run (method-level, unvalidated): actual Read File/status bodies,
+  7,296 valid-offset range images across all selectors/fetch sizes, plus
+  1,275 high-ID nonalias controls; fail-fast UBSan exit0. Historical945275fe
+  fails FAD/count comparison at generated line157. Warning-enabled CD C++20
+  syntax/diff checks exit0. No native playback/full build.
+- state: **UNVALIDATED**.
+- not covered/known doubts: **BLOCKED(hardware command74 response/drive
+  transition for offset at/past EOF)**; do not infer a new error policy
+  from the reference's unsigned underflow. Invalid/nonheld-ID response
+  status, directory-held-window mapping, XA interleaving/filter setup,
+  source partition clearing, full file completion/IRQ and seek timing are
+  separate. Maximum-length/FAD-wrap probes are arithmetic/storage diagnostics,
+  not legal-disc qualification. Existing file-command connector assignment
+  remains unchanged here. No new saved state/layout or validator/frozen
+  path edits; no claim that Read File/CD-01 as a whole is complete.
+
+### Checkpoint after IMPL-0071 — publication blocker and aggregate self-check
+
+- Production commits through **c802ea54** were pushed successfully to
+  `arena/01a0b897-mame`. Handoff commit **599fe5b3** exists locally, but its
+  push failed: `fatal: could not read Username for 'https://github.com':
+  terminal prompts disabled`. **BLOCKED(GitHub connection authentication)**
+  for further publication. The user was asked to reconnect GitHub in Arena;
+  no credentials were requested or stored. Do not force-push or switch
+  branches when resuming.
+- Aggregate method-level, unvalidated: all **15** current `check_cd_*.py`
+  implementation probes exit0; existing CD transfer/HIRQ/trace checks exit0;
+  warning-enabled CD TU C++20 syntax and diff checks exit0. Raw aggregate
+  logs: `/tmp/impl-ref/cd-through-0071-*.log`. No full build, native BIOS/game
+  run or validation-status promotion. No existing expectation edits.
+- A local range-log command naming `origin/arena/01a0b897-mame` failed because
+  this checkout lacks that remote-tracking ref; this is separate from the
+  authentication failure. Successful push output establishes c802ea54 as the
+  last published implementation, not an assumed tracking-ref comparison.
+- Next actionable review: file commands still assign CD pointers directly,
+  without matching visible cddevicenum/exclusive-input ownership. Primary
+  ST-162p.53 and pinned Mednafen cdb.cpp:1119-1121,3890 support routing those
+  existing assignments through a common connection helper. No such change
+  is included in0071. Complete file-table window/ISO-XA state and native
+  directory serialization remain separate; avoid silently serializing an
+  initially empty/resizing vector through the fixed-storage save wrapper.
+- Commands55/56 remain absent. ST-162p.94 and Mednafen cdb.cpp:3380-3439
+  define valid FAD search/response, but resolve partition-output detachment
+  during active GETDELETE and failed-search result latching before guessing
+  those edges: **BLOCKED(hardware command55 trace with active source output,
+  and empty/invalid-position search followed by56)** for those contracts.
+  This is not a reason to postpone independent documented implementations.
+
+### Publication recovery after IMPL-0071 (append-only)
+
+GitHub was reconnected. The resumed workspace retained file contents but its
+local branch/index had reverted to82152a8b; previously local-only objects
+599fe5b3/0e4c193b were absent. The remote still pointed to the successfully
+published c802ea5405804e7299777dffe0a7b0a9e3280b24. A full-history fetch timed
+out; its leftover processes were terminated and an exact shallow tip fetch
+completed. All70 apparent changed/new files matched the published blob hashes
+exactly; only the preserved handoff additions differed. A recovery copy was
+saved outside the repository under /home/user/recovery-0071. The same session
+branch/index was restored to c802ea54 with a mixed reset (no working files
+overwritten), and the unpublished handoff text is being recommitted. This
+restores local Git metadata to the existing published history, not a force
+push, branch switch or rewrite of published commits. Earlier local-only
+handoff commit IDs are historical notes, not claimed present after recovery.
