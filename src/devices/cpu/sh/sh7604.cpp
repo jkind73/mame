@@ -40,7 +40,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_write_txd(*this)
 	, m_read_rxd(*this, 1)
 	, m_write_sck(*this)
-	, m_tier(0), m_ftcsr(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
+	, m_tier(0), m_ftcsr(0), m_ftcsr_read(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0)
@@ -131,6 +131,7 @@ void sh7604_device::device_start()
 	// FRT / FRC
 	save_item(NAME(m_tier));
 	save_item(NAME(m_ftcsr));
+	save_item(NAME(m_ftcsr_read));
 	save_item(NAME(m_frc_tcr));
 	save_item(NAME(m_tocr));
 	save_item(NAME(m_frc));
@@ -401,6 +402,7 @@ void sh7604_device::frt_reset()
 	// initialize the FRT, but module stop leaves its INTC vectors intact.
 	m_tier = 0x01;
 	m_ftcsr = 0;
+	m_ftcsr_read = 0;
 	m_frc_tcr = 0;
 	m_tocr = 0xe0;
 	m_frc = 0;
@@ -1460,20 +1462,27 @@ void sh7604_device::tier_w(uint8_t data)
 
 uint8_t sh7604_device::ftcsr_r()
 {
-	// TODO: to be tested
-	if (!m_ftcsr_read_cb.isnull())
-		m_ftcsr_read_cb((((m_tier << 24) | (m_ftcsr << 16)) & 0xffff0000) | m_frc);
-
+	// Section 11.2.5 pp.300-301: only flags read as one may be cleared.
+	// Debugger inspection must neither arm acknowledgements nor invoke
+	// the legacy CPU-read callback.
+	if (!machine().side_effects_disabled())
+	{
+		if (!m_ftcsr_read_cb.isnull())
+			m_ftcsr_read_cb((((m_tier << 24) | (m_ftcsr << 16)) & 0xffff0000) | m_frc);
+		m_ftcsr_read = m_ftcsr & (ICF | OCFA | OCFB | OVF);
+	}
 	return m_ftcsr;
 }
 
 void sh7604_device::ftcsr_w(uint8_t data)
 {
-	uint8_t old = m_ftcsr;
-
-	m_ftcsr = data;
 	sh2_timer_resync();
-	m_ftcsr = (m_ftcsr & ~(ICF | OCFA | OCFB | OVF)) | (old & m_ftcsr & (ICF | OCFA | OCFB | OVF));
+	// ICF/OCFA/OCFB/OVF are read-one/write-zero flags. CCLRA is ordinary
+	// read/write; reserved bits 6-4 remain zero. A consumed acknowledgement
+	// must not clear a later event without another status read.
+	m_ftcsr = (m_ftcsr & (ICF | OCFA | OCFB | OVF) & (~m_ftcsr_read | data))
+		| (data & CCLRA);
+	m_ftcsr_read &= m_ftcsr;
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
