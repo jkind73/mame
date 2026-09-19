@@ -323,6 +323,17 @@ for system in saturnjp saturneu stvbios; do
         --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
     grep -q 'SCSP integration: PASS cases=49' "$LOG_DIR/$phase.log"
 done
+phase=cdda
+python3 regtests/saturn/test_cdda_runtime.py --executable "$ARTIFACT/saturn" \
+    --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+grep -q 'CDDA PASS' "$LOG_DIR/$phase/runtime.log"
+for system in saturnjp saturneu stvbios; do
+    phase="cdda-$system-drc"
+    python3 regtests/saturn/test_cdda_runtime.py --executable "$ARTIFACT/saturn" \
+        --rompath "$ROOT/regtests" --system "$system" --drc \
+        --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1
+    grep -q 'CDDA PASS' "$LOG_DIR/$phase/runtime.log"
+done
 phase=scsp-continuity
 python3 saturn_pending/test_scsp_continuity_runtime.py --executable "$ARTIFACT/saturn" \
     --rompath "$ROOT/regtests" --output "$LOG_DIR/$phase" > "$LOG_DIR/$phase.log" 2>&1

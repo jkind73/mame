@@ -401,6 +401,7 @@
   - DRDY and related status/interrupt transitions, buffer-full/empty behavior, transfer completion, command overlap and dual-port host interface semantics.
   - Audit filters/partitions, sector routing, file/sector access and reset/abort interactions through actual command sequences, not successful executable loading alone.
 - [ ] **CD-02 — Complete drive/media timing and state transitions. [P/V/R]**
+  - Current integration: the FAD/LBA mix is resolved on the drive path (`cd_track_at()`, `cd_track_start_fad()`, `cd_sectors_to_leadout()`); a track-mode play ends at the start of the requested end track instead of one track late, a FAD end position is treated as a position rather than as a sector count, and a range cannot run past the lead-out. A fast forward/rewind now moves the pickup at the audible 2x rate and `PEND` at the end of the programme area. Measured on a generated disc by `regtests/saturn/test_cdda_runtime.py`. See `regtests/saturn/handoff/integration.md`.
   - Startup identification, no-disc/open/tray transitions, seek/play/read timing derived from command parameters, track/index/pregap/multisession handling and end-of-disc/error paths.
   - Source still records approximate timings and assumed pregap behavior; reproduce affected media with known images and metadata.
 - [ ] **CD-03 — Complete a hardware-faithful CD block implementation. [M/P/R]**
@@ -408,7 +409,8 @@
   - For full internal hardware emulation, implement the SH-1/CD-controller memory/peripheral/drive interface and run the firmware; merely enabling the CPU is insufficient.
   - A sufficiently qualified HLE may satisfy a stated compatibility target, but must not be described as an emulated running SH-1/CD-controller subsystem.
 - [ ] **CD-04 — Qualify authentication, CD-DA and exceptional transfers. [P/V/R]**
-  - Media/authentication command behavior, CD-DA timing/routing, pause/resume/seek and interaction with data transfers and SCSP external input.
+  - Current integration: the Red Book converter is driven from the drive's own position - started once when the drive reaches PLAY on an audio track, for the length of the requested range, and stopped by every status change that leaves PLAY/SCAN - instead of being restarted on each sector tick (which spliced the stream, measured as the second harmonic at 0.077 against a 0.014 fundamental on the previous binary). CD-DA reaches the SCSP through EXTS0/EXTS1, which is asserted at the SCSP output stream and through the DSP's latched EXTS readback ($0EE0/$0EE2), with the subcode Q track/position alongside it. See `regtests/saturn/test_cdda_runtime.py` and `saturn_pending/evidence/cdda/`.
+  - Media/authentication command behavior and interaction with data transfers are still open; `cmd_check_copy_protection` implements the HLE response only, and no dump-level authentication is modelled.
   - Do not infer raw physical-disc authentication fidelity from a dumped image booting under HLE.
 - [ ] **CD-05 — Complete live CD-state save/reset acceptance. [V]**
   - Buffered sectors, partial transfers, outstanding commands, drive position and audio state; no duplicated sectors, lost IRQs or unrecoverable postload waits.
