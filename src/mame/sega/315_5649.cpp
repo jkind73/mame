@@ -47,6 +47,7 @@ sega_315_5649_device::sega_315_5649_device(const machine_config &mconfig, const 
 	std::fill(std::begin(m_serial_rx), std::end(m_serial_rx), 0);
 	std::fill(std::begin(m_serial_tx_full), std::end(m_serial_tx_full), false);
 	std::fill(std::begin(m_serial_rx_full), std::end(m_serial_rx_full), false);
+	std::fill(std::begin(m_cnt_base), std::end(m_cnt_base), 0);
 }
 
 //-------------------------------------------------
@@ -64,6 +65,7 @@ void sega_315_5649_device::device_start()
 	save_item(NAME(m_serial_rx));
 	save_item(NAME(m_serial_tx_full));
 	save_item(NAME(m_serial_rx_full));
+	save_item(NAME(m_cnt_base));
 }
 
 //-------------------------------------------------
@@ -81,6 +83,7 @@ void sega_315_5649_device::device_reset()
 	std::fill(std::begin(m_serial_rx), std::end(m_serial_rx), 0);
 	std::fill(std::begin(m_serial_tx_full), std::end(m_serial_tx_full), false);
 	std::fill(std::begin(m_serial_rx_full), std::end(m_serial_rx_full), false);
+	std::fill(std::begin(m_cnt_base), std::end(m_cnt_base), 0);
 }
 
 
@@ -159,7 +162,8 @@ uint8_t sega_315_5649_device::read(offs_t offset)
 	case 0x06:
 		if (m_mode & 0x80) // port G counter mode - 4x 16bit counters, auto-increments
 		{
-			data = m_cnt_cb[(m_port_value[6] >> 1) & 3](0) >> (((m_port_value[6] & 1) ^ 1) * 8);
+			uint8_t const sel = (m_port_value[6] >> 1) & 3;
+			data = ((m_cnt_cb[sel](0) - m_cnt_base[sel]) >> (((m_port_value[6] & 1) ^ 1) * 8)) & 0xff;
 			if (!machine().side_effects_disabled())
 				m_port_value[6] = (m_port_value[6] & 0xf8) | ((m_port_value[6] + 1) & 7);
 			break;
@@ -228,7 +232,18 @@ void sega_315_5649_device::write(offs_t offset, uint8_t data)
 	case 0x03:
 	case 0x04:
 	case 0x05:
-	case 0x06:  // when in counter mode, bit 7 - 0 reset counters (not implemented)
+		m_port_value[offset] = data;
+		m_out_port_cb[offset](data);
+		break;
+
+	case 0x06:
+		// when in counter mode, bit 7 - 0 reset counters: latch the current
+		// counter values as the difference base for subsequent reads
+		if (!BIT(data, 7))
+		{
+			for (unsigned i = 0; i < 4; ++i)
+				m_cnt_base[i] = m_cnt_cb[i](0);
+		}
 		m_port_value[offset] = data;
 		m_out_port_cb[offset](data);
 		break;

@@ -1421,6 +1421,11 @@ void stv_state::stv(machine_config &config) {
   m_ioga->an_port_callback<5>().set_ioport("AN5");
   m_ioga->an_port_callback<6>().set_ioport("AN6");
   m_ioga->an_port_callback<7>().set_ioport("AN7");
+  // PORT-G counter mode inputs (trackball/medal counters)
+  m_ioga->in_counter_callback<0>().set_ioport("PORTG.0");
+  m_ioga->in_counter_callback<1>().set_ioport("PORTG.1");
+  m_ioga->in_counter_callback<2>().set_ioport("PORTG.2");
+  m_ioga->in_counter_callback<3>().set_ioport("PORTG.3");
 
   /* video hardware */
   SCREEN(config, m_screen);
