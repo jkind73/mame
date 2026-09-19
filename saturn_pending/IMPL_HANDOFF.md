@@ -4637,3 +4637,62 @@ correct template but omitted its numeric line span. No contract/state change.
   write-tool timeout created no file; the probe was subsequently written
   and run. An ignored-path staging warning was resolved with deliberate
   `git add -f`; implementation and adapter are committed/pushed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0061 | CD-01 | 7bbe639c | UNVALIDATED | Filter-condition initialization clears predicates/range but preserves connectors unless separately selected for reset |
+
+### IMPL-0061 — CD-01 — condition initialization versus connector reset
+
+- branch/commit/base: `arena/01a0b897-mame` @ **7bbe639c**; base **fb9c337a**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1481-1509,1622-1625`,
+  `src/mame/sega/saturn_cd_hle.h` private helper declaration;
+  `saturn_pending/impl_checks/check_cd_filter_condition_reset.py`.
+- contract: Set Filter Mode's initialization strobe and Reset Selector's
+  condition bit both clear mode, FAD/range and all subheader predicates.
+  They do not erase true/false connectors. Reset Selector's independently
+  selected connector bits still take effect. In particular the initial
+  FAD range is zero, not FFFFFFFF, and initialization does not silently
+  reroute the filter to partition/filter zero.
+- primary source: ST-162-062094 printed p.88 function 5.5, initialization
+  item 3 (zero conditions, other mode selections ignored); p.91 function
+  5.9, reset-bit diagram and initial-values list separating conditions
+  from input/true/false connector initialization. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:704-721,3114-3117,3945-3947`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, uses the same condition-only
+  operation in both commands. Ymir 6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/include/ymir/hw/cdblock/cdblock_filter.hpp:21-39`, blob
+  d1c51615ebf26ecb20c0b32c6d3b4f628fcf19e5, distinguishes ResetConditions
+  from Reset topology. Upstream MAME 398bba74ed7997d29c2316316da230f6d85fda0d
+  and local fb9c337a command bodies inspected: selected-mode reset memsets
+  the whole filter; bulk-condition reset sets range FFFFFFFF. No reference
+  code block imported.
+- expected observable: Get Filter Range/Mode/Subheader report zero after
+  either form; existing nonidentity/disconnected connectors remain intact
+  unless their reset bits were also supplied. Ordinary mode writes retain
+  conditions/connections except the written mode. Exact bits, zero tolerance.
+- suggested method: set nondefault conditions and graph, invoke selected
+  initialization and bulk bit4, query state and route a sector. Then combine
+  bit4 with bits6/7 to distinguish individually requested connector resets;
+  repeat across all selectors and native save/load.
+- falsifier: a condition initializer changes an unselected connector,
+  leaves a predicate nonzero, gives a nonzero initial FAD range, affects
+  another selected-mode target, or changes ordinary mode-write behavior.
+- self-check run (method-level, unvalidated): 4,800 selected-filter cases,
+  1,536 ordinary mode controls, 1,024 bulk condition/connector-mask cases;
+  fail-fast UBSan exit 0. Historical fb9c337a fails the connector assertion
+  at generated line 208. All five current CD implementation probes and
+  existing CD transfer/HIRQ/trace method checks exit 0; CD warning-enabled
+  C++20 syntax/diff checks exit 0. No full build/native qualification.
+- state: **UNVALIDATED**.
+- not covered/known doubts: actual initialization latency, live-sector
+  collisions, reserved mode programming, malformed cycles, broader input
+  ownership, native game/firmware/save-manager behavior. Connector-byte
+  combinations include storage diagnostics, not authorization of cyclic
+  graphs. No new fields or additional save-layout break; no validator or
+  existing expectation edits, host-transfer algorithms or frozen CPU/
+  sound/video paths changed.
