@@ -5342,3 +5342,58 @@ overwritten), and the unpublished handoff text is being recommitted. This
 restores local Git metadata to the existing published history, not a force
 push, branch switch or rewrite of published commits. Earlier local-only
 handoff commit IDs are historical notes, not claimed present after recovery.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0072 | CD-01 | 284acf62 | UNVALIDATED | Existing file-command CD connections update visible identity and displace the previous input producer |
+
+### IMPL-0072 — CD-01 — file-command connection coherence
+
+- branch/commit/base: `arena/01a0b897-mame` @ **284acf62**; base **a874c569**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1339-1373,2187-2188` and
+  cmd_read_file connection assignment; private declaration in saturn_cd_hle.h;
+  `saturn_pending/impl_checks/check_cd_file_connections.py`. Three preceding
+  probe declaration/extraction adapters only, no expectation edits.
+- contract: wherever the existing Read File/Read Directory paths connect CD
+  to an input, publish that same selector through cddevicenum and enforce
+  exclusive input ownership. Reuse one helper in explicit Set CD Connection
+  and both file paths. A subsequent false-output attachment to that input
+  displaces CD coherently; a bounds-rejected file ID cannot take the input.
+- primary source: ST-162-062094 printed p.53 section6.2.3 selector use by
+  filesystem operations, p.46 Table5.1 exclusive filter input, p.86 function4.2
+  reports actual CD connection. SDK blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:843-850,1119-1121,3890`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, routes filesystem attachment
+  through its common connector setter. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:933-934,1646-1660`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, does the same for file playback.
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d and local base
+  file methods had direct pointer-only assignments. No reference block
+  imported; existing explicit setter bounds/response semantics retained.
+- expected observable: explicit CD->5 then Read File using filter7 causes
+  Get CD Connection to report07, not05. An old false producer of input7
+  becomes disconnected. Subsequent filter3 false->7 reports CD disconnected
+  (FF) with no stale active CD pointer. Exact links/readback, zero tolerance.
+- suggested method: native file and explicit connection commands interleaved
+  with31/47 queries and tagged-sector routing, including a file ID outside
+  the cache and native save/load around connection replacement.
+- falsifier: pointer/readback disagreement, retained competing input producer,
+  changed unrelated selectors, or rejected file-ID request stealing the input.
+- self-check run (method-level, unvalidated):31,250 file/directory connection
+  images,48 subsequent false-output displacements and24 invalid-ID controls,
+  fail-fast UBSan exit0. Historicala874c569 fails false-output ownership at
+  generated line231. Existing ownership, empty-media response and Read File
+  range probes, CD warning-enabled C++20 syntax/diff checks exit0.
+- state: **UNVALIDATED**.
+- not covered/known doubts: Read Directory still lacks held-table loading;
+  full file predicate/topology initialization and partition clearing remain
+  separate. FF/invalid file selectors retain the old pointer-disconnection
+  path, now reportingFF coherently; diagnostic probes do NOT assert those
+  selectors are legal file commands. Native firmware/game/timer/IRQ and
+  directory save acceptance remain open. No new fields/layout break,
+  validator expectations or frozen CPU/sound/video changes.
