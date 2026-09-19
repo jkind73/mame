@@ -237,7 +237,11 @@
   side: its key-on write is the constant `0x3830`, whose LPCTL field is 1, so it
   measured a normal loop. The fixture now asserts the ping-pong triangle
   (`loopP:turns`, `loopP:period`) and fails on the pre-fix binary exactly there.
-  Evidence: `saturn_pending/evidence/scsp-pcm/README.md`. The final mixer master volume
+  The fix is natively re-qualified on the rebuilt binary `bb872c6215...` (CI run
+  35431997823, source `5bd7f203ebf`) on all four profiles: `SCSP PCM: PASS` with
+  `loopP:period 252.00`/`256.00` against the 256.00-sample one-pass expectation
+  and `loopP:span 1.96875` (252 levels of 1/128), with every earlier measurement
+  unchanged. Evidence: `saturn_pending/evidence/scsp-pcm/README.md`. The final mixer master volume
   (MVOL) and the DAC interface width (DAC18B) are now native-qualified with no
   defect found. ST-077-R2-052594 p.100 gives both fields in the common control
   word at 100400H and states the ordering ("lowering the MVOL for an output that

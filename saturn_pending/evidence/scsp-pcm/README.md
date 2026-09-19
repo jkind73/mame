@@ -50,6 +50,22 @@ re-qualification on the rebuilt binary is the assertion in
 `test_scsp_pcm_runtime.py` (`loopP: the measured channel is silent or railed`,
 `loopP:turns` and `loopP:period`).
 
+## Native qualification after the fold fix
+
+The fix is measured on the rebuilt binary from CI run 35431997823 (source
+`5bd7f203ebf`, binary `bb872c6215bdcb406222407bc47ced61d43624846575eaaaa4a01db8c787cc16`)
+on all four profiles - saturnjp interpreter, saturnjp DRC, saturneu DRC, stvbios
+DRC: `SCSP PCM: PASS` on each, with the ping-pong case at `loopP:period 252.00`
+(JP interpreter, JP DRC, ST-V DRC) or `256.00` (PAL DRC) against a one-pass
+expectation of 256.00 samples at 0.25 words/sample, and `loopP:span 1.96875`
+(the ramp spans 252 of its 256 levels on a sweep, so the captured span is 252/128).
+The same runs keep every earlier measurement at its qualified value
+(`loopN:period 252.00-256.00`, `loopOff:tail 0.00000`, `parity8/16:diff 0.00000`,
+`order16:ratio 1.00000`, `interp:advance 1.00000`).  The pre-fix binary of the
+same source line failed exactly on `loopP` ("the measured channel is silent or
+railed"), so the case discriminates the defect.  Per-profile logs, summaries and
+invocations are the `live-*`, `summary-*` and `invocation-*` files here.
+
 ## Method notes (traps this fixture hit)
 
 * The key bits share register 0x00 with LPCTL and PCM8B. A key-on write of a

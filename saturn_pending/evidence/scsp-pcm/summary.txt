@@ -1,0 +1,8 @@
+saturnjp-nodrc  binary=bb872c6215bdcb406222407bc47ced61d43624846575eaaaa4a01db8c787cc16
+  loopN:period           256.00000 | loopP:period           252.00000 | loopP:span             1.96875 | SCSP PCM: PASS
+saturnjp-drc  binary=bb872c6215bdcb406222407bc47ced61d43624846575eaaaa4a01db8c787cc16
+  loopN:period           256.00000 | loopP:period           252.00000 | loopP:span             1.96875 | SCSP PCM: PASS
+saturneu-drc  binary=bb872c6215bdcb406222407bc47ced61d43624846575eaaaa4a01db8c787cc16
+  loopN:period           252.00000 | loopP:period           256.00000 | loopP:span             1.96875 | SCSP PCM: PASS
+stvbios-drc  binary=bb872c6215bdcb406222407bc47ced61d43624846575eaaaa4a01db8c787cc16
+  loopN:period           252.00000 | loopP:period           252.00000 | loopP:span             1.96875 | SCSP PCM: PASS

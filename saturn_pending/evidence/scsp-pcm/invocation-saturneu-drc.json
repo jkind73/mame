@@ -2,9 +2,9 @@
   "executable": "/home/user/saturn-ci-bins/saturn",
   "system": "saturneu",
   "drc": true,
-  "binary_sha256": "9a7d21c93dd45316933e610193766e66bbc996216a505b2f4855fd761a51cbd4",
+  "binary_sha256": "bb872c6215bdcb406222407bc47ced61d43624846575eaaaa4a01db8c787cc16",
   "bios_sha256": "73ba205e9723cbd5c481edcb69f73a37145730db375a947391400d9174454b9d",
-  "lua_sha256": "30d6c2ece77c5d8569b0840d832cf3b51dcf1fcc7dc23adfc9ae02c6f907f485",
+  "lua_sha256": "2686bb7505991fcdde13f3e2a4b058e6bd5dc730798c78547f7c471cad1365f8",
   "command": [
     "/home/user/saturn-ci-bins/saturn",
     "saturneu",
@@ -23,14 +23,14 @@
     "-autoboot_delay",
     "0",
     "-autoboot_script",
-    "/tmp/pcm-saturneu-drc/test.lua",
+    "/tmp/pcmfix-saturneu-drc/test.lua",
     "-nvram_directory",
-    "/tmp/pcm-saturneu-drc/nvram",
+    "/tmp/pcmfix-saturneu-drc/nvram",
     "-cfg_directory",
-    "/tmp/pcm-saturneu-drc/cfg",
+    "/tmp/pcmfix-saturneu-drc/cfg",
     "-state_directory",
-    "/tmp/pcm-saturneu-drc/state",
+    "/tmp/pcmfix-saturneu-drc/state",
     "-snapshot_directory",
-    "/tmp/pcm-saturneu-drc/snapshot"
+    "/tmp/pcmfix-saturneu-drc/snapshot"
   ]
 }

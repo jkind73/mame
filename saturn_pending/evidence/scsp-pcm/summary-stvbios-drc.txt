@@ -1,0 +1,11 @@
+  interp:advance         1.00000
+  livePitch:after        0.01562
+  livePitch:before       0.00781
+  loopN:period           252.00000
+  loopOff:tail           0.00000
+  loopP:period           252.00000
+  loopP:span             1.96875
+  order16:ratio          1.00000
+  parity16:diff          0.00000
+  parity8:diff           0.00000
+SCSP PCM: PASS
