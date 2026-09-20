@@ -169,3 +169,59 @@ precise source pins: `saturn_pending/evidence/scsp-dsp-address/README.md` and
 `../66e351f7-live/`. Consumer revision is separate from compiled source.
 No change to IWT forwarding, memory arbitration, write flushing, whole sound
 timing, game-performance acceptance or working flags is implied.
+
+## CD block host interface reached the firmware — contract and receipts (b68f89e7)
+
+The console's CD block window at `0x05800000-0x0589ffff` was dead from the
+moment the HLE drive model moved behind `saturn_cdblock_interface`: MAME hands a
+16-bit handler the address as a 16-bit **word index** in the SH-2's 32-bit
+space, so `0x05890018` (CR1) arrives as `0x04800c`, while both implementations
+decode byte offsets. Every BIOS command write landed on no register and its
+response poll read zero forever.
+
+Contract now published in the source and honoured by both cores:
+
+- `sat_console_state::cd_reg_offset()` folds word index to byte offset, folds
+  the register block's address-bit aliases (`+0x80000`, `+0x90000`, `+0x98000`)
+  and maps the bottom of the window to the data-port alias, so the
+  implementations only decode register-block offsets: `0x00/0x02` DATA,
+  `0x08` HIRQ, `0x0c` HIRQMASK, `0x10..0x16` SH-1 side RR/CR, `0x18..0x24`
+  CR1-4 (host write) / DR1-4 (host read), `0x28` MPEG express, `0x5029` the
+  NetLink status byte (HLE only, the byte `dragndrm` reads).
+- The CD block SH-1 side has the same word-index convention: `ygr_r`/`ygr_w`
+  decode `(offset & 0x0f) << 1`. The previous `offset & 0x1e` shifted the whole
+  YGR register file by one register (CDMSKL landed in CDIRQL, CR1 in CDMSKL).
+- The slot option carries the block's 20 MHz clock
+  (`option_add("lle", SATURN_CDB).clock(20'000'000)`): a slot option's clock
+  defaults to zero, which leaves the CPU with no cycles (`clocks_to_attotime`
+  returns `attotime::never`).
+- The SH7032's 4KB on-chip RAM is at the masked address `0x07000000`; the
+  firmware's stack (`SP = 0x0F000FFC`) folds there. The boot path's
+  `/COMSYNC` pin is PB10 (`0x05FFFFC2` bit 2), the pause path's is PB2; both are
+  driven from `device_reset_after_children()`.
+
+Verified on the `b68f89e7` binary with `regtests/saturn/test_cd_lle.py` (PASS,
+5.7 s): the firmware's SH-1 runs inside its ROM, raises its own boot HIRQ
+pattern (read out of the image at `0x1F30` = `0x0BE1`) in the host window, sees
+a host HIRQ acknowledge, and completes a host command (Get Hardware Info,
+written CR1..CR4 with CR4 last) with CMOK within one frame after the host
+cleared it. Response words for the record: `00ff ffff ffff ffff`. The firmware's
+identity response `"\0CDBLOCK"` (from `0x1F38`) is visible in the window during
+boot but is transient (the BIOS consumes it), so the fixture reports rather than
+asserts it.
+
+Host-interface effect on the HLE drive fixtures, measured with the same
+`test_cdda_runtime.py` on two binaries built from the same tree (parent
+`a17ec0d691b` vs `b68f89e7`):
+
+    parent:  23 of 23 CDDA checks fail (TOC FADs `ffffff`, Play never reaches
+             PLAY, no EXTS latch, pause/range/scan/periodic all dead)
+    b68f89e7: 4 of 23 fail - play_tone_1k g1k=0.01431, play_tone_not_2k
+             (second harmonic dominates), put_error_buffer_intact 200 -> 16640,
+             scan_state 500
+
+i.e. the window fix restored TOC, Play, pause/resume, range, SCAN, Q-track,
+periodic cadence and the EXTS latch; the four that remain are the open
+CD-DA/EXTS items (SND-02/SND-04), not window decoding. `test_cd_hirq.py` and
+`test_cd_transfer.py` (338 cases) still pass on the same binary. No boot-to-game
+claim: the LLE core has no CD drive (CDD serial link) behind it yet.
