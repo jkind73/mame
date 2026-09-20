@@ -7109,3 +7109,84 @@ not supply a numeric latency or qualify guessed drive-phase delays. Current
 HLE tray opening still lacks EFLS and old buffer-full producer cancellation;
 0095 did not implement either. Proceed from this primary contract rather
 than import reference phase timings.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0097 | CD-01 | 260da432 | UNVALIDATED | Physical tray opening stops drive producers and publishes DCHG plus EFLS before OPEN without cancelling resident host transfers |
+
+### IMPL-0097 — CD-01 — tray-open drive termination and dual notification
+
+- branch/commit/base: `arena/01a0b897-mame` @ **260da432**; base **ab14753b**.
+  Publication **BLOCKED(GitHub reconnection for push)**: retry atab14753b
+  failed with `could not read Username for https://github.com`.
+  Local recovery bundle refreshed after the source/probe commit.
+- files: `src/mame/sega/saturn_cd_hle.cpp:4455-4486`;
+  `saturn_pending/impl_checks/check_cd_tray_stop.py`; declaration-only
+  audio/drive mock additions in `check_cd_table_invalidation.py`.
+- contract: manual tray opening stops playback/file-read production, cancels
+  the saved buffer-space auto-resume reason and seek progress, and calls CDDA
+  stop. DCHG and EFLS are both set before the existing BUSY-to-OPEN transition.
+  Pending causes are retained. Closing alone must not restart the previous
+  read or CDDA request. Pool data, host transfer ownership/cursors/reservations
+  and filesystem backing remain independent of drive termination.
+- primary source: ST-162-062094 p.80 function1.8 explicitly stops the drive
+  on tray opening and sets both DCHG/EFLS before OPEN, also for manual opening;
+  p.53 section6.2.3 terminates file access on tray opening. p.32 section3.4
+  and pp.80-81 functions1.9/1.10 retain the accepted host-transfer/DataEnd
+  protocol. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/cdblock/cdblock.cpp:236-269`,
+  blobe8fedadb2d7374db35667bd064bb47fdc14b41a8,
+  stops scheduling drive playback and raises DCHG|EFLS; closing chooses
+  PAUSE/NODISC rather than resuming. Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:2131-2160`,
+  blobd367dd0c0500ff7b1e2637e748015543b0a3078e, enters eject/waiting phases
+  instead of continuing PLAY and does not reset DT there. Its internal phase
+  order/guessed delays are NOT adopted; primary p.80 governs notification
+  before OPEN here. Baseab14753b and cached upstream
+  MAME398bba74ed7997d29c2316316da230f6d85fda0d omit EFLS and leave stale
+  drive counters/auto-resume state. Independently written hook correction.
+- expected observable: opening sets HIRQ bits0020H and0200H before OPEN,
+  including when idle; no extra cause is invented. No autonomous sector
+  production or CDDA restart after closing without a new drive request.
+  Already accepted host data can still be transferred/ended; no capacity is
+  lost or released just by opening. Exact bits/bytes/counts, zero tolerance;
+  no new delay in clocks/sectors is prescribed.
+- suggested method: open from busy/seek/play/manual-pause/buffer-full-pause
+  with both idle and active file/audio requests; observe causes, progress
+  latches and status publication, save/reload, close with/without an image and
+  free buffer space. Separately keep partial/EOF GET/GETDELETE/PUT and File
+  Info streams outstanding across opening/closing.
+- falsifier: either cause is missing, OPEN precedes their publication, a
+  previous drive request restarts on buffer availability after closing,
+  or stopping the drive cancels/corrupts the independent host interface.
+- self-check run (method-level, unvalidated):8640 drive/phase/reopen images,
+ 8640 dual-cause observations and8640 registered stopped-drive replays;
+ 72 raw PUT and144 GET/GETDELETE continuations. ASan/fail-fast UBSan exit0.
+  Historicalab14753b and seven mutants fail genuine assertions: missing
+  EFLS/DCHG, late causes, no CDDA stop, retained producer/seek state, and host
+  cancellation. The latter gets through all drive-only cases, then fails
+  the actual host-interface continuation checks. Native warning-enabled
+  CD TU syntax/diff0.41 own CD probes:35 exit0, **six** diagnostic conflicts;
+  `/tmp/impl-ref/cd-0097-aggregate.log`. No full build or native verification.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: no new state fields or additional save-layout
+  change; all changed drive latches already registered. Existing BUSY staging
+  retained; mechanical latency, audible-sample latency, native save/image
+  identity, pending-command arbitration and software command05 (as distinct
+  from this physical tray hook) are not qualified. Older saved semantic
+  states containing stale open-tray producers are not migrated. Numeric
+  timing still needs the tray trace requested in0095, but the p.80 primary
+  text supplies this logical dual-cause/OPEN ordering contract. No buffer
+  clearing, GETDELETE ownership or freed-sector read fix is included.
+- diagnostic conflict detail: the five0094 legacy conflicts remain. The
+  original0095 table-invalidation probe additionally expects only DCHG to
+  be added, so now fails that assertion when EFLS was initially clear.
+  Its expected values remain unchanged. External restricted-domain adapter
+  `/tmp/impl-ref/check_table_invalidation_efls_already_set.py` retains only
+  pending0220H/FFFFH cases (no expectation edits):112 partial/EOF File Info
+  registered continuations,788 refusals,56 root recoveries and112 notices,
+  plus reset control, exit0. This is NOT success of the original fixture.
