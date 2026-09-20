@@ -235,7 +235,7 @@ private:
   uint64_t m_trace_reads[5]{};
   uint16_t m_trace_last_read[5]{};
   // iso9660 utilities
-  void make_dir_current(uint32_t fad);
+  void make_dir_current(uint32_t fad, uint32_t length);
   void read_new_dir(uint32_t fileno);
 
   blockT *cd_alloc_block(uint8_t *blknum);

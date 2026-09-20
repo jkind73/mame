@@ -3816,7 +3816,7 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
       }
 
       // done with all that, read the root directory now
-      make_dir_current(curroot.firstfad);
+      make_dir_current(curroot.firstfad, curroot.length);
     }
   } else {
     /* fileno is the 24-bit value from CR3/CR4 while curdir only ever holds
@@ -3833,124 +3833,65 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
     if (curdir[fileno].length > MAX_DIR_SIZE) {
       LOGWARN("ERROR: new directory too big (%d)!\n", curdir[fileno].length);
     }
-    make_dir_current(curdir[fileno].firstfad);
+    make_dir_current(curdir[fileno].firstfad, curdir[fileno].length);
   }
 }
 
 // makes the directory pointed to by FAD current
 // https://wiki.osdev.org/ISO_9660 for a detailed reference
-void saturn_cd_hle_device::make_dir_current(uint32_t fad) {
-  uint32_t i;
-  uint32_t nextent, numentries;
-  std::vector<uint8_t> sect(MAX_DIR_SIZE);
-  direntryT *curentry;
+void saturn_cd_hle_device::make_dir_current(uint32_t fad, uint32_t length) {
+  // A child directory has its own extent length, unrelated to curroot.
+  // Keep the existing HLE directory-size limit, but never read past it or
+  // parse records outside the selected directory's declared byte extent.
+  const uint32_t bytes = std::min(length, MAX_DIR_SIZE);
+  uint8_t sector[2048];
+  curdir.clear();
+  for (uint32_t offset = 0; offset < bytes; offset += sizeof(sector)) {
+    std::fill(std::begin(sector), std::end(sector), 0);
+    cd_readblock(fad + offset / sizeof(sector), sector);
+    const uint32_t available = std::min<uint32_t>(sizeof(sector), bytes - offset);
+    uint32_t position = 0;
+    while (position < available && sector[position]) {
+      const uint8_t *const record = &sector[position];
+      const uint32_t size = record[0];
+      // ISO directory records cannot span logical blocks. A zero-length
+      // record denotes padding; malformed records must not walk the host
+      // allocation or stall the parser. Their hardware error policy is
+      // outside this synchronous HLE parser.
+      if (size < 34 || size > available - position ||
+          !record[32] || record[32] > size - 33)
+        break;
 
-  memset(&sect[0], 0, MAX_DIR_SIZE);
-  if (sectlenin != 2048)
-    popmessage("saturn_cd_hle.cpp: make_dir_current Sector Length %d (1)",
-               sectlenin);
-
-  for (i = 0; i < (curroot.length / 2048); i++) {
-    cd_readblock(fad + i, &sect[2048 * i]);
-  }
-
-  nextent = 0;
-  numentries = 0;
-
-  // on directories bigger than 1 FAD we have to keep track of gaps
-  // i.e. a sector will end with a 0 marker but continues in the next sector.
-  // cfr. chaossd and sengblad
-  u32 sector_number = 0;
-  while (nextent < MAX_DIR_SIZE) {
-    if (sect[nextent]) {
-      nextent += sect[nextent];
-      numentries++;
-    } else {
-      if (sector_number < curroot.length) {
-        sector_number += 0x800;
-        nextent = sector_number;
-      } else
-        nextent = MAX_DIR_SIZE;
+      direntryT entry{};
+      entry.record_size = record[0];
+      entry.xa_record_size = record[1];
+      entry.firstfad = get_u32le(&record[2]) + 150;
+      entry.length = get_u32le(&record[10]);
+      entry.year = record[18];
+      entry.month = record[19];
+      entry.day = record[20];
+      entry.hour = record[21];
+      entry.minute = record[22];
+      entry.second = record[23];
+      entry.gmt_offset = record[24];
+      entry.flags = record[25];
+      entry.file_unit_size = record[26];
+      entry.interleave_gap_size = record[27];
+      entry.volume_sequencer_number = get_u16le(&record[28]);
+      const uint32_t idlen = std::min<uint32_t>(record[32], sizeof(entry.name) - 1);
+      std::copy_n(&record[33], idlen, entry.name);
+      entry.name[idlen] = 0;
+      curdir.push_back(entry);
+      position += size;
     }
   }
-
-  curdir.resize(numentries);
-  curentry = &curdir[0];
-  numfiles = numentries;
-
-  sector_number = 0;
-  nextent = 0;
-  while (numentries) {
-    // [0] record size
-    // [1] xa record size
-    // [2-5] lba
-    // [6-9] (lba?)
-    // [10-13] size
-    // [14-17] (size?)
-    // [18] year
-    // [19] month
-    // [20] day
-    // [21] hour
-    // [22] minute
-    // [23] second
-    // [24] gmt offset
-    // [25] flags
-    // [26] file unit size
-    // [27] interleave gap size
-    // [28-29] volume sequencer number
-    // [30-31] (volume sequencer number?)
-    // [32] name character size
-    // [33+ ...] file name
-
-    if (!sect[nextent + 0] && sector_number < curroot.length) {
-      sector_number += 0x800;
-      nextent = sector_number;
-      continue;
-    }
-
-    curentry->record_size = sect[nextent + 0];
-    curentry->xa_record_size = sect[nextent + 1];
-    curentry->firstfad = get_u32le(&sect[nextent + 2]);
-    curentry->firstfad += 150;
-    curentry->length = get_u32le(&sect[nextent + 10]);
-    curentry->year = sect[nextent + 18];
-    curentry->month = sect[nextent + 19];
-    curentry->day = sect[nextent + 20];
-    curentry->hour = sect[nextent + 21];
-    curentry->minute = sect[nextent + 22];
-    curentry->second = sect[nextent + 23];
-    curentry->gmt_offset = sect[nextent + 24];
-    curentry->flags = sect[nextent + 25];
-    curentry->file_unit_size = sect[nextent + 26];
-    curentry->interleave_gap_size = sect[nextent + 27];
-    curentry->volume_sequencer_number = get_u16le(&sect[nextent + 28]);
-
-    /* as above, and also stop the source read at the end of sect[] - a record
-       starting in the last bytes of a maximum size directory would otherwise
-       read up to 287 bytes past the allocation.  Unclamped, the copy overran
-       name[] into the fields of the next curdir element, or past the end of
-       the vector's allocation for the last one. */
-    uint32_t const nameroom =
-        (nextent + 33 < MAX_DIR_SIZE) ? (MAX_DIR_SIZE - (nextent + 33)) : 0;
-    uint32_t const idlen = std::min<uint32_t>(
-        sect[nextent + 32],
-        std::min<uint32_t>(uint32_t(std::size(curentry->name)) - 1, nameroom));
-    for (i = 0; i < idlen; i++) {
-      curentry->name[i] = sect[nextent + 33 + i];
-    }
-    curentry->name[i] = '\0'; // terminate
-    // printf("%d: %08x %08x %s %d/%d/%d\n", nextent,
-    // curentry->firstfad,curentry->length,curentry->name,curentry->year,curentry->month,curentry->day);
-
-    nextent += sect[nextent];
-    curentry++;
-    numentries--;
-  }
-
-  for (i = 0; i < numfiles; i++) {
+  numfiles = curdir.size();
+  // Retain the existing scope policy; held-window/first-ID semantics are
+  // separate from reading the selected directory's byte extent.
+  for (unsigned i = 0; i < curdir.size(); ++i) {
     if (!(curdir[i].flags & 0x02)) {
       firstfile = i;
-      i = numfiles;
+      break;
     }
   }
 }
