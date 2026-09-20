@@ -8958,3 +8958,114 @@ measure rather than replacing either branch's HLE wholesale.
   positioning, non-1 first-track media, pregap/multisession identity, absent or
   zero-track media admission, Home's invalid-position report and native
   timing/IRQ/host-overlap/save-file behavior remain open.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0125 | CD-01 | 650e9468fab | UNVALIDATED | Full-width metadata port reads aggregate two successive FIFO words without counting an excess dummy word |
+| IMPL-0126 | CD-01 | 650e9468fab | UNVALIDATED | Non-side-effecting DATATRNS inspection does not consume metadata or sector transfer state |
+
+### IMPL-0125 — CD-01 — Metadata FIFO width aggregation
+
+- branch/commit/base: `arena/01a0b897-mame` @ **650e9468fab**, base **b5ccd427**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:492-501`;
+  `saturn_pending/impl_checks/check_cd_metadata_port.py`.
+- contract: the existing32-bit MAME DATATRNS callback aggregates two ordered
+  16-bit metadata FIFO reads, high word first. This includes TOC, single/held
+  file-info records and the existing Q/RW payload contexts. A final odd payload
+  word is consumed once; the excess halfword follows existing dummy handling
+  without increasing the effective byte count or releasing host ownership.
+- primary source: ST-162-062094 p.27/table3.1 defines all register widths as
+  16 bits and DATATRNS as FIFO; p.77 function1.5 gives204 TOC words; p.85 gives
+  Q5 and RW12 words; p.100 function8.4 gives6 words per file record; p.81 says
+  excess transfer is dummy and effective count cannot exceed the full payload.
+  Pinned SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafenf0ee9d595db68ad5247ba5ac6a8367fdced9c3fc
+  `src/ss/cdb.cpp:4093-4123` removes consecutive16-bit words from one FIFO.
+  Its timed/prefetch model is not copied. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d
+  `src/mame/sega/saturn_cd_hle.cpp:277-300` and forkb5ccd427 send full-width
+  reads only to the sector engine, bypassing metadata. Independent correction
+  to that callback, consistent with0122's sector-word aggregation; this is not
+  a claim of a native32-bit communication register.
+- expected observable: concatenated payload bytes identical for word, longword
+  and mixed-width reads, including a file-record boundary or odd final Q word.
+  Full/excess transfer End count equals the payload's word count, ownership
+  remains until End. Exact payload/counts, zero tolerance. Dummy bit values and
+  partial-read prefetch counts are not hardware-qualified.
+- suggested method: TOC/single-file/held-window commands plus seeded subcode
+  contexts, both halfword lanes and full-width callbacks at every scalar packet
+  word cut; held-window sizes1/2/254 at selected record/end boundaries. Save at
+  the cut, poison registered cursor/backing payloads and replay through End.
+- falsifier: swapped/duplicated/missing words, metadata returning sector-idle
+  data, record-boundary corruption, excess dummy counted or owner released early,
+  or differing restored stream/End count.
+- self-check run (method-level, unvalidated):2964 metadata width/cut/payload
+  images and2964 registered replays;1,294,308 nonconsuming masked inspections.
+  Actual DATATRNS, metadata reader, TOC/file-info commands, End and registrations;
+  authored TOC, deliberately patterned payloads, seeded Q/RW contexts, held
+  directory retained outside replay, mock image/bus/IRQ/serializer. ASan/fail-
+  fast UBSan0. Historicalb5ccd427 plus eight compiled mutants assertion-fail:
+  old wide dispatch, swapped words, duplicate word, counted dummy, missing
+  inspection guard, missing TOC/cursor registration, lost owner. Existing
+  sector-word probe2304 GET/384 PUT/2688 replays also exit0. Warning-enabled CD
+  TU syntax/diff0. Full62 own probes at650e9468fab:52 exit0/same ten conflicts;
+  `/tmp/impl-ref/cd-0126-aggregate.log`. No existing expected-value edits.
+- state: **UNVALIDATED**; **BLOCKED(native CI result for current implementation
+  revision)**. No full build or CI dispatch.
+- not covered/known doubts: no new fields/save-layout change. Q layout and real
+  RW packets remain unimplemented/unqualified; this tests transport only. Native
+  aperture/mirroring/SH2-DMA bus splitting, FIFO depth/prefetch/WAIT/timing, media
+  replacement and native save files/titles remain open. ST-162 p.81 distinguishes
+  host-consumed words from prefetched CD-block count on partial reads; this
+  change neither models that prefetch nor qualifies existing partial-End counts.
+
+### IMPL-0126 — CD-01 — Nonconsuming DATATRNS inspection
+
+- branch/commit/base: `arena/01a0b897-mame` @ **650e9468fab**, base **b5ccd427**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:476-479`; shared probe from0125.
+- contract: MAME's disabled-side-effects access must not act as a hardware FIFO
+  read strobe. At the mapped port boundary, return a diagnostic inactive value
+  without changing cursor, transfer count, metadata packet, owner or IRQ state.
+  Normal hardware reads continue to consume FIFO words.
+- primary source: ST-162 p.27/table3.1 specifies the actual host FIFO access;
+  the inspection distinction is an emulator-framework contract, not an extra
+  Saturn operation. Forkb5ccd427 `src/emu/machine.h:151-154` exposes the RAII
+  side-effects disabler and predicate.
+- cross-checks/provenance: forkb5ccd427 CD sector reader already honors the
+  predicate, whereas the metadata word reader is reached without that guard.
+  Upstream MAME398bba74 `saturn_cd_hle.cpp:312-319` has the corresponding raw
+  sector guard. Mednafenf0ee9d59 `src/ss/cdb.cpp:4093-4123` illustrates the real
+  consuming read; it is not evidence for MAME debugger return values.
+- expected observable: disabled-side-effects port reads at masksFFFFFFFF,
+  FFFF0000 and0000FFFF cause zero cursor/count/owner/packet/IRQ change, before
+  transfer, midway, at EOF and after End. Zero-tolerance state comparison.
+  Returned diagnostic bits are not a hardware idle-value assertion.
+- suggested method: interleave inspection and real reads across0125's metadata
+  cases, compare state before/after each inspection, then compare full streams
+  and registered replay. Keep0120's sector-inspection controls.
+- falsifier: inspection advances any stream state or alters subsequent normal
+  payload/End count, or the guard prevents normal consuming reads.
+- self-check run (method-level, unvalidated):1,294,308 metadata inspections in
+  the combined probe; missing-guard mutant assertion-fails. Shared replay,
+  syntax, sector controls and62-probe aggregate as0125.
+- state: **UNVALIDATED**, same native gate as0125.
+- not covered/known doubts: no fields/layout change. No peek-value API, byte-
+  access hardware policy, debug-write policy or native debugger qualification.
+  Private helper calls outside the mapped port remain outside this guard.
+
+Session/integration notes (append-only): the restored workspace again had HEAD
+82152a8b while published source/handoff survived. Saved the local diff externally,
+shallow-fetched own published b5ccd427, and used a mixed reset of HEAD/index only.
+The resulting working tree matched the publication; no source recovery patch,
+other-branch checkout, rewritten history or unrelated commit was needed.
+
+Re-read the validator's latest `agent1_validation.md`, blob
+**d715f01100c13aff58f533e9a13592665fdb6926** at validator branch tip
+**da9df9f903cab81f2d4757ba1378f020e40ccda4**. Compared with0ce91cd3 it clarifies
+artifact hygiene and retained evidence logs; its code/native verdicts remain
+unchanged. The old implementation's native graft is not a current-source result.
+The requested native integration gate/reconciliation remains outstanding; do not
+replace either HLE wholesale. Validator assets were only read, not changed.
