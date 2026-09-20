@@ -416,6 +416,7 @@ void saturn_cd_hle_device::device_reset() {
 
   buffull = 0;
   cd_speed = 2;
+  cdda_maxrepeat = 0;
   cdda_repeat_count = 0;
 
   // MPEG state is still not registered for save states; reset re-establishes
@@ -1303,10 +1304,10 @@ void saturn_cd_hle_device::cmd_play_disc() {
   //	//cdda_repeat_count = 0;
   //}
 
+  // ST-162 p.67: 7F retains the programmed maximum, independently of
+  // bit 7 (pickup movement). The visible repeat counter is separate.
   if (play_mode != 0x7f)
     cdda_maxrepeat = play_mode & 0xf;
-  else
-    cdda_maxrepeat = 0;
 
   cdda_repeat_count = 0;
 }
