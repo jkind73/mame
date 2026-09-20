@@ -5647,3 +5647,159 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   length fields already saved; no new field/layout change. Validator mock
   declaration break from0074 remains reported, original expectations and
   frozen paths untouched. No completion-report status changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0077 | CD-01 | c5ca25a6 | UNVALIDATED | PUT privately reserves raw sectors, uses the writing length and filters the complete requested count at DataEnd |
+
+### IMPL-0077 — CD-01 — raw PUT reservation, geometry and filter completion
+
+- branch/commit/base: `arena/01a0b897-mame` @ **c5ca25a6**; base **25a58304**;
+  includes production WIP **bc031027**. **Qualify with IMPL-0078/94da2d00**:
+  the old Session Info helper spuriously marked a word transfer active,
+  which would make this candidate's active-transfer preflight return WAIT.
+- files: `src/mame/sega/saturn_cd_hle.h:248-249,319`;
+  `src/mame/sega/saturn_cd_hle.cpp:195-198,232-253,303-308,500-556,
+  1045-1106,2059-2162`; `saturn_pending/impl_checks/check_cd_raw_put.py`;
+  dependency/declaration adapters in own buffer-save, raw-view, selector-reset
+  and file-transfer probes; existing expectations retained.
+- contract: command64 names a filter and a full16-bit sector count, not a
+  partition offset. On acceptance reserve the whole count from the shared
+  pool, privately, without replacing existing partition entries. Reject an
+  invalid filter; WAIT for zero/unavailable count or a busy host interface,
+  without changing input ownership or allocating a partial request. For
+  nonoverlapping host-transfer sequences, write2352-byte backing using
+  lengths2048/2336/2340/2352 at byte24/16/12/0, independently of GET length.
+  Latch the first writing view at acceptance and later ones at the logical
+  sector boundary. Unwritten storage is zeroed deterministically; only the
+  documented absent header, not all unspecified bytes, is a hardware-zero
+  claim. DataEnd derives FAD/subheader metadata, feeds **all** reserved
+  sectors through the target filter, and appends accepted sectors to actual
+  destinations; disconnected outputs discard/free them. This includes
+  partially written and entirely unwritten sectors. Input ownership is
+  reclaimed for filtering; Last Buffer Destination remains media-only.
+  Zero-byte accepted PUT ends with zero transferred words, not DEND_ERR.
+- primary source: ST-162-062094 printed p.48 section5.4/Figure5.8 (layout,
+  non-Mode2 interpreted subheader, zero24-byte host-user-data prefix), p.95
+  function7.1 (independent writing length), p.97 function7.5 (filter input,
+  complete count even when interrupted, other bytes unspecified), p.81
+  function1.10 (PUT block-word count equals host-word count, including partial
+  transfer), pp.43-46 section5.3/Table5.1 (routing/single-producer input).
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. p.32/Table3.3 and p.80 describe
+  asynchronous reservation failure; that timing/error phase is not modeled.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:723-731,1333-1340,1694-1780,2733-2759,3559-3604,
+  4160-4186`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e: zeroed reserved
+  raw buffers, writing geometry, metadata-conditioned routing, all-buffer
+  DataEnd filtering, preflight and sector-boundary writing length. Its
+  clock costs are not used. Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:42-44,1333-1363,
+  1556-1588,1622-1638,2983-3021`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, agrees on independent PUT layout
+  and private scratch reservation but inserts directly into a partition;
+  its missing filter traversal is not adopted. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d CD method at1740-1778 and local
+  base truncate count to8 bits, use CR2 as an offset, allocate directly into
+  the partition and use fetching size. No reference block imported.
+- expected observable: PUT2 to filter0 with true->7 leaves partition7's old
+  sector untouched and count unchanged while writing; DataEnd appends both
+  new sectors there (or routes/discards them according to conditions), even
+  after zero/partial writes. GET2048 after PUT2048 returns the submitted user
+  bytes from raw byte24. Full GET2352 exposes the raw layout; command52/53
+  and54 reflect the submitted view/metadata. Existing2048-byte partition
+  plus two raw sectors accounts6752 physical bytes/three slots; GetDelete of
+  the new pair frees exactly two slots. Exact specified bytes, words and
+  ownership, zero tolerance; unspecified bytes have no hardware oracle.
+- suggested method: native all PUT/GET length pairs, Mode1/Form1/Form2 raw
+  submissions, nonidentity filter destinations, false chains/discard,
+  initially nonempty destination, full pool, zero/partial DataEnd, high
+  count bits, active-transfer refusal and native save/load while privately
+  reserved after a writing-length change. Include frozen AB2/OutRun traces.
+- falsifier: wrong input byte range/length, premature partition visibility,
+  overwritten existing sector, fewer than the requested sectors processed
+  at DataEnd, incorrect metadata/routing, count truncation, allocation/input
+  mutation on refusal, leaked/double-owned pool slots, or divergent restored
+  continuation. Ordinary2048 uploads must retain their user-data roundtrip.
+- self-check run (method-level, unvalidated): ASan/fail-fast UBSan exits0:
+  96 PUT/GET view images,72 partial/zero PUTs,240 registered-image replays,
+  four filter routes,242 refusal controls and full200-sector release.
+  Historical25a58304 fails private transfer ownership at generated line1076.
+  Fetch-length, missing target/IDs/writing-length save, missing private pointer
+  index, completed-only routing and8-bit count mutants fail at generated
+  lines1135/1147/1150/1134/1191/1156/1214. All22 own CD probes at94da2d00,
+  warning-enabled CD TU syntax and diff checks exit0; no full build.
+  Unmodified validator transfer fixture still exits1 at compilation. It now
+  additionally needs writing-length/PUT declarations and the completion helper
+  dependencies. Original file/expectations untouched. A temporary adapter
+  using actual finish/filter/disconnect helpers executes unchanged336 transfer,
+  262144 HIRQ and observational trace assertions with exit0; not an
+  unmodified-fixture, raw-PUT fixture or native-runtime result.
+- state: **UNVALIDATED**.
+- not covered/known doubts: **save-state layout break**: target filter and
+  private partition size/count/block IDs registered with pointer repair in
+  this change; transfer pointer index24 denotes the private reservation.
+  Raw flags/latches/output length use their existing registrations. Native
+  file compatibility not claimed. Only the existing32-bit write port is
+  changed;16-bit writes, native FIFO/backpressure, asynchronous DRDY/EHST
+  setup failures, timing and overlapping command/Abort File arbitration
+  remain separate. Common cursors can still be disturbed by those overlapping
+  commands; private ownership nevertheless survives until DataEnd/reset and
+  prevents another PUT from overwriting reservations. Malformed pool-counter
+  rollback is defensive, not a hardware policy. This generic PUT path was
+  historically named for AB2/OutRun/Fantasy Zone/Dynamite Dux; frozen-game
+  runtime acceptance is required and NOT inferred from roundtrip probes.
+  No game-specific branches or CPU/sound/video/HIRQ-handler edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0078 | CD-01 | 94da2d00 | UNVALIDATED | Refreshing TOC for Session Info does not create or rewind a host transfer |
+
+### IMPL-0078 — CD-01 — separate TOC preparation from transfer activation
+
+- branch/commit/base: `arena/01a0b897-mame` @ **94da2d00**; base **c5ca25a6**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:903-908,3916-3925`;
+  `saturn_pending/impl_checks/check_cd_toc_transfer_start.py`.
+- contract: only Get TOC command02 starts the TOC word stream and resets its
+  cursor. Preparing TOC bytes for Session Info03 must not change the active
+  transfer type, cursor or transferred-word accounting. An idle Session Info
+  query must not leave a phantom TOC transfer that blocks a following PUT.
+  Explicit Get TOC retains its204-word response and DRDY request.
+- primary source: ST-162-062094 printed p.77 section8.2.1/functions1.5/1.6
+  distinguishes the408-byte TOC data transfer from four-byte session
+  information; p.32 section3.4 describes explicit data-transfer setup.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:2623-2655,2661-2687`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, activates DT for TOC, not the
+  session response. Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:1810-1864`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, likewise separates SetupTOCTransfer
+  from Session Info. Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d
+  and local base put the type/cursor assignment in shared cd_readTOC, called
+  by both commands. This moves those two assignments, not reference code.
+- expected observable: Session Info from idle leaves word type invalid;
+  during a TOC/subcode/file stream it does not reset/reclassify its cursor.
+  Subsequent ordinary PUT is not refused because of a fabricated TOC stream.
+  Explicit Get TOC still starts at byte0 and advertises20416-bit words.
+  Exact type/cursor/counts, zero tolerance; no new DRDY from Session Info.
+- suggested method: native Session Info before PUT and between word reads
+  of an existing response; compare cursor/remaining words and causes; use
+  explicit Get TOC as the transfer-start control.
+- falsifier: query starts/reclassifies/rewinds a stream, changes its byte
+  counter, manufactures DRDY, or Get TOC no longer starts at its first word.
+- self-check run (method-level, unvalidated):900 query cursor images, six
+  TOC starts and six Session-then-PUT reservations exit0 with ASan/fail-fast
+  UBSan. Historicalc5ca25a6 fails cursor/type predicate at generated line1266.
+  All22 own CD probes, CD TU warning-enabled syntax and diff checks exit0.
+- state: **UNVALIDATED**.
+- not covered/known doubts: Session Info metadata, unsupported sessions,
+  no-media WAIT policy and legacy drive-status changes are unchanged; absent
+  media/nonmatching cursor cases are storage diagnostics. Full host-transfer
+  arbitration and native bus/timing remain open. No new state/layout change,
+  validator expectation, game-specific code or milestone-status edits.
