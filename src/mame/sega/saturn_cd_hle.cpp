@@ -1281,16 +1281,22 @@ void saturn_cd_hle_device::cmd_play_disc() {
       start = std::clamp(start_pos & 0x7fffff, 150U, leadout);
     else if (!start_pos)
       start = 150;
-    else
-      start = m_cdrom_image->get_track_start((start_pos >> 8) ?
-                  (start_pos >> 8) - 1 : 0) + 150;
+    else {
+      const unsigned last = std::max(m_cdrom_image->get_last_track(), 1);
+      const unsigned track = std::clamp((start_pos >> 8) & 0xff, 1U, last);
+      start = m_cdrom_image->get_track_start(track - 1) + 150;
+    }
   }
   if (end_pos != 0xffffff) {
     if (end_pos & 0x800000)
       end = std::min(start + (end_pos & 0x7fffff), leadout);
-    else
-      end = m_cdrom_image->get_track_start((end_pos >> 8) ?
-                  (end_pos >> 8) : 0xaa) + 150;
+    else {
+      const unsigned last = std::max(m_cdrom_image->get_last_track(), 1);
+      const unsigned track = (end_pos >> 8) & 0xff;
+      // Track-only end is exclusive. The image index after the last
+      // track selects lead-out.
+      end = m_cdrom_image->get_track_start(track ? std::min(track, last) : 0xaa) + 150;
+    }
   }
 
   const uint8_t maximum = (mode & 0x7f) == 0x7f ? cdda_maxrepeat : mode & 0xf;
@@ -1385,9 +1391,11 @@ void saturn_cd_hle_device::cmd_seek_disc() {
       LOGCMD("\tdisc seek with params %04x %04x\n", cr1, cr2);
     }
   } else {
-    // is it a valid track?
-    if (cr2 >> 8) {
-      cur_track = (cr2 >> 8) - 1;
+    // Only TNO=IDX=0 is Home. TNO=0 with a nonzero index defaults to
+    // the first track; above-last TNO selects the last track (ST-162 p.66).
+    if (cr2) {
+      const unsigned last = std::max(m_cdrom_image->get_last_track(), 1);
+      cur_track = std::clamp(unsigned(cr2 >> 8), 1U, last) - 1;
       cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
       cd_change_status(CD_STAT_SEEK);
       cd_seek_stat = CD_STAT_PAUSE;
