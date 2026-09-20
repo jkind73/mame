@@ -5867,3 +5867,87 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   runtime acceptance remain open. Reserved cause/cursor patterns are storage
   diagnostics. No new fields/save-layout change, validator asset/expectation,
   HIRQ-handler, CPU/sound/video or milestone-status edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0080 | CD-01 | 64ee9883 | UNVALIDATED | An accepted host transfer remains owned through EOF until DataEnd; replacement starts and copy/move return WAIT |
+
+### IMPL-0080 — CD-01 — explicit host-transfer lifetime
+
+- branch/commit/base: `arena/01a0b897-mame` @ **64ee9883**; base **1adec0af**;
+  production WIP **4a5294da** included. Publication still
+  **BLOCKED(GitHub reconnection for push)** after another authentication
+  failure; last published1354cfda. Local commits retained without rewriting.
+- files: `src/mame/sega/saturn_cd_hle.h:270,321`;
+  `src/mame/sega/saturn_cd_hle.cpp:183,288-290,907-930,1070,1342-1344,
+  1931-1947,2050-2068,2104-2143,2231-2234,2356-2358`;
+  `saturn_pending/impl_checks/check_cd_host_transfer_lifecycle.py`; own
+  declaration/dependency/save adapters, with existing expectations unchanged.
+- contract: track accepted TOC/subcode/file-info/GET/GETDELETE/PUT host
+  transfers separately from a reader's exhausted interface type. EOF and
+  extra port reads/writes do not release ownership. Until DataEnd, another
+  host-transfer start or copy/move returns WAIT/CMOK without replacing
+  counters, backing data, reservations, selectors or input ownership, and
+  without manufacturing DRDY/EHST/ECPY. Preserve pending causes and publish
+  the WAIT response before callback. DataEnd releases ownership; hard device
+  reset clears it, pending PUT storage, and all host cursors/byte count.
+  Session Info and Abort File do not release this independent ownership.
+- primary source: ST-162-062094 printed p.32 section3.4 requires DataEnd after
+  a transfer request even when no data was transferred; p.80/function1.9 and
+  p.81/function1.10 distinguish setup, data movement and explicit termination;
+  p.31/section3.3 defines WAIT for commands that cannot currently be accepted.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. Hard reset initializes emulator
+  transfer bookkeeping; no new software Init-CD reset policy is inferred.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:2623-2655,2733-2778,2880-2888,3488,3571,
+  3632-3634,3817-3823,4107,4161,4295`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e: separate DT.Active, WAIT gates,
+  explicit DataEnd release and saved active flag. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d and local base use interface
+  types that disappear at word EOF; local copy/move/PUT guards therefore
+  missed drained word transfers, while other starts could overwrite live
+  state. No reference implementation block imported.
+- expected observable: read all204 TOC words, then request a sector transfer
+  without DataEnd: WAIT, no new reservation/stream. After DataEnd, the same
+  ordinary request can start. The same ownership rule applies at zero and
+  partial progress and survives save/load after EOF. Reset produces inactive
+  interfaces, zero cursors/count and an empty private reservation. Exact
+  ownership/state/cause bits and WAIT flag, zero tolerance; no latency claim.
+- suggested method: native cross-product of seven transfer kinds and new
+  starts/copy/move before, during and after data exhaustion; DataEnd release
+  controls, EOF save/load, hard reset during full-pool PUT, Session Info and
+  Abort File coexistence. Capture response/cause publication and backing bytes.
+- falsifier: replacement silently starts/rewinds/allocates, EOF releases the
+  interface without DataEnd, a WAIT modifies data/ownership or generates a
+  new operation-complete cause, DataEnd leaves it busy, or restore/reset loses
+  the active latch or retains stale transfer counters/reservations.
+- self-check run (method-level, unvalidated):567 refusal images,21 DataEnd
+  release controls, four registered EOF ownership replays, seven query/Abort
+  File controls and96 hard-reset/pending-PUT/cursor images exit0 with
+  ASan/fail-fast UBSan. Historical1adec0af fails active-start predicate at
+  generated line1581. Missing active-save, enum-only guard, missing active
+  reset, missing cursor reset, missing End release and enum-only copy guard
+  mutants fail at lines1632/1622/251/252/1626/1622. All24 own CD probes,
+  warning-enabled CD TU syntax and diff checks exit0. The first aggregate
+  stopped on duplicate mock cr_standard_return declarations inherited by two
+  own file probes; declaration deduplication fixed compilation without any
+  expectation changes, then the complete aggregate exited0.
+  Original validator transfer fixture remains a compile failure, now also
+  lacking m_host_transfer_active. A temporary declaration/dependency adapter
+  executes unchanged336 transfer,262144 HIRQ and trace assertions with exit0;
+  no validator file/expectation edits or unmodified-fixture claim.
+- state: **UNVALIDATED**; local publication blocked as above.
+- not covered/known doubts: **save-state layout break**: new active flag is
+  registered in the same production change. Old-save compatibility not
+  claimed. Existing WAIT/standard-report formatting is retained; other status
+  bits/report words remain unqualified. Illegal sector ranges, invalid
+  subcode/file-info operands, FLS-busy rules, native FIFO/prefetch/DRQ timing,
+  software Init-CD cancellation and frozen-game runtime acceptance remain
+  separate. In particular, do not reinterpret the frozen X-Men Init-CD
+  exceptions as a reset contract; **BLOCKED(command04 active-transfer/pool/
+  selector reset trace compatible with those accepted sequences)** for that
+  reset policy. No validator expectations, game-specific branches, CPU,
+  sound, video or milestone-status changes.
