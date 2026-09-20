@@ -7548,3 +7548,79 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   reconciliation remain open. Do not infer active-state timing accuracy or
   CD-DA fixture success from this idle-only change. No full build, validator
   asset changes or frozen CPU/sound/video source changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0102 | CD-01 | 39a71f2ff28 | UNVALIDATED | Drive Play/Seek/repeat positions stay in FAD; image/audio calls use LBA and image track indices are zero-based |
+
+### IMPL-0102 — CD-01 — drive/image address-domain reconciliation
+
+- branch/commit/base: `arena/01a0b897-mame` @ **39a71f2ff28**;
+  base **84dac1d8**. Source/probe pushed normally. At continuation the sandbox
+  had restored Git HEAD82152a8b with newer working files. Preserved its binary
+  diff outside the repo, fetched the published84dac1d8 tip, and advanced the
+  local index/HEAD without changing working files. The resulting tree matched
+  that published tip exactly. No branch switch, history rewrite or force-push.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1208-1279,1364-1367,3776-3781,
+  4369-4379,4403-4413,4449-4452`;
+  `saturn_pending/impl_checks/check_cd_drive_address.py`.
+- contract: for valid programme-area positions, translate FAD to LBA by
+  subtracting150 at drive track lookup and CD-DA start boundaries. Translate
+  image track starts back by adding150 before storing/seeking FAD or computing
+  remaining sectors against a FAD cursor. Normalize host track numbers to
+  zero-based image indices. Apply the same units to current repeat and retained-
+  pickup count paths, without redefining their programmed-range semantics.
+- primary source: ST-162-062094 p.24 Table2.1 explicitly defines LSN = FAD-150
+  and specifies FAD access for both CD-ROM and CD-DA. p.34 Figure4.1(a) locates
+  frame0 at FAD150. pp.65-66 data6.4 define track/start/end positions; p.82
+  function2.1 distinguishes audio playback from sector reading. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: validator tree
+  0ce91cd3f35620ed19eab6c623e5498365d19b93,
+  `src/mame/sega/saturn_cd_hle.cpp:843-881` translates track-start LBA/FAD
+  and FAD/track lookup; `:883-900` starts audio at FAD-150;
+  `:1263-1316` uses zero-based image tracks and FAD range boundaries.
+  Native API contract in this branch: `src/lib/util/cdrom.cpp:592-598`
+  feeds logical_to_chd_lba; `src/devices/sound/cdda.cpp:62-70` stores
+  startlba directly in the converter. Reviewed the fork's existing direct
+  calls and validator reconciliation; independently written conversions, no
+  whole-file import. Existing filtered reads and TOC conversions were already
+  using the correct150-sector translation and are left unchanged.
+- expected observable: trackT begins at image_start[T-1]+150 FAD; track range
+  S..E has exactly image_start[E]-image_start[S-1] sectors. Audio requested
+  at FAD F starts at LBA F-150; data producer still receives FAD F. Track
+  classification and active cadence use the corresponding LBA at both sides
+  of each boundary. Current repeat targets use the same FAD units. Exact
+  integer sectors/track indices, zero tolerance; no new time/sample tolerance.
+- suggested method: synthetic mixed audio/data tracks with distinct marker
+  sectors and tones; issue track and FAD Play/Seek, observe reported FAD,
+  selected track and actual output sector. Exercise +/-150 sectors around
+  boundaries, last-track lead-out, repeated track and mid-seek registered
+  restore. Re-run native CD-DA/HIRQ/transfer/LLE gates with source provenance.
+- falsifier: a150-sector offset in reported/played position or range length,
+  wrong track type near a boundary, host track1 targeting image track1, or
+  replay/repeat targeting a different physical sector.
+- self-check run (method-level, unvalidated):48 track ranges and48 registered
+  drive replays;24 track seeks;112 producer/cadence boundary images over eight
+  mixed-track type layouts;24 repeat targets;27 retained-position count controls.
+  Actual Play/Seek/drive/status/periodic/save methods; mock image, data producer,
+  audio sink, timer and serializer. ASan/fail-fast UBSan exit0. Historical
+  84dac1d8 and seven compiled mutants fail assertions: Play start, Seek start,
+  track end, audio LBA, producer track classification, timer classification,
+  repeat target. Native warning-enabled CD TU syntax/diff0.
+  All46 own CD probes executed:39 exit0 and the same seven original conflicts
+  (`file_connections`, `file_transfer_length`, `directory_save`,
+  `change_directory`, `read_directory_admission`, `table_invalidation`,
+  `file_abort`). Raw aggregate `/tmp/impl-ref/cd-0102-aggregate.log`.
+- state: **UNVALIDATED**; no native fixture success or merge-readiness claimed.
+- not covered/known doubts: no new state/save-layout change. This is address
+  reconciliation, not CD-DA start/stop phase, seamless range rendering, full
+  repeat-range retention, no-change/default/out-of-disc policy or SCAN
+  qualification. Existing one-sector audio restarts remain. The subcode-Q
+  command still has separate addressing/layout defects and is not swept into
+  this change. Lead-out/error policy and numeric seek timing unchanged. Primary
+  p.82's four-frame pre-start unmute is not implemented here. No full build,
+  validator fixture changes or frozen CPU/sound/video source changes.
