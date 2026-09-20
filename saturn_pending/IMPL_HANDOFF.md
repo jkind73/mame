@@ -7624,3 +7624,74 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   this change. Lead-out/error policy and numeric seek timing unchanged. Primary
   p.82's four-frame pre-start unmute is not implemented here. No full build,
   validator fixture changes or frozen CPU/sound/video source changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0103 | CD-01 | 4c885409970 + d15b81ef349 | UNVALIDATED | Play mode7F preserves the programmed repeat maximum, independently of pickup bit7; device reset initializes its zero default |
+
+### IMPL-0103 — CD-01 — programmed repeat limit is distinct from notification count
+
+- branch/commit/base: `arena/01a0b897-mame` @ **4c885409970** (source/probe),
+  **d15b81ef349** (declaration adapter/full-reset probe); base **32ad3587196**.
+  Both published normally to this branch.
+- files: `src/mame/sega/saturn_cd_hle.cpp:419,1307-1312`;
+  `saturn_pending/impl_checks/check_cd_repeat_limit.py`;
+  `saturn_pending/impl_checks/cd_file_scope_scaffold.py` (declaration only).
+- contract: initialize the existing programmed maximum to0 at device reset;
+  Play modes00..0F set it explicitly, whereas7F leaves it unchanged. Pickup
+  movement bit7 is independent, so both7F andFF preserve the maximum. Do not
+  replace this programmed setting with the live notification counter.
+- primary source: ST-162-062094 p.67 data6.5 “CD Play Parameters”: default0,
+  00 no repeat,01..0E finite count,0F infinite,7F no change; bit7 controls pickup
+  movement. p.38 separately discusses saved play range/repeat settings and
+  notification count. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:1597-1603`
+  initializes PlayCmdRepCnt to0; `:2786-2814` preserves it for7F/FF and passes
+  it to StartSeek independently of pickup bit7. Blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e. The validator's pinned
+  0ce91cd3 `saturn_cd_hle.cpp:1394-1399` also still clears7F, so its file is
+  not imported as an authority over the primary contract. Fork32ad3587196
+  clears7F and lacks reset initialization. Independently written correction.
+- expected observable: after setting a maximum R in0..15, issuing a changed
+  explicit range with7F orFF retains R. At that range's first end, R=0 pauses
+  with no repeat; R>0 takes the existing repeat-seek path and reports count1.
+  Explicit0 cancels a prior nonzero maximum. Device reset restores maximum0
+  and notification count0. Integer settings/counts/decisions exact, zero
+  tolerance; no new repeat timing or complete repeated-range contract.
+- suggested method: program each maximum, change a valid one-sector range
+  using7F/FF, observe range-end PAUSE versus repeat SEEK and reported count.
+  Include explicit0/nonzero overrides, saved continuations, and hard reset
+  followed by7F. Use data and audio media in native follow-up.
+- falsifier:7F/FF cancels/replaces the previous maximum, pickup bit changes
+  the selected repeat setting, explicit0 fails to stop repetition, reset
+  inherits a stale maximum, or registered replay changes the end decision.
+- self-check run (method-level, unvalidated):544 explicit/no-change command
+  cases with actual range-end decisions and544 registered replays;4096 actual
+  scalar-reset subset controls plus512 complete device_reset-body controls
+  with mocked media loading/status/timers. ASan/fail-fast UBSan exit0.
+  Historical32ad3587196 and five compiled mutants assertion-fail: clear7F,
+  ignore explicit values, omit pickup-bit masking, omit default initialization,
+  omit save registration. End-decision mutants fail the PAUSE/SEEK observable.
+  Initial aggregate exposed five reset-scaffold compile errors: the already-
+  existing cdda_maxrepeat field was absent from the fake class. Added only its
+  declaration to the shared adapter; no expected values/assertions changed.
+  All47 probes rerun after the adapter:40 exit0, same seven original conflicts
+  (`file_connections`, `file_transfer_length`, `directory_save`,
+  `change_directory`, `read_directory_admission`, `table_invalidation`,
+  `file_abort`). `/tmp/impl-ref/cd-0103-aggregate.log`; initial diagnostics kept
+  in `cd-0103-before-reset-declaration.log`. Warning-enabled CD TU syntax/diff0.
+- state: **UNVALIDATED**; native gate and validator merge-readiness rejection
+  remain open. No milestone status changed.
+- not covered/known doubts: cdda_maxrepeat was already save-registered at
+  device_start; no new fields/layout. Existing command-driven notification
+  count clearing, tray/seek retention of that count, programmed start/end range
+  persistence, infinite-repeat end-to-end behavior and audio sample timing
+  remain separate. This does not make the current track-based repeat path a
+  complete implementation of repeating an arbitrary programmed segment.
+  Invalid/reserved modes are not newly specified. Full reset method uses
+  mocks, not native reset/save/audio qualification. No full build or validator
+  asset/expectation edits.
