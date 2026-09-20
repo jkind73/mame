@@ -7359,3 +7359,75 @@ With a paused data producer, discarding the pause reason also prevents
 resumption when space really becomes available. Inspect the capacity/IRQ
 semantics and pinned reset/resume implementation before changing this;
 not implemented by0099.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0100 | CD-01 | f1cd6731 + df60d51a | UNVALIDATED | Clearing all public partitions preserves private capacity and the buffer-space pause reason so only genuine freed space resumes the drive |
+
+### IMPL-0100 — CD-01 — global buffer reset does not cancel auto-resume intent
+
+- branch/commit/base: `arena/01a0b897-mame` @ **f1cd6731** (source/probe),
+  **df60d51a** (probe input-order follow-up); base **0561ac4b**.
+  Publication **BLOCKED(GitHub reconnection for push)**: retry at0561ac4b
+  still failed authentication. Recovery bundle refreshed through the probe
+  follow-up; no force-push/history rewrite.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1798-1801`;
+  `saturn_pending/impl_checks/check_cd_buffer_reset_resume.py`.
+- contract: ResetSelector bit2 clears public partitions, not the independent
+  host reservations. Capacity changes through the actual frees, not an
+  unconditional full-flag reset. Preserve a buffer-full pause reason: the
+  existing drive phase resumes the remaining request when space exists,
+  and stays paused while the pool remains privately full. Do not turn a
+  manual pause into an automatic one. Sector-store clearing is unchanged.
+- primary source: ST-162-062094 p.38 “CD Read in a Full CD Buffer” resumes
+  where play left off when space is available; p.52 section6.2.2(4) specifies
+  the same for file reads. p.91 function5.9 bit2 clears all buffer partitions;
+  p.28 defines BFUL's full-buffer indication. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3925-3974` clears only partition-linked buffers and checks
+  pause resumption afterward; `:2078-2097` gates resumption on remaining play
+  range and FreeBufferCount. Private GETDEL buffers remain in DT until
+  DataEnd (`:2762-2768`); PUT also reserves outside public partitions
+  (`:3558-3608`). blobd367dd0c0500ff7b1e2637e748015543b0a3078e.
+  Fork0561ac4b and upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d
+  `src/mame/sega/saturn_cd_hle.cpp:1398-1399` unconditionally clear both
+  flags. Independently written removal of those resets; no reference delays
+  or code imported.
+- expected observable: with Q privately held sectors, public clearing leaves
+ 200-Q free sectors. If Q=200, the existing HLE full indication remains full
+  and the paused producer cannot resume. On actual release, automatic pause
+  resumes from the unchanged FAD; manual pause and an exhausted range do
+  not. PUT that retains its sectors on DataEnd creates no new capacity;
+  deleting a routed sector does. Counts/FAD increments exact, zero tolerance;
+  no newly specified timer or seek delay.
+- suggested method: fill the pool using public sectors plus0/1/99/199/200
+  PUT/GETDEL reservations, pause the producer manually or for space, issue
+  ResetSelector bit2 and query capacity/IRQ. Exercise DataEnd with PUT
+  retain/discard routes and later Delete; compare saved/reloaded continuations.
+- falsifier: reset invents capacity or clears privately held allocations,
+  loses a space-paused request, resumes with no space, resumes a manual
+  pause, or loses this distinction across registered restore.
+- self-check run (method-level, unvalidated):702 reset/drive/host images,
+ 702 registered replays and162 privately full capacity/IRQ-read controls.
+  Actual media-read/filter/allocation path runs after resumption. ASan/fail-
+  fast UBSan exit0. Historical0561ac4b and six mutants fail: clearing full,
+  clearing/forcing pause intent, inventing free capacity, and erasing either
+  private descriptor. Historical and pause mutants now encounter active-range
+  sector-production assertions before idle-state representation controls.
+ 44 own CD probes:37 exit0, same seven disclosed legacy conflicts;
+  `/tmp/impl-ref/cd-0100-aggregate.log`. Native warning-enabled CD TU syntax/
+  diff0. No full build or native validation.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: no new state or save-layout change; affected
+  flags/capacity were already registered. Existing HLE HIRQ live overlays
+  and acknowledge policy are NOT requalified as hardware latch behavior.
+  Existing BUSY/PLAY staging and timer cadence unchanged. Selector-reset
+  asynchronous timing, native save/image/audio integration, filesystem
+  buffer clearing, programmed play-range retention and Abort's producer
+  cancellation semantics remain separate. No validator expectations/assets
+  or frozen CPU/sound/video paths touched.
