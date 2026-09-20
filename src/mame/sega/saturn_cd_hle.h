@@ -344,6 +344,7 @@ private:
   void finish_put();
   bool cd_transfer_wait();
   // 0x10
+  void cd_default_play_range();
   void cmd_play_disc();
   void cmd_seek_disc();
   void cmd_ffwd_rew_disc();

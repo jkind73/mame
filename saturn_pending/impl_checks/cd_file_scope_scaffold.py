@@ -7,6 +7,25 @@ def extract(text, signature):
 
 def extend(head, functions, source):
     declarations=[]
+    if 'cd_default_play_range(' in functions:
+        signature='void saturn_cd_hle_device::cd_default_play_range('
+        if signature not in functions:
+            functions+='\n'+extract(source,signature)
+        if 'cd_default_play_range(' not in head:
+            declarations.append('void cd_default_play_range();')
+        if 'm_cdrom_image' not in head:
+            # Old directory-only mocks have no TOC. This API placeholder is
+            # not metadata evidence; the dedicated integrated probe has one.
+            declarations.append('struct RangeImage{bool exists(){return true;}uint32_t get_track_start(unsigned){return 0;}}range_image;RangeImage *m_cdrom_image=&range_image;')
+        else:
+            import re
+            match=re.search(r'(\w+)\s*\*\s*m_cdrom_image',head)
+            assert match
+            media=extract(head,'struct '+match[1])
+            if 'get_track_start(' not in media:
+                head=head.replace(media,media[:-1]+'uint32_t get_track_start(unsigned){return 0;}}',1)
+        if 'cdda_repeat_count' not in head:
+            declarations.append('uint8_t cdda_repeat_count=0;')
     if 'cdda_maxrepeat' in functions and 'cdda_maxrepeat' not in head:
         declarations.append('uint8_t cdda_maxrepeat=0;')
     if 'm_get_partition' in functions and 'm_get_partition' not in head:

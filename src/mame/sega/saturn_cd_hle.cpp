@@ -1205,6 +1205,18 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
   LOGXFER("\t%04x %04x %04x %04x %04x\n", hirqreg, cr1, cr2, cr3, cr4);
 }
 
+void saturn_cd_hle_device::cd_default_play_range() {
+  // ST-162 section 6.2.3(3): filesystem access replaces the programmed
+  // CD Play range, not the separate finite file producer's progress.
+  const bool present = m_cdrom_image->exists();
+  const uint32_t end = present ? m_cdrom_image->get_track_start(0xaa) + 150 : 150;
+  if (m_play_range_valid && (m_play_start_fad != 150 || m_play_end_fad != end))
+    cdda_repeat_count = 0;
+  m_play_start_fad = 150;
+  m_play_end_fad = end;
+  m_play_range_valid = present;
+}
+
 void saturn_cd_hle_device::cmd_play_disc() {
   const uint32_t start_pos = (uint32_t(cr1 & 0xff) << 16) | cr2;
   const uint32_t end_pos = (uint32_t(cr3 & 0xff) << 16) | cr4;
@@ -2432,6 +2444,7 @@ void saturn_cd_hle_device::cmd_change_directory() {
   // ID zero names the current directory: acknowledge without restarting
   // its load or displacing the existing input connection/held window.
   if (file_id != 0) {
+    cd_default_play_range();
     cd_clear_partition(input);
     cd_connect_cddevice(input);
     read_new_dir(file_id, input);
@@ -2456,8 +2469,10 @@ void saturn_cd_hle_device::cmd_read_directory() {
   }
   // Clear the work partition for an ordinary held-window access. Leave
   // beyond-directory requests outside this still-unresolved error policy.
-  if (first == 2 || first < curdir.size())
+  if (first == 2 || first < curdir.size()) {
+    cd_default_play_range();
     cd_clear_partition(input);
+  }
   cd_connect_cddevice(input);
   cd_setup_directory_filter(input, curdir[0]);
 
@@ -2582,6 +2597,7 @@ void saturn_cd_hle_device::cmd_read_file() {
 
   // ST-162 section 6.2.3(2)(c): clear the selected work partition before
   // file access. Private host reservations are not public partition entries.
+  cd_default_play_range();
   cd_clear_partition(file_filter);
 
   // File offsets are logical (2048-byte) sectors, independent of the host's
