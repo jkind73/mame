@@ -9583,3 +9583,52 @@ lookup arguments. The method results and limited production change are unchanged
   native SCU timing and save-file replay remain unqualified. This is a candidate
   for the reported scan_audible/scan_moves gaps, not attributed acceptance.
   Destination folded-host/BFUL integration and live PUT/discard gates remain open.
+
+## Promotion runtime fixture candidate — live host window — 2026-09-20
+
+- Branch/base: `arena/01a0b897-mame`, `c4eb8b4d`.
+  New file: `regtests/saturn/test_cd_host_runtime.py`. No production change in
+  this fixture commit; no new implementation acceptance or parent completion.
+- Addresses validator a735e034 report's second requested follow-up. Generates
+  its own128-sector MODE1/2048 CUE/BIN with minimal ISO records in a temporary
+  directory; uses an existing executable and BIOS, downloads neither. The
+  directory-record generator is newly authored with both-endian fields, not
+  the peer generator's malformed raw-sector/record layout. Nothing generated
+  is committed. CPU parking and coroutine lifecycle follow a735e034
+  `regtests/saturn/test_cdda_runtime.py:212–220,493–505`, blob
+  `7b7c72a4c69fbfea5e212837deb21f9e73528cff`.
+- Primary contracts: ST-162 printed pp.27–28,42–43,95–97; SDK/PDF pins above.
+  Actual command encodings are the reviewed local HLE command handlers. No
+  hardware timing constant is inferred from the fixture's generous timeout.
+- Host-only observables: full raw2352 PUT/GETDELETE roundtrip; shared cursor on
+  both halfword lanes and a longword straddling sectors; private capacity before
+  End and across public reset; ownership retained at FIFO EOF; true/false
+  selector-chain routing; whole-reservation partial PUT with only written
+  prefix checked; GETDELETE release even with unread tail; full-pool PUT that
+  discards at End and releases capacity; finite selector/disconnected discard
+  reaches PAUSE/PEND at the expected FAD with CSCT and no stored sectors;
+  positive storage control checks generated-disc data and capacity.
+- Method: Lua drives only the main SH-2 program-space host window; parks CPUs
+  in RAM but keeps the CD scheduler running. It never reads private CD fields
+  or invokes methods directly. Byte/word/count comparisons exact; command
+  waits limited to500 emulated milliseconds, finite-play completion bounded
+  to500 polls. Process timeout600s; no host-time device behavior added.
+- Local checks: Python `--self-test` exercises ISO size/record construction and
+  completion-marker parser; four failure/missing-completion cases are rejected.
+  Lua source compiles through Lua `load` (lupa scratch install), not executed in
+  MAME. Normal invocation explicitly **SKIPs**: no `/home/user/mame/saturn`.
+  `--require-runtime` converts missing prerequisites into a nonzero exit, so
+  the validator cannot mistake a skip for the requested runtime evidence.
+- Reproduction on a rebuilt candidate:
+  `python3 regtests/saturn/test_cd_host_runtime.py --require-runtime --executable /path/to/saturn --rompath /path/to/existing/roms`.
+  A real run must exit0 AND emit `CD_HOST_RUNTIME PASS checks=<count>` with no
+  Lua/failure marker. Native fixture execution and negative controls remain
+  **UNVALIDATED**. This is runnable fixture work, not a claimed runtime result.
+- Falsifiers: stale private capacity, early routing/ownership release, any byte
+  mismatch across a boundary, no-progress discard, missing CSCT/PEND or bad
+  final capacity. Run on both candidate and destination folded-host trees;
+  failures must be investigated without editing expectations to fit either.
+- Not covered: raw PUT hardware error/ECC behavior, native save/load during the
+  transaction, masked SCU BFUL delivery without HIRQ polling, selector latency,
+  gameplay or headless mixer tone assertions. No existing validator fixture,
+  evidence directory or native validation script changed.
