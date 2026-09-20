@@ -6686,3 +6686,63 @@ change is part of0088.
   destination-buffer clearing and native response/IRQ/timing/frozen-title
   qualification remain open. No new state/save-layout change. Validator
   assets untouched; a failing legacy diagnostic is disclosed, not rewritten.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0092 | CD-01 | 7850f284 | UNVALIDATED | Read Directory rejects selectors24..255 or absence of a file table without disconnection or EFLS |
+
+### IMPL-0092 — CD-01 — Read Directory parameter/table admission
+
+- branch/commit/base: `arena/01a0b897-mame` @ **7850f284**; base **9668220a**.
+  Publication **BLOCKED(GitHub reconnection for push)**; recovery bundle
+  refreshed outside Git.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2413-2424`;
+  `saturn_pending/impl_checks/check_cd_read_directory_admission.py`.
+- contract: with filesystem idle, hold/read-directory cannot operate
+  without a current file-information table or a selector0..23. Reject
+  selector24..255 (includingFF) or absent table before touching the CD input.
+  Add only CMOK, not EFLS or host-transfer causes; preserve pending causes
+  and independent host ownership/cursors. Existing accepted behavior retained.
+- primary source: ST-162-062094 p.52 section6.2.2(1): create a file table via
+  root-directory move before using filesystem operations; p.99 section8.2.8
+  Read Directory: selector0..23 and starting file ID; p.31 section3.3:
+  invalid-format REJECT does not execute the command.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3734-3748`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  rejects invalid selector or invalid FileInfo after FLS-active arbitration.
+  Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:3132-3169` only explicitly
+  rejectsFF and still raisesEFLS; that disagreement is not adopted over
+  primary nonexecution semantics/Mednafen. Local base/upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d lack the admission; no code imported.
+- expected observable: idle-filesystem command71 with selector24..255 or
+  absent table returns REJECT, adds only CMOK and leaves connections, table,
+  drive/seek state and host stream untouched. Exact values, zero tolerance.
+- suggested method: command71 before any successful root move, then each
+  illegal selector with a populated table and an independent active host
+  stream; inspect selector readback, pending IRQ causes and stream continuity.
+- falsifier: a rejection disconnects an existing CD source, emits EFLS,
+  alters a filter/table or interferes with an unrelated host stream.
+- self-check run (method-level, unvalidated):60818560 selector/table/HIRQ/
+  owner refusal images and576 retained accepted-connection controls exit0
+  with ASan/fail-fast UBSan. Historical9668220a fails predicate237; absent-
+  table guard deletion, extraEFLS and early-disconnect mutants fail245/245/
+  247. Native warning-enabled CD TU syntax/diff0. All36 own CD probes run:
+ 35 exit0; original file-connections diagnostic still fails as disclosed
+  for0091. Log `/tmp/impl-ref/cd-0092-aggregate.log`.
+- fixture conflict: Read Directory FF, like Read File FF, now rejects rather
+  than disconnecting. Original `check_cd_file_connections.py` remains
+  unchanged. External valid-selector-domain adapter excludes both commands'
+  FF diagnostics only; retained assertions yield30000 connection images,
+ 48 displacements and24 absent-ID controls, exit0. Not original-fixture
+  success or native validation.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: accepted Read Directory remains a held-window
+  loading stub; this guard does not implement its body. FLS-active WAIT
+  precedence, complete table validity/disc-change tracking, selector buffer
+  lifecycle and native timing/save/title acceptance remain open. No new
+  fields or save-layout change. Validator assets/expected values untouched.
