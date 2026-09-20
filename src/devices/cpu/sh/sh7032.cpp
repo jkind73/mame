@@ -8,36 +8,32 @@ DEFINE_DEVICE_TYPE(SH7032,  sh7032_device,  "sh7032",  "Hitachi SH-1 (SH7032)")
 
 
 sh7032_device::sh7032_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: sh2_device(mconfig, SH7032, tag, owner, clock, CPU_TYPE_SH1, address_map_constructor(FUNC(sh7032_device::sh7032_map), this), 28, 0xc7ffffff)
+	: sh1_device(mconfig, SH7032, tag, owner, clock, CPU_TYPE_SH1,
+			address_map_constructor(FUNC(sh7032_device::sh7032_map), this), 28, 0xc7ffffff)
 {
 }
 
 void sh7032_device::device_start()
 {
-	sh2_device::device_start();
-
-	save_item(NAME(m_sh7032_regs));
+	sh1_device::device_start();
 }
 
 void sh7032_device::device_reset()
 {
-	sh2_device::device_reset();
-
-	std::fill(std::begin(m_sh7032_regs), std::end(m_sh7032_regs), 0);
+	sh1_device::device_reset();
 }
 
 void sh7032_device::sh7032_map(address_map &map)
 {
-//  fall-back
-	map(0x05fffe00, 0x05ffffff).rw(FUNC(sh7032_device::sh7032_r), FUNC(sh7032_device::sh7032_w)); // SH-7032H internal i/o
-}
+	// The SH7032 has no internal ROM, so the whole peripheral set comes from
+	// the shared SH-1 map.  The earlier revision of this file mapped the
+	// entire 0x05fffe00-0x05ffffff window as plain RAM, which meant the ITU,
+	// the DMAC, the SCI channels and the interrupt controller did nothing;
+	// the Saturn CD block firmware drives all of them (saturn_cdb.cpp).
+	sh1_peripheral_map(map);
 
-uint16_t sh7032_device::sh7032_r(offs_t offset)
-{
-	return m_sh7032_regs[offset];
-}
-
-void sh7032_device::sh7032_w(offs_t offset, uint16_t data, uint16_t mem_mask)
-{
-	COMBINE_DATA(&m_sh7032_regs[offset]);
+	// 4KB of on-chip RAM.  The CD block firmware's reset vector sets SP to
+	// 0x0f001000, the top of exactly this RAM, and runs its scheduler and
+	// command tasks out of it.
+	map(0x0f000000, 0x0f000fff).ram().mirror(0x00fff000);
 }

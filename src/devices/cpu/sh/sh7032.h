@@ -8,9 +8,12 @@
 
 #pragma once
 
-#include "sh2.h"
+#include "sh1.h"
 
-class sh7032_device : public sh2_device
+// The SH7032 is an SH-1 with no internal ROM and 4KB of on-chip RAM at
+// 0x0f000000.  It is the CPU of the Saturn CD block, where the firmware is
+// held in the external 64KB ROM the CD block exposes at address 0.
+class sh7032_device : public sh1_device
 {
 public:
 	sh7032_device(const machine_config &mconfig, const char *_tag, device_t *_owner, uint32_t _clock);
@@ -21,11 +24,6 @@ protected:
 
 private:
 	void sh7032_map(address_map &map) ATTR_COLD;
-
-	uint16_t sh7032_r(offs_t offset);
-	void sh7032_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
-
-	uint16_t m_sh7032_regs[0x200];
 };
 
 DECLARE_DEVICE_TYPE(SH7032, sh7032_device)
