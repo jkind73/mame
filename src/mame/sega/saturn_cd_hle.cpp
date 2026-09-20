@@ -4490,6 +4490,10 @@ void saturn_cd_hle_device::cd_playdata() {
                 cd_curfad - 150)) != cdrom_file::CD_TRACK_AUDIO) {
           uint8_t stored;
           cd_read_filtered_sector(cd_curfad, &stored, &sector_consumed);
+          // BFUL is an interrupt cause, not just a value synthesized by
+          // polling HIRQ. The common completion/pause path publishes it.
+          if (buffull)
+            hirqreg |= BFUL;
           m_cdda->stop_audio(); // stop any pending CD-DA
         } else {
           // This interval's audio was armed on PLAY entry or at the previous
@@ -4549,6 +4553,7 @@ void saturn_cd_hle_device::cd_playdata() {
           buffull_temp_pause = true;
           // sectorstore = 0;
           cd_change_status(CD_STAT_PAUSE);
+          update_hirq();
         }
       }
     }

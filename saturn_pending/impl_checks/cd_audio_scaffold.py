@@ -12,6 +12,8 @@ def extract(text, signature):
 
 def extend(head, functions, source):
     declarations=[]
+    if 'BFUL' in functions and 'BFUL' not in head:
+        head='constexpr unsigned BFUL=8;\n'+head
     for field,kind,value in [('m_play_start_fad','uint32_t','150'),('m_play_end_fad','uint32_t','150'),('m_play_range_valid','bool','false')]:
         if field in functions and field not in head:
             declarations.append(f'{kind} {field}={value};')
