@@ -1394,6 +1394,14 @@ void saturn_cd_hle_device::cmd_ffwd_rew_disc() {
 void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
   if (cd_transfer_wait())
     return;
+  if ((cr1 & 0xff) >= 2) {
+    // No transfer was accepted: do not raise DRDY or acquire host ownership
+    // for an unsupported subcode selector.
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
   m_host_transfer_active = true;
 
   // untested, assume it should set DTREQ
