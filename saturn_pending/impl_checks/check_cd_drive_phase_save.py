@@ -41,7 +41,7 @@ struct saturn_cd_hle_device {
  bool buffull_temp_pause=false,m_status_change_in_progress=false,m_seek_in_progress=false;
  uint8_t playtype=0,cdda_repeat_count=0,cdda_maxrepeat=0;
  unsigned reads=0,irqs=0;void update_hirq(){++irqs;}void trace_boot_state(const char*,bool){}
- void cd_read_filtered_sector(unsigned,uint8_t *ok){++reads;*ok=!buffull;}
+ void cd_read_filtered_sector(unsigned,uint8_t *ok,bool *consumed=nullptr){++reads;*ok=!buffull;if(consumed)*consumed=*ok;}
  void cd_playdata();void cd_change_status(u16);void register_state();
  struct Entry{void *address;size_t bytes;std::vector<uint8_t> image;};std::vector<Entry> entries;
  template<class T>void save_item(T &value,const char*){entries.push_back({&value,sizeof(value),{}});}

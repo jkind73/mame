@@ -60,6 +60,9 @@ struct saturn_cd_hle_device {
  partitionT *cd_read_filtered_sector(int32_t,uint8_t*);
 };
 '''
+if 'bool *p_consumed' in source:
+    head=head.replace('cd_read_filtered_sector(int32_t,uint8_t*);', 'cd_read_filtered_sector(int32_t,uint8_t*,bool * =nullptr);')
+
 tail=r'''
 int main(){
  unsigned matrix=0,chains=0,media_cases=0;

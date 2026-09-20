@@ -16,6 +16,8 @@ def extract(text,signature):
     return text[start:end]
 head=next(ast.literal_eval(n.value) for n in ast.parse(Path(__file__).with_name('check_cd_filter_routing.py').read_text()).body
           if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='head' for t in n.targets))
+if 'bool *p_consumed' in source:
+    head=head.replace('cd_read_filtered_sector(int32_t,uint8_t*);', 'cd_read_filtered_sector(int32_t,uint8_t*,bool * =nullptr);')
 head=head.replace('// TYPES','\n'.join(extract(header,s)+';' for s in ('struct filterT','struct blockT','struct partitionT','enum transT','enum trans32T')))
 head=head.replace('#include <cstdint>','#include <cstdint>\n#include <vector>\n#include <type_traits>\nusing u8=uint8_t;using u32=uint32_t;')
 head=head[:head.rfind('};')]+r'''

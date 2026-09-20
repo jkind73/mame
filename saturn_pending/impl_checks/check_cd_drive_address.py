@@ -21,8 +21,8 @@ audio=r'''struct Audio{
  void start_audio(unsigned lba,unsigned count){++calls;starts.push_back({lba,count});}
 }'''
 head=head.replace(extract(head,'struct Media'),media).replace(extract(head,'struct Audio'),audio)
-head=head.replace('void cd_read_filtered_sector(unsigned,uint8_t *ok){++reads;*ok=!buffull;}',
-                  'std::vector<unsigned> read_fads;void cd_read_filtered_sector(unsigned fad,uint8_t *ok){read_fads.push_back(fad);++reads;*ok=!buffull;}')
+head=head.replace('void cd_read_filtered_sector(unsigned,uint8_t *ok,bool *consumed=nullptr){++reads;*ok=!buffull;if(consumed)*consumed=*ok;}',
+                  'std::vector<unsigned> read_fads;void cd_read_filtered_sector(unsigned fad,uint8_t *ok,bool *consumed=nullptr){read_fads.push_back(fad);++reads;*ok=!buffull;if(consumed)*consumed=*ok;}')
 at=head.rfind('};');head=head[:at]+r'''
  uint16_t cr1=0,cr2=0,cr3=0,cr4=0;unsigned cd_speed=2;
  void cr_standard_return(uint16_t status){cr1=status;}

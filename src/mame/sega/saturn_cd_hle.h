@@ -245,7 +245,7 @@ private:
   blockT *cd_alloc_block(uint8_t *blknum);
   uint8_t cd_filter_destination(uint8_t fnum, const blockT &sector) const;
   partitionT *cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok);
-  partitionT *cd_read_filtered_sector(int32_t fad, uint8_t *p_ok);
+  partitionT *cd_read_filtered_sector(int32_t fad, uint8_t *p_ok, bool *p_consumed = nullptr);
 
   // local variables
   partitionT partitions[MAX_FILTERS];

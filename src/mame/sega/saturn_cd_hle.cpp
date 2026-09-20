@@ -4342,8 +4342,10 @@ saturn_cd_hle_device::cd_filterdata(filterT *flt, int trktype, uint8_t *p_ok) {
 
 // read a single sector off the CD, applying the current filter(s) as necessary
 saturn_cd_hle_device::partitionT *
-saturn_cd_hle_device::cd_read_filtered_sector(int32_t fad, uint8_t *p_ok) {
+saturn_cd_hle_device::cd_read_filtered_sector(int32_t fad, uint8_t *p_ok, bool *p_consumed) {
   int trktype;
+  if (p_consumed)
+    *p_consumed = false;
 
   if ((cddevice != nullptr) && (!buffull)) {
     // find out the track's type
@@ -4383,10 +4385,21 @@ saturn_cd_hle_device::cd_read_filtered_sector(int32_t fad, uint8_t *p_ok) {
       curblock.chan = curblock.fnum = curblock.subm = curblock.cinf = 0;
     }
 
-    return cd_filterdata(cddevice, trktype, &*p_ok);
+    partitionT *const destination = cd_filterdata(cddevice, trktype, p_ok);
+    // Storage failure and a disconnected selector output are different:
+    // the latter cancels this sector, rather than retrying the same FAD.
+    // Keep p_ok's existing stored-sector meaning for other callers.
+    if (p_consumed)
+      *p_consumed = *p_ok ||
+          cd_filter_destination(uint8_t(cddevice - filters), curblock) == 0xff;
+    return destination;
   }
 
   *p_ok = 0;
+  // A disconnected CD output also discards its stream. Preserve the existing
+  // global buffer-full pause even when there is no destination (ST-162 p.38).
+  if (p_consumed)
+    *p_consumed = !cddevice && !buffull;
   return (partitionT *)nullptr;
 }
 
@@ -4471,21 +4484,23 @@ void saturn_cd_hle_device::cd_playdata() {
       LOGXFER("SATURN_CD_HLE: Reading FAD %d\n", cd_curfad);
 
       if (m_cdrom_image->exists()) {
-        uint8_t p_ok;
+        bool sector_consumed;
 
         if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(
                 cd_curfad - 150)) != cdrom_file::CD_TRACK_AUDIO) {
-          cd_read_filtered_sector(cd_curfad, &p_ok);
+          uint8_t stored;
+          cd_read_filtered_sector(cd_curfad, &stored, &sector_consumed);
           m_cdda->stop_audio(); // stop any pending CD-DA
         } else {
           // This interval's audio was armed on PLAY entry or at the previous
           // sector boundary. Do not restart the converter/sample cache here.
-          p_ok = 1;
+          sector_consumed = true;
         }
 
-        if (p_ok) {
+        if (sector_consumed) {
           cd_curfad++;
           fadstoplay--;
+          // CSCT covers both stored and discarded sectors (ST-162 p.28).
           hirqreg |= CSCT;
           update_hirq();
           sectorstore = 1;
