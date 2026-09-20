@@ -6746,3 +6746,111 @@ change is part of0088.
   precedence, complete table validity/disc-change tracking, selector buffer
   lifecycle and native timing/save/title acceptance remain open. No new
   fields or save-layout change. Validator assets/expected values untouched.
+
+### IMPL-0091/0092 citation precision addendum
+
+ST-162 pp.99-100 name the filesystem filter-number parameters; they do not
+repeat the numeric range there. The fixed24-selector limit is stated in
+p.92 section8.2.6 (selector/filter count equals the24 buffer partitions),
+with the zero-based `fnum>=0x18` refusal explicit in the pinned Mednafen
+command paths. This clarifies, without changing, the admission contracts.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0093 | CD-01 | ea1c9a77 + f3f8652c | UNVALIDATED | Expose self/parent plus a movable254-record window, enforce held access and transfer six words per held record with saved scope/length |
+
+### IMPL-0093 — CD-01 — coherent held-directory window and File Info streams
+
+- branch/commit/base: `arena/01a0b897-mame`; source/scaffold checkpoint
+  **ea1c9a77** (WIP label retained in history), dedicated probe **f3f8652c**;
+  base **fdb66948**. Publication **BLOCKED(GitHub reconnection for push)**;
+  local recovery bundle updated after each checkpoint.
+- files: `src/mame/sega/saturn_cd_hle.h:306-312`;
+  `src/mame/sega/saturn_cd_hle.cpp:179-180,342-343,651-679,2376-2540,3948`;
+  `saturn_pending/impl_checks/check_cd_held_window.py`;
+  declaration-only shared scaffold helper/adapters and directory-save
+  registration selector (new fields included; expected values unchanged).
+- contract: for a completely parsed valid directory, expose up to254
+  ordinary records beginning at a held first ID, with self0/parent1 always
+  accessible. Ordinary includes child directories, not only regular files.
+  A newly loaded directory starts at2; command71 selects an in-directory
+  first ID (0/1 normalize to2). Self-directory NOP preserves the window.
+  Get Scope reports held ordinary count/first ID/end indication, not total
+  parsed entries or first non-directory record. Read File, Change Directory
+  and single File Info refuse unheld IDs. File Info bulk exposes the held
+  records only, advertises6*count words and ends at that latched length;
+  EOF retains host ownership until DataEnd. Empty table rejects scope/info;
+  self/parent-only directory reports count0/first0/end and rejects bulk info.
+  Existing host-owner WAIT takes precedence over File Info rejection.
+- primary source: ST-162-062094 p.52 sections6.2.1/6.2.2 specify256 total
+  held entries, self/parent retention,254 ordinary records, initial and
+  movable holding ranges, and access restricted to held files/directories.
+  p.99 section8.2.8 CDC_ChgDir/CDC_ReadDir; p.100 CDC_GetFileScope explicitly
+  excludes self/parent from count; CDC_TgetFileInfo returns12 bytes per
+  indicated record or up to254 held records. p.32 section3.4 governs
+  DataEnd/ownership. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1186-1235` (window fill/count/more flag, empty directory),
+  `:3681-3783` (directory/hold selection), `:3788-3863` (scope response,
+  rejection/WAIT ordering and6*FileInfoValidCount transfer), `:3876-3905`
+  (held Read File admission), blobd367dd0c0500ff7b1e2637e748015543b0a3078e.
+  Its FileInfoMore/Offs reporting cross-checks the end bit and empty first0.
+  Base/upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d use a command71
+  stub, whole-directory counters and fixed1524-word bulk output. No code
+  imported; the HLE keeps its bounded full-directory cache internally.
+- expected observable: a600-entry directory (including self/parent) initially
+  reports first2/count254/not-end. Hold300 reports300/254/not-end; hold599
+  reports599/1/end and bulk File Info returns6 words, not1524. IDs0/1 each
+  remain six-word records. Newly unheld IDs reject without starting playback
+  or host transfer. Native save/reload must preserve window, accepted word
+  length, partial-record bytes/cursor and ownership. Exact units/values,
+  zero tolerance; filesystem/IRQ latency not claimed.
+- suggested method: authored ISO directory with600 entries and distinct
+  metadata; move/hold/query/read both stream forms around IDs2/255/256/300/
+  599. Include a held/unheld child move, empty directory, short final window,
+  every-word or boundary save/reload, then DataEnd and unrelated host starts.
+- falsifier: self/parent disappear, an unheld file starts, scope counts self/
+  parent, initial window persists after a hold, bulk starts at2 after moving
+  the window, short window advertises/reads254 records, EOF loses ownership,
+  save loses scope/length, or load/reset fails to restore initial window.
+- self-check run (method-level, unvalidated):72 windows,298 self/parent/single
+  packets,422 unheld/empty refusals,434 actual registered continuations,
+ 66 ownership/parser/latched-length controls and256 hard-reset images exit0
+  with ASan/fail-fast UBSan. Historicalfdb66948 fails scope predicate754.
+  Ten mutants (stuck window, packet origin, fixed length/EOF, unheld read/
+  directory admission, either new registration missing, parser/reset window
+  omission) fail genuine assertions. Native warning-enabled CD TU syntax/
+  diff0. All37 own CD probes run:34 exit0, three legacy conflicts below.
+  Log `/tmp/impl-ref/cd-0093-aggregate.log`. No full build/native verification.
+- fixture conflicts, expected values unchanged: file-connections still
+  expects FF filesystem disconnection (0091/0092). File-transfer-length
+  expects six-word records even without a table and always1524 for bulk;
+  directory-save expects3048 bytes/1524 words for every directory size,
+  including no table. They fail at generated265/319/398 respectively.
+  Declaration adapters compile actual new methods, not mock-only bypasses;
+  the old scope-completion scaffold now represents an absent table, while
+  the new probe covers valid scope contents. Separate external adapters
+  restrict old assertions to their still-supported domains:30000 connection
+  images +48/24 controls;8 streams/1574 continuations/224 TOC-subcode controls;
+ 56 full-window registered root/cache continuations (counts256/7680 only,
+  despite that original probe's generic printed caption). Each returns0;
+  these are NOT original-fixture success or replacements for the434 new
+  window/length continuations. Validator assets/expectations untouched.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: **save-state layout changes**: new
+  `m_file_scope_start` (uint32 file ID) and `m_file_info_words` (uint16 words)
+  registered in the same source change. Native save-file/endian acceptance
+  remains unqualified. Full-directory cache and256KiB parser safety limit
+  retained; streamed parsing beyond that cap is still needed, and an end
+  indication is only asserted here for completely parsed directories.
+  Beyond-directory command71 retains the old window/accepted behavior;
+  error policy is **BLOCKED(command71 out-of-range first-ID response/scope
+  trace, including FFFFFF)**, not guessed from the ordinary hold contract.
+  Malformed table validity, media changes, software Init-CD, FLS-active
+  arbitration/timing, work-selector/buffer clearing and payload behavior
+  during concurrent cache replacement remain open. Bulk length is latched,
+  but its live-cache replacement payload is deliberately not qualified.
+  No frozen-game/real-media/runtime validation claimed.
