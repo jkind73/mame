@@ -6936,3 +6936,94 @@ command paths. This clarifies, without changing, the admission contracts.
   disabled parameters earlier than Mednafen's later directory-stage clearing;
   intermediate hardware register-read timing is not asserted. Existing eager
   passive root loading and its host-length popup are not changed here.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0095 | CD-01 | 6c71505c | UNVALIDATED | Tray opening invalidates new filesystem command access while retaining an accepted File Info stream's backing and ownership |
+
+### IMPL-0095 — CD-01 — disc-change table validity distinct from host backing
+
+- branch/commit/base: `arena/01a0b897-mame` @ **6c71505c**; base **53b9462f**.
+  Publication **BLOCKED(GitHub reconnection for push)**; local recovery
+  bundle refreshed after the coherent source/probe commit.
+- files: `src/mame/sega/saturn_cd_hle.h:311-314`;
+  `src/mame/sega/saturn_cd_hle.cpp:181,345,2385-2391,2415,2441,2465,2488,
+ 2561,3981,4039,4444-4447`;
+  `saturn_pending/impl_checks/check_cd_table_invalidation.py` and declaration/
+  registration adapters only (existing expectations unchanged).
+- contract: opening the tray invalidates filesystem command access before
+  publishing DCHG. Old non-root Change Directory, Read Directory, Get Scope,
+  File Info and Read File requests cannot use the previous disc's table.
+  Closing alone does not revive it. A fresh directory parse replaces the
+  cache and restores access; root sentinel remains the recovery operation.
+  Validity is separate from cache bytes/window/latched length so an already
+  accepted File Info transfer can finish and DataEnd can release ownership.
+  Its existing host-owner WAIT still precedes a new File Info rejection.
+- primary source: ST-162-062094 p.52 section6.2.2(1) clears file information
+  on disc changes and requires creation via root access before filesystem
+  use; section6.2.2(2) restricts access to held information. p.32 section3.4
+  requires ending accepted host transfers, unlike REJECT/WAIT requests.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:2131-2159`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  clears FileInfoValid/RootDirInfoValid before DCHG without clearing FileInfo
+  backing or DT in the eject phases. `:1189-1231` brackets new table loading
+  with validity; `:3697-3703,3745-3748,3792-3799,3813-3819,3877` reject invalid
+  table use and retain the File Info DT-WAIT priority. `:4383-4389` registers
+  validity separately from table contents. Base/upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d leave the old directory accessible
+  on tray changes. Independently written latch/guards; no code imported.
+- expected observable: after tray opening, Get Scope and new stale-file
+  accesses reject (CMOK only added by those commands); closing with another
+  image still requires rebuilding the table. A previously accepted partial
+  or EOF-held File Info stream retains its old bytes/count/ownership until
+  DataEnd, including through save/reload. Exact values/word counts, zero
+  tolerance. No new tray/IRQ timing claim.
+- suggested method: begin bulk File Info, consume0/1/5/6/partial/all words,
+  open/close tray, query scope and attempt old IDs, finish the original
+  transfer, then load the new root. Repeat with an invalidated-state save.
+- falsifier: old table commands succeed before rebuild, close revives stale
+  information, cache destruction corrupts a previously accepted stream,
+  invalidity is lost on load, recovery remains permanently rejected, or
+  invalidity is not visible when DCHG is published.
+- self-check run (method-level, unvalidated):224 partial/EOF tray+registered
+  continuations,1572 stale-table refusals,112 fresh-root recoveries and224
+  pre-DCHG invalidation observations exit0 under ASan/fail-fast UBSan; hard
+  reset cache/latch control0. Historical53b9462f fails predicate837. Ten
+  mutants (missing registration, invalidating backing lookup, clearing
+  cache, close revival, each of five command guards bypassed, no recovery)
+  fail genuine assertions. All39 own CD probes run:34 exit0; the same five
+ 0094 legacy diagnostic conflicts remain, not altered/hidden. Aggregate
+  `/tmp/impl-ref/cd-0095-aggregate.log`; native warning-enabled CD TU syntax/
+  diff0. No full build or native verification.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: **save-state layout changes**: new bool
+  `m_file_info_invalidated` is registered in this source change. It marks
+  explicit invalidation, not standalone validity: empty cache is still
+  invalid when the latch is false. Parser clears the latch only at its end;
+  reset clears it with the cache. Native save-file/media-identity integration
+  remains unqualified. Existing eager reset loading and OPEN/no-media
+  command admission remain incomplete; a successful synchronous parser
+  return is not a complete drive-readiness model. Tray EFLS/status timing,
+  stopping old playback/buffer-full auto-resume, general image-change hooks,
+  FLS-active arbitration, malformed-table policy and payload on concurrent
+  cache replacement are outside this change. Validator assets/expected
+  values and frozen paths untouched.
+
+### Continuing drive/buffer research (not queued as implementations)
+
+- Primary p.53 requires file access to stop on tray opening and EFLS before
+  the host observes OPEN. Pinned Mednafen cdb.cpp:2131-2159 updates its drive
+  OPEN/DCHG before a later EFLS phase. Internal phase order alone does not
+  establish host-observable ordering. Do not import its guessed1000/4000
+  clock delays; timing remains **BLOCKED(tray-open trace of EFLS, DCHG and
+  command-status response ordering during an active file read)**.
+- Mednafen cdb.cpp:3468-3548 snapshots GET buffer IDs and detaches GET+DELETE
+  at acceptance. `:754` explicitly requires freed buffer data to survive
+  freeing; `:890-900` clears partition links separately. HLE cd_free_block
+  already preserves bytes, but GET still follows mutable partition slots.
+  Completing filesystem buffer clearing requires addressing this ownership
+  gap rather than making an unrelated transfer disappear or guessing WAIT.
