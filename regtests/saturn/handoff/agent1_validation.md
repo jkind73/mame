@@ -96,3 +96,99 @@ rather than take either file wholesale.
    (raw PUT/GET views, selector routing, file commands) on top; re-run
    `test_cdda_runtime.py`, `test_cd_hirq.py`, `test_cd_transfer.py` and
    `test_cd_lle.py` on the merged tree.
+
+---
+
+# Second review: candidates 0117-0130, with the native gate they were missing
+
+Reviewed revision: **b3eece68ae1** (branch tip; 91 commits since `1354cfdad13`,
+candidates 0117-0130). Their tree was built natively for this review in a
+worktree of `refs/remotes/agent1` (1220 TUs, `-O0 -j2`, exit 0, 202426872-byte
+`saturn`), so the recurring caveat "no full build" is now closed.
+
+## Native results (measured here, on their tree)
+
+| gate | result |
+|---|---|
+| `./saturn -validate` | **exit 0** |
+| `regtests/saturn/run_all.py` (72 scripts, run individually so one failure cannot mask the rest) | **68 pass / 4 fail** |
+| `test_cd_transfer.py` | FAIL - harness only: extracted `cmd_end_data_transfer()` references `m_host_transfer_active`, `m_put_filter`, `finish_put()`, none of which the scaffold declares, although all three exist in their `src/mame/sega/saturn_cd_hle.cpp` (21 references) |
+| `test_dma_bus.py`, `test_dma_indirect.py`, `test_dma_source.py` | FAIL - harness only: the extracts copy `saturn_scu.cpp` bodies that call `memory::write_byte`/`dma_read_byte` (3 references in that file), which the mock `struct memory` in the harness does not provide |
+| their own 10 method-level checks (`check_cd_track_bounds`, `check_cd_discard_progress`, `check_cd_buffer_full_irq`, `check_cd_put_full_irq`, `check_cd_metadata_port`, `check_cd_programmed_range`, `check_cd_sector_word_port`, `check_cd_raw_put`, `check_cd_raw_sector_views`, `check_cd_toc_transfer_start`) | all reproduce, exit 0, and are honestly self-labelled `method-level, unvalidated` |
+
+`run_all.py` aborts on the first failure, so the batch cannot go green until those
+four harness scaffolds are updated; nothing in `src/mame/sega` is at fault for
+them (the same tree links and passes `-validate`).
+
+## Live-machine cross-check with this branch's fixtures against their binary
+
+| fixture (real running Saturn) | their binary | this branch's binary |
+|---|---|---|
+| `test_cd_hirq.py` | **PASS** | PASS |
+| `test_cdda_runtime.py` distinct failures | **5** | 2 |
+
+Their extra failures relative to this branch: `play_q_track`, `scan_audible`,
+`scan_moves` - i.e. subcode Q track reporting during Play, and a SCAN that stays
+audible while the pickup moves. Those are genuine gaps on their side, not harness
+noise. The two shared failures (`play_tone_1k`, `play_tone_not_2k`) must not be
+chased by either branch as device faults: both are measured at the mixer output,
+which in a headless run has no sink, so the captured block repeats bit-identically
+(30 successive 50 ms slices of the machine's own `-wavwrite` capture give
+`g1k=0.01404 g2k=0.07241 rms=0.62543` while the drive's FAD advances normally;
+two binaries whose drives sit 113 sectors apart produce identical numbers; the
+captured samples match no bytes of the fixture disc at any sector offset, stride
+or endianness).
+
+## Verdicts on the pending candidates
+
+Accepted on code review, primary-source citation and (where applicable) the live
+cross-check above. Expectations were not edited.
+
+- **IMPL-0123/0124** (bound Play/Seek track numbers before the image TOC lookup;
+  TNO=IDX=0 is Home, TNO=0 with an index defaults to track 1, above-last clamps):
+  **ACCEPTED**. The bounds part is unambiguously right - an unclamped host TNO fed
+  to `get_track_start(tno - 1)` is an out-of-range read. I also checked the
+  suspected duplicate `cd_default_play_range()` call: sites 2507, 2533 and 2660
+  are three distinct guarded paths, not one path twice.
+- **IMPL-0127/0128** (a sector discarded by the selector advances the drive and
+  raises CSCT; a disconnected CD output discards its stream instead of pinning the
+  pickup at one FAD; storage failure still retries): **ACCEPTED**. `p_ok` keeps its
+  existing meaning for the other callers, and the discard-vs-pause split matches
+  ST-162 p.38/p.42-43. A pickup pinned at one FAD is exactly the game-visible
+  hang class this parent is for.
+- **IMPL-0129/0130** (BFUL latched as a cause by the producer and published
+  without an HIRQ read; PUT End latches BFUL from post-routing capacity):
+  **ACCEPTED, corroborated independently**. This branch reached the same reading
+  from the same pages and latches BFUL in `cd_alloc_block()`, so the two branches
+  agree on the hardware and differ only on placement. Merge note: reconcile into
+  one cause-and-clear rule (producer alloc, drive tick, End arm) rather than
+  three `hirqreg |= BFUL` sites.
+- **IMPL-0120/0121/0122 and 0125/0126** (16-bit DATATRNS FIFO on both halfword
+  lanes with a shared byte cursor; longword continuation straddling an odd word
+  count; per-access bounds parameterised by width; debugger inspection consumes
+  nothing): **ACCEPTED on review, with a merge hazard that must be handled
+  deliberately**. This branch folds the window in `sat_console_state::cd_reg_offset()`
+  and dispatches `host_r`/`host_w` as 16-bit handlers, so a file-level merge would
+  silently drop the 32-bit straddle path (this branch never issues a 32-bit access
+  on that window, so the `mem_mask == 0xffff0000` / `0x0000ffff` arms never fire).
+  Port the *cursor and straddle semantics* into the folded path, then re-run
+  `test_cd_hirq.py`, `test_cd_transfer.py` and `test_cd_lle.py` here.
+
+Still **UNVALIDATED (no native runtime)**, unchanged from their own labels:
+`IMPL-0117/0118/0119` and the raw-PUT/selector semantics - their evidence is
+method-level only, and this branch has no live fixture that drives a raw PUT
+roundtrip through a running Saturn. No afterburner2/outrun media exists in either
+workspace, so gameplay acceptance for those paths cannot be produced locally.
+
+## What this branch needs from the implementation agent next
+
+1. Update the four stale harness scaffolds so `run_all.py` is green end to end.
+2. Add a live-machine fixture for the raw PUT reservation/selector routing and the
+   discard-progress behaviour (a Lua script driving the host window in a running
+   machine, like `test_cd_hirq.py`), which converts their strongest new semantics
+   from method-level to runtime.
+3. Reconcile the CD-DA gaps this branch already qualifies: subcode Q track during
+   Play, and SCAN audibility/advance.
+4. Do not re-open `play_tone_1k`/`play_tone_not_2k` against the mixer output; fix
+   the capture point (converter-state-level assertion, or a host with an audio
+   sink) first.
