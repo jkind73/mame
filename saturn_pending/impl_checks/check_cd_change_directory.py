@@ -7,7 +7,7 @@ fixture=Path(__file__).with_name('check_cd_directory_extent.py')
 scope={'__file__':str(fixture),'__name__':'change_directory_scaffold'}
 exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),scope)
 head,functions,extract,source,header=(scope[k] for k in ('head','functions','extract','source','header'))
-head='#include <cassert>\nconstexpr unsigned MAX_FILTERS=24,CMOK=1,EFLS=0x200,CD_STAT_REJECT=0xff00;\n'+head
+head='#include <cassert>\n#define LOGCMD(...) ((void)0)\nconstexpr unsigned MAX_FILTERS=24,CMOK=1,EFLS=0x200,CD_STAT_REJECT=0xff00;\n'+head
 head=head.replace(' direntryT curroot{};',extract(header,'struct filterT')+';\n direntryT curroot{};')
 head=head[:head.rfind('};')]+r'''
  uint16_t cr1=0,cr2=0,cr3=0,cr4=0,cd_stat=0x100,hirqreg=0;
