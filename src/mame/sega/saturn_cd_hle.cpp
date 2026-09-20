@@ -867,23 +867,10 @@ int saturn_cd_hle_device::get_timing_command(void) {
   return 16667;
 }
 
-/* FIXME: assume Saturn CD-ROMs to have a 2 secs pre-gap for now. */
 int saturn_cd_hle_device::get_track_index(uint32_t fad) {
-  uint32_t rel_fad;
-  uint8_t track;
-
-  if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(fad)) !=
-      cdrom_file::CD_TRACK_AUDIO)
-    return 1;
-
-  track = m_cdrom_image->get_track(fad);
-
-  rel_fad = fad - m_cdrom_image->get_track_start(track);
-
-  if (rel_fad < 150)
-    return 0;
-
-  return 1;
+  // The image owns the index table (including nonstandard pregaps and
+  // indices above one). Its position argument is LBA, not Saturn FAD.
+  return m_cdrom_image->get_track_index(fad - 150);
 }
 
 int saturn_cd_hle_device::sega_cdrom_get_adr_control(int track) {
@@ -907,17 +894,20 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
     cr1 = cur_status | (playtype << 7) | 0x00 | (cdda_repeat_count & 0xf);
     cr2 = (seek_track == 0xff)
               ? 0xffff
-              : ((sega_cdrom_get_adr_control(seek_track) << 8) | seek_track);
+              : ((sega_cdrom_get_adr_control(seek_track) << 8) | (seek_track + 1));
     cr3 = (get_track_index(cd_fad_seek) << 8) |
           (cd_fad_seek >> 16); // index & 0xff00
     cr4 = cd_fad_seek;
   } else {
     cr1 = cur_status | (playtype << 7) | 0x00 |
           (cdda_repeat_count & 0xf); // options << 4 | repeat & 0xf
+    // Track and CONTROL/ADR must describe the same reported position.
+    // cur_track can still name the track where a multi-track play began.
+    const uint8_t current_track = m_cdrom_image->get_track(cd_curfad - 150);
     cr2 = (cur_track == 0xff)
               ? 0xffff
-              : ((sega_cdrom_get_adr_control(cur_track) << 8) |
-                 (m_cdrom_image->get_track(cd_curfad - 150) + 1));
+              : ((sega_cdrom_get_adr_control(current_track) << 8) |
+                 (current_track + 1));
     cr3 =
         (get_track_index(cd_curfad) << 8) | (cd_curfad >> 16); // index & 0xff00
     cr4 = cd_curfad;
