@@ -94,9 +94,15 @@ local function status()
     return sp:read_u16(CR1)
 end
 local function state() return status() & 0x0f00 end
--- the host's status field, named as the device does
-local STAT = { BUSY=0x0400, PAUSE=0x0100, STANDBY=0x0200, PLAY=0x0300,
-               SEEK=0x0500, SCAN=0x0600, OPEN=0x0700, NODISC=0x0800 }
+-- The host's status field: CR1 bits 8-11, one status code per value.  The
+-- numbers are the documented ones (ST-162-062094 Get Status table; the device's
+-- own CD_STAT_* defines and Ymir's cdblock_defs.hpp agree on the same sequence:
+-- Busy 0, Pause 1, Standby 2, Play 3, Seek 4, Scan 5, Open 6, No Disc 7,
+-- Retry 8, Error 9, Fatal 0xA).  This table used to start at 0x0400 for Busy,
+-- which shifted Seek/Scan/Open/No Disc one value up and made a correctly
+-- reported Scan look like the wrong state.
+local STAT = { BUSY=0x0000, PAUSE=0x0100, STANDBY=0x0200, PLAY=0x0300,
+               SEEK=0x0400, SCAN=0x0500, OPEN=0x0600, NODISC=0x0700 }
 
 -- SCSP output capture.  Only hooked streams report samples through
 -- register_sound_update, so the SCSP has to be marked as hooked first.
@@ -388,7 +394,10 @@ local function test()
             emu.wait(ms(1))
         end
         local h = sp:read_u16(HIRQ)
-        cmd(0x0000, 0, 0, 0)
+        -- Get Buffer Size again, not Get Status: a status response puts the
+        -- current track's ADR/control and number in CR2 (cr_standard_return),
+        -- so only $50 reports a block count.
+        cmd(0x5000, 0, 0, 0)
         local free_after = sp:read_u16(CR2)
         print(string.format('CDDA put_error done=%s hirq=%04x free %d -> %d',
                             tostring(done), h, free_before, free_after))
