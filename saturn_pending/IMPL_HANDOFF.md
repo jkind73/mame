@@ -7431,3 +7431,46 @@ not implemented by0099.
   buffer clearing, programmed play-range retention and Abort's producer
   cancellation semantics remain separate. No validator expectations/assets
   or frozen CPU/sound/video paths touched.
+
+---
+
+### Validator review intake — `agent1_validation.md` at 0ce91cd3
+
+Read `regtests/saturn/handoff/agent1_validation.md` from the validator's branch
+`arena/01a09f50-mame`, pinned at
+`0ce91cd3f35620ed19eab6c623e5498365d19b93`. This file is not in the implementation
+checkout; it was retrieved read-only via GitHub, not copied over validator assets.
+The reviewed implementation revision is **1354cfdad**, NOT current b1a89b19 or
+its intervening candidates.
+
+- Validator verdict: **REJECTED for merge-readiness**, due to repository hygiene
+  and the missing full-branch native gate. Not an approval of this branch.
+- IMPL-0078 was accepted for **code review + method-level reproduction** only.
+  IMPL-0074..0077 retain the validator's UNVALIDATED verdict. No later candidate
+  receives a native acceptance claim from this report.
+- The native graft retains the HIRQ fixture result but adds five CD-DA failures
+  relative to the validator's binary: `range_silent`, `scan_audible`,
+  `scan_moves`, `periodic_idle_17ms`, `periodic_cadence_differs`. This measures
+  our CD files on their tree, not a native run of our branch. Reconcile the
+  range/SCAN/periodic and host-window/LLE contracts; do NOT replace either CD
+  file wholesale. Next filesystem changes are deferred while this is addressed.
+- Hygiene action: archive and remove 20 tracked build/capture/patch artifacts
+  (63,694,522 bytes) called out by the review, keeping copies outside the repo at
+  `/home/user/mame-local-backup/validator-review-0ce91cd3/`, with a path manifest.
+  Add narrow ignore rules for Saturn runtime logs/ZIPs/screenshot captures.
+  Source, fixtures, expected values and validator evidence are unchanged.
+  This removes artifacts from the current tree, not from published history;
+  no history rewriting or force-push is performed.
+- GitHub API access now succeeds. Configuring the existing GitHub CLI credential
+  helper restored normal git publication: **1354cfda..b1a89b19** pushed to this
+  implementation branch. Prior publication blockers above are historical.
+- Native gate remains **BLOCKED(native CI result for the current implementation
+  revision)**. No full sandbox build is attempted; the validator owns native
+  acceptance and milestone promotion.
+
+IMPL-0100 citation/accounting supplement: ST-162 p.53 section6.2.3(3) explicitly
+retains ordinary drive operation, including automatic buffer pause/resume,
+during filesystem work. The seven unchanged original-fixture conflicts in its
+44-probe aggregate are `file_connections`, `file_transfer_length`,
+`directory_save`, `change_directory`, `read_directory_admission`,
+`table_invalidation`, and `file_abort`; these are failures, not passing fixtures.

@@ -49,3 +49,8 @@ regtests/chdman/temp
 regtests/jedutil/output
 /CMakeLists.txt
 /samples
+
+# Saturn runtime captures and downloadable builds stay outside the source tree.
+/regtests/saturn/*.log
+/regtests/saturn/*.zip
+/regtests/saturn/Screenshot*.png
