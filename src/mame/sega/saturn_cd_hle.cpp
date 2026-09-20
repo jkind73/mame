@@ -506,7 +506,12 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
         xfersect < xfersectnum && xfersect < MAX_BLOCKS - xfersectpos) {
       blockT *const blk = transpart->blocks[xfersectpos + xfersect];
 
-      int32_t payload_size = blk ? blk->size : 0;
+      // Raw backing is a physical 2352-byte sector even after its allocation
+      // is freed. A captured GET can still reference it until DataEnd; freeing
+      // or compacting the public partition does not erase these bytes.
+      const int32_t storage_size = !blk ? 0 :
+          blk->raw_data ? int32_t(sizeof(blk->data)) : blk->size;
+      int32_t payload_size = storage_size;
       uint32_t payload_offset = 0;
       if (blk && blk->raw_data) {
         // A Set Sector Length during a transfer takes effect on the next
@@ -523,8 +528,8 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
       // a hole in the partition has nothing to hand over; leave the port at
       // its idle value and move on to the next sector rather than chasing a
       // null pointer or running off a block with a nonsense size
-      if (blk == nullptr || blk->size < 4 ||
-          uint32_t(blk->size) > sizeof(blk->data) || payload_size < 4 ||
+      if (blk == nullptr || storage_size < 4 ||
+          uint32_t(storage_size) > sizeof(blk->data) || payload_size < 4 ||
           payload_offset > sizeof(blk->data) ||
           uint32_t(payload_size) > sizeof(blk->data) - payload_offset ||
           xferoffs > uint32_t(payload_size) - 4) {
