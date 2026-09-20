@@ -75,7 +75,7 @@ The earlier, narrower acceptance of IMPL-0078 remains historical code-review/met
 
 ## Remaining release / full-branch gates
 
-- Repair the four **scaffold-only** failures without altering fixture expectations: `test_cd_transfer.py`, `test_dma_bus.py`, `test_dma_indirect.py`, `test_dma_source.py`; then obtain a green end-to-end regression run. These are not identified production defects.
+- The four **scaffold-only** failures have implementation-side repairs in `45dab461`; original assertions/expected values are unchanged. The local end-to-end runner exited 0 with **69 non-skipped scripts and 3 live skips**, not 72 native passes (details below). Obtain the validator's rerun with a native executable before closing the native regression gate. These were not identified production defects.
 - Add the requested live raw-PUT/selector/discard fixture and obtain validator results.
 - Resolve the three genuine CD-DA gaps: Q track during Play, SCAN audibility and SCAN movement.
 - Do **not** treat `play_tone_1k` / `play_tone_not_2k` as device defects using the present headless mixer capture. First use an appropriate capture point or an audio sink.
@@ -90,3 +90,39 @@ The earlier, narrower acceptance of IMPL-0078 remains historical code-review/met
 | `src/mame/sega/saturn_scu.cpp` | `325282dc10e96d3c0e252e3bcbdd5235d56781d2` |
 
 No validator assets, expected values, production code, milestone IDs or milestone checkboxes are changed by this promotion record. No merge, release or whole-branch approval is implied.
+
+
+## Implementation-side scaffold follow-up — 2026-09-20
+
+Repair commit: `45dab461` on `arena/01a0b897-mame`, based on `e9d734d9`.
+This is a test-harness update, not a change to the independently reviewed
+production source or the acceptance decisions above.
+
+- Three DMA scaffolds now extract/declare the production `dma_read_byte`
+  dependency. Their mock byte-write endpoint asserts if called; the original
+  scenarios have aligned destinations/even counts and do not qualify byte tails.
+- The CD scaffold now extracts current sector/PUT/admission dependencies and
+  declares private reservations, raw-view/ownership fields and filter types.
+  GET+DELETE setup invokes the real command to create its private reservation
+  instead of only assigning a mode. This is a fixture-construction change,
+  **not merely declarations**. Response formatting remains mocked/out of scope.
+- All **169 original C++ assertions** (36 CD, 21 DMA bus, 105 DMA indirect,
+  7 DMA source) remain verbatim and in order; all three Python assertions
+  remain AST-identical. Manual diff review found no expected-value changes.
+- `python3 regtests/saturn/run_all.py`: exit 0 after fetching its missing pinned
+  V-counter history object `868d72fc669765f8a0b9af6503a59642d293cbae`.
+  **72 scripts discovered: 69 non-skipped exit-zero scripts, 3 skipped**:
+  `test_backup_ram.py`, `test_cart_runtime.py`, `test_cd_hirq.py` (no local
+  native executable). The initial run stopped at that missing Git object;
+  neither the baseline nor the runner was changed to make the retry succeed.
+- Seven existing negative controls compiled and failed at assertions:
+  `MUTATE_CD_HIRQ=1` for CD transfer; DMA indirect `--hold-mutation`
+  `drop`, `sticky`, `enable`, `factor`, `stride`; and `--stop-noop`.
+- No full build was run. No validator evidence/validation scripts were changed.
+  These are implementation method-level results, **not validator acceptance**.
+
+The validator's earlier 68/72 result and live HIRQ result remain historical
+facts at their pinned revisions. This local run is a different evidence event,
+with native skips explicitly retained. Folded host-path/BFUL integration,
+live raw-PUT/selector/discard coverage, the three CDDA gaps and broader method
+probe conflicts remain open; no parent milestone or whole branch is promoted.

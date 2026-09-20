@@ -9411,3 +9411,64 @@ No production or validator asset/expectation changes are made by this record.
 The completion report only replaces the stale DCHG WIP-only sentence with the
 attributed live-HIRQ result and ledger pointer; IDs, parent labels and checkboxes
 are unchanged. No new build, runtime validation, merge or release is claimed.
+
+
+## Regression scaffold follow-up — 2026-09-20 — implementation method-level only
+
+- **Branch / commit / base:** `arena/01a0b897-mame` / `45dab461` /
+  `e9d734d9`. Test-harness-only follow-up to the four scaffold failures in the
+  independent report pinned by the preceding acceptance supersession. No new
+  implementation ID or acceptance verdict is introduced.
+- **Files:** `regtests/saturn/test_cd_transfer.py` (dependency extraction,
+  harness declarations and GET+DELETE setup); `test_dma_bus.py`,
+  `test_dma_indirect.py`, `test_dma_source.py` in that same directory
+  (actual byte-reader dependency and fail-closed mock byte-write endpoint).
+- **Contract/provenance:** retain every existing assertion/expected value while
+  constructing the state required by current production methods. CD GET+DELETE
+  setup now calls actual admission to detach the selected public range into
+  its private reservation, rather than assigning only the transfer mode.
+  Actual sector/PUT/filter helpers are extracted, not replaced with no-ops.
+  Status-response formatting is still a mock and is outside this fixture.
+  No new hardware contract is asserted: the existing ST-162 pp.95–97 sector
+  transfer contract and earlier reservation handoff remain the provenance;
+  no primary/peer behavioral decision was changed by this scaffold repair.
+- **Observable / tolerance:** existing expected integers, state transitions and
+  scenario counts; exact equality, no changed tolerance. All 169 original C++
+  assertions remain verbatim and ordered (CD36/bus21/indirect105/source7).
+  All three Python assertions remain AST-identical. The diff was also reviewed
+  for expected-value changes; none were made. This explicitly includes a CD
+  fixture-construction update, not merely added declarations.
+- **Individual checks:** CD transfer exit0, 262144 HIRQ overlay/read/ack cases,
+  boot-trace opt-in/debugger/register/rate-limit/observational checks, and
+  336 transfer cases. DMA bus exit0, 768 classifications/2304 mirrored scenarios;
+  indirect exit0, 54 chains/64 arbitration/924 held-trigger/2321 forced-stop;
+  source exit0, 1152 buffered source/word-transfer cases including snapshot
+  continuation. Existing sanitizer compile/run settings were retained.
+- **End-to-end method:** `python3 regtests/saturn/run_all.py`, exit0.
+  72 scripts discovered; 69 non-skipped scripts exited0; three live scripts
+  skipped because the native executable is absent (`test_backup_ram.py`,
+  `test_cart_runtime.py`, `test_cd_hirq.py`). The first attempt stopped at
+  `test_vcounter.py` because shallow history lacked pinned commit
+  `868d72fc669765f8a0b9af6503a59642d293cbae`. Fetching that exact commit
+  allowed the unchanged runner and baseline to complete on retry. No build,
+  baseline substitution, expected-value edit or removal of a test was used.
+  Scratch log: `/tmp/impl-ref/scaffold-run-all-retry.log` (not validator evidence;
+  durable counts are recorded here, not dependent on scratch-file retention).
+- **Falsifiers exercised:** seven existing controls compiled and assertion-failed:
+  `MUTATE_CD_HIRQ=1 python3 regtests/saturn/test_cd_transfer.py`;
+  `python3 regtests/saturn/test_dma_indirect.py --hold-mutation <mode>` for
+  drop/sticky/enable/factor/stride; and that script's `--stop-noop`.
+  These were assertion kills, not missing-history/compile errors.
+- **Limits/state:** implementation method-level results only, awaiting independent
+  rerun. The three DMA byte-write mocks assert on unexpected use; these original
+  aligned/even-count scenarios do not add byte-tail coverage. No native pending
+  interrupt, live PUT/selector/discard, CDDA or destination folded-host-path
+  qualification is inferred. The historical validator native build/live HIRQ
+  results are not revoked by the absence of a local executable. No claim of
+  72 native passes, broader probe-conflict resolution, parent completion or
+  whole-branch readiness. Remaining gates are in `PROMOTION_STATUS.md`.
+- **Source identity / protected scope:** the three production blobs still match
+  the preceding reviewed-source table exactly. No production fields or save
+  layout changed; no TU/full build was needed or run. Validator evidence,
+  `validate_ci_runtime.sh`, fixture expectations, frozen production paths and
+  milestone checkboxes were untouched. `git diff --check` exits0.
