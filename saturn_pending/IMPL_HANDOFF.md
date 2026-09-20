@@ -7270,3 +7270,92 @@ The pinned Mednafen code frees all `DT.BufList` reservations in **DataEnd**
 GETDELETE's early partition unlink and its later allocation release are
 separate operations. Do not introduce speculative per-sector prefetch frees
 when addressing HLE's current EOF-read cleanup.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0099 | CD-01 | 5566d37c + e9c40541 | UNVALIDATED | GETDELETE detaches the designated public range at acceptance and holds its physical reservations until DataEnd, including after EOF |
+
+### IMPL-0099 — CD-01 — GETDELETE detachment separate from allocation release
+
+- branch/commit/base: `arena/01a0b897-mame` @ **5566d37c** (source/probe),
+  **e9c40541** (additional Abort coexistence probe); base **5a599482**.
+  Publication **BLOCKED(GitHub reconnection for push)** at preparation;
+  local recovery bundle refreshed through the probe follow-up.
+- files: `src/mame/sega/saturn_cd_hle.h:250` (descriptor comment);
+  `src/mame/sega/saturn_cd_hle.cpp:559-560,1099-1101,2153-2173`;
+  `saturn_pending/impl_checks/check_cd_getdelete_reservation.py`.
+- contract: capture the GETDELETE physical range and remove its entries from
+  the public partition before ready notification. Do not free those blocks
+  then: the accepted host transfer privately owns their allocations until
+  DataEnd. Reading the last word or extra dummy data does not release them.
+  DataEnd releases the complete designated range, including unread sectors,
+  without deleting newly appended or compacted public entries.
+- primary source: ST-162-062094 p.96 function7.4 defines get-and-delete of
+  the designated range even when not all data is fetched; function7.3 defines
+  compaction. pp.80-81 functions1.9/1.10 require accepted transfer termination
+  and permit premature/complete/excess host reads. p.101 Abort preserves
+  selector/buffer state. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3497-3510` snapshots then unlinks selected GETDEL buffers
+  and sets NeedBufFree. `:2762-2768` releases all reservations in DataEnd;
+  `:1389-1426` does not release them during data reads. `:4295-4314` saves
+  ownership/list/cursors. blobd367dd0c0500ff7b1e2637e748015543b0a3078e.
+  Fork5a599482 and cached upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d use mutable public positions and
+  cleanup on an extra EOF read. Independently written use of the existing
+  private descriptor; no imported code or guessed timing.
+- expected observable: GETDEL over Q of N public sectors changes the public
+  sector count to N-Q before DRDY, but free capacity is unchanged. Selected
+  allocations remain unavailable across partial/all/excess reads and Abort.
+  Public Delete/single-partition reset/refill cannot recycle them. DataEnd
+  adds Q free sectors exactly once and leaves current public sectors intact.
+  Fully consumed transfer reports the normal word count; interrupted/zero-
+  read word-count behavior is explicitly NOT qualified. Units: sectors,
+  bytes and16-bit words as appropriate; zero tolerance, no cycle claim.
+- suggested method: get/delete a middle/last/full range, query public count
+  and free capacity before reading, clear/refill remaining public buffers,
+  consume0/partial/all plus extra words, Abort, save/reload and DataEnd.
+- falsifier: selected data stays publicly visible, capacity is released at
+  acceptance/EOF, refilling overwrites held data, DataEnd frees wrong/new
+  sectors or double-frees, or restored ownership cannot finish/release.
+- self-check run (method-level, unvalidated):16256 reservations/ready
+  observations,2176 registered continuations,48768 replacement WAIT controls,
+ 896 full-pool/edge-slot cases (included), plus Abort coexistence in every
+  reservation case. ASan/fail-fast UBSan exit0. Historical5a599482 and seven
+  mutants fail genuine assertions: no detachment, live public descriptor,
+  wrong public byte-size accounting, early allocation free, missing saved
+  transfer type, missing DataEnd free and EOF free.43 own CD probes:36 exit0,
+  **seven** disclosed diagnostic conflicts; `/tmp/impl-ref/cd-0099-aggregate.log`.
+  Native warning-enabled CD TU syntax/diff0. No full build or native validation.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: no additional save-layout change. Existing
+  registered private descriptor/index25, transfer type, ownership/cursors,
+  and pool data encode the reservation; GETDELETE retains its type at EOF.
+  Pre-change saved semantic states are not migrated. FIFO/prefetch, zero/
+  interrupted DataEnd word counts, existing GET/GETDELETE admission/error/
+  start-cause policy, asynchronous cleanup timing, global-reset full-pool
+  behavior and filesystem access buffer clearing remain incomplete. Single-
+  partition reset is exercised; global reset is not silently equated to it.
+- diagnostic conflict detail: six0097/0098 conflicts remain. Original
+  `check_cd_file_abort.py` additionally expects GETDELETE's two sectors still
+  present in public partition7 after acceptance; now fails that assertion.
+  No expected value was edited. External
+  `/tmp/impl-ref/check_file_abort_nondetaching.py` excludes only the obsolete
+  GETDELETE-public-retention mode:393216 original status/cursor cases and12
+  PUT/ordinary-GET continuations exit0 (its inherited output label still
+  mentions GETDELETE, but those12 do NOT include that mode). New0099 probe
+  covers actual detached GETDELETE plus Abort. Neither claim makes the
+  original failing fixture a success.
+
+### Next allocator/drive interaction identified
+
+ResetSelector's all-buffer branch unconditionally clears `buffull` and its
+buffer-space pause reason, unlike single-partition reset. With private PUT
+or GETDELETE reservations, public clearing need not free the entire pool.
+With a paused data producer, discarding the pause reason also prevents
+resumption when space really becomes available. Inspect the capacity/IRQ
+semantics and pinned reset/resume implementation before changing this;
+not implemented by0099.
