@@ -23,7 +23,7 @@ fixture,scope=prefix('check_cd_drive_phase_save.py')
 source,head,extract=(scope[k] for k in ('source','head','extract'))
 head=head.replace('struct Media{bool inserted=true;', 'struct Media{unsigned unloads=0;void unload(){inserted=false;++unloads;}bool inserted=true;')
 a=head.index(' struct Audio{');b=head.index('\n Media *',a)
-head=head[:a]+''' struct Audio{unsigned calls=0,stops=0,starts=0;bool playing=true;
+head=head[:a]+''' struct Audio{void set_output_gain(int,double){}unsigned calls=0,stops=0,starts=0;bool playing=true;
  void pause_audio(int){++calls;}void stop_audio(){++calls;++stops;playing=false;}void start_audio(unsigned,unsigned){++calls;++starts;playing=true;}}audio;'''+head[b:]
 head=head.replace('void update_hirq(){++irqs;}', 'void (*notice)(saturn_cd_hle_device&)=nullptr;void update_hirq(){++irqs;if(notice)notice(*this);}')
 at=head.rfind('};');head=head[:at]+'''

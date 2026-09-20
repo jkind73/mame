@@ -9511,3 +9511,75 @@ are unchanged. No new build, runtime validation, merge or release is claimed.
   validator fixture use BCD/MSF. That separate layout conflict, pregaps,
   lead-in/out, missing-media behavior and multisession remain open. Native
   acceptance belongs to the validator; CD-02 remains open.
+
+#### IMPL-0131 peer-citation correction (append-only)
+
+Inspection of the exact peer excerpt confirms the validator fixes the initial
+track lookup at a735e034 `saturn_cd_hle.cpp:1528`, but **retains** the nested
+`get_track(track + 1)` type-lookup bug at line1536. The preceding entry's claim
+that this peer also uses `get_track_type(track)` was incorrect. Only the pickup
+lookup is peer-corroborated there. Our type-lookup correction instead follows
+the local image API's zero-based track argument, already used in our reviewed
+`cd_update_cdda()`; the new mock exercises mixed track types and checks both
+lookup arguments. The method results and limited production change are unchanged.
+
+### IMPL-0132 — CD-02/CD-05 — SCAN pickup, entry audibility and bounded snippets
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0132 | CD-02/CD-05 | this entry's commit | UNVALIDATED — implementation method-level | SCAN advances both directions within the programmed range; PLAY entry audio at -12 dB, PAUSE/data silent |
+
+- Branch/base: `arena/01a0b897-mame`, `1c8e03d4`. Production:
+  `src/mame/sega/saturn_cd_hle.cpp` device_start/reset, cd_update_cdda,
+  cd_change_status, cd_scan_audio, cd_scan_step, cmd_ffwd_rew_disc,
+  cd_sector_cb and cd_playdata; corresponding `.h` declarations.
+- Primary: ST-162-062094 printed p.84, function2.3 Scan (SDK/PDF pins in0131).
+  Explicitly: continue until another drive command or play-range exit;
+  PLAY-entry audio -12 dB in CD-DA, PAUSE-entry/data silent, no sector-data
+  reads in CD-ROM regions. No hardware scan speed is specified on that page.
+- Pinned peer: validator a735e034 `saturn_cd_hle.cpp:1475–1489,3756–3759,
+  4469–4516`, blob688b4f4729da3fa8e0876bca5d74ee02605e15d4, advances two
+  sectors at75Hz and uses generic CDDA scan. Existing generic CDDA at base
+  1c8e03d4 `src/devices/sound/cdda.cpp:249–280` also uses stride2 but
+  prefetches and can unsigned-underflow when reversing near LBA0. We do not
+  transplant that path: bounded one-sector snippets avoid out-of-range prefetch,
+  enforce the programmed range (not just disc endpoints), and retain entry
+  audibility/attenuation. The two-sector/75Hz rate is explicitly an HLE peer
+  approximation, NOT a hardware-measured velocity or seek timing claim.
+- Observable/units/tolerance: pickup advances +/-2 FAD per modeled75Hz step,
+  saturating to range boundaries before PAUSE/PEND. Absolute FAD uses LBA+150.
+  Audio snippets are exactly one sector at current FAD-150, only in audio tracks
+  after PLAY entry. Both converter channel gains are10^(-12/20), test tolerance
+  1e-8; restore unity after stopping the old stream when leaving SCAN. No SCSP
+  mixer/slot changes. Data traversal allocates no sectors.
+- Save state: **layout changes**: `m_scan_reverse` and `m_scan_audible` are added
+  and saved in the same change, reset false. Direction reversal retains the
+  entry policy, including retargeting during BUSY. Existing sound-stream gain
+  serialization is in `src/emu/disound.cpp:364–372`. Native audio/cache phase
+  restoration remains a validator gate; old save files are not compatible.
+- Method: `check_cd_scan.py` extracts actual command/drive/periodic/converter
+  helpers and actual selected save registrations. ASan/UBSan exit0:512 images,
+  1024 intervals,32 registered direction/range replays. Seven controls compile
+  and assertion-fail: stationary, silent, pause-audible, direction, gain, range,
+  save. Mock sound/media/serializer are explicitly not native PCM/timers.
+- Existing probes rerun exit0 with expectations unchanged: audio_range
+  (448 ranges/104 commands/114496 modeled intervals), programmed_range
+  (288 ranges/576 repeats/24 replays), discard_progress (4608 images/replays),
+  buffer_full_irq (108 images/replays), put_full_irq (432 images/replays),
+  tray_stop, track_bounds (5120 Play/2044 Seek/7164 replays), and
+  `regtests/saturn/test_cd_transfer.py` (262144 HIRQ/336 transfer plus trace).
+  CD TU `g++ -fsyntax-only -std=c++20` with required includes exit0.
+- Harness-only dependencies: common cd_audio_scaffold extracts the new helpers,
+  supplies scan fields and a no-op gain endpoint for legacy non-SCAN probes;
+  the SCAN probe substitutes a gain recorder. Three descendant scaffolds receive
+  declarations only (remove duplicate SCAN constant; supply mock gain method).
+  No existing expected values/assertions or validator assets changed.
+- Falsifier/native request: on the unchanged validator runtime fixture, SCAN
+  must move and expose converter samples over audio without reading data into
+  a partition; PAUSE entry must remain silent and reverse must stay bounded.
+  Validate with an appropriate sound sink/converter observation, not the shared
+  headless mixer tone artifact. No full build/live binary available locally.
+- Limits: snippet continuity, analog waveform, actual hardware scan velocity,
+  native SCU timing and save-file replay remain unqualified. This is a candidate
+  for the reported scan_audible/scan_moves gaps, not attributed acceptance.
+  Destination folded-host/BFUL integration and live PUT/discard gates remain open.

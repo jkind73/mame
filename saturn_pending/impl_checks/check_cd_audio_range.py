@@ -8,6 +8,7 @@ scope={'__file__':str(fixture),'__name__':'audio_range_scaffold'}
 exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),scope)
 source,head,functions,extract=(scope[k] for k in ('source','head','functions','extract'))
 audio=r'''struct Audio {
+ void set_output_gain(int,double){}
  unsigned calls=0,now=0,last=0,lba=0,left=0;bool playing=false,paused=false;
  std::vector<std::array<unsigned,2>> starts;std::vector<unsigned> rendered;
  void flush(){while(last<now){++last;if(playing&&!paused){CHECK(left);rendered.push_back(lba++);if(!--left)playing=false;}}}

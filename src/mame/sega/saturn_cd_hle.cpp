@@ -164,6 +164,8 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(m_play_start_fad));
   save_item(NAME(m_play_end_fad));
   save_item(NAME(m_play_range_valid));
+  save_item(NAME(m_scan_reverse));
+  save_item(NAME(m_scan_audible));
   save_item(NAME(buffull));
   save_item(NAME(buffull_temp_pause));
   save_item(NAME(m_seek_ticks_left));
@@ -423,6 +425,7 @@ void saturn_cd_hle_device::device_reset() {
   cdda_repeat_count = 0;
   m_play_start_fad = m_play_end_fad = 150;
   m_play_range_valid = false;
+  m_scan_reverse = m_scan_audible = false;
 
   // MPEG state is still not registered for save states; reset re-establishes
   // it independently of the saved selector/sector-buffer state.
@@ -971,6 +974,10 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
 // PLAY is entered, before that first interval elapses, rather than resetting
 // its sample cache at every sector tick. Stop it before a non-audio interval.
 void saturn_cd_hle_device::cd_update_cdda() {
+  if ((cd_stat & 0x0f00) == CD_STAT_SCAN) {
+    cd_scan_audio();
+    return;
+  }
   if ((cd_stat & 0x0f00) != CD_STAT_PLAY || !fadstoplay ||
       !m_cdrom_image->exists() || cd_curfad < 150 ||
       m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad - 150)) !=
@@ -1009,6 +1016,11 @@ void saturn_cd_hle_device::cd_change_status(u16 new_status) {
   // entry phase rearms it at the resulting pickup position if appropriate.
   if (m_cdda->audio_active())
     m_cdda->stop_audio();
+  if (new_status != CD_STAT_SCAN && m_scan_audible) {
+    m_cdda->set_output_gain(0, 1.0);
+    m_cdda->set_output_gain(1, 1.0);
+    m_scan_audible = false;
+  }
   if (new_status == CD_STAT_SEEK)
     m_seek_ticks_left = 0; // retarget: re-measure the travel on the next tick
   // we are changing the status, definitely don't want PERI to interfere
@@ -1431,21 +1443,54 @@ void saturn_cd_hle_device::cmd_seek_disc() {
   cr_standard_return(cd_stat);
 }
 
+// ST-162 p.84: SCAN entered from PLAY is audible at -12 dB over audio,
+// but entry from PAUSE and traversal over data are silent. Use bounded,
+// one-sector snippets: the generic CDDA reverse prefetch can underflow LBA
+// near the programme start. Its existing two-sector stride is retained as
+// an HLE approximation, not a measured Saturn scan velocity.
+void saturn_cd_hle_device::cd_scan_audio() {
+  if (!m_scan_audible || !m_cdrom_image->exists() || cd_curfad < 150 ||
+      cd_curfad >= m_cdrom_image->get_track_start(0xaa) + 150 ||
+      (m_play_range_valid && (cd_curfad < m_play_start_fad || cd_curfad >= m_play_end_fad)) ||
+      m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad - 150)) !=
+          cdrom_file::CD_TRACK_AUDIO) {
+    if (m_cdda->audio_active())
+      m_cdda->stop_audio();
+    return;
+  }
+  constexpr double scan_gain = 0.251188643150958; // 10 ** (-12 / 20)
+  m_cdda->set_output_gain(0, scan_gain);
+  m_cdda->set_output_gain(1, scan_gain);
+  m_cdda->start_audio(cd_curfad - 150, 1);
+}
+
+void saturn_cd_hle_device::cd_scan_step() {
+  if (!m_cdrom_image->exists())
+    return;
+  const uint32_t leadout = m_cdrom_image->get_track_start(0xaa) + 150;
+  const uint32_t first = m_play_range_valid ? std::clamp(m_play_start_fad, 150U, leadout) : 150;
+  const uint32_t end = m_play_range_valid ? std::clamp(m_play_end_fad, first, leadout) : leadout;
+  const uint32_t current = std::clamp(cd_curfad, first, end);
+  const uint32_t next = m_scan_reverse ? current - std::min(2U, current - first) :
+                                        current + std::min(2U, end - current);
+  cd_curfad = next;
+  fadstoplay = end - next;
+  if (next <= first || next >= end) {
+    cd_change_status(CD_STAT_PAUSE);
+    hirqreg |= PEND;
+    update_hirq();
+    return;
+  }
+  cur_track = m_cdrom_image->get_track(next - 150);
+  cd_scan_audio();
+}
+
 void saturn_cd_hle_device::cmd_ffwd_rew_disc() {
-  // FFWD / REW
-  // cr1 bit 0 determines if this is a Fast Forward (0) or a Rewind (1) command
-  // TODO: the pickup is not actually moved, can be triggered thru Multiplayer
-  // by holding on relevant keys
-  LOGCMD("%s: %s disc\n", machine().describe_context(),
-         (cr1 & 1) ? "Rewind" : "Fast forward");
-
-  /* the drive reports scanning for as long as the command is in effect and
-     stays there until the program asks for something else, so this is the
-     status to move to even though the read position does not change yet.
-     Without it the command also never completed: the handler returned
-     without raising CMOK, leaving anything waiting on the interrupt stuck */
+  const uint16_t state = (m_status_change_in_progress ? cd_next_stat : cd_stat) & 0x0f00;
+  m_scan_reverse = (cr1 & 1) != 0;
+  if (state != CD_STAT_SCAN)
+    m_scan_audible = state == CD_STAT_PLAY;
   cd_change_status(CD_STAT_SCAN);
-
   hirqreg |= CMOK;
   update_hirq();
   cr_standard_return(cd_stat);
@@ -3837,7 +3882,7 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
   const uint16_t state = cd_stat & 0x0f00;
   if (state != CD_STAT_PLAY && state != CD_STAT_SEEK && state != CD_STAT_SCAN)
     m_sector_timer->adjust(attotime::from_hz(60));
-  else if (state == CD_STAT_SEEK)
+  else if (state == CD_STAT_SEEK || state == CD_STAT_SCAN)
     m_sector_timer->adjust(attotime::from_hz(75));
   else if (m_cdrom_image->get_track_type(
                m_cdrom_image->get_track(cd_curfad - 150)) ==
@@ -4471,6 +4516,9 @@ void saturn_cd_hle_device::cd_playdata() {
 
     break;
   }
+  case CD_STAT_SCAN:
+    cd_scan_step();
+    break;
   case CD_STAT_PAUSE: {
     if (!m_cdrom_image->exists())
       return;

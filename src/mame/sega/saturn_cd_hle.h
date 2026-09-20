@@ -216,6 +216,8 @@ private:
   void mpeg_reset();
   bool mpeg_gate(bool need_active);
   void cd_update_cdda();
+  void cd_scan_audio();
+  void cd_scan_step();
   void cd_free_block(blockT *blktofree);
   void cd_clear_partition(uint8_t bufnum);
   void cd_defragblocks(partitionT *part);
@@ -292,7 +294,9 @@ private:
   uint32_t fadstoplay; // current producer progress, not the programmed range
   uint32_t m_play_start_fad = 150;
   uint32_t m_play_end_fad = 150; // exclusive
-  bool m_play_range_valid = false; // false selects the default disc range
+  bool m_play_range_valid = false;
+  bool m_scan_reverse = false;
+  bool m_scan_audible = false; // false selects the default disc range
   int buffull, sectorstore, freeblocks;
   bool buffull_temp_pause;
 

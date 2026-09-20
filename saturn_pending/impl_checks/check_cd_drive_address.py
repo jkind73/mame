@@ -30,7 +30,7 @@ at=head.rfind('};');head=head[:at]+r'''
  struct Timer{unsigned hz=0;void adjust(unsigned rate){hz=rate;}}timer;Timer *m_sector_timer=&timer;
 '''+head[at:]
 head=head.replace('const char*,bool)', 'const char*,bool=false)')
-head+='\nconstexpr unsigned CD_STAT_STANDBY=0x200,CD_STAT_SCAN=0x500,CMOK=1,SCDQ=0x400;\nstruct attotime{static unsigned from_hz(unsigned rate){return rate;}};\n#define TIMER_CALLBACK_MEMBER(name) void name(int)\n'
+head+='\nconstexpr unsigned CD_STAT_STANDBY=0x200,CMOK=1,SCDQ=0x400;\nstruct attotime{static unsigned from_hz(unsigned rate){return rate;}};\n#define TIMER_CALLBACK_MEMBER(name) void name(int)\n'
 functions+='\n'+'\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_play_disc()', 'void saturn_cd_hle_device::cmd_seek_disc()', 'TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb)'))
 import runpy
 head,functions=runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)
