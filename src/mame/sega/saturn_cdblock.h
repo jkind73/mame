@@ -12,10 +12,11 @@
 //   * the LLE core in saturn_cdb.cpp, which runs the real YGR019B/CD block
 //     firmware (satcdb ROM set) and exposes the same host interface.
 //
-// They are selected per machine with a device slot, so the same driver can be
-// run either way ("-cdblock hle" is the default, "-cdblock lle" runs the
-// firmware).  This is the arrangement MAME issue #5807 asked for; ST-V keeps
-// its direct HLE instance because its CD sub-board has no dumped firmware.
+// The machine's "cdblock" slot selects between them: empty (the default) uses
+// the HLE the driver instantiates itself, and "-cdblock lle" puts the
+// firmware core in charge of the host window.  This is the arrangement MAME
+// issue #5807 asked for.  ST-V keeps its direct HLE instance, because its CD
+// sub-board has no dumped firmware.
 
 #ifndef MAME_SEGA_SATURN_CDBLOCK_H
 #define MAME_SEGA_SATURN_CDBLOCK_H
@@ -34,12 +35,6 @@ public:
 	// inside its window.
 	virtual uint16_t host_r(offs_t offset, uint16_t mem_mask = ~0) = 0;
 	virtual void host_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0) = 0;
-
-	// Tray control from the machine's tray switch.  Implementations that do
-	// not model a physical tray (the LLE core until the drive is wired)
-	// ignore it.
-	virtual void set_tray_open() {}
-	virtual void set_tray_close() {}
 
 	// CD block interrupt line to the main CPUs (SCU A-Bus external
 	// interrupt 0).

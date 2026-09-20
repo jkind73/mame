@@ -45,6 +45,8 @@ void saturn_cdblock_slot_device::host_w(offs_t offset, uint16_t data, uint16_t m
 
 void saturn_cdblocks(device_slot_interface &device)
 {
-	device.option_add_internal("hle", SATURN_CD_HLE);
-	device.option_add_internal("lle", SATURN_CDB);
+	// The default is an empty slot, which leaves the driver's own HLE drive
+	// model in charge.  Selecting this option hands the host window to the
+	// real CD block firmware.
+	device.option_add("lle", SATURN_CDB);
 }

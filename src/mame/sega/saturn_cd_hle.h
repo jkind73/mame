@@ -22,8 +22,8 @@ public:
 
   void amap(address_map &map);
 
-  virtual void set_tray_open() override;
-  virtual void set_tray_close() override;
+  void set_tray_open();
+  void set_tray_close();
 
   // Host register window access through the CD block interface, so the same
   // driver can select this model or the LLE core.  The offsets are the same

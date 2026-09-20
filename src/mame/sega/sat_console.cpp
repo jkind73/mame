@@ -500,7 +500,8 @@ public:
   sat_console_state(const machine_config &mconfig, device_type type,
                     const char *tag)
       : saturn_state(mconfig, type, tag), m_exp(*this, "exp"),
-        m_nvram(*this, "nvram"), m_cdblock(*this, "cdblock"),
+        m_nvram(*this, "nvram"), m_saturn_cd_hle(*this, "saturn_cd_hle"),
+        m_cdblock(*this, "cdblock"),
         m_ctrl1(*this, "ctrl1"), m_ctrl2(*this, "ctrl2") {}
 
   void saturn(machine_config &config) ATTR_COLD;
@@ -573,10 +574,12 @@ private:
 
   required_device<sat_cart_slot_device> m_exp;
   required_device<nvram_device> m_nvram;
+  required_device<saturn_cd_hle_device> m_saturn_cd_hle;
   required_device<saturn_cdblock_slot_device> m_cdblock;
 
-  // CD block host window access: dispatches to whichever implementation the
-  // "cdblock" slot holds (HLE drive model by default, LLE firmware core).
+  // CD block host window access: the driver's own HLE drive model by default,
+  // or the firmware core when the "cdblock" slot carries one.
+  bool m_cd_lle = false;
   uint16_t cd_r(offs_t offset, uint16_t mem_mask);
   void cd_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 
@@ -589,11 +592,16 @@ private:
 };
 
 uint16_t sat_console_state::cd_r(offs_t offset, uint16_t mem_mask) {
-  return m_cdblock->host_r(offset, mem_mask);
+  if (m_cd_lle)
+    return m_cdblock->host_r(offset, mem_mask);
+  return m_saturn_cd_hle->host_r(offset, mem_mask);
 }
 
 void sat_console_state::cd_w(offs_t offset, uint16_t data, uint16_t mem_mask) {
-  m_cdblock->host_w(offset, data, mem_mask);
+  if (m_cd_lle)
+    m_cdblock->host_w(offset, data, mem_mask);
+  else
+    m_saturn_cd_hle->host_w(offset, data, mem_mask);
 }
 
 uint8_t sat_console_state::saturn_cart_type_r() {
@@ -750,14 +758,12 @@ void sat_console_state::scsp_mem(address_map &map) {
 
 INPUT_CHANGED_MEMBER(sat_console_state::tray_open) {
   if (newval)
-    if (m_cdblock->cd_block())
-      m_cdblock->cd_block()->set_tray_open();
+    m_saturn_cd_hle->set_tray_open();
 }
 
 INPUT_CHANGED_MEMBER(sat_console_state::tray_close) {
   if (newval)
-    if (m_cdblock->cd_block())
-      m_cdblock->cd_block()->set_tray_close();
+    m_saturn_cd_hle->set_tray_close();
 }
 
 static INPUT_PORTS_START(saturn) PORT_START("RESET") /* hardwired buttons */
@@ -790,6 +796,11 @@ static INPUT_PORTS_START(saturn) PORT_START("RESET") /* hardwired buttons */
 }
 
 void sat_console_state::machine_start() {
+  // The "cdblock" slot is empty by default; when it carries the LLE core the
+  // CD block firmware answers the host window instead of the HLE model.
+  m_cd_lle = (m_cdblock->cd_block() != nullptr);
+  if (m_cd_lle)
+    logerror("CD block: running the LLE firmware core\n");
   saturn_state::machine_start();
 
   m_maincpu->space(AS_PROGRAM)
@@ -1193,7 +1204,15 @@ void sat_console_state::saturn(machine_config &config) {
   m_scsp->add_route(0, "speaker", 1.0, 0);
   m_scsp->add_route(1, "speaker", 1.0, 1);
 
-  SATURN_CDBLOCK_SLOT(config, m_cdblock, saturn_cdblocks, "hle");
+  SATURN_CD_HLE(config, m_saturn_cd_hle);
+  m_saturn_cd_hle->add_route(0, "scsp", 1.0, 0);
+  m_saturn_cd_hle->add_route(1, "scsp", 1.0, 1);
+  m_saturn_cd_hle->host_irq_cb().set(m_scu,
+                                     FUNC(saturn_scu_device::cd_block_irq_w));
+
+  // Empty by default (the HLE above answers the host window); "-cdblock lle"
+  // puts the CD block firmware in charge instead.
+  SATURN_CDBLOCK_SLOT(config, m_cdblock, saturn_cdblocks, nullptr);
   m_cdblock->host_irq_cb().set(m_scu,
                                FUNC(saturn_scu_device::cd_block_irq_w));
 
