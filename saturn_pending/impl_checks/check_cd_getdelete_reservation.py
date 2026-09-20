@@ -8,14 +8,16 @@ scope={'__file__':str(fixture),'__name__':'getdelete_reservation_scaffold'}
 exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),scope)
 source,head,functions,extract=(scope[k] for k in ('source','head','functions','extract'))
 at=head.rfind('};');head=head[:at]+r'''
- bool buffull_temp_pause=false;
+ bool buffull_temp_pause=false,m_status_change_in_progress=false;
+ uint16_t cd_next_stat=0;int m_seek_ticks_left=0;
+ void cmd_abort_file();void cd_change_status(uint16_t);
  void cmd_get_buffer_size();void cmd_get_buffer_partition_sector_number();
  void cmd_delete_sector_data();void cmd_reset_selector();void cd_reset_filter_conditions(filterT&);
 '''+head[at:]
 head=head.replace('void update_hirq(){++irqs;}', 'void (*notice)(saturn_cd_hle_device&)=nullptr;void update_hirq(){++irqs;if(notice)notice(*this);}')
-head+='\ntemplate<class T>bool BIT(T value,unsigned bit){return (value>>bit)&1;}\n'
+head+='\nusing u16=uint16_t;\n#define LOGSTATUS(...) ((void)0)\nconstexpr unsigned EFLS=0x200,CD_STAT_BUSY=0,CD_STAT_PAUSE=0x100,CD_STAT_SEEK=0x400,CD_STAT_NODISC=0x700,CD_STAT_OPEN=0x600,CD_STAT_PERI=0x2000;\ntemplate<class T>bool BIT(T value,unsigned bit){return (value>>bit)&1;}\n'
 functions+='\n'+'\n'.join(extract(source,'void saturn_cd_hle_device::'+name+'(') for name in (
- 'cmd_get_buffer_size','cmd_get_buffer_partition_sector_number','cmd_delete_sector_data','cmd_reset_selector','cd_reset_filter_conditions'))
+ 'cmd_get_buffer_size','cmd_get_buffer_partition_sector_number','cmd_delete_sector_data','cmd_reset_selector','cd_reset_filter_conditions','cmd_abort_file','cd_change_status'))
 helper=Path(__file__).with_name('check_cd_get_snapshot.py')
 helpers=helper.read_text().split("\ntail=r'''",1)[1].split('unsigned cases=',1)[0]
 tail=r'''
@@ -61,6 +63,8 @@ void run(unsigned buf,unsigned total,unsigned first,unsigned count,unsigned fmt,
  if(phase==3)for(unsigned i=0;i<3;++i)d.dataxfer_long_r();
  CHECK(d.m_host_transfer_active&&d.xferdnum==cut*4&&d.freeblocks==free&&public_image(d)==image);
  for(unsigned i=first;i<first+count;++i)CHECK(d.blocks[i].size==2352&&d.blocks[i].raw_data);
+ d.cr1=0x7500;d.cmd_abort_file();
+ CHECK(d.m_host_transfer_active&&d.xfertype32==D::XFERTYPE32_GETDELETESECTOR&&d.transpart==&d.m_get_partition&&d.xferdnum==cut*4&&d.freeblocks==free&&public_image(d)==image);
  for(unsigned cmd:{0x6100U,0x6300U,0x6400U}){
   d.cr1=cmd;d.cr2=0;d.cr3=buf<<8;d.cr4=1;
   if(cmd==0x6100)d.cmd_get_sector_data();else if(cmd==0x6300)d.cmd_get_and_delete_sector_data();else d.cmd_put_sector_data();
@@ -94,7 +98,7 @@ int main(){
   }
  }
  std::printf("method-level, unvalidated: %u detached GETDELETE reservations; %u ready observations; %u registered private replays; %u replacement WAIT controls; %u full-pool/edge-slot cases included\n",cases,observed,replays,waits,edges);
- std::puts("method-level, unvalidated: actual GETDELETE/query/Delete/single-partition-reset/allocation/port/End/save methods; mocked report/IRQ/serializer; unread/partial/EOF release and no double free; no interrupted DataEnd-count, FIFO/prefetch, global-reset capacity or native timing qualification");
+ std::puts("method-level, unvalidated: actual GETDELETE/query/Delete/single-partition-reset/Abort/allocation/port/End/save methods; mocked report/IRQ/serializer; unread/partial/EOF release and no double free; no interrupted DataEnd-count, FIFO/prefetch, global-reset capacity or native timing qualification");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='impl-cd-getdelete-reservation-') as directory:
