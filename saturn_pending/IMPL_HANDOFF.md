@@ -8715,3 +8715,144 @@ is `src/ss/cdb.cpp:2043-2074`, and the repeated-play decision/restart is
 `:2435-2459`, invoking SeekStart1/SeekStart2 with retained CurPlayStart. The cited
 2230-2280 range is seek/index acquisition, not the repeat decision. The contract
 and production code do not change; the pinned revision is unchanged.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0120 | CD-01 | b70549aa | UNVALIDATED | Word DATATRNS reads consume one sector-transfer FIFO word on either host halfword lane |
+| IMPL-0121 | CD-01 | b70549aa | UNVALIDATED | Word DATATRNS writes append one word to an accepted PUT reservation |
+| IMPL-0122 | CD-01 | b70549aa | UNVALIDATED | Sector longword continuation after a word access preserves the byte stream across sector boundaries |
+
+### IMPL-0120 — CD-01 — Sector-transfer word reads
+
+- branch/commit/base: `arena/01a0b897-mame` @ **b70549aa**, base **6dff2bac**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:476-497,522-598`;
+  `saturn_cd_hle.h:423-424`; `saturn_pending/impl_checks/check_cd_sector_word_port.py`;
+  `check_cd_buffer_save.py` (real helper inclusion/declarations only; original
+  assertions and expected bytes untouched).
+- contract: DATATRNS is a16-bit FIFO. GET/GETDELETE word reads consume two
+  bytes of the selected sector view, not the unrelated metadata-word producer.
+  Upper/lower16-bit bus masks return the same successive big-endian word in the
+  selected lane. Count only actual transferred bytes, retain host ownership to
+  End, and preserve the first/current-sector view while later length changes
+  apply to the next sector. Existing metadata-word dispatch remains available.
+- primary source: ST-162-062094 p.27 section3.1/table3.1: **all access widths
+  are16 bits**, DATATRNS's inner part is FIFO; p.25 defines word=2bytes;
+  pp.81,95-96 define End count and GET/GETDELETE transfers. Pinned SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafenf0ee9d595db68ad5247ba5ac6a8367fdced9c3fc
+  `src/ss/cdb.cpp:4093-4123` reads one16-bit FIFO element. Its prefetch/depth
+  model is not reproduced by this change. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d
+  `src/mame/sega/saturn_cd_hle.cpp:279-311,412ff` and fork6dff2bac route word
+  reads only to metadata and word writes nowhere. Independent extension of
+  this fork's existing byte-counted sector engine, not a peer code transplant.
+- expected observable: word N returns bytes2N,2N+1 (MSB first), advances cursor
+  and count by2bytes and does not release ownership. End reports actual bytes/2
+  words. Either host lane gives the same stream. Exact bytes/counts, zero
+  tolerance; no bus-cycle timing assertion.
+- suggested method: begin GET or GETDELETE at nonzero sector offset on each
+  buffer; vary Mode1/Mode2F1/F2 and2048/2336/2340/2352 views; read upper/lower
+  words, change sector length mid-sector, save at byte offset2, continue and
+  replay through End. Keep single-file metadata lane controls.
+- falsifier: metadata/dummy instead of the sector word, wrong lane/byte order,
+  four-byte advancement per word, early reservation release, current-sector
+  relatching after Set Length, count mismatch or a lost word on restore.
+- self-check run (method-level, unvalidated): shared0120-0122 probe2304 GET/
+  GETDELETE lane/view/mixed-width images,384 PUT images,2688 registered byte-
+  offset2 continuations and2 metadata controls; ASan/fail-fast UBSan0. Actual
+  DATATRNS/commands/ports/pool/filter/End/save methods, authored raw backing and
+  mock bus/image/IRQ/serializer. Historical6dff2bac plus nine compiled mutants
+  assertion-fail: metadata-only read, upper-lane read without shift, dropped
+  PUT words, wrong upper PUT shift, no mixed read split, no mixed write split,
+  doubled count, current-sector relatch and omitted xferoffs registration.
+  Existing raw-sector/get-snapshot/raw-PUT probes exit0. Warning-enabled CD TU
+  syntax/diff0. Full60 own probes atb70549aa:50 exit0/same ten conflicts;
+  `/tmp/impl-ref/cd-0122-aggregate.log`.
+- state: **UNVALIDATED**. Validator0ce91cd3's merge-readiness rejection/native
+  gate remains applicable: **BLOCKED(native CI result for current implementation
+  revision)**. No full build or CI dispatch.
+- not covered/known doubts: no new saved state/layout; existing byte cursors and
+  latched-view fields represent half-longword positions. This is not native
+  host-aperture/mirroring/SH2-DMA/WAIT qualification, a timed/prefetched hardware
+  FIFO, byte-access admission, idle-data-value proof or native save-file/title
+  qualification. Debugger sector reads are nonconsuming through the existing
+  sector guard; metadata debugger reads are outside this change.
+
+### IMPL-0121 — CD-01 — Sector-transfer word writes
+
+- branch/commit/base: `arena/01a0b897-mame` @ **b70549aa**, base **6dff2bac**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:501-510,609-681`; shared header/probe
+  and dependency adaptation in0120.
+- contract: accepted PUT accepts a16-bit DATATRNS word on either halfword lane,
+  writes exactly its two bytes to the reserved sector view, and increments host
+  count by2. Unwritten remainder/reservation ownership and later filter routing
+  still follow the existing End path. Length changes affect the next sector.
+- primary source: ST-162-062094 p.27/table3.1, p.25 word units, p.97 function7.4
+  Put Sector Data and p.81 End; same pinned primary as0120.
+- cross-checks/provenance: Mednafenf0ee9d59 `src/ss/cdb.cpp:4145-4183` accepts
+  one16-bit DB word and advances its input word offset/count; peer prefetch/
+  mask behavior is not imported. Upstream/fork limitation is recorded in0120.
+- expected observable: two incoming bytes at the next private sector-view
+  position, cursor/count+2bytes, no public publication before End, unchanged
+  ownership at exhaustion, eventual End count in words and routing of the same
+  bytes. Exact values, zero tolerance; no publication-latency claim.
+- suggested method: all24 destination selectors, each of four PUT lengths,
+  both halfword lanes and mixed-width patterns, a length change after one word,
+  save/replay at offset2 and End routing.
+- falsifier: ignored word write, wrong halfword or byte order, wrong host count,
+  altered current-sector view, lost reservation or wrong bytes after routing.
+- self-check run (method-level, unvalidated):384 PUT images/replays within0120's
+  combined probe, plus the unchanged raw-PUT probe96 view images/72 partial or
+  zero PUTs/240 replays/4 routes/242 refusals. Shared nine mutants, syntax and
+  full60 batch as0120; no original expected-value edits.
+- state: **UNVALIDATED**, same native gate as0120.
+- not covered/known doubts: no new saved fields. FIFO depth/backpressure, byte
+  writes, native aperture/partial-mask semantics, hardware unwritten-byte values,
+  timing/IRQ and native save/title qualification remain open.
+
+### IMPL-0122 — CD-01 — Mixed word/longword sector continuations
+
+- branch/commit/base: `arena/01a0b897-mame` @ **b70549aa**, base **6dff2bac**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:513-520,600-607`; shared word engine,
+  header and probe in0120.
+- contract: the fork's existing32-bit sector access path must continue the same
+  word FIFO after16-bit accesses. At an odd word position, process high then
+  low words so a sector boundary cannot discard the final word. Each constituent
+  transfer uses the proper sector view; EOF still counts only actual bytes.
+- primary source: ST-162-062094 p.27/table3.1 DATATRNS word FIFO, p.25 word
+  units and p.81 End count; same pinned primary as0120. The32-bit MAME callback
+  is a compatibility aggregation of words, not a documented32-bit register.
+- cross-checks/provenance: Mednafenf0ee9d59 `src/ss/cdb.cpp:4093-4123,4165-4183`
+  consumes/produces consecutive FIFO words. This fork's existing longword
+  callback is retained for aligned transfers; the new odd-word split is an
+  independent integration of that path with the documented word interface.
+- expected observable: concatenated byte stream identical across word/longword
+  access patterns, including the last word of sector A followed by the first
+  word of sector B. No missing/duplicated word; End count=actual bytes/2. Exact
+  byte/count comparison, zero tolerance; unused EOF half retains existing dummy
+  handling without a hardware-value claim.
+- suggested method: start with one word, continue with longwords through a
+  sector transition and finite EOF, change next-sector view, then restore the
+  offset2 snapshot and compare GET/PUT stream and End count.
+- falsifier: a skipped final word, wrong next-sector view, duplicated data or
+  extra reported bytes at EOF; loss of the word position after registered replay.
+- self-check run (method-level, unvalidated): included in0120's2688 images/
+  replays; distinct no-split read and write mutants assertion-fail. Same native
+  TU syntax and60-probe aggregate, no modified expected values.
+- state: **UNVALIDATED**, same native gate as0120.
+- not covered/known doubts: no new fields/layout. Diagnostic invalid-block/hole
+  handling is bounded but not a physical FIFO policy; byte accesses, full-width
+  metadata transfers, CPU-bus splitting/mirroring/WAIT, native timing and saves
+  remain unqualified.
+
+Integration note following validator0ce91cd3's review: inspected its pinned
+`saturn_cdblock.h` blob338a93d472bbc017afbb44fd43764d80e13b6e4c and HLE
+blob688b4f4729da3fa8e0876bca5d74ee02605e15d4 `:624-672`. The shared interface
+uses16-bit host_r/host_w. Its adapter would have hit this fork's metadata-only
+word reads/ignored word writes.0120-0122 address that sector-port prerequisite;
+the slot/interface/LLE code is **not** imported or claimed integrated, and the
+hardware SH-1/controller/CD-03 milestone is not claimed complete. Reconcile and
+measure rather than replacing either branch's HLE wholesale.
