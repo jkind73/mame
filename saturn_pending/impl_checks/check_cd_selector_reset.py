@@ -15,7 +15,7 @@ def extract(text,signature):
     return text[start:end]
 head=next(ast.literal_eval(n.value) for n in ast.parse(Path(__file__).with_name('check_cd_filter_routing.py').read_text()).body
           if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='head' for t in n.targets))
-head=head.replace('// TYPES','\n'.join(extract(header,s)+';' for s in ('struct filterT','struct blockT','struct partitionT','enum transT','enum trans32T')))
+head=head.replace('// TYPES','\n'.join(extract(header,s)+';' for s in ('struct direntryT','struct filterT','struct blockT','struct partitionT','enum transT','enum trans32T')))
 head=head.replace('#include <cstdint>','#include <cstdint>\n#include <vector>\nusing u8=uint8_t;\nstruct attotime{static int from_hz(int hz){return hz;}};\nconstexpr uint16_t CD_STAT_BUSY=0,CD_STAT_PAUSE=0x100,CD_STAT_NODISC=0x700,CD_STAT_OPEN=0x600;')
 head=head.replace('int get_track(int lba)', 'bool inserted=false;bool exists(){return inserted;}\n  int get_track(int lba)')
 head=head[:head.rfind('};')]+r'''
@@ -26,6 +26,7 @@ head=head[:head.rfind('};')]+r'''
  int playtype=0,cur_track=0,calcsize=0,sectorstore=0,sectlenout=0,cddevicenum=0xff;
  bool buffull_temp_pause=false,m_status_change_in_progress=false,m_seek_in_progress=false;
  int m_seek_ticks_left=0;std::vector<int>curdir;
+ direntryT curroot{};int numfiles=0,firstfile=0;
  transT xfertype=XFERTYPE_INVALID;trans32T xfertype32=XFERTYPE32_INVALID;
  unsigned xfercount=0,xferoffs=0,tray_is_closed=1,cd_speed=2,cdda_repeat_count=0;
  partitionT *transpart=nullptr;

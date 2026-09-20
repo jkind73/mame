@@ -335,6 +335,8 @@ void saturn_cd_hle_device::device_reset() {
   m_seek_ticks_left = 0;
 
   curdir.clear();
+  curroot = {};
+  numfiles = firstfile = 0;
 
   xfertype = XFERTYPE_INVALID;
   xfertype32 = XFERTYPE32_INVALID;
