@@ -8465,3 +8465,118 @@ were rerun (1080 seek-repeat,1620 file-EOF,468 seek-boundary images and matching
 replays), all exit0, method-level and UNVALIDATED; warning-enabled native CD TU
 syntax/diff0. Previous full57 results remain historical, not rerun recovery
 results. External backups must not be relied upon as surviving sandbox restores.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0115 | CD-01 | e7ca0aba + 8e707804 | UNVALIDATED | CD Play retains programmed endpoints separately from progress and applies no-change/no-pickup-move to that range |
+| IMPL-0116 | CD-01 | e7ca0aba | UNVALIDATED | Repetition restarts the programmed segment rather than an inferred whole track |
+
+### IMPL-0115 — CD-01 — Programmed range and pickup movement
+
+- branch/commit/base: `arena/01a0b897-mame` @ **e7ca0aba**, follow-up
+  **8e707804**; base **37fac613** recovery commit. All published normally.
+- files: `src/mame/sega/saturn_cd_hle.cpp:164-166,424-425,1208-1290`;
+  `saturn_cd_hle.h:292-295`; `saturn_pending/impl_checks/check_cd_programmed_range.py`;
+  `cd_audio_scaffold.py` (missing state declarations for old method mocks only).
+- contract: keep programmed start/end separate from current remaining sectors.
+  End FAD on the wire is a sector count from programmed start; saved end is
+  absolute (exclusive internally). No-change independently retains either
+  endpoint across pause/seek. No-pickup-move retains current position, resumes
+  only within the range and pauses outside it. A pending seek keeps its accepted
+  target. Empty/reversed ranges are retained but do not play. Reset notification
+  count only when the resolved range or maximum changes;7F still retains the
+  maximum independently of pickup bit7. Explicit FAD bounds use150..lead-out.
+- primary source: ST-162-062094 p.38 retained range/count; pp.65-66 data6.4
+  (held start/end, FAD count, default/bounds/reversed range); p.67 data6.5
+  (pickup no-move/outside-range PAUSE, repeat maximum); p.82 function2.1
+  unchanged pause cancellation. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:2786-2814`
+  keeps PlayCmdStartPos/EndPos apart from progress and converts FAD count before
+  storing end. Its StartSeek counter reset at1985 is not adopted over p.38.
+  Ymir6d779960127ced72087a418c1daefc637d0aaa80, CDB blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8 `:738-778` likewise separates
+  parameters/resolved endpoints; its outside-range no-move relocation to start
+  disagrees with p.67 and is not imported. Fork37fac613/upstream398bba74 use
+  remaining length/track fallback for resume. Independent implementation,
+  preserving this fork's seek/interval lifecycle rather than either peer wholesale.
+- expected observable: pause at P in [S,E), then all-no-change/no-move Play
+  resumes at P for E−P sectors; pickup-move with unchanged range targets S.
+  Updating one endpoint retains the other absolute endpoint. Outside-range
+  no-move has zero production and no relocation. Same range/max retains count;
+  changed range/max clears it. Exact FAD/sectors/counts, zero tolerance. Existing
+  active audio converter is not restarted for an in-range no-move request;
+  an inactive converter is armed by8e707804. No native timing claim.
+- suggested method: interleave bounded FAD and whole-track/default Play with
+  pause/seek, partial endpoint changes and no-move commands; observe producer
+  addresses, converter intervals and repeated command state. Replay registered
+  endpoints after poisoning them. Cover empty/reversed/clamped ranges.
+- falsifier: endpoint inferred from transient remaining count, wrong resume
+  address/length, unintended pickup movement or audio restart, failure to pause
+  outside range, lost counter on an unchanged request, or wrong restored range.
+- self-check run (method-level, unvalidated): shared0115/0116 probe exercises288
+  programmed ranges,576 repeat boundaries,11880 modeled producer intervals,
+  24 pause/seek resumes with24 registered replays and39 endpoint/no-move/counter
+  controls. Actual Play/Seek/drive/converter/periodic/save methods; synthetic
+  normalized three-track metadata and ideal interval sink, not native samples.
+  ASan/fail-fast UBSan0. Historical37fac613 and eight compiled mutants assertion-
+  fail: progress-derived end, current-relative count, forced movement, unconditional
+  count reset, whole-track repeat, missing registration of each new range field.
+  Follow-up adds inactive-PLAY converter coverage; new probe and0105 audio-range
+  exit0. Warning-enabled native CD TU syntax/diff0. Full58 batch at e7ca0aba:
+  48 exit0/same ten disclosed conflicts, `/tmp/impl-ref/cd-0116-aggregate.log`.
+- state: **UNVALIDATED**; validator0ce91cd3's merge-readiness rejection and
+  **BLOCKED(native CI result for current implementation revision)** remain.
+- not covered/known doubts: **save-state layout changes**: adds registered
+  m_play_start_fad, m_play_end_fad and m_play_range_valid, reset in device_reset.
+  Old save compatibility is not promised. Filesystem access resetting the
+  programmed range to disc defaults is the next separate integration change.
+  Track/index-specific endpoints beyond existing whole-track boundaries and
+  invalid track-number admission are not fixed here; mixed position-type error
+  policy remains unqualified. Home-to-pause position semantics, software04
+  initialization policy, media replacement, native seek latency/IRQ/sample/save/
+  title sequences and four-frame early unmute remain open. No SCAN rate invented.
+  No validator assertions/assets or frozen CPU/sound/video paths changed.
+
+### IMPL-0116 — CD-01 — Repeat the programmed segment
+
+- branch/commit/base: `arena/01a0b897-mame` @ **e7ca0aba**;
+  base **37fac613**, using the endpoint state introduced by0115.
+- files: `src/mame/sega/saturn_cd_hle.cpp:4442-4454` and shared range probe/state
+  declarations listed in0115.
+- contract: an ordinary CD Play repeat targets the stored start and reloads
+  stored end−start, not the boundaries of cur_track. Retain existing finite/
+  infinite count decisions and the seek/converter lifecycle.0113's finite-file
+  completion remains independent of this ordinary repeat path.
+- primary source: ST-162-062094 p.67 data6.5 repeats the designated play segment;
+  p.66 retains its start/end, p.82 permits FAD and multi-track ranges. Same
+  pinned SDK/document as0115.
+- cross-checks/provenance: Mednafenf0ee9d59 `src/ss/cdb.cpp:1973-2005` keeps
+  CurPlayStart/End distinct from current position; `:2230-2280` range-end/repeat
+  handling uses that play context. Ymir6d779960 CDB `:751-753` stores FAD range
+  independently of track. Fork37fac613 explicitly restarted cur_track's full
+  extent. New code consumes0115's programmed endpoints rather than copying a
+  peer scheduler or seek timing approximation.
+- expected observable: every round of a short in-track or boundary-spanning
+  range produces exactly [S,E), in order, with the existing repeat count.
+  At finite exhaustion PEND and stopped output occur; bounded observations of
+  infinite repetition continue to use the same segment. Exact sector/address
+  sequences, zero tolerance; no repeat-gap duration or native PCM claim.
+- suggested method: short ranges inside/across synthetic track boundaries,
+  all-data/all-audio/mixed regions, finite maxima0/1/3 and bounded infinite
+  repetition. Compare every producer FAD and interval-model audio LBA to the
+  selected segment, not to track starts; then exercise pause/resume state.
+- falsifier: repeated track prefix/suffix outside the selected segment, wrong
+  count at a wrap, missing finite termination or converter output after endpoint.
+- self-check run (method-level, unvalidated):288 ranges/576 repeat boundaries
+  and11880 modeled intervals in the shared probe; full eight-mutant/registration/
+  syntax results in0115. Whole-track mutant fails the repeat-target/length
+  assertion. Existing0103 maximum-repeat and0105 audio-range probes exit0.
+- state: **UNVALIDATED**, same rejected native gate as0115.
+- not covered/known doubts: new saved endpoint fields/layout are disclosed in0115.
+  No native repeated waveform/gap, SCAN, timer/IRQ/save/title qualification.
+  Index-specific range resolution and file-access default-range integration
+  remain separate. No expected values edited; ten original conflicts remain.
