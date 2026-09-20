@@ -2410,7 +2410,15 @@ void saturn_cd_hle_device::cmd_read_directory() {
   //  read_dir = ((cr3&0xff)<<16)|cr4;
 
   const uint8_t input = cr3 >> 8;
-  cd_connect_cddevice(input < MAX_FILTERS ? input : 0xff);
+  // Holding another window requires an existing file-information table
+  // and a real work selector; FF is not a filesystem disconnection command.
+  if (input >= MAX_FILTERS || curdir.empty()) {
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+  cd_connect_cddevice(input);
 
   // TODO: how to actually read?
   // read_new_dir(read_dir - 2);
