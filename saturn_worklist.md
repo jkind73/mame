@@ -2378,3 +2378,16 @@ scripts and eleven objects pass, including the modified SH core. This is a
 concrete code correction, not confirmed game-boot acceptance. A rebuilt
 executable is now required; the existing probe needs no further change.
 See `regtests/saturn/afterburner2_boot_analysis.md` for ordering and limits.
+
+## 2026-09-20 - SH-2 CPU-DMAC request contract (SH2/DMA parent, code fix)
+
+`9c591c876d1` (pushed) fixes `src/devices/cpu/sh/sh7604.{h,cpp}`: the transfer-active condition
+now matches the documented `DE = 1, DME = 1, TE = 0, NMIF = 0, AE = 0`; `CHCR.AR` is honoured, so
+a channel in module-request mode waits for the request its `DRCR` selects (external DREQ level
+against `CHCR.DL`, or the SCI's RXI/TXI derived from `SSR`) instead of transferring immediately;
+and the documented 16-byte unit size stalls on a full destination FIFO like byte/word/longword
+instead of `fatalerror()`.  Evidence and the sources used are in
+`regtests/saturn/handoff/integration.md`; still open on this parent: the SCI transmit/receive
+engine itself (`sh7604_sci_device` un-instantiated, `ssr_r()` still force-ORs `0x84`), `AE`
+assertion, `PR` arbitration and `DTCR` reload, all of which need manual text neither supplied
+source provides.
