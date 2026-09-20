@@ -8580,3 +8580,138 @@ results. External backups must not be relied upon as surviving sandbox restores.
   No native repeated waveform/gap, SCAN, timer/IRQ/save/title qualification.
   Index-specific range resolution and file-access default-range integration
   remain separate. No expected values edited; ten original conflicts remain.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0117 | CD-01 | 830bd348 | UNVALIDATED | Read File replaces the saved CD Play range with disc defaults without extending its finite producer |
+| IMPL-0118 | CD-01 | 830bd348 | UNVALIDATED | An admitted directory move replaces the saved CD Play range with disc defaults |
+| IMPL-0119 | CD-01 | 830bd348 | UNVALIDATED | An ordinary held-window access replaces the saved CD Play range with disc defaults |
+
+### IMPL-0117 — CD-01 — Read File defaults the programmed range
+
+- branch/commit/base: `arena/01a0b897-mame` @ **830bd348**;
+  base **bbd3e382**. Published normally.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1208-1219,2600`;
+  `saturn_cd_hle.h:347`; `saturn_pending/impl_checks/check_cd_file_default_range.py`;
+  `cd_file_scope_scaffold.py` (dependency declarations and a placeholder TOC API
+  for legacy directory-only mocks; dedicated probe uses explicit image geometry).
+- contract: admitted filesystem access sets the programmed CD Play range to
+  disc first/last, independently of the active finite file extent. Preserve
+  maximum repeat setting and accepted host ownership/cursors. Reset notification
+  count only if the stored range actually changes. Refused requests do not
+  mutate it. A later all-no-change Play uses the default disc end, not file EOF.
+- primary source: ST-162-062094 p.53 section6.2.3(3) explicitly says filesystem
+  access makes the play range default (disc first to last); p.38 count resets
+  on range change; pp.65-66 define default endpoints; p.100 function8.5 is the
+  separate finite Read File request. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:2786-2814`
+  retains programmed Play parameters separately from the file range started at
+  `:3865-3909`. Ymir6d779960127ced72087a418c1daefc637d0aaa80 CDB `:881-940`
+  likewise constructs a finite file playback context. Neither examined file
+  command clearly applies p.53's programmed-default reset; that reference gap
+  is not presented as agreement. This independent implementation follows the
+  explicit primary clause and requires native confirmation. Forkbbd3e382 had
+  newly retained endpoints but no filesystem reset of them.
+- expected observable: a later no-change/no-move Play at position P uses disc
+  lead-out−P sectors, whereas the intervening Read File still initially has
+  ceil(file_bytes/2048)−offset sectors. A nondefault range changes to[150,lead-out)
+  and count0; an already-default range retains its count. Maximum and host
+  reservations remain identical. Exact FAD/sectors/bytes/counts, zero tolerance.
+- suggested method: program a short or default range, start valid file access
+  with ordinary GET/private PUT/GETDELETE or no host owner, inspect the finite
+  file extent and saved default endpoints, finish host transfer and issue
+  all-no-change Play. Replay registered endpoint/pool/host state.
+- falsifier: old short range survives file access, active file extent becomes
+  disc-long, maximum/cursor/private bytes are lost, unchanged defaults reset
+  count, rejected requests mutate range, or replay/no-change uses the wrong end.
+- self-check run (method-level, unvalidated): shared0117-0119 probe576 images
+  (192 per operation),576 registered range/pool/host replays and14 rejection/
+  self/passive/out-of-window compatibility controls. Authored ordinary file and
+  directory records, actual filesystem/Play/parser/ports/allocator/drive/save
+  methods; mock image/IRQ/audio/serializer and retained metadata outside replay.
+  ASan/fail-fast UBSan0. Historicalbbd3e382 and eight compiled mutants assertion-
+  fail: omitted file/move/hold reset, unconditional count reset, erased maximum,
+  LBA endpoint, erased host owner, reset before admission. Warning-enabled CD TU
+  syntax/diff0. Full59 own probes at830bd348:49 exit0/same ten disclosed conflicts;
+  `/tmp/impl-ref/cd-0117-aggregate.log`. Existing assertions remain untouched.
+- state: **UNVALIDATED**; validator0ce91cd3's rejected native merge-readiness
+  gate is unchanged; **BLOCKED(native CI result for current implementation
+  revision)**. No full build or CI dispatch.
+- not covered/known doubts: no fields beyond0115's disclosed save-layout change.
+  Cross-reference gaps are explicit above. Native firmware confirmation, FLS
+  scheduling, scratch waiting, absent-media admission, directory/metadata FIFO
+  concurrency, exact IRQ/drive timing, native saves and titles remain open.
+  Empty-file/invalid-offset handling and software04 range initialization remain
+  separate. No validator assets/expected values or frozen paths changed.
+
+### IMPL-0118 — CD-01 — Directory move defaults the programmed range
+
+- branch/commit/base: `arena/01a0b897-mame` @ **830bd348**, base **bbd3e382**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2444-2451`; shared helper/header/probe
+  and dependency adapters listed in0117.
+- contract: an admitted non-self directory move sets the programmed range to
+  disc defaults before directory IO. Do not reset it on rejection, current-
+  directory no-op or passive read_new_dir initialization. Host owners survive.
+- primary source: ST-162-062094 p.53 section6.2.3(3), p.38 range/count retention,
+  p.99 function8.1; same pinned SDK/blob as0117.
+- cross-checks/provenance: Mednafenf0ee9d59 `src/ss/cdb.cpp:3681-3730` separates
+  admission/self-no-op/FLS scheduling. The default-parameter-reset gap and
+  primary-over-reference decision are disclosed in0117. Independent call to
+  the new helper in this fork's admitted non-self path.
+- expected observable: stored range[150,lead-out), count reset only on change;
+  maximum/host owner unchanged, and later no-change Play resumes toward disc
+  end. Exact FAD/sectors/counts, zero tolerance; no directory IO latency claim.
+- suggested method: short/default ranges followed by a valid child move,
+  accepted host transfers, restored state and later no-change Play; include
+  invalid/non-directory IDs, invalid selector, self and passive-load controls.
+- falsifier: stale programmed endpoints after the move, destructive reset on a
+  refused/no-op/passive operation, host cancellation or a different restored end.
+- self-check run (method-level, unvalidated):192 directory-move images and192
+  replays within the576-case integrated probe; shared eight-mutant, syntax and
+  full59 batch results in0117. No original assertion changes.
+- state: **UNVALIDATED**, same native gate as0117.
+- not covered/known doubts: no additional saved fields. This does not make the
+  synchronous directory parser a native FLS drive/scratch scheduler, establish
+  PVD-error/Abort ordering, or qualify media/IRQ/timing/native saves/titles.
+
+### IMPL-0119 — CD-01 — Hold file information defaults the programmed range
+
+- branch/commit/base: `arena/01a0b897-mame` @ **830bd348**, base **bbd3e382**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2472-2476`; shared helper/header/probe
+  and dependency adapters listed in0117.
+- contract: an ordinary valid held-window access sets the programmed range to
+  disc defaults despite the HLE's cached directory. Preserve maximum, unchanged-
+  range notification and independent host owner; refuse invalid selectors or
+  invalidated/empty backing without changing range. Do not add destructive
+  effects to the still-deferred out-of-directory first-ID policy.
+- primary source: ST-162-062094 p.53 section6.2.3(3), p.99 function8.2 and p.38;
+  same pinned SDK/blob as0117.
+- cross-checks/provenance: Mednafenf0ee9d59 `src/ss/cdb.cpp:3732-3792` routes
+  holds through FLS. Its programmed-default-reset gap is disclosed in0117.
+  Independent helper call accompanies the already bounded work-partition clear.
+- expected observable: stored[150,lead-out), unchanged maximum and accepted
+  host stream, count0 only if range changes, disc-end continuation after a later
+  all-no-change Play. Exact FAD/sectors/words/counts, zero tolerance.
+- suggested method: request a held window after short/default Play ranges,
+  with each host-owner kind, then end host transfer/resume and replay state;
+  include invalidated/empty/invalid-selector and deferred first-ID controls.
+- falsifier: cached hold retains a short programmed end, changes maximum/owner,
+  loses restored endpoints or adds a reset to rejected/deferred requests.
+- self-check run (method-level, unvalidated):192 hold images/replays within the
+  shared576-case probe. Shared eight mutants, native TU syntax and59-probe batch
+  are recorded in0117; no validator fixtures or expected values edited.
+- state: **UNVALIDATED**, same native gate as0117.
+- not covered/known doubts: no additional save-layout change. Out-of-directory
+  first-ID response/scope remains **BLOCKED(out-of-range first-ID response/scope
+  trace including FFFFFF)**. Cached holds still lack native reread/scratch/timing
+  behavior; overlapping metadata-cache replacement and native saves unqualified.
+
+Citation correction for0116 (append-only): Mednafen's actual endpoint predicate
+is `src/ss/cdb.cpp:2043-2074`, and the repeated-play decision/restart is
+`:2435-2459`, invoking SeekStart1/SeekStart2 with retained CurPlayStart. The cited
+2230-2280 range is seek/index acquisition, not the repeat decision. The contract
+and production code do not change; the pinned revision is unchanged.
