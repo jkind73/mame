@@ -6286,3 +6286,70 @@ addendum stated; production range1811-1855 is unchanged.
   ISO directory flag2 is the existing parser representation, not new XA
   decoding. Rejection tests include storage-diagnostic stale/invalid input
   links. Validator assets/expectations and milestone statuses untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0086 | CD-01 | 3dfee0b5 | UNVALIDATED | Save/load preserves the existing root/directory cache and resumes table transfers without media rereads or completion callbacks |
+
+### IMPL-0086 — CD-01 — registered directory cache and root state
+
+- branch/commit/base: `arena/01a0b897-mame` @ **3dfee0b5**; base **2da36386**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**; incremental
+  local recovery bundle contains the new source/probe history.
+- files: `src/mame/sega/saturn_cd_hle.cpp:185-227,294-308`;
+  `src/mame/sega/saturn_cd_hle.h:304-312`;
+  `saturn_pending/impl_checks/check_cd_directory_save.py:1-62`.
+- contract: preserve curroot and every entry in the current bounded parser's
+  cache, alongside the already registered scope/cursor/scratch state. Stage
+  the resizable vector into fixed storage before save; restore its logical
+  size/content after load without disc access, connection changes, transfer
+  restart or new IRQ/filesystem completion. Register every structure member
+  separately, including names, rather than serializing pointers/padding.
+  Initialize the root record to deterministic zero storage at construction.
+- primary source: ST-162-062094 p.52 held-file information, p.72 CdcFile and
+  p.100 function8.4/table transfer require the backing information to remain
+  coherent with its cursor; saving/restoring it is an emulator continuity
+  requirement, not a claimed Saturn hardware save command. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. MAME `src/emu/save.h:182-234`
+  explains fixed pointer/count and strided-member registrations; registering
+  an empty/resizing std::vector would capture an invalid/obsolete allocation.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:4381-4389`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  registers file-information/root state and scope validity/count/offset.
+  Local base and upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d CD
+  device_start omit the resizable directory/root backing. Uses native MAME
+  save delegates/STRUCT_MEMBER registration; no reference block imported.
+- expected observable: after saving during a full-table transfer, changing
+  the directory/root and restoring must reproduce the old remaining words,
+  directory metadata/scope and DataEnd response, with no extra HIRQ callback.
+  Exact bytes/words/cause state, zero tolerance; no host execution-time claim.
+- suggested method: native save/load while consuming each side of a record
+  boundary and at EOF; change to another directory between save and load;
+  compare remaining File Info, subsequent directory/read-file selection and
+  root navigation. Include empty/cache-max and repeated shrinking caches.
+- falsifier: restored transfer reads the later directory, loses root/cache
+  fields, resumes from another word, loses scope, rereads media/reconnects an
+  input or manufactures a completion. Missing pre/post registration is also
+  a falsifier even if manually calling the helper works.
+- self-check run (method-level, unvalidated):196 registered-image root/cache/
+  table continuations with0/1/2/3/17/256/7680 entries, seven word cuts and four
+  byte patterns exit0 with ASan/fail-fast UBSan. Historical2da36386 fails
+  root/cache restoration at generated line356. Missing count/root FAD/names/
+  pre-hook/post-hook mutants assertion-fail (lines399/399/400/400/400).
+  All30 own CD probes, warning-enabled CD TU syntax and diff checks exit0;
+  aggregate `/tmp/impl-ref/cd-0086-aggregate.log`. Strided mocked serializer,
+  not a native save-file or cross-endian run; no full build.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: **SAVE-STATE LAYOUT BREAK**: added registered
+  root/cache members and count; no compatibility claim for earlier saves.
+  Capacity7710 is derived from the current256KiB parser bound/minimum34-byte
+  record, NOT a hardware held-table capacity. The parser can produce at most
+  7680 such records without crossing sectors. Pre-save asserts the bound and
+  release/post-load clamps protect malformed storage; legal parser output is
+  not truncated. Unused staging entries are cleared for deterministic images.
+  Held254-record window/scope semantics, larger directories, XA metadata,
+  MPEG state, native save-file/endian and frozen-title acceptance remain open.
+  No validator assets/expectations or milestone statuses changed.
