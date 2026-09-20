@@ -225,3 +225,74 @@ periodic cadence and the EXTS latch; the four that remain are the open
 CD-DA/EXTS items (SND-02/SND-04), not window decoding. `test_cd_hirq.py` and
 `test_cd_transfer.py` (338 cases) still pass on the same binary. No boot-to-game
 claim: the LLE core has no CD drive (CDD serial link) behind it yet.
+
+## SH-2 CPU-DMAC: transfer-request gating and the 16-byte-unit stall (2026-09-20)
+
+Sources, official first.  `jkind73/saturnsdk`:`SATURN/INCLUDE/SEGA_DMA.H` gives the CPU-DMAC
+register/field contract actually used on the Saturn (`REG_SAR 0xffffff80`, `DAR 0x84`,
+`TCR 0x88`, `CHCR 0x8c`, `REG_DRCR 0xfffffe71` one byte per channel, `DMAOR 0xffffffb0`;
+CHCR DE0/TE1/IE2/TA3/TB4/DL5/DS6/AL7/AM8/AR9/TS10-11/SM12-13/DM14-15 with TS = 0 byte,
+1 word, 2 longword, 3 = 16-byte; DMAOR DME0/NMIF1/AE2/PR3).  `SBL6/SEGALIB/DMA/DMA_CPU0.C`
+adds the behavioural contract the library enforces: `DMA_CpuSetPrm` pins TB (cycle steal) and
+TA (dual address) to 0, `DMA_CpuStart()` is just `CHCR |= DE`, `DMA_CpuGetStatus()` reports
+`CHCR.TE`, and `DMA_CpuSetCause()` refuses everything but RXI/TXI -
+`DRDCR0/DRCR1のDREQ指定禁止への対応 '95-11/14` - i.e. on the Saturn the only usable
+module-request sources are the SCI's RXI (receive data full) and TXI (transmit data empty).
+The register text quoted verbatim in the reference implementation Ymir's
+`hw/sh2/sh2_dmac.hpp` supplies the two sentences needed for the fix: "The DMAC determines
+that a transfer is active by checking that DE = 1, DME = 1, TE = 0, NMIF = 0, AE = 0", and
+for AR: "0 = Module request mode - external or on-chip SCI / 1 = Auto request mode -
+generated within DMAC".  Nothing here is inferred from behaviour; anything the docs do not
+state (DTCR reload rules, what sets `DMAOR.AE`, the DREQ edge-detection timing, `PR`
+arbitration order) is left alone rather than guessed.
+
+MAME's `sh7604_device` before the change:
+
+* `sh2_dmac_check()` started a channel from `DE && DME && !TE` only - neither DMAOR status
+  flag took part in the condition, and `CHCR.AR` was never read, so a channel programmed for
+  module-request mode transferred immediately instead of waiting for its request.
+* `m_dmac[].drcr` was written and saved but never read, so RXI/TXI selection was inert.
+* the 16-byte unit path (`TS = 3`, `DMA_CPU_16`, a documented transfer size) called
+  `fatalerror("SH2 dma_callback_fifo_data_available == 0 in unsupported mode")` when the
+  destination FIFO could not take data, while the byte, word and longword paths mark the
+  channel stalled (`m_dma_timer_active = 2`) and return, to be resumed by
+  `sh2_notify_dma_data_available()`.
+
+Change (`src/devices/cpu/sh/sh7604.{h,cpp}`): the active-transfer condition becomes
+`DE && DME && TE == 0 && NMIF == 0 && AE == 0`; a channel with `AR = 0` now holds off until
+the request selected by its `DRCR` is asserted, through three modelled lines (`m_dma_request`:
+external DREQ pin, SCI RXI, SCI TXI) with `CHCR.DL` giving the DREQ active level as documented
+(`CHCR.DS` edge detection is left unmodelled and commented, since no Saturn hardware drives
+the pin); the SCI's flags feed those lines from `ssr_w()`/`tdr_w()` so a real SCI engine only
+has to keep `SSR` honest; `drcr_w()` re-evaluates the channel instead of recomputing an
+unrelated INTC priority; and the 16-byte unit stall returns like the other three sizes.
+`dreq_w(int)` is exposed for machines with a wired requestor.  The `dreq` lines are saved.
+
+Measured on the rebuilt `a735e0340a6`+patch binary (`saturnjp`, `-video none -sound none`), with
+a scratch Lua probe driving the master SH-2's own DMAC registers through its program space
+(`m.devices[":maincpu"].spaces["program"]`, the API the committed fixtures already use), 4 bytes
+of a `0xa0..0xa3` pattern from `0x06180000` to `0x06180100`, so a completed transfer reads back
+646 and a held-off channel reads back 0:
+
+    ar1_auto        got=646 want=646 OK | auto request mode: transfers at once (unchanged)
+    ar0_rxi_nodata  got=  0 want=  0 OK | AR=0 DRCR=RXI with RDRF clear: holds off (was 646 pre-fix)
+    ar0_rxi_ready   got=646 want=646 OK | SSR.RDRF set: request asserted, transfer runs
+    ar0_txi         got=646 want=646 OK | DRCR=TXI: SCI can accept data, so the request stands
+    ar0_dreq_high   got=  0 want=  0 OK | DREQ active-high while the pin idles low: holds off
+    ar0_dreq_low    got=646 want=646 OK | DREQ active-low while the pin idles low: transfers
+
+No game-visible behaviour changes for auto-request channels, which is what the Saturn library
+programs; the two new hold-offs are the module-request cases hardware would hold.  Regression
+sweep on the same binary: `test_dma_source` (1152), `test_dma_bus` (768 + 2304), `test_dma_indirect`
+(54 + 64), `test_dma_regs` (15360 + 7680), `test_sh_delay_irq` (72), `test_scu_abus` (32/32768/288/24576),
+`test_scu_irqs` (1920 + 16 + 512), `test_sound_boot` (64 IRQ transitions), `test_smpc_transport`
+(5402), `test_cd_hirq`, `test_cd_lle` - all exit 0 - and `run_vdp2_runtime.py --bios` reports
+`BIOS_RUNTIME PASS system=saturnjp time=10.541321676 pc=06040228 full-image replay identical`,
+which also round-trips the new `m_dma_request` state through MAME's real save manager.
+
+Left alone on purpose, because no document in the two supplied sources settles it: what asserts
+`DMAOR.AE` (the flag is now *honoured*, still never set), `DMAOR.PR` fixed-priority versus
+round-robin arbitration between the two channels, `CHCR.DS` edge detection for DREQ, whether
+`DTCR` reloads in module-request mode, and the SCI's bit-timed transmit/receive engine itself
+(`sh7604_sci_device` remains un-instantiated and `ssr_r()` still force-ORs `0x84` for EGWord -
+the DMAC side is now wired so a real SCI only has to keep `SSR` honest).

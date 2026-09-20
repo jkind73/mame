@@ -51,6 +51,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 {
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
+	std::fill(std::begin(m_dma_request), std::end(m_dma_request), 0);
 	std::fill(std::begin(m_dma_irq), std::end(m_dma_irq), 0);
 	std::fill(std::begin(m_active_dma_incs), std::end(m_active_dma_incs), 0);
 	std::fill(std::begin(m_active_dma_incd), std::end(m_active_dma_incd), 0);
@@ -158,6 +159,7 @@ void sh7604_device::device_start()
 	// DMAC
 	save_item(NAME(m_dmaor));
 	save_item(STRUCT_MEMBER(m_dmac, drcr));
+	save_item(NAME(m_dma_request));
 	save_item(STRUCT_MEMBER(m_dmac, sar));
 	save_item(STRUCT_MEMBER(m_dmac, dar));
 	save_item(STRUCT_MEMBER(m_dmac, tcr));
@@ -678,8 +680,12 @@ void sh7604_device::sh2_do_dma(int dmach)
 				if (!available)
 				{
 					//printf("dma stalled\n");
+					// the 16-byte unit transfer (TS = 3) is a documented mode,
+					// so a full destination FIFO just stalls the channel until
+					// the peripheral accepts data again, exactly as for the
+					// byte, word and longword units
 					m_dma_timer_active[dmach] = 2; // mark as stalled
-					fatalerror("SH2 dma_callback_fifo_data_available == 0 in unsupported mode\n");
+					return;
 				}
 			}
 
@@ -746,10 +752,24 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_dma_current_active_callback)
 
 void sh7604_device::sh2_dmac_check(int dmach)
 {
-	if (m_dmac[dmach].chcr & m_dmaor & 1)
+	// The DMAC treats a transfer as active only while DE = 1, DME = 1 and TE =
+	// 0, and while both DMAOR status flags (NMIF, AE) are clear.
+	if ((m_dmac[dmach].chcr & m_dmaor & 1) && !(m_dmaor & 6))
 	{
 		if (!m_dma_timer_active[dmach] && !(m_dmac[dmach].chcr & 2))
 		{
+			// CHCR.AR selects how transfer requests are generated: 1 = auto
+			// request mode (request generated within the DMAC), 0 = module
+			// request mode (request comes from the source selected in DRCR:
+			// the external DREQ pin or the on-chip SCI's RXI / TXI).  A channel
+			// in module request mode must hold off until its request is
+			// asserted instead of transferring straight away.
+			if (!(m_dmac[dmach].chcr & 0x200) && !sh2_dma_request_active(dmach))
+			{
+				LOG("SH2: DMA %d waiting for transfer request (DRCR %d)\n", dmach, m_dmac[dmach].drcr);
+				return;
+			}
+
 			m_active_dma_incd[dmach] = (m_dmac[dmach].chcr >> 14) & 3;
 			m_active_dma_incs[dmach] = (m_dmac[dmach].chcr >> 12) & 3;
 			m_active_dma_size[dmach] = (m_dmac[dmach].chcr >> 10) & 3;
@@ -818,6 +838,58 @@ void sh7604_device::sh2_dmac_check(int dmach)
 }
 
 /*
+ * DMAC transfer request sources
+ */
+
+bool sh7604_device::sh2_dma_request_active(int dmach)
+{
+	const uint32_t chcr = m_dmac[dmach].chcr;
+
+	switch (m_dmac[dmach].drcr)
+	{
+	case 0:
+		// External DREQ pin: CHCR.DL selects its active level (0 = low, 1 =
+		// high).  CHCR.DS = 1 would select edge instead of level detection,
+		// which is not modelled - nothing on the Saturn drives this pin.
+		return (m_dma_request[0] != 0) == bool(BIT(chcr, 5));
+
+	case 1:
+		// SCI receive data full (RXI).
+		return m_dma_request[1] != 0;
+
+	case 2:
+		// SCI transmit data empty (TXI).
+		return m_dma_request[2] != 0;
+	}
+
+	return false;
+}
+
+void sh7604_device::sh2_sci_update_dma_requests()
+{
+	// The SCI keeps a transfer request asserted for as long as the status flag
+	// behind it is set: RXI while received data waits in RDR (SSR.RDRF), TXI
+	// while TDR can accept new data (SSR.TDRE).  These are the only two request
+	// sources a Saturn program may select in DRCR - the Sega library rejects
+	// the DREQ selection outright ("DREQ指定禁止", '95-11/14).
+	const uint8_t ssr = ssr_r();
+
+	m_dma_request[1] = (ssr & 0x40) ? 1 : 0;
+	m_dma_request[2] = (ssr & 0x80) ? 1 : 0;
+
+	sh2_dmac_check(0);
+	sh2_dmac_check(1);
+}
+
+void sh7604_device::dreq_w(int state)
+{
+	m_dma_request[0] = state ? 1 : 0;
+
+	sh2_dmac_check(0);
+	sh2_dmac_check(1);
+}
+
+/*
  * SCI
  */
 // TODO: identical to H8 counterpart
@@ -861,6 +933,11 @@ void sh7604_device::tdr_w(uint8_t data)
 {
 	m_tdr = data;
 	//printf("%c", data & 0xff);
+
+	// the SCI has taken the data out of TDR; refresh the transfer requests the
+	// DMAC is waiting for (SSR.TDRE stays set until a real transmit engine is
+	// modelled, see the note in ssr_r())
+	sh2_sci_update_dma_requests();
 }
 
 uint8_t sh7604_device::ssr_r()
@@ -872,6 +949,7 @@ uint8_t sh7604_device::ssr_r()
 void sh7604_device::ssr_w(uint8_t data)
 {
 	m_ssr = data;
+	sh2_sci_update_dma_requests();
 }
 
 uint8_t sh7604_device::rdr_r()
@@ -1569,7 +1647,10 @@ template <int Channel>
 void sh7604_device::drcr_w(uint8_t data)
 {
 	m_dmac[Channel].drcr = data & 3;
-	sh2_recalc_irq();
+
+	// DRCR picks which request is allowed to start the channel, so a channel
+	// that was holding off in module request mode has to be re-evaluated.
+	sh2_dmac_check(Channel);
 }
 
 template <int Channel>

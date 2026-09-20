@@ -34,6 +34,14 @@ public:
 
 	void sh2_notify_dma_data_available();
 
+	/* DMAC external transfer request (DREQ) input.  With CHCR.AR = 0 (module
+	 * request mode) the DMAC only starts a transfer once the request source
+	 * selected by DRCR is asserted; DRCR = 0 selects this pin.  Sega's Saturn
+	 * SDK forbids programming DRCR to DREQ ("DREQ指定禁止", '95-11/14) since
+	 * the Saturn's SH-2 has no external requestor, hence machines normally
+	 * leave this line idle. */
+	void dreq_w(int state);
+
 protected:
 	sh7604_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines);
 
@@ -232,6 +240,12 @@ private:
 	} m_dmac[2];
 	uint8_t m_dmaor;
 
+	/* DMAC transfer request lines: 0 = external DREQ pin, 1 = SCI RXI
+	 * (receive data full), 2 = SCI TXI (transmit data empty).  A channel
+	 * in module request mode (CHCR.AR = 0) waits for the line picked by its
+	 * DRCR. */
+	uint32_t m_dma_request[3];
+
 	// misc
 	uint8_t m_sbycr, m_ccr;
 
@@ -271,6 +285,8 @@ private:
 	void sh2_wdt_activate();
 	void sh2_do_dma(int dmach);
 	void sh2_dmac_check(int dma);
+	bool sh2_dma_request_active(int dma);
+	void sh2_sci_update_dma_requests();
 	void sh2_recalc_irq();
 };
 
