@@ -41,7 +41,7 @@ Outcome finish(D &d,unsigned work,unsigned kind,unsigned count){
  return {d.freeblocks,d.partitions[(work+1)%24].numblks,d.xferdnum,d.xfertype32,d.m_host_transfer_active};
 }
 int main(){unsigned moves=0,holds=0,replays=0,controls=0;
- for(unsigned work=0;work<24;++work)for(unsigned kind=0;kind<4;++kind)for(unsigned count:{0U,1U,2U,17U,198U}){
+ for(unsigned work=0;work<24;++work)for(unsigned kind=0;kind<4;++kind)for(unsigned count:{0U,1U,2U,17U,198U,199U}){
   if((kind==0&&count)||(kind==3&&count!=2)||((kind==1||kind==2)&&(count==0||count==2)))continue;
   for(unsigned action=0;action<6;++action){auto p=std::make_unique<D>();auto &d=*p;selected=work;seed(d,work,kind,count);directory(d,action);
    const auto keep=partition_image(d,(work+1)%24);const auto free=d.freeblocks;const auto public_count=d.partitions[work].numblks;

@@ -8057,3 +8057,123 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   SEEK behavior is unchanged. No validator assets, frozen paths or allocator
   acknowledgement behavior edited. The same ten original conflicts remain
   listed in0107; private-space preservation here does not qualify IRQ timing.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0109 | CD-01 | f86f0825 | UNVALIDATED | An admitted non-self directory move clears its selected public work partition before directory reads, without cancelling host ownership |
+| IMPL-0110 | CD-01 | f86f0825 | UNVALIDATED | An ordinary valid held-window access clears its selected public work partition even when directory records are already cached |
+
+### IMPL-0109 — CD-01 — Directory move work-partition clear
+
+- branch/commit/base: `arena/01a0b897-mame` @ **f86f0825**;
+  base **318d363c**. This handoff extends the probe to199 private reservations,
+  leaving exactly one public slot to clear; no further production changes.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2457-2480`;
+  `saturn_pending/impl_checks/check_cd_directory_clear.py`;
+  `cd_file_scope_scaffold.py` (logging dependency for minimal pool mocks);
+  `check_cd_directory_filter.py` (replace inherited minimal sector declaration
+  in place, without changing assertions).
+- contract: after Change Directory admission, a nonzero/root ID clears the
+  selected public work partition before directory/PVD reads. Other public
+  data and independent host backing/ownership/cursors are retained. The
+  existing self-directory no-op, rejected requests and passive internal
+  metadata loads do not clear public buffers.
+- primary source: ST-162-062094 p.53 section6.2.3(2)(c) requires buffer sectors
+  cleared before filesystem access; p.99 function8.1 designates the operation
+  selector for moving and loading the directory. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:3681-3730`
+  admits/rejects the move, treats fileID0 as a no-op and schedules FLS;
+  `:1153-1177` clears the selected partition before loading its directory
+  extent; `:1234` clears consumed work data on completion. Its root-discovery
+  scheduler differs: no claim of reproducing its PVD-stage timing. This HLE
+  reads directory sectors directly, so no public work sectors are generated
+  for later cleanup. Fork318d363c omitted the initial clear. New command call
+  reuses0108's existing physical-release helper, not a scheduler import.
+- expected observable: selected N public sectors become zero, free capacity
+  increases by exactly N sectors, other maps/data and private reservations
+  remain unchanged. Before the first logical sector read, selected occupancy
+  is zero. All24 selectors, exact2048-byte logical reads/counts, zero tolerance.
+  Accepted GET/GETDELETE/PUT host cursors survive and DataEnd behaves normally.
+- suggested method: mix public work data, unrelated data and independent host
+  reservations; move root/child/parent, observe occupancy at each image read,
+  continue host transfers and replay registered pool/host state. Include
+  self/no-op, rejection and passive read_new_dir controls.
+- falsifier: any stale selected public entry at directory IO, incorrect capacity,
+  collateral data loss, cancelled host ownership/cursor, or clearing on self,
+  rejection or passive metadata load.
+- self-check run (method-level, unvalidated): shared0109/0110 probe covers720
+  moves and720 holds,1440 pre-IO empty-partition observations,1440 pool/host
+  replays and27 no-clear controls. Actual commands/parser/readblock/allocator/
+  ports/End/save methods, authored ISO records and mock image/IRQ/serializer.
+  Directory metadata is retained outside the replay subset. ASan/fail-fast
+  UBSan0. Historical318d363c and nine compiled mutants assertion-fail: omitted
+  move/hold clears, late move clear, self clear, move/hold pre-admission clears,
+  out-of-range hold clear, all-partition clear, erased private ownership.
+  The prior directory-filter probe's assertions remain intact and exit0.
+  Warning-enabled CD TU syntax/diff0. All53 own probes:43 exit0/same ten
+  disclosed conflicts; `/tmp/impl-ref/cd-0110-aggregate.log`.
+- state: **UNVALIDATED**. Validator0ce91cd3's merge-readiness rejection remains;
+  **BLOCKED(native CI result for current implementation revision)**.
+- not covered/known doubts: no new fields/save-layout. This is net public-buffer
+  cleanup in the synchronous HLE, not asynchronous FLS/scratch-allocation
+  emulation. A completely private-full pool with no reclaimable public slot
+  still lacks proper directory scratch-resource waiting. PVD failure/Abort
+  during access, exact clearing/IRQ timing and native saves/media/titles remain
+  open. Ordinary GET backing is not immutable under subsequent native refill.
+  No existing expectation, validator asset, IRQ acknowledgement or frozen
+  CPU/sound/video path changed. Ten existing diagnostic conflicts remain as
+  listed in0107; declaration adapters do not make them green.
+
+### IMPL-0110 — CD-01 — Hold-window work-partition clear
+
+- branch/commit/base: `arena/01a0b897-mame` @ **f86f0825**;
+  base **318d363c**; independently observable Read Directory change alongside0109.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2483-2519`;
+  `saturn_pending/impl_checks/check_cd_directory_clear.py` and shared declaration
+  adapters described in0109.
+- contract: an ordinary admitted held-window access clears its selected public
+  work partition before exposing the requested window, including an empty
+  ordinary-file table with retained self/parent records. Caching directory
+  records does not exempt this externally visible buffer operation. Preserve
+  unrelated public data, private reservations and accepted host cursors.
+- primary source: ST-162-062094 p.53 section6.2.3(2)(c), p.99 function8.2:
+  Hold File Information uses the designated operation selector and reads
+  current-directory records. Same pinned SDK/document blob as0109.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:3732-3792`
+  schedules the held-window request through FLS; `:1153-1177,1234` clear its
+  work partition. Fork318d363c directly changes the cached window without
+  clearing. Independent HLE correction calls the existing0108 helper for
+  firstID2 or an in-directory ordinary start. No new arbitrary-first-ID error
+  policy is inferred from the reference's TODO.
+- expected observable: N selected public sectors are released, selected
+  occupancy becomes zero and free capacity increases by exactly N sectors;
+  other public/private data hashes and host cursor/owner remain identical.
+  Normal and empty ordinary windows still expose the existing held-record
+  counts. All24 selectors, exact byte/sector counts, zero tolerance.
+- suggested method: hold root/child/empty windows with occupied work partitions,
+  retained PUT/GETDELETE and GET from the public source. Read the next host
+  word and finish the transfer, then replay the registered pool/host subset.
+  Refuse invalid selector, invalidated/empty backing table without clearing.
+- falsifier: retained stale work sectors, collateral capacity/data loss, host
+  cursor cancellation, altered private reservation bytes, or a rejected
+  request clearing data.
+- self-check run (method-level, unvalidated):720 hold cases within the shared
+  1440-case probe,720 move controls,1440 registered pool/host replays and27
+  non-clearing controls. Includes up to199 private slots and one reclaimable
+  public slot. Full shared method/dependency/mutant/syntax/batch results are
+  recorded in0109;53 probes yield43 exit0/ten pre-existing conflicts.
+- state: **UNVALIDATED**; same rejected native merge-readiness gate as0109.
+- not covered/known doubts: no new fields/save-layout. Out-of-directory first-ID
+  response/scope policy remains **BLOCKED(out-of-range first-ID response/scope
+  trace including FFFFFF)**; this change deliberately does not add a destructive
+  clear to that deferred case. Cached HLE holds still perform no physical reads;
+  this is not native reread/scratch-space/latency/IRQ/FLS arbitration or
+  directory-state save qualification. Private-full scratch waiting and ordinary
+  GET versus actual directory refill remain unqualified as in0109. No validator
+  assets or expected values changed; no full build/CI dispatch.
