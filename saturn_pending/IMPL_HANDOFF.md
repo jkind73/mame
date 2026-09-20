@@ -7842,3 +7842,74 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   Four-frame pre-start unmute, full programmed repeat/range persistence,
   invalid-range drive clamping, SCAN movement/audio/rate and host-window/LLE
   reconciliation remain separate. No full build or validator-asset edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0106 | CD-01 | 585bbfdb | UNVALIDATED | Current/SEEK reports use one-based binary tracks, image index metadata and CONTROL/ADR from the reported position |
+
+### IMPL-0106 — CD-01 — positional CD report coherence
+
+- branch/commit/base: `arena/01a0b897-mame` @ **585bbfdb**;
+  base **7ac21947096**. Published normally. The continuation again found a
+  restored82152a8b Git HEAD beneath newer files. Preserved the binary diff,
+  fetched7ac21947 and advanced only HEAD/index; retained files matched the
+  published tip exactly afterward. No force-push or published-history rewrite.
+- files: `src/mame/sega/saturn_cd_hle.cpp:872-876,892-911`;
+  `saturn_pending/impl_checks/check_cd_report_position.py`.
+- contract: in valid programme-area reports, SEEK describes its target with
+  a one-based track number, as current-position reports already do. Derive
+  CONTROL/ADR and track number from the same position instead of using a
+  stale playback-start track for CONTROL/ADR. The shared index helper passes
+  FAD-150 to the image's index table, replacing the fabricated two-second
+  audio pregap and fixed index1 for data. Report track/index remain binary.
+- primary source: ST-162-062094 pp.59-60 data4.0 response format/table:
+  CONTROL/ADR, binary TNO/X and FAD; SEEK reports the target, PLAY/PAUSE/SCAN
+  the current position. p.24 Table2.1 gives LSN=FAD-150. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:1852-1858`
+  packs coherent position fields; `:1897-1942` sets one-based target track
+  and target control/index; `:2383` decodes index from subcode. Its FAD-seek
+  target index approximation is not imported over available image metadata.
+  MAME image API at base7ac21947: `src/devices/imagedev/cdromimg.cpp:214-219`
+  forwards index lookup; `src/lib/util/cdrom.cpp:602-621` uses index metadata.
+  Upstream398bba74ed7997d29c2316316da230f6d85fda0d
+  `src/mame/sega/saturn_cd_hle.cpp:596-645` and fork7ac21947 contain the
+  fixed-pregap, zero-based seek-track and stale-control behavior. Independently
+  written correction; image parser/library implementation unchanged.
+- expected observable: image track0 reports TNO1, track98 reports binary99
+  (63H), not98 or BCD99H. Index boundaries follow image metadata on both data
+  and audio tracks, including non-150-sector pregaps and indices above9.
+  Across a track boundary, CONTROL/ADR agrees with reported TNO. SEEK uses
+  target position for all corrected fields, regardless of the old cursor.
+  Exact integer fields and FADs, zero tolerance; no timing change specified.
+- suggested method: synthetic mixed-track/index disc with known subcode and
+  distinct control bits; query current/SEEK responses at both sides of track
+  and index boundaries. Compare decoded CR2/CR3/CR4 against the image/subcode,
+  including track/index10 and99, then repeat on a native mapped command path.
+- falsifier: zero-based/BCD track or index, stale control from another track,
+  a150-sector lookup offset, fixed pregap/index1 despite different metadata,
+  or response generation mutating the drive cursor/state.
+- self-check run (method-level, unvalidated):209088 current/seek report images,
+ 1089 image-index boundary checks and1280 unchanged absent-image controls.
+  Actual report/index/control helpers and cdrom_file index lookup; synthetic
+  normalized metadata and mock image wrappers. ASan/fail-fast UBSan exit0.
+  Historical7ac21947 and six compiled mutants fail: FAD passed to index API,
+  zero-based seek TNO, stale control, fixed index1, BCD index, current index
+  in a seek response. Warning-enabled CD TU syntax/diff0. All50 own probes:
+ 40 exit0/ten disclosed conflicts, `/tmp/impl-ref/cd-0106-aggregate.log`.
+- state: **UNVALIDATED**; no native report/subcode qualification or milestone
+  advancement. Validator merge-readiness rejection remains open.
+- not covered/known doubts: original seven conflicts and0105's two phase-
+  assumption conflicts remain. New conflict: `check_cd_empty_media_response.py`
+  expects zero-based SEEK track in its media-present formatting controls;
+  absent-image behavior is unchanged and its expectations were not edited.
+  No fields/save-layout changes. Valid programme-area positions only; lead-out,
+  invalid-status all-FF policy, CD-ROM flag/repeat notification semantics,
+  CUE/CHD parser/index normalization and native subcode captures remain open.
+  The index helper also feeds the existing Q builder, so its index value can
+  change there; Q packet layout/encoding is not reworked or qualified. No
+  full build, validator asset changes or frozen sound/video source changes.
