@@ -2436,17 +2436,16 @@ void saturn_cd_hle_device::cmd_read_file() {
 
 void saturn_cd_hle_device::cmd_abort_file() {
   LOGCMD("%s: Abort File\n", machine().describe_context());
-  // bios expects "2bc" mask to work against this
-  hirqreg |= (CMOK | EFLS);
-  update_hirq();
-  sectorstore = 0;
-  xfertype32 = XFERTYPE32_INVALID;
-  xferdnum = 0;
+  // Stop the filesystem producer, not the independent host data transfer.
+  // ST-162 p.101 also preserves buffer partitions and selector settings.
   if (((cd_stat & 0x0f00) != CD_STAT_NODISC) &&
       ((cd_stat & 0x0f00) != CD_STAT_OPEN))
     cd_change_status(CD_STAT_PAUSE); // force to pause
 
   cr_standard_return(cd_stat);
+  // bios expects "2bc" mask to work against this
+  hirqreg |= (CMOK | EFLS);
+  update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_check_copy_protection() {
