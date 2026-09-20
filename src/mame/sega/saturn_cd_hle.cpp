@@ -3763,9 +3763,14 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
 
   cd_playdata();
 
-  // pickup travel is physical, so a SEEK always ticks at the real sector
-  // rate; only streaming follows the cd_speed multiplier
-  if ((cd_stat & 0x0f00) == CD_STAT_SEEK)
+  // ST-162 p.31: an idle periodic response/SCDQ cycle is 16.7 ms,
+  // independent of the selected transfer speed or the stopped track type.
+  // Keep the existing SEEK/SCAN stepping policy separate: this shared timer
+  // still also advances the pickup, not just the periodic response.
+  const uint16_t state = cd_stat & 0x0f00;
+  if (state != CD_STAT_PLAY && state != CD_STAT_SEEK && state != CD_STAT_SCAN)
+    m_sector_timer->adjust(attotime::from_hz(60));
+  else if (state == CD_STAT_SEEK)
     m_sector_timer->adjust(attotime::from_hz(75));
   else if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
            cdrom_file::CD_TRACK_AUDIO)
