@@ -7474,3 +7474,77 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
 44-probe aggregate are `file_connections`, `file_transfer_length`,
 `directory_save`, `change_directory`, `read_directory_admission`,
 `table_invalidation`, and `file_abort`; these are failures, not passing fixtures.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0101 | CD-01 | 67de220a | UNVALIDATED | Idle periodic response/SCDQ uses the documented approximately 16.7 ms cadence, not the selected streaming rate |
+
+### IMPL-0101 — CD-01 — idle periodic cadence reconciliation
+
+- branch/commit/base: `arena/01a0b897-mame` @
+  **67de220a709c2b2021e6a0af842198b7f1683330**; base **03d7016d**.
+  Source/probe published normally to this implementation branch.
+- files: `src/mame/sega/saturn_cd_hle.cpp:3766-3774`;
+  `saturn_pending/impl_checks/check_cd_idle_cadence.py`.
+- contract: after the producer step, non-PLAY/SEEK/SCAN states select 60 Hz
+  for the shared periodic/SCDQ timer. Idle cadence does not depend on data
+  transfer speed or stopped track type and does not query the media track
+  table. Preserve the existing SCDQ OR operation and PERI response guard.
+  This is an idle-cadence reconciliation, NOT an adoption of the validator's
+  whole CD implementation or its active SCAN behavior.
+- primary source: ST-162-062094 printed p.31 section3.3, “Periodic response
+  update cycle”: standard13.3 ms, double6.7 ms, not playing16.7 ms; periodic
+  response and SCDQ use the same communication timing. p.39 section4.3 /
+  Figure4.4 likewise links their updates. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: validator tree
+  **0ce91cd3f35620ed19eab6c623e5498365d19b93**,
+  `src/mame/sega/saturn_cd_hle.cpp:3742-3768`, selects60 Hz for idle states.
+  Its `regtests/saturn/handoff/agent1_validation.md` identifies
+  `periodic_idle_17ms` and `periodic_cadence_differs` among the graft's
+  additional failures at1354cfdad; no result for this candidate is inferred.
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d,
+  `src/mame/sega/saturn_cd_hle.cpp:2184-2195`, and fork03d7016d choose
+  audio/data sector cadence without the idle distinction. The new conditional
+  is independently written; PLAY/SEEK/SCAN stepping is deliberately unchanged.
+- expected observable: settled idle intervals approximately16.7 ms, independent
+  of speed1/2 and audio/data position; this candidate requests exactly60 Hz
+  (16.666666... ms). Suggested native observation tolerance0.1 ms around the
+  printed16.7 ms value, measured in emulated time, not host wall-clock time.
+  Producer-to-idle transitions must select idle rate using the resulting state.
+  Each callback preserves pending HIRQ causes and adds SCDQ; PERI controls CR
+  refresh as before. Integer frequency/flag method expectations have zero
+  tolerance. Initial reset-to-first-event phase is not newly specified.
+- suggested method: run the validator's periodic fixtures on a native binary
+  tied to this source, compare successive acknowledged SCDQ/periodic events
+  while paused/standby/open/no-disc and while switching stream speed. Include
+  end-of-range/full-buffer transitions and in-progress command responses.
+  Re-run CD-DA/HIRQ/transfer/LLE integration gates after later reconciliation.
+- falsifier: settled idle continues at13.3 or6.7 ms, varies with stopped track
+  type or speed, uses the pre-producer state for its next interval, drops a
+  pending cause, or overwrites a non-PERI command response.
+- self-check run (method-level, unvalidated): actual callback in mocked
+  producer/media/timer/IRQ scaffolding:3200 idle rate/flag images including3040
+  producer-state transitions;36 unchanged PLAY/SEEK/SCAN controls. ASan and
+  fail-fast UBSan exit0. Historical03d7016d and four compiled mutants
+  (idle75 Hz, idle150 Hz, PAUSE-only, pre-producer state) assertion-fail on
+  the requested frequency observable. Native warning-enabled CD TU syntax
+  and `git diff --check` exit0.
+  All45 own CD probes executed:38 exit0; the same seven original-fixture
+  conflicts remain (`file_connections`, `file_transfer_length`,
+  `directory_save`, `change_directory`, `read_directory_admission`,
+  `table_invalidation`, `file_abort`). No expectations edited.
+  Raw aggregate: `/tmp/impl-ref/cd-0101-aggregate.log`.
+- state: **UNVALIDATED**. The validator's merge-readiness rejection remains
+  applicable; no native result, gate closure or milestone advancement claimed.
+- not covered/known doubts: timer request tested, not elapsed native time or
+  actual IRQ edges. No new state fields/save-layout changes. Initial timer
+  phase and saved native timer replay remain unqualified. SEEK still shares
+  its physical stepping timer with periodic communication; SCAN movement,
+  rate/audibility, PLAY audio addressing/range/repeat and host-window/LLE
+  reconciliation remain open. Do not infer active-state timing accuracy or
+  CD-DA fixture success from this idle-only change. No full build, validator
+  asset changes or frozen CPU/sound/video source changes.
