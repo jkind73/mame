@@ -9244,3 +9244,75 @@ replace either HLE wholesale. Validator assets were only read, not changed.
   HIRQ acknowledgement reassertion while still full, existing read overlays,
   audio/full interaction and exact pause/IRQ/bus timing remain separate. No
   native gameplay, firmware, frozen-title or full-branch merge qualification.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0130 | CD-01 | 19d9a83b670 | UNVALIDATED | PUT End latches BFUL from the capacity remaining after reservation routing, independently of drive progress or polling |
+
+### IMPL-0130 — CD-01 — Post-routing PUT End fullness publication
+
+- branch/commit/base: `arena/01a0b897-mame` @ **19d9a83b670**, base **34a6b9c7a3b**;
+  dependency-only scaffold follow-up **251c7c235c2**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1225-1232`;
+  `saturn_pending/impl_checks/check_cd_put_full_irq.py`;
+  `cd_file_scope_scaffold.py` (missing capacity declaration for metadata-only
+  mocks whose unused PUT End arm still must compile; integrated probe has the
+  actual pool/reservation state).
+- contract: after End routes an accepted PUT reservation, latch BFUL if the
+  modeled pool has no free blocks, then publish it through the existing End
+  interrupt update. Use post-routing capacity: canceled sectors may have freed
+  space. Do not depend on a later drive interval or HIRQ poll. This preserves
+  the existing End ownership/routing and effective-write word-count policy.
+- primary source: ST-162-062094 p.28 BFUL and masked IRQ-factor behavior;
+  p.42 section5.2/p.43 section5.3.1 discard unconnected outputs; p.81 End
+  including effective write counts; p.97 function7.4 PUT. Pinned SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafenf0ee9d595db68ad5247ba5ac6a8367fdced9c3fc
+  `src/ss/cdb.cpp:2733-2760` filters every reserved PUT buffer at End and tests
+  FreeBufferCount afterward before triggering BFUL/EHST. Fork34a6b9c7a3b has
+  analogous private-reservation routing but lacks that End cause publication;
+  its copy/move completion and0129 producer already publish BFUL. Independent
+  four-line addition to the existing End arm, not a copied transfer engine.
+- expected observable: retained PUT sectors leaving zero capacity set BFUL
+  and drive its enabled callback at End with the drive paused and without HIRQ
+  polling. Discarding reservations frees capacity and must not recreate BFUL
+  from the earlier full reservation state. Masking suppresses output, enabling
+  bit3 exposes the pending cause, and release clears it. Effective PUT counts,
+  private ownership release and public destination sizes remain unchanged.
+  Exact flags/callback levels/words/sectors, zero tolerance; no native timing
+  or admission-event assertion.
+- suggested method: three selectors, preexisting0/198/199 sectors, one-sector
+  or remaining-capacity PUT requests, retain/discard destinations, zero/one-
+  longword/one-sector writes and varied BFUL/EHST masks. Observe End without
+  producer ticks or HIRQ reads, then mask/unmask and release capacity. Save
+  just before End, poison reservation/cursor/capacity/mask, restore and replay.
+- falsifier: no BFUL until polling/drive activity, stale pre-routing fullness
+  after discard, nonfull PUT raising BFUL, missing zero-write End cause under
+  the retained reservation policy, changed ownership/count/routing or divergent
+  restored callback/flags.
+- self-check run (method-level, unvalidated):432 PUT End/capacity/route/payload/
+  mask images and432 registered pre-End continuations; ASan/fail-fast UBSan0.
+  Actual reservation/port/End/filter/IRQ/mask/delete/save methods, callback
+  recorder and mock serializer. Historical34a6b9c7a3b and seven compiled mutants
+  assertion-fail: missing/unconditional/early-full cause, zero-write suppression,
+  pre-route capacity, omitted saved mask and omitted saved reservation filter.
+  Producer-full probe108/108/12 also exit0. Warning-enabled CD TU syntax/diff0.
+  Initial65 batch at19d9a83b670 had50 exit0, ten old conflicts and five compile
+  errors from missing freeblocks in metadata-only mocks.251c7c235c2 supplies
+  only that declaration; the five impacted probes and dedicated PUT probe
+  reran exit0, without assertion/expected-value changes. Complete65 rerun at
+  251c7c235c2: **55 exit0/same ten conflicts**;
+  `/tmp/impl-ref/cd-0130-adapted-aggregate.log`.
+- state: **UNVALIDATED**; **BLOCKED(native CI result for current implementation
+  revision)**. Latest validator review da9df9f9 still governs merge-readiness;
+  no full build or CI dispatch.
+- not covered/known doubts: no new fields/save-layout change. This assumes the
+  existing whole-reservation routing/partial-PUT implementation; it does not
+  newly qualify hardware unwritten-byte contents or acceptance-to-End buffer
+  residency. The probe clears causes before capture specifically to isolate
+  End; reservation-admission BFUL timing remains open. Native FIFO capacity,
+  pending asserted-line save, SCU/CPU delivery, acknowledgement reassertion,
+  exact IRQ timing and titles remain unqualified. No validator assets changed.
