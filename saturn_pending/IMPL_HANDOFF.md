@@ -6553,3 +6553,70 @@ change is part of0088.
   acceptance remain open. All cleared fields were already registered; no
   new fields/layout change. Validator assets/expectations and milestones
   untouched.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0090 | CD-01 | c444b336 | UNVALIDATED | Read File installs its work selector's FAD range, stored file number and own-buffer/terminate outputs |
+
+### IMPL-0090 — CD-01 — Read File selector condition setup
+
+- branch/commit/base: `arena/01a0b897-mame` @ **c444b336**; base **1cce601e**.
+  Push retried after this coherent commit and again failed with terminal
+  authentication unavailable; **BLOCKED(GitHub reconnection for push)**.
+  Incremental local recovery bundle refreshed outside Git.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2547-2558`;
+  `saturn_pending/impl_checks/check_cd_read_file_filter.py:1-33`.
+- contract: after the existing valid file-ID admission and CD-input
+  connection, valid selectors0..23 replace stale filter conditions with
+  mode41h (FAD-range plus file-number matching), the selected record's XA
+  file number, current starting FAD and remaining logical-sector count.
+  Other subheader parameters reset to zero; true output names its own
+  buffer and false output terminates atFFh. Other selectors' conditions
+  remain intact except the pre-existing exclusive input disconnections.
+- primary source: ST-162-062094 p.53 section6.2.3/Table6.1 defines filesystem
+  selector setup: CD connection, own buffer, terminate, file-number+FAD
+  conditions and initialization of the remaining conditions. p.95 separates
+  logical file/sector accounting from the host transfer-length selection;
+  p.100 Read File defines sector offset and work selector.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3866-3905`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  selects FADR|FILE, stored fnum, range and outputs and clears channel/masks.
+  Its explicit XA-interleaving range FIXME is retained as a limitation,
+  not adopted as a hardware guarantee. Local base/upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d omit this file-specific setup;
+  independently written assignments, no imported block.
+- expected observable: selector readback matches the above exact bytes and
+  FAD/count in sectors. For contiguous extents, matching first/last-sector
+  FADs and file number route to the requested buffer; wrong number or FAD
+  outside the half-open range discards. Host fetch lengths2048/2336/2340/2352
+  do not change that logical range. Zero tolerance; timing not qualified.
+- suggested method: poison selector conditions, issue Read File for a known
+  contiguous file with file number different from its directory index,
+  read back filter mode/subheaders/range/outputs, then observe real sectors
+  and destination buffer. Repeat with nonzero sector offset and save/reload.
+- falsifier: old channel/masks/output survive, the directory index replaces
+  XA file number, range includes skipped sectors or depends on host fetch
+  size, matching sectors miss the requested buffer, or unrelated selectors'
+  conditions change beyond exclusive input disconnection.
+- self-check run (method-level, unvalidated):294912 selector/number/range/
+  fetch images with actual Read File/status/connection/destination methods
+  and24 invalid-ID nonmutation controls exit0 under ASan/fail-fast UBSan.
+  Historical base fails at generated279; wrong file number, omitted reset,
+  missing number mode, wrong output and offset-inclusive range mutants fail
+  predicate291. All34 own CD probes exit0, unchanged existing expectations;
+  warning-enabled CD TU syntax/diff0. Aggregate
+  `/tmp/impl-ref/cd-0090-aggregate.log`. No full build/native verification.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: this is selector setup, not a claim of complete
+  filesystem selector lifecycle. Required buffer clearing, directory/hold
+  condition setup, FLS-active WAIT, malformed/absent table admission,
+  illegal selector REJECT, EOF/offset error policy, XA-interleaved physical
+  extent mapping and asynchronous completion remain open. Legacy invalid
+  selector disconnection diagnostics unchanged. No new state or save-layout
+  change: filter members and stored file number are already registered.
+  Native media/IRQ/save integration and frozen-title qualification remain
+  with the validator; no validator assets or expected values edited.
