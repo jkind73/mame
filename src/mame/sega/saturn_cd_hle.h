@@ -50,6 +50,7 @@ private:
   struct direntryT {
     uint8_t record_size;
     uint8_t xa_record_size;
+    uint8_t file_number; // XA system information; zero when absent
     uint32_t firstfad; // first sector of file
     uint32_t length;   // length of file
     uint8_t year;
@@ -59,7 +60,7 @@ private:
     uint8_t minute;
     uint8_t second;
     uint8_t gmt_offset;
-    uint8_t flags; // iso9660 flags
+    uint8_t flags; // CdcFile attributes: ISO directory bit plus XA bits3-7
     uint8_t file_unit_size;
     uint8_t interleave_gap_size;
     uint16_t volume_sequencer_number;

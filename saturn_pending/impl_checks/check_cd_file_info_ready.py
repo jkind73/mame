@@ -21,7 +21,7 @@ void observe(D &d){CHECK(d.irqs==1&&d.m_host_transfer_active&&d.xfercount==0&&d.
 int main(){unsigned images=0;
  for(unsigned pattern:{0U,1U,7U,31U,127U,255U})for(bool bulk:{false,true})for(unsigned before:{0U,2U,0x41U,0xffffU})
  for(unsigned cursor:{0U,1U,5U,255U,1523U})for(unsigned read:{0U,1U,6U,65535U}){
-  D d;d.curdir.resize(256);for(unsigned i=0;i<256;++i){auto &f=d.curdir[i];f.firstfad=150+pattern*10003+i*17;f.length=(i+1)*257+pattern*17;f.file_unit_size=pattern+i;f.interleave_gap_size=pattern+3*i;f.flags=i^pattern;}
+  D d;d.curdir.resize(256);for(unsigned i=0;i<256;++i){auto &f=d.curdir[i];f.firstfad=150+pattern*10003+i*17;f.length=(i+1)*257+pattern*17;f.file_unit_size=pattern+i;f.interleave_gap_size=pattern+3*i;f.flags=i^pattern;f.file_number=i;}
   expected.clear();all=bulk;pending=before;cut=read;at=0;
   for(unsigned i=2;i<(bulk?256U:3U);++i){const auto &f=d.curdir[i];expected.push_back(f.firstfad>>16);expected.push_back(f.firstfad);expected.push_back(f.length>>16);expected.push_back(f.length);expected.push_back((f.file_unit_size<<8)|f.interleave_gap_size);expected.push_back((i<<8)|f.flags);}
   std::memset(d.finfbuf,0xa5,sizeof(d.finfbuf));d.xfercount=cursor;d.hirqreg=before;d.cr1=0x7300;d.cr2=0xdddd;d.cr3=bulk?0xff:0;d.cr4=bulk?0xffff:2;d.observe=observe;d.cmd_get_target_file_info();d.observe=nullptr;

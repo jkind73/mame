@@ -193,6 +193,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(m_saved_dir_count));
   save_item(STRUCT_MEMBER(curroot, record_size));
   save_item(STRUCT_MEMBER(curroot, xa_record_size));
+  save_item(STRUCT_MEMBER(curroot, file_number));
   save_item(STRUCT_MEMBER(curroot, firstfad));
   save_item(STRUCT_MEMBER(curroot, length));
   save_item(STRUCT_MEMBER(curroot, year));
@@ -209,6 +210,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(STRUCT_MEMBER(curroot, name));
   save_item(STRUCT_MEMBER(m_saved_dir, record_size));
   save_item(STRUCT_MEMBER(m_saved_dir, xa_record_size));
+  save_item(STRUCT_MEMBER(m_saved_dir, file_number));
   save_item(STRUCT_MEMBER(m_saved_dir, firstfad));
   save_item(STRUCT_MEMBER(m_saved_dir, length));
   save_item(STRUCT_MEMBER(m_saved_dir, year));
@@ -661,7 +663,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
       put_u32be(&finfbuf[4], entry.length);
       finfbuf[8] = entry.file_unit_size;
       finfbuf[9] = entry.interleave_gap_size;
-      finfbuf[10] = temp;
+      finfbuf[10] = entry.file_number;
       finfbuf[11] = entry.flags;
     }
 
@@ -2485,7 +2487,7 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     put_u32be(&finfbuf[4], entry.length);
     finfbuf[8] = entry.file_unit_size;
     finfbuf[9] = entry.interleave_gap_size;
-    finfbuf[10] = temp;
+    finfbuf[10] = entry.file_number;
     finfbuf[11] = entry.flags;
 
     xfertype = XFERTYPE_FILEINFO_1;
@@ -3861,7 +3863,8 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
       curroot.firstfad = get_u32le(&sect[158]);
       curroot.firstfad += 150;
       curroot.length = get_u32le(&sect[166]);
-      curroot.flags = sect[181];
+      curroot.flags = sect[181] & 0x02;
+      curroot.file_number = 0;
       /* the identifier length comes off the disc and ISO 9660 allows up to
          255 bytes there - a Joliet name of 64 UCS-2 characters plus its
          ";1" version suffix is already 132 - so clamp it to what name[]
@@ -3939,7 +3942,16 @@ void saturn_cd_hle_device::make_dir_current(uint32_t fad, uint32_t length) {
       entry.minute = record[22];
       entry.second = record[23];
       entry.gmt_offset = record[24];
-      entry.flags = record[25];
+      entry.flags = record[25] & 0x02;
+      // ST-040 Tables 3.10/3.11: system information follows the name and
+      // its even-byte padding. Only a complete XA extension supplies the
+      // file number and attribute bits; ISO flags are not XA attributes.
+      const uint32_t system_use = 33 + (record[32] | 1);
+      if (system_use + 14 <= size && record[system_use + 6] == 'X' &&
+          record[system_use + 7] == 'A') {
+        entry.file_number = record[system_use + 8];
+        entry.flags |= record[system_use + 4] & 0xf8;
+      }
       entry.file_unit_size = record[26];
       entry.interleave_gap_size = record[27];
       entry.volume_sequencer_number = get_u16le(&record[28]);
