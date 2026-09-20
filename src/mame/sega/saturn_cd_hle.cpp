@@ -2516,18 +2516,12 @@ void saturn_cd_hle_device::cmd_read_file() {
   const uint8_t file_filter = cr3 >> 8;
   const uint32_t file_id = (uint32_t(cr3 & 0xff) << 16) | cr4;
 
-  /* curdir is only ever sized by make_dir_current(), so a Read File issued
-     before a directory has been parsed - the vector is cleared on reset and
-     on stop - or with a file ID beyond the parsed one has no entry to read.
-     The index comes straight from CR3/CR4 and curdir is read with unchecked
-     operator[], so validate the full 24-bit identifier here.
-     Acknowledge the command either way, so that software
-     waiting on HIRQ is not left hanging, but start no bogus playback. */
-  if (size_t(file_id) >= curdir.size()) {
-    LOGWARN("CD: Read File %04x beyond directory (%u entries)\n", file_id,
-            unsigned(curdir.size()));
-    cr_standard_return(cd_stat);
-    hirqreg |= (CMOK | EHST);
+  // Filesystem selectors are 0..23, not the FF disconnection sentinel.
+  // Refuse an absent/out-of-range directory entry before changing playback,
+  // routing or filter conditions. REJECT completes no host/file transfer.
+  if (file_filter >= MAX_FILTERS || size_t(file_id) >= curdir.size()) {
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
     update_hirq();
     return;
   }
@@ -2543,19 +2537,17 @@ void saturn_cd_hle_device::cmd_read_file() {
   cd_change_status(CD_STAT_PLAY | 0x80); // set "cd-rom" bit
   cd_curfad = (curdir[file_id].firstfad + file_offset) & 0xffffff;
   fadstoplay = file_size;
-  cd_connect_cddevice(file_filter < MAX_FILTERS ? file_filter : 0xff);
-  if (file_filter < MAX_FILTERS) {
-    // ST-162 section 6.2.3/Table 6.1: file access replaces the work
-    // selector's conditions with FAD-range and stored file-number matching.
-    filterT &filter = filters[file_filter];
-    filter = {};
-    filter.mode = 0x41;
-    filter.fid = curdir[file_id].file_number;
-    filter.fad = cd_curfad;
-    filter.range = file_size;
-    filter.condtrue = file_filter;
-    filter.condfalse = 0xff;
-  }
+  cd_connect_cddevice(file_filter);
+  // ST-162 section 6.2.3/Table 6.1: file access replaces the work
+  // selector's conditions with FAD-range and stored file-number matching.
+  filterT &filter = filters[file_filter];
+  filter = {};
+  filter.mode = 0x41;
+  filter.fid = curdir[file_id].file_number;
+  filter.fad = cd_curfad;
+  filter.range = file_size;
+  filter.condtrue = file_filter;
+  filter.condfalse = 0xff;
 
   LOGWARN("Read file %08x (%08x %08x) %02x %d\n", curdir[file_id].firstfad,
           cd_curfad, fadstoplay, file_filter, sectlenin);

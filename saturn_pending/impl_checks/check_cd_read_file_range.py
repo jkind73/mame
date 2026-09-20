@@ -24,7 +24,7 @@ head=head[:head.rfind('};')]+r'''
  void cmd_read_file();void cd_change_status(u16);
 };
 #define LOGSTATUS(...) ((void)0)
-constexpr unsigned MAX_FILTERS=24,CD_STAT_BUSY=0,CD_STAT_PLAY=0x300,CD_STAT_SEEK=0x400,CD_STAT_PERI=0x2000;
+constexpr unsigned MAX_FILTERS=24,CD_STAT_BUSY=0,CD_STAT_PLAY=0x300,CD_STAT_SEEK=0x400,CD_STAT_PERI=0x2000,CD_STAT_REJECT=0xff00;
 '''
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_read_file()', 'void saturn_cd_hle_device::cd_change_status('))
 head='#include <cassert>\n'+head
