@@ -1809,44 +1809,49 @@ void saturn_cd_hle_device::cmd_get_buffer_partition_sector_number() {
 }
 
 void saturn_cd_hle_device::cmd_calculate_actual_data_size() {
-  // calculate actual size
-  uint32_t bufnum = cr3 >> 8;
-  uint32_t sectoffs = cr2;
-  uint32_t numsect = cr4;
-
-  if (bufnum >= MAX_FILTERS) {
-    LOGWARN("CD: invalid buffer number\n");
-    cr_standard_return(CD_STAT_REJECT);
-    hirqreg |= (CMOK | ESEL);
+  const unsigned input = cr3 >> 8;
+  uint32_t offset = cr2;
+  uint32_t count = cr4;
+  auto const respond = [this](uint16_t status, bool completed) {
+    cr_standard_return(status);
+    hirqreg |= CMOK | (completed ? ESEL : 0);
     update_hirq();
+  };
+  if (input >= MAX_FILTERS) {
+    respond(CD_STAT_REJECT, false);
     return;
   }
 
-  LOGCMD("%s: Calculate actual size: buf %x offs %x numsect %x\n",
-         machine().describe_context(), bufnum, sectoffs, numsect);
-
-  /* cr2 and cr4 are the same offset / sector count pair that the other sector
-     commands take, and the loop below walks blocks[] with them, so bound them
-     the same way: cr2 is used unmasked here, so an offset of up to 0xffff
-     indexed a MAX_BLOCKS (200) entry array and dereferenced whatever pointer
-     it found there, and a large cr4 kept the loop walking past the end even
-     from a valid offset. */
-  cd_getsectoroffsetnum(bufnum, &sectoffs, &numsect);
-
-  calcsize = 0;
-  if (partitions[bufnum].size != -1) {
-    int32_t i;
-
-    for (i = 0; i < numsect; i++) {
-      if (partitions[bufnum].blocks[sectoffs + i]) {
-        calcsize += partitions[bufnum].blocks[sectoffs + i]->host_size(sectlenin) / 2;
-      }
-    }
+  const partitionT &part = partitions[input];
+  if (offset == 0xffff)
+    offset = part.numblks ? part.numblks - 1 : 0;
+  if (count == 0xffff)
+    count = offset < part.numblks ? part.numblks - offset : 0;
+  // An unavailable range is not a shorter successful calculation. Host
+  // writing also makes this command wait; an existing GET may continue.
+  if (xfertype32 == XFERTYPE32_PUTSECTOR || !count ||
+      part.numblks > MAX_BLOCKS || offset >= part.numblks ||
+      count > part.numblks - offset) {
+    respond(cd_stat | CD_STAT_WAIT, false);
+    return;
   }
 
-  hirqreg |= (CMOK | ESEL);
-  update_hirq();
-  cr_standard_return(cd_stat);
+  uint32_t words = 0;
+  for (unsigned i = 0; i < count; ++i) {
+    const unsigned position = offset + i;
+    const uint8_t id = part.bnum[position];
+    const blockT *const sector = part.blocks[position];
+    // Keep malformed saved/legacy ownership from becoming a bad read or a
+    // partial replacement of the held result. Normal partitions have no holes.
+    if (id >= MAX_BLOCKS || sector != &blocks[id] || sector->size <= 0 ||
+        uint32_t(sector->size) > sizeof(sector->data)) {
+      respond(cd_stat | CD_STAT_WAIT, false);
+      return;
+    }
+    words += sector->host_size(sectlenin) / 2;
+  }
+  calcsize = words;
+  respond(cd_stat, true);
 }
 
 void saturn_cd_hle_device::cmd_get_actual_data_size() {
