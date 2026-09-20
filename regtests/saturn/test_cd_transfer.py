@@ -22,13 +22,21 @@ functions = '\n'.join(extract(source, s) for s in (
     'uint16_t saturn_cd_hle_device::dr3_r()', 'uint16_t saturn_cd_hle_device::dr4_r()',
     'inline u32 saturn_cd_hle_device::dataxfer_long_r()',
     'inline void saturn_cd_hle_device::dataxfer_long_w(',
+    'u32 saturn_cd_hle_device::dataxfer_sector_r(',
+    'void saturn_cd_hle_device::dataxfer_sector_w(',
+    'void saturn_cd_hle_device::finish_put()',
+    'uint8_t saturn_cd_hle_device::cd_filter_destination(',
+    'void saturn_cd_hle_device::cd_disconnect_filter_input(',
+    'void saturn_cd_hle_device::cmd_get_and_delete_sector_data()',
+    'void saturn_cd_hle_device::cd_getsectoroffsetnum(',
+    'bool saturn_cd_hle_device::cd_transfer_wait()',
     'void saturn_cd_hle_device::finish_get_delete()',
     'void saturn_cd_hle_device::cmd_end_data_transfer()',
     'void saturn_cd_hle_device::cd_free_block(',
     'void saturn_cd_hle_device::cd_defragblocks('))
 if os.environ.get('MUTATE_CD_HIRQ') == '1':
     functions = functions.replace('rv = hirqreg;', 'rv = hirqreg & ~DCHG;', 1)
-types = '\n'.join(extract(header, s)+';' for s in ('struct blockT', 'struct partitionT', 'enum transT', 'enum trans32T'))
+types = '\n'.join(extract(header, s)+';' for s in ('struct filterT', 'struct blockT', 'struct partitionT', 'enum transT', 'enum trans32T'))
 harness = r'''
 #include <algorithm>
 #include <cassert>
@@ -39,7 +47,8 @@ harness = r'''
 #include <string>
 #include <vector>
 using u8=uint8_t; using u16=uint16_t; using u32=uint32_t;
-constexpr int DCHG=0x20, CSCT=4;
+constexpr int DCHG=0x20, CSCT=4, DRDY=2, CD_STAT_REJECT=0xff00, CD_STAT_WAIT=0x8000;
+constexpr unsigned MAX_FILTERS=24;
 constexpr int MAX_BLOCKS=200, EHST=0x80, CMOK=1, BFUL=8, CD_STAT_TRANS=0x4000;
 constexpr int STATE_GENPC=0, CD_STAT_PERI=0x2000;
 struct cpu_device { uint32_t state_int(int){return 0x06001234;} };
@@ -47,12 +56,21 @@ namespace cdrom_file { constexpr int MAX_SECTOR_DATA=2352; }
 #define LOG(...) ((void)0)
 #define LOGWARN(...) ((void)0)
 #define LOGXFER(...) ((void)0)
+#define LOGCMD(...) ((void)0)
+unsigned bcd_2_dec(uint8_t v){return (v>>4)*10+(v&15);}
 u32 get_u32be(const u8 *p){return u32(p[0])<<24|u32(p[1])<<16|u32(p[2])<<8|p[3];}
 void put_u32be(u8 *p,u32 v){for(int i=3;i>=0;--i){p[i]=v;v>>=8;}}
 struct saturn_cd_hle_device {
 // TYPES
  blockT blocks[MAX_BLOCKS]{};
- partitionT partition{}, *transpart=&partition;
+ partitionT partitions[MAX_FILTERS]{}, m_get_partition{}, m_put_partition{};
+ partitionT &partition=partitions[0], *transpart=&partition;
+ filterT filters[MAX_FILTERS]{}, *cddevice=nullptr;
+ uint8_t m_put_filter=0xff, cddevicenum=0xff;
+ bool m_host_transfer_active=false;
+ int sectlenin=2048,sectlenout=2048;
+ uint16_t m_xfer_raw_offset=0,m_xfer_raw_size=0;
+ uint32_t m_xfer_raw_sector=0xffffffff;
  transT xfertype=XFERTYPE_INVALID;
  trans32T xfertype32=XFERTYPE32_INVALID;
  u32 xfersect=0,xfersectpos=0,xfersectnum=0,xferoffs=0,xferdnum=0;
@@ -74,7 +92,21 @@ struct saturn_cd_hle_device {
  auto &machine(){return *this;} bool side_effects_disabled(){return debug;}
  void update_hirq(){++irqs;}
  u32 dataxfer_long_r();void dataxfer_long_w(u32);
- void finish_get_delete();void cmd_end_data_transfer();
+ u32 dataxfer_sector_r(unsigned);void dataxfer_sector_w(u32,unsigned);
+ void finish_get_delete();void finish_put();void cmd_end_data_transfer();
+ uint8_t cd_filter_destination(uint8_t,const blockT&) const;
+ void cd_disconnect_filter_input(uint8_t);
+ void cmd_get_and_delete_sector_data();
+ void cd_getsectoroffsetnum(uint32_t,uint32_t*,uint32_t*);
+ bool cd_transfer_wait();
+ // Status formatting is not the subject of this port/cleanup fixture.
+ void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
+ void begin_get_delete(){
+  // Establish the new private reservation through the real admission method.
+  // End must release already-detached blocks, not remove public entries again.
+  cr1=0x6300;cr2=xfersectpos;cr3=0;cr4=xfersectnum;
+  cmd_get_and_delete_sector_data();
+ }
  void cd_free_block(blockT *);void cd_defragblocks(partitionT *);
  void setup(){
   for(unsigned i=0;i<4;++i){blocks[i].size=8+4*i;partition.blocks[i]=&blocks[i];partition.bnum[i]=i;partition.size+=blocks[i].size;}
@@ -124,7 +156,7 @@ int main(){
   assert(!s->xferdnum);++cases;
  }
  for(unsigned consumed : {0u,4u,12u,28u})for(bool excess : {false,true}){
-  auto s=std::make_unique<saturn_cd_hle_device>();s->setup();s->xfertype32=s->XFERTYPE32_GETDELETESECTOR;s->xferdnum=consumed;
+  auto s=std::make_unique<saturn_cd_hle_device>();s->setup();s->begin_get_delete();s->xferdnum=consumed;
   if(excess){s->xfersect=2;assert(s->dataxfer_long_r()==0xffffffff);}
   s->cmd_end_data_transfer();
   assert(s->hirqreg&EHST);

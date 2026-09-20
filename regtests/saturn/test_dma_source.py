@@ -31,6 +31,7 @@ def extract(text, signature):
         depth += (text[end]=='{') - (text[end]=='}'); end += 1
     return text[start:end]
 functions = extract(source, 'uint16_t saturn_scu_device::dma_read_word(')
+functions += '\n' + extract(source, 'uint8_t saturn_scu_device::dma_read_byte(')
 for name in ('dma_transfer_direct_default','dma_transfer_direct_cbus_write'):
     functions += '\n' + extract(old, 'void saturn_scu_device::'+name+'(')
 harness = r'''
@@ -42,6 +43,9 @@ harness = r'''
 using u8=uint8_t; using u16=uint16_t; using u32=uint32_t;
 u8 byte_at(u32 address, unsigned generation) { return u8((address ^ (address>>9)) + generation*17); }
 struct memory {
+  // Source-byte realignment still writes aligned destination words here.
+  void write_byte(u32, u8) { assert(false && "unexpected byte write in aligned DMA fixture"); }
+
   unsigned generation=0;
   std::vector<u32> reads;
   std::vector<std::pair<u32,u16>> writes;
@@ -58,6 +62,7 @@ struct saturn_scu_device {
 // CHANNEL
   memory mem; memory *m_hostspace=&mem;
   uint16_t dma_read_word(dma_channel_t &);
+  uint8_t dma_read_byte(dma_channel_t &);
   void dma_transfer_direct_default(dma_channel_t &);
   void dma_transfer_direct_cbus_write(dma_channel_t &);
 };

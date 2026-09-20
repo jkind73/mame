@@ -58,6 +58,7 @@ for signature in ("std::tuple<u16, int> saturn_scu_device::get_address_flags(",
                   "void saturn_scu_device::trigger_dma_direct(",
                   "void saturn_scu_device::trigger_dma_indirect(",
                   "uint16_t saturn_scu_device::dma_read_word(",
+                  "uint8_t saturn_scu_device::dma_read_byte(",
                   "void saturn_scu_device::dma_transfer_direct_default(",
                   "void saturn_scu_device::dma_transfer_direct_cbus_write(",
                   "void saturn_scu_device::dma_transfer_direct_cd(",
@@ -112,6 +113,9 @@ struct timer {
   void adjust(attotime value) { ++adjustments; stopped = value.ticks == -1; }
 };
 struct memory {
+  // Dependency of the actual byte-tail path; these scenarios stay word-aligned.
+  void write_byte(u32, uint8_t) { assert(false && "unexpected byte write in aligned DMA fixture"); }
+
   std::unordered_map<u32,u32> descriptors;
   std::vector<u32> descriptor_reads;
   u32 expected_src = 0, expected_dst = 0;
@@ -164,6 +168,7 @@ struct saturn_scu_device {
   void trigger_dma_direct(uint8_t);
   void trigger_dma_indirect(uint8_t);
   uint16_t dma_read_word(dma_channel_t &);
+  uint8_t dma_read_byte(dma_channel_t &);
   void dma_transfer_direct_default(dma_channel_t &);
   void dma_transfer_direct_cbus_write(dma_channel_t &);
   void dma_transfer_direct_cd(dma_channel_t &);
