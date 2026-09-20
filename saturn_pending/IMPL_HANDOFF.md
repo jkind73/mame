@@ -7981,3 +7981,79 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   directory_save, change_directory, read_directory_admission,
   table_invalidation, file_abort, drive_address, play_default,
   empty_media_response. No full build or validator asset/expectation edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0108 | CD-01 | 8f4ba60e | UNVALIDATED | An admitted Read File clears only its selected public work partition, preserving unrelated buffers and accepted host reservations/cursors |
+
+### IMPL-0108 — CD-01 — Clear the admitted Read File work partition
+
+- branch/commit/base: `arena/01a0b897-mame` @ **8f4ba60e**;
+  base **90ef0e12**. This handoff also strengthens the dedicated probe's
+  private-reservation data hashes; no additional production change.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2597-2651,3871-3882`;
+  `saturn_cd_hle.h:220`; `saturn_pending/impl_checks/check_cd_read_file_clear.py`;
+  `cd_file_scope_scaffold.py` (empty-pool dependencies for old status mocks);
+  `check_cd_read_file_filter.py` (upgrade inherited minimal block declaration
+  to the actual sector type; original assertions unchanged).
+- contract: after selector/held-information admission, release the selected
+  public partition's physical allocations, empty its public map/count/size,
+  then install the file's range and selector conditions. Other public partitions
+  and detached PUT/GETDELETE reservations survive. Rejected requests do not
+  clear anything. An accepted ordinary GET keeps its snapshot/cursor; clearing
+  its public source does not zero raw backing before a producer reuses it.
+- primary source: ST-162-062094 p.53 section6.2.3(2)(c), directly after Table6.1:
+  “The buffer partition sectors are cleared before files are accessed.”
+  The designated filter connects to the same-numbered buffer partition.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:3865-3893`, especially
+  `Partition_Clear(fnum)` at3883, after admission and before range/selector
+  setup. Its independent host ownership differs internally; use this fork's
+  existing public/private allocation rules. Upstream MAME398bba74
+  `saturn_cd_hle.cpp:1937-1963` and fork90ef0e12 omit the clear. New helper is
+  independently written using existing `cd_free_block`; no new allocator or
+  IRQ-latch policy imported.
+- expected observable: a selected public partition containing N sectors becomes
+  empty and contributes exactly N free slots; unrelated maps/data and private
+  reservations remain identical. Buffer numbers0..23, exact sector/byte
+  counts, zero tolerance. PUT/GET/GETDELETE continue at the accepted host
+  cursor; DataEnd retains/releases ownership normally. After capacity is
+  available, the new file producer routes its first sector to the cleared
+  partition, not the old public tail. No new timing claim.
+- suggested method: seed selected/unrelated public data plus accepted PUT or
+  GETDELETE reservations up to200 slots, or a GET from the selected partition;
+  issue Read File, measure maps/capacity/private data and host continuation,
+  then finish the host request and clock the producer. Replay registered
+  pool/host/drive state at the command boundary. Include invalid selectors,
+  absent IDs, invalidated and empty metadata as non-clearing controls.
+- falsifier: stale selected public sectors, freeing a private reservation,
+  clearing another partition, lost host bytes/cursor, wrong capacity, clearing
+  before admission, or first produced sector appearing after stale contents.
+- self-check run (method-level, unvalidated):240 selector/owner/capacity images,
+  240 registered pool/host/drive replays and12 refusal controls. Actual file
+  admission/clear/allocator/ports/End/drive/filter/read/save methods; mock
+  image/IRQ/serializer, retained metadata outside replay subset. Checks hashes
+  of unrelated public data and entire private reservations across the command.
+  ASan/fail-fast UBSan exit0. Historical90ef0e12 and seven compiled mutants
+  assertion-fail: omitted/wrong clear, erased GET/PUT reservation, omitted
+  physical free, stale count, clear before admission. Warning-enabled CD TU
+  syntax/diff0. All52 own probes:42 exit0/same ten disclosed conflicts;
+  `/tmp/impl-ref/cd-0108-aggregate.log`. Original admission/range/filter controls
+  separately exit0. No existing expected values changed.
+- state: **UNVALIDATED**; validator0ce91cd3's merge-readiness rejection is
+  unchanged. Native gate **BLOCKED(native CI result for current implementation
+  revision)**; no full build or CI dispatch.
+- not covered/known doubts: no new device fields/save-layout change. This is
+  Read File only; directory move/hold work-partition clearing remains separate.
+  No FLS-active arbitration, beyond-EOF policy, empty-file lifecycle, XA
+  interleave, native filesystem/IRQ/timing/save/title qualification. Ordinary
+  GET is not an immutable payload copy: later pool reuse can overwrite raw
+  backing. New file production is tested after ending that GET, not claimed
+  safe under arbitrary overlapping refill. Existing response/EHST/PLAY-versus-
+  SEEK behavior is unchanged. No validator assets, frozen paths or allocator
+  acknowledgement behavior edited. The same ten original conflicts remain
+  listed in0107; private-space preservation here does not qualify IRQ timing.

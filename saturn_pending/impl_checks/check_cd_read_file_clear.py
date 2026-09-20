@@ -15,11 +15,12 @@ functions+='\n'+extract(source,'void saturn_cd_hle_device::cmd_read_file()')
 head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
 tail=r'''
 uint32_t word(unsigned pos){uint32_t v=0;for(unsigned i=0;i<4;++i)v=(v<<8)|byte(0,pos+i);return v;}
-uint64_t partition_image(D &d,unsigned buf){uint64_t h=1469598103934665603ULL;
+uint64_t partition_image(const D::partitionT &p){uint64_t h=1469598103934665603ULL;
  auto add=[&](const auto &v){const auto *p=reinterpret_cast<const uint8_t*>(&v);for(unsigned i=0;i<sizeof(v);++i){h^=p[i];h*=1099511628211ULL;}};
- const auto &p=d.partitions[buf];add(p.size);add(p.numblks);add(p.bnum);
+ add(p.size);add(p.numblks);add(p.bnum);
  for(unsigned i=0;i<p.numblks;++i){add(p.blocks[i]->size);add(p.blocks[i]->data);add(p.blocks[i]->FAD);add(p.blocks[i]->raw_data);}return h;
 }
+uint64_t partition_image(D &d,unsigned buf){return partition_image(d.partitions[buf]);}
 void seed(D &d,unsigned work,unsigned kind,unsigned count){
  const unsigned other=(work+1)%24;d.cr1=0x6003;d.cr2=0x300;d.cmd_set_sector_length();
  if(kind==1){d.filters[other].condtrue=other;d.cr1=0x6400;d.cr2=0;d.cr3=other<<8;d.cr4=count;d.cmd_put_sector_data();d.dataxfer_long_w(0xcafebabe);}
@@ -51,7 +52,10 @@ int main(){unsigned cases=0,replays=0,refusals=0;
   auto p=std::make_unique<D>();auto &d=*p;seed(d,work,kind,count);const unsigned other=(work+1)%24;
   const auto keep=partition_image(d,other);const auto free=d.freeblocks;const auto public_count=d.partitions[work].numblks;
   const auto type=d.xfertype32;const auto *owner=d.transpart;const auto cursor=d.xferdnum;
+  const auto reservation=kind==1?partition_image(d.m_put_partition):kind==2?partition_image(d.m_get_partition):0;
   issue(d,work);
+  if(kind==1)CHECK(d.m_put_partition.numblks==count&&partition_image(d.m_put_partition)==reservation);
+  if(kind==2)CHECK(d.m_get_partition.numblks==count&&partition_image(d.m_get_partition)==reservation);
   CHECK(d.freeblocks==free+public_count&&d.buffull==int(d.freeblocks==0)&&!d.partitions[work].numblks&&d.partitions[work].size==-1);
   for(unsigned i=0;i<200;++i)CHECK(!d.partitions[work].blocks[i]&&d.partitions[work].bnum[i]==255);
   CHECK(partition_image(d,other)==keep&&d.xfertype32==type&&d.transpart==owner&&d.xferdnum==cursor&&d.m_host_transfer_active==bool(kind));
