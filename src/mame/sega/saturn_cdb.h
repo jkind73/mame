@@ -60,23 +60,21 @@ ygr.cpp) and the Saturn CD interface manual.
 #pragma once
 
 #include "cpu/sh/sh7032.h"
+#include "saturn_cdblock.h"
 
-class saturn_cdb_device : public device_t
+class saturn_cdb_device : public device_t, public saturn_cdblock_interface
 {
 public:
 	// construction/destruction
 	saturn_cdb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	// The CD block interrupt to the main CPUs, asserted while an unmasked
-	// HIRQ request is pending (the same SCU input the HLE device drives).
-	auto host_irq_cb() { return m_host_irq_cb.bind(); }
-
-	// Memory map of the SH-1's own bus; the host interface is host_r/host_w.
+	// Memory map of the SH-1's own bus.
 	void cdb_map(address_map &map) ATTR_COLD;
 
-	// Host (SH-2) interface.  Offsets are within the 64 byte register block.
-	uint16_t host_r(offs_t offset, uint16_t mem_mask = ~0);
-	void host_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
+	// saturn_cdblock_interface: host (SH-2) register window access.  The
+	// window is mirrored every 0x8000 from 0x05800000 (YGR register sheet).
+	virtual uint16_t host_r(offs_t offset, uint16_t mem_mask = ~0) override;
+	virtual void host_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0) override;
 
 	// Sector transfer completion, to be driven by the drive once it is
 	// emulated: raises CDIRQU's DET request.
@@ -92,7 +90,6 @@ protected:
 private:
 	required_device<sh7032_device> m_cdbcpu;
 	required_shared_ptr<uint16_t> m_dram;
-	devcb_write_line m_host_irq_cb;
 
 	static constexpr int FIFO_SIZE = 8; // "depth 6-8 words" (YGR register sheet)
 

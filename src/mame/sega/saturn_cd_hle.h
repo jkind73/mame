@@ -9,8 +9,9 @@
 #include "cdrom.h"
 #include "imagedev/cdromimg.h"
 #include "sound/cdda.h"
+#include "saturn_cdblock.h"
 
-class saturn_cd_hle_device : public device_t, public device_mixer_interface {
+class saturn_cd_hle_device : public device_t, public device_mixer_interface, public saturn_cdblock_interface {
   static constexpr unsigned MAX_FILTERS = 24;
   static constexpr unsigned MAX_BLOCKS = 200;
   static constexpr uint32_t MAX_DIR_SIZE = 256 * 1024;
@@ -21,12 +22,14 @@ public:
 
   void amap(address_map &map);
 
-  void set_tray_open();
-  void set_tray_close();
+  virtual void set_tray_open() override;
+  virtual void set_tray_close() override;
 
-  // HIRQ output to the host: on real hardware this line is connected to
-  // A-Bus external interrupt 0 of the SCU (IST bit 16, vector 0x50, level 7)
-  auto host_irq_cb() { return m_host_irq_cb.bind(); }
+  // Host register window access through the CD block interface, so the same
+  // driver can select this model or the LLE core.  The offsets are the same
+  // ones the amap below decodes, with the 0x18000 mirror normalised away.
+  virtual uint16_t host_r(offs_t offset, uint16_t mem_mask = ~0) override;
+  virtual void host_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0) override;
 
 protected:
   virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
@@ -38,7 +41,7 @@ private:
   required_device<cdrom_image_device> m_cdrom_image;
   required_device<cdda_device> m_cdda;
 
-  devcb_write_line m_host_irq_cb;
+  // The HIRQ line itself lives in saturn_cdblock_interface.
 
   emu_timer *m_sh1_timer;
   emu_timer *m_sector_timer;

@@ -476,6 +476,7 @@ test1f diagnostic hacks:
 
 #include "saturn_cd_hle.h"
 #include "saturn_cdb.h"
+#include "saturn_cdblock.h"
 
 
 #include "cpu/m68000/m68000.h"
@@ -499,7 +500,7 @@ public:
   sat_console_state(const machine_config &mconfig, device_type type,
                     const char *tag)
       : saturn_state(mconfig, type, tag), m_exp(*this, "exp"),
-        m_nvram(*this, "nvram"), m_saturn_cd_hle(*this, "saturn_cd_hle"),
+        m_nvram(*this, "nvram"), m_cdblock(*this, "cdblock"),
         m_ctrl1(*this, "ctrl1"), m_ctrl2(*this, "ctrl2") {}
 
   void saturn(machine_config &config) ATTR_COLD;
@@ -572,7 +573,12 @@ private:
 
   required_device<sat_cart_slot_device> m_exp;
   required_device<nvram_device> m_nvram;
-  required_device<saturn_cd_hle_device> m_saturn_cd_hle;
+  required_device<saturn_cdblock_slot_device> m_cdblock;
+
+  // CD block host window access: dispatches to whichever implementation the
+  // "cdblock" slot holds (HLE drive model by default, LLE firmware core).
+  uint16_t cd_r(offs_t offset, uint16_t mem_mask);
+  void cd_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 
   required_device<saturn_control_port_device> m_ctrl1;
   required_device<saturn_control_port_device> m_ctrl2;
@@ -581,6 +587,14 @@ private:
   void sound_mem(address_map &map) ATTR_COLD;
   void scsp_mem(address_map &map) ATTR_COLD;
 };
+
+uint16_t sat_console_state::cd_r(offs_t offset, uint16_t mem_mask) {
+  return m_cdblock->host_r(offset, mem_mask);
+}
+
+void sat_console_state::cd_w(offs_t offset, uint16_t data, uint16_t mem_mask) {
+  m_cdblock->host_w(offset, data, mem_mask);
+}
 
 uint8_t sat_console_state::saturn_cart_type_r() {
   if (m_exp)
@@ -665,7 +679,7 @@ void sat_console_state::saturn_mem(address_map &map) {
   // 4): a word write of exactly 1 to 257EFFFEh, step 3 of the access procedure
   map(0x057efffe, 0x057effff).w(FUNC(sat_console_state::ext_ram_init_w));
   map(0x05800000, 0x0589ffff)
-      .m(m_saturn_cd_hle, FUNC(saturn_cd_hle_device::amap));
+      .rw(FUNC(sat_console_state::cd_r), FUNC(sat_console_state::cd_w));
   /* Sound */
   map(0x05a00000, 0x05a7ffff)
       .rw(FUNC(sat_console_state::soundram_r),
@@ -736,12 +750,14 @@ void sat_console_state::scsp_mem(address_map &map) {
 
 INPUT_CHANGED_MEMBER(sat_console_state::tray_open) {
   if (newval)
-    m_saturn_cd_hle->set_tray_open();
+    if (m_cdblock->cd_block())
+      m_cdblock->cd_block()->set_tray_open();
 }
 
 INPUT_CHANGED_MEMBER(sat_console_state::tray_close) {
   if (newval)
-    m_saturn_cd_hle->set_tray_close();
+    if (m_cdblock->cd_block())
+      m_cdblock->cd_block()->set_tray_close();
 }
 
 static INPUT_PORTS_START(saturn) PORT_START("RESET") /* hardwired buttons */
@@ -1177,11 +1193,9 @@ void sat_console_state::saturn(machine_config &config) {
   m_scsp->add_route(0, "speaker", 1.0, 0);
   m_scsp->add_route(1, "speaker", 1.0, 1);
 
-  SATURN_CD_HLE(config, m_saturn_cd_hle);
-  m_saturn_cd_hle->add_route(0, "scsp", 1.0, 0);
-  m_saturn_cd_hle->add_route(1, "scsp", 1.0, 1);
-  m_saturn_cd_hle->host_irq_cb().set(m_scu,
-                                     FUNC(saturn_scu_device::cd_block_irq_w));
+  SATURN_CDBLOCK_SLOT(config, m_cdblock, saturn_cdblocks, "hle");
+  m_cdblock->host_irq_cb().set(m_scu,
+                               FUNC(saturn_scu_device::cd_block_irq_w));
 
   SATURN_CONTROL_PORT(config, m_ctrl1, saturn_controls, "joypad")
       .set_screen_tag("screen");
@@ -1203,8 +1217,6 @@ static void saturn_cart(device_slot_interface &device) {
 
 void sat_console_state::saturnus(machine_config &config) {
   saturn(config);
-  SATURN_CDB(config, "saturn_cdb", 16000000);
-
   SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-U");
   SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 
@@ -1218,8 +1230,6 @@ void sat_console_state::saturneu(machine_config &config) {
   saturn(config);
   m_vdp2->set_is_pal(true);
 
-  SATURN_CDB(config, "saturn_cdb", 16000000);
-
   SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("PAL");
   SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 
@@ -1231,8 +1241,6 @@ void sat_console_state::saturneu(machine_config &config) {
 
 void sat_console_state::saturnjp(machine_config &config) {
   saturn(config);
-  SATURN_CDB(config, "saturn_cdb", 16000000);
-
   SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-J");
   SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 
@@ -1244,8 +1252,6 @@ void sat_console_state::saturnjp(machine_config &config) {
 
 void sat_console_state::saturnkr(machine_config &config) {
   saturn(config);
-  SATURN_CDB(config, "saturn_cdb", 16000000);
-
   SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-K");
 
   SATURN_CART_SLOT(config, "exp", saturn_cart, nullptr);

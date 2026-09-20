@@ -17,9 +17,9 @@ DEFINE_DEVICE_TYPE(SATURN_CDB, saturn_cdb_device, "satcdb", "Saturn CDB (CD Bloc
 
 saturn_cdb_device::saturn_cdb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, SATURN_CDB, tag, owner, clock)
+	, saturn_cdblock_interface(mconfig, *this)
 	, m_cdbcpu(*this, "cdbcpu")
 	, m_dram(*this, "dram")
-	, m_host_irq_cb(*this)
 {
 }
 
@@ -248,7 +248,7 @@ void saturn_cdb_device::update_irq()
 	m_cdbcpu->set_input_line(7, (m_ygr.cdirqu & m_ygr.cdmsku) ? ASSERT_LINE : CLEAR_LINE);
 
 	// HIRQ & HIRQMASK is the CD block interrupt line to the main CPUs.
-	m_host_irq_cb((m_ygr.hirq & m_ygr.hirqmask) ? 1 : 0);
+	m_cd_host_irq_cb((m_ygr.hirq & m_ygr.hirqmask) ? 1 : 0);
 }
 
 void saturn_cdb_device::update_dreq()

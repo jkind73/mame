@@ -115,8 +115,9 @@ saturn_cd_hle_device::saturn_cd_hle_device(const machine_config &mconfig,
                                            const char *tag, device_t *owner,
                                            uint32_t clock)
     : device_t(mconfig, SATURN_CD_HLE, tag, owner, clock),
-      device_mixer_interface(mconfig, *this), m_cdrom_image(*this, "cdrom"),
-      m_cdda(*this, "cdda"), m_host_irq_cb(*this) {}
+      device_mixer_interface(mconfig, *this),
+      saturn_cdblock_interface(mconfig, *this), m_cdrom_image(*this, "cdrom"),
+      m_cdda(*this, "cdda") {}
 
 void saturn_cd_hle_device::device_add_mconfig(machine_config &config) {
   CDROM(config, "cdrom").set_interface("cdrom");
@@ -608,10 +609,73 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
 // the HIRQ line to the host is asserted while any unmasked CD interrupt is
 // pending; the SCU latches it as A-Bus external interrupt 0
 void saturn_cd_hle_device::update_hirq() {
-  if (m_host_irq_cb.isunset())
+  if (m_cd_host_irq_cb.isunset())
     return;
 
-  m_host_irq_cb((hirqreg & hirqmask) ? ASSERT_LINE : CLEAR_LINE);
+  m_cd_host_irq_cb((hirqreg & hirqmask) ? ASSERT_LINE : CLEAR_LINE);
+}
+
+/* Host window dispatch for the CD block interface.  This is the same decode
+   the amap below performs; the 0x18000 mirror (which repeats 0x05898000
+   onto 0x05880000) is normalised away first so both forms reach the same
+   register.  Everything the amap leaves unmapped stays open bus. */
+uint16_t saturn_cd_hle_device::host_r(offs_t offset, uint16_t mem_mask) {
+  offset &= 0xffff;
+  if ((offset & 0x18000) == 0x18000)
+    offset ^= 0x18000;
+
+  switch (offset) {
+  case 0x0000:
+  case 0x0002:
+    return datatrns_r(offset & 3, mem_mask);
+  case 0x0008:
+    return hirq_r();
+  case 0x000c:
+    return hirqmask_r();
+  case 0x0018:
+    return dr1_r();
+  case 0x001c:
+    return dr2_r();
+  case 0x0020:
+    return dr3_r();
+  case 0x0024:
+    return dr4_r();
+  default:
+    return 0xffff;
+  }
+}
+
+void saturn_cd_hle_device::host_w(offs_t offset, uint16_t data, uint16_t mem_mask) {
+  offset &= 0xffff;
+  if ((offset & 0x18000) == 0x18000)
+    offset ^= 0x18000;
+
+  switch (offset) {
+  case 0x0000:
+  case 0x0002:
+    datatrns_w(offset & 3, data, mem_mask);
+    break;
+  case 0x0008:
+    hirq_w(data);
+    break;
+  case 0x000c:
+    hirqmask_w(offset & 3, data, mem_mask);
+    break;
+  case 0x0018:
+    cr1_w(data);
+    break;
+  case 0x001c:
+    cr2_w(data);
+    break;
+  case 0x0020:
+    cr3_w(data);
+    break;
+  case 0x0024:
+    cr4_w(data);
+    break;
+  default:
+    break;
+  }
 }
 
 void saturn_cd_hle_device::trace_host_read(unsigned port, uint16_t value) {
