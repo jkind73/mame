@@ -4461,7 +4461,17 @@ void saturn_cd_hle_device::set_tray_open() {
   // new file accesses until a directory is freshly loaded.
   m_file_info_invalidated = true;
 
-  hirqreg |= DCHG;
+  // Opening stops the drive, including a read paused for buffer space.
+  // Do not cancel the independent host transfer or discard its buffers.
+  fadstoplay = 0;
+  playtype = 0;
+  buffull_temp_pause = false;
+  m_seek_in_progress = false;
+  m_seek_ticks_left = 0;
+  m_cdda->stop_audio();
+
+  // ST-162 function 1.8: both causes precede OPEN, also for manual opening.
+  hirqreg |= DCHG | EFLS;
   update_hirq();
 
   cd_change_status(CD_STAT_OPEN);

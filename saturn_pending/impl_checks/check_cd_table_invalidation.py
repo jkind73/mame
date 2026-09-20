@@ -12,6 +12,8 @@ head=head.replace('reads.push_back(fad);','reads.push_back(fad);if(!image.exists
 at=head.rfind('};');head=head[:at]+r'''
  struct Image{bool inserted=true;unsigned unloads=0;bool exists(){return inserted;}void unload(){inserted=false;++unloads;}}image;
  Image *m_cdrom_image=&image;uint8_t tray_is_closed=1,cd_speed=2;bool expect_invalid_reads=false;
+ bool buffull_temp_pause=false,m_seek_in_progress=false;
+ struct Audio{unsigned stops=0;void stop_audio(){++stops;}}audio;Audio *m_cdda=&audio;
  void set_tray_open();void set_tray_close();
 '''+head[at:]
 head+='\nconstexpr unsigned DCHG=0x20,CD_STAT_OPEN=0x600,CD_STAT_NODISC=0x700,CD_STAT_PAUSE=0x100;\n'
