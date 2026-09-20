@@ -1208,21 +1208,12 @@ void saturn_cd_hle_device::cmd_play_disc() {
     } else {
       // Host tracks are one-based; image tracks are zero-based and their
       // start positions are LBA. Keep the drive position in FAD (LBA + 150).
-      if ((start_pos >> 8) != 0) {
-        cur_track = (start_pos >> 8) - 1;
-        cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
-        cd_change_status(CD_STAT_SEEK);
-        cd_seek_stat = CD_STAT_PLAY;
-        // m_cdda->pause_audio(0);
-      } else {
-        // FIXME: Waku Waku 7 sets up track 0, that basically doesn't make any
-        // sense. Just skip it for now.
-        popmessage("Warning: track mode == 0");
-        cr_standard_return(cd_stat);
-        hirqreg |= (CMOK);
-        update_hirq();
-        return;
-      }
+      // Track/index 0/0 is the default disc-start position (ST-162 p.66),
+      // not a command error. Index-specific positioning remains separate.
+      cur_track = (start_pos >> 8) ? (start_pos >> 8) - 1 : 0;
+      cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
+      cd_change_status(CD_STAT_SEEK);
+      cd_seek_stat = CD_STAT_PLAY;
 
       LOGCMD("\ttrack mode %d\n", cur_track);
     }
@@ -1234,7 +1225,10 @@ void saturn_cd_hle_device::cmd_play_disc() {
       uint8_t end_track;
 
       end_track = (end_pos) >> 8;
-      fadstoplay = m_cdrom_image->get_track_start(end_track) + 150 - cd_fad_seek;
+      // The default end is the last sector before lead-out, not the start
+      // of image track zero. The image API uses AA for its lead-out entry.
+      fadstoplay = m_cdrom_image->get_track_start(end_track ? end_track : 0xaa) +
+                  150 - cd_fad_seek;
     }
   } else // play until the end of the disc
   {
