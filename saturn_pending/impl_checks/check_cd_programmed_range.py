@@ -51,6 +51,8 @@ int main(){unsigned ranges=0,repeats=0,resumes=0,replays=0,controls=0,intervals=
   const auto starts=d.audio.starts.size();range(d,440,end,0x80);CHECK(d.cd_stat==CD_STAT_PLAY&&d.cd_curfad==447&&d.fadstoplay==end-7&&d.audio.starts.size()==starts);
   for(unsigned i=7;i<end;++i)tick(d);CHECK(d.audio.rendered.size()==end);for(unsigned i=0;i<end;++i)CHECK(d.audio.rendered[i]==290+i);++controls;
  }
+ {D d;d.cd_speed=1;d.media.audio_mask=7;d.cd_stat=CD_STAT_PLAY;d.cd_curfad=450;d.fadstoplay=0;
+  range(d,440,40,0x80);CHECK(d.audio.playing&&d.audio.starts.size()==1);for(unsigned i=0;i<30;++i)tick(d);CHECK(d.audio.rendered.size()==30&&d.audio.rendered.front()==300&&d.audio.rendered.back()==329);++controls;}
  for(unsigned position:{150U,439U,440U,447U,479U,480U,900U}){D d;range(d,440,40,3);settle(d,CD_STAT_PLAY);seek(d,0x800000|position);settle(d,CD_STAT_PAUSE);
   play(d,NC,NC,0xff);const bool inside=position>=440&&position<480;settle(d,inside?CD_STAT_PLAY:CD_STAT_PAUSE);CHECK(d.cd_curfad==position&&d.fadstoplay==(inside?480-position:0));stored(d,440,480);++controls;
  }

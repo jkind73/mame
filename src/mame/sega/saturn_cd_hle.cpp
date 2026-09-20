@@ -1274,6 +1274,8 @@ void saturn_cd_hle_device::cmd_play_disc() {
     cd_change_status(CD_STAT_PAUSE);
   } else if (phase != CD_STAT_PLAY) {
     cd_change_status(CD_STAT_PLAY);
+  } else {
+    cd_update_cdda();
   }
   // An in-range, already playing pickup keeps its converter interval. A
   // changed endpoint is enforced by progress/EOF, not a mid-interval restart.
