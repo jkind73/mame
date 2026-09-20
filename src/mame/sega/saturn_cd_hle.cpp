@@ -555,16 +555,9 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
         xferoffs = 0;
         xfersect++;
       }
-    } else // sectors are done, kill 'em all if we can
-    {
-      if (xfertype32 == XFERTYPE32_GETDELETESECTOR) {
-        finish_get_delete();
-
-        // Keep the command active until DataEnd can report the count and
-        // signal EHST, but never delete this range twice on further reads.
-        xfersectnum = 0;
-      }
     }
+    // Exhaustion returns dummy data, but does not release GET+DELETE's
+    // captured allocations. DataEnd owns completion, including unread data.
     break;
 
   default:
@@ -1103,9 +1096,9 @@ void saturn_cd_hle_device::cmd_init_cdsystem() {
   cr_standard_return(cd_stat);
 }
 
-// Get-and-Delete removes the entire designated range, including sectors the
-// host did not read (ST-162-062094, CD interface p.96).  Account for actual
-// removed sector sizes, not xferdnum, which only counts host port accesses.
+// Get-and-Delete detaches its range at acceptance. DataEnd releases all
+// captured allocations, including sectors the host did not read (ST-162,
+// p.96). Work on the private descriptor, not mutable public positions.
 void saturn_cd_hle_device::finish_get_delete() {
   if (!transpart || xfersectpos >= MAX_BLOCKS)
     return;
@@ -2157,7 +2150,23 @@ void saturn_cd_hle_device::cmd_get_and_delete_sector_data() {
   xferdnum = 0;
   xfersectpos = sectofs;
   xfersectnum = sectnum;
-  transpart = &partitions[bufnum];
+  m_get_partition = partitions[bufnum];
+  transpart = &m_get_partition;
+
+  // Detach at acceptance without freeing: the host owns these physical
+  // buffers until DataEnd, not until its last port read. Public partition
+  // operations must neither expose nor recycle this reserved range.
+  partitionT &part = partitions[bufnum];
+  if (sectnum) {
+    for (uint32_t i = sectofs; i < sectofs + sectnum; ++i) {
+      if (part.blocks[i])
+        part.size -= std::max(part.blocks[i]->size, 0);
+      part.blocks[i] = nullptr;
+      part.bnum[i] = 0xff;
+    }
+    cd_defragblocks(&part);
+    part.numblks -= sectnum;
+  }
   // The first host view is selected when GET starts, before its first read.
   m_xfer_raw_sector = 0xffffffff;
   if (sectnum && sectofs < MAX_BLOCKS) {
