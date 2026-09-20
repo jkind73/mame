@@ -64,7 +64,7 @@ int main(){unsigned cases=0,replays=0,heldfull=0;
  for(unsigned count:{0U,1U,99U,199U,200U})for(unsigned kind=0;kind<3;++kind){
   if((count==0)!=(kind==0))continue;
   for(bool discard:{false,true}){if(kind!=1&&discard)continue;
-   for(bool automatic:{false,true})for(unsigned public_buf:{0U,7U,23U})for(unsigned pending:{0U,8U,0xffffU})for(unsigned remaining:{0U,1U,7U}){
+   for(bool automatic:{false,true})for(unsigned public_buf:{0U,7U,23U})for(unsigned pending:{0U,8U,0xffffU})for(unsigned remaining:{1U,7U,0U}){
     auto p=std::make_unique<D>();auto &d=*p;reserve(d,kind,count,discard);
     while(d.freeblocks)append(d,public_buf,true,0xa5);CHECK(d.buffull&&d.freeblocks==0);
     d.media.type=cdrom_file::CD_TRACK_MODE1_RAW;d.media.bytes[15]=1;
