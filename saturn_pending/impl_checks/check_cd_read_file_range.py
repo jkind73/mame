@@ -21,7 +21,6 @@ head=head[:head.rfind('};')]+r'''
  void cd_disconnect_filter_input(uint8_t);void cd_connect_cddevice(uint8_t);
  uint32_t cd_curfad=900,fadstoplay=17;uint16_t cd_next_stat=0;
  int sectlenin=2048,m_seek_ticks_left=0;bool m_status_change_in_progress=false;
- void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
  void cmd_read_file();void cd_change_status(u16);
 };
 #define LOGSTATUS(...) ((void)0)
