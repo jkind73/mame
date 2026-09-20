@@ -2411,8 +2411,10 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     if (!found)
       LOGWARN("CD: Get File Info %06x beyond directory (%u entries)\n", temp,
               unsigned(curdir.size()));
-    else if (entry.firstfad == 0 || entry.length == 0)
+    else if (entry.firstfad == 0)
       throw emu_fatalerror("File ID not found in XFERTYPE_FILEINFO_1");
+    // A held empty file still has a valid twelve-byte information record;
+    // its zero byte length is not a missing-file sentinel.
     //      LOGWARN("%08x %08x\n",curdir[temp].firstfad,curdir[temp].length);
     // first 4 bytes = FAD
     put_u32be(&finfbuf[0], entry.firstfad);
