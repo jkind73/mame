@@ -12,6 +12,8 @@ def prefix(name):
     return fixture,scope
 
 def run(head,functions,tail,label):
+    import runpy
+    head,functions=runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)
     with tempfile.TemporaryDirectory(prefix='impl-cd-tray-'+label+'-') as directory:
         cpp=Path(directory)/'check.cpp';exe=Path(directory)/'check';cpp.write_text(head+functions+tail)
         subprocess.run(['g++','-std=c++20','-O2','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)

@@ -54,6 +54,9 @@ start=extract(source,'void saturn_cd_hle_device::device_start()')
 regs=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] in selected]
 functions='void saturn_cd_hle_device::register_state(){\n'+'\n'.join(regs)+'\n}\n'
 functions+='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cd_playdata()', 'void saturn_cd_hle_device::cd_change_status('))
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;using Frame=std::array<int64_t,15>;
 void tick(D &d,unsigned n){if(n==2)d.buffull=0;d.cd_playdata();}

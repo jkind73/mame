@@ -924,6 +924,30 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
   }
 }
 
+// The drive cursor names the next sector interval. Arm the converter when
+// PLAY is entered, before that first interval elapses, rather than resetting
+// its sample cache at every sector tick. Stop it before a non-audio interval.
+void saturn_cd_hle_device::cd_update_cdda() {
+  if ((cd_stat & 0x0f00) != CD_STAT_PLAY || !fadstoplay ||
+      !m_cdrom_image->exists() || cd_curfad < 150 ||
+      m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad - 150)) !=
+          cdrom_file::CD_TRACK_AUDIO) {
+    if (m_cdda->audio_active())
+      m_cdda->stop_audio();
+    return;
+  }
+
+  const uint32_t lba = cd_curfad - 150;
+  const uint32_t leadout = m_cdrom_image->get_track_start(0xaa);
+  if (lba >= leadout) {
+    if (m_cdda->audio_active())
+      m_cdda->stop_audio();
+    return;
+  }
+  if (!m_cdda->audio_active())
+    m_cdda->start_audio(lba, std::min(fadstoplay, leadout - lba));
+}
+
 void saturn_cd_hle_device::cd_change_status(u16 new_status) {
   // BUSY over BUSY is an unexpected condition hence the !
   // The "???" are just to avoid making a division in this hot path
@@ -938,6 +962,10 @@ void saturn_cd_hle_device::cd_change_status(u16 new_status) {
   cd_stat = CD_STAT_BUSY;
   cd_next_stat = new_status;
   m_status_change_in_progress = true;
+  // A new drive operation invalidates the old converter range. The PLAY
+  // entry phase rearms it at the resulting pickup position if appropriate.
+  if (m_cdda->audio_active())
+    m_cdda->stop_audio();
   if (new_status == CD_STAT_SEEK)
     m_seek_ticks_left = 0; // retarget: re-measure the travel on the next tick
   // we are changing the status, definitely don't want PERI to interfere
@@ -4326,6 +4354,7 @@ void saturn_cd_hle_device::cd_playdata() {
     LOGSTATUS("Change to new status %04x -> %04x\n", cd_stat, cd_next_stat);
     cd_stat = cd_next_stat;
     m_status_change_in_progress = false;
+    cd_update_cdda();
     break;
   }
   case CD_STAT_SEEK: {
@@ -4400,11 +4429,9 @@ void saturn_cd_hle_device::cd_playdata() {
           cd_read_filtered_sector(cd_curfad, &p_ok);
           m_cdda->stop_audio(); // stop any pending CD-DA
         } else {
-          // TODO: pinpoint cases when this isn't okay
-          // (out of bounds disc for example)
+          // This interval's audio was armed on PLAY entry or at the previous
+          // sector boundary. Do not restart the converter/sample cache here.
           p_ok = 1;
-          // The image/audio interfaces use LBA, not the drive's FAD.
-          m_cdda->start_audio(cd_curfad - 150, 1);
         }
 
         if (p_ok) {
@@ -4461,6 +4488,7 @@ void saturn_cd_hle_device::cd_playdata() {
       }
     }
 
+    cd_update_cdda();
     break;
   }
   }

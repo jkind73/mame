@@ -20,6 +20,9 @@ functions+='\n'+'\n'.join(extract(source,'void saturn_cd_hle_device::'+name+'(')
  'cmd_get_buffer_size','cmd_get_buffer_partition_sector_number','cmd_delete_sector_data','cmd_reset_selector','cd_reset_filter_conditions','cmd_abort_file','cd_change_status'))
 helper=Path(__file__).with_name('check_cd_get_snapshot.py')
 helpers=helper.read_text().split("\ntail=r'''",1)[1].split('unsigned cases=',1)[0]
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 unsigned observed=0,seen_buf=0,seen_total=0,seen_count=0,seen_first=0;
 void notice(D &d){CHECK(d.m_host_transfer_active&&(d.hirqreg&DRDY));

@@ -48,4 +48,6 @@ def extend(head, functions, source):
     at=head.rfind('};')
     assert at>=0
     head='#include <algorithm>\n#include <vector>\n#include <cassert>\n'+head[:at]+'\n'+'\n'.join(declarations)+'\n'+head[at:]
-    return head,functions
+    import runpy
+    from pathlib import Path
+    return runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)

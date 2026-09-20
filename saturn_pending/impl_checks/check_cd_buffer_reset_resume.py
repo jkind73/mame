@@ -32,6 +32,9 @@ extra=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] i
 functions=functions.replace(registered,registered[:-1]+'\n'+'\n'.join(extra)+'\n}',1)
 helper=Path(__file__).with_name('check_cd_get_snapshot.py')
 helpers=helper.read_text().split("\ntail=r'''",1)[1].split('unsigned cases=',1)[0]
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using Frame=std::array<int64_t,9>;
 Frame frame(D &d){return {d.cd_stat,d.cd_next_stat,d.freeblocks,d.buffull,d.buffull_temp_pause,d.cd_curfad,d.fadstoplay,d.media.reads,d.m_host_transfer_active};}

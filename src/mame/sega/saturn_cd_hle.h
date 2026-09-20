@@ -215,6 +215,7 @@ private:
   void mpeg_bringup();
   void mpeg_reset();
   bool mpeg_gate(bool need_active);
+  void cd_update_cdda();
   void cd_free_block(blockT *blktofree);
   void cd_defragblocks(partitionT *part);
   void cd_copy_move_sector_data(bool move);

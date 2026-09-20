@@ -21,6 +21,9 @@ constexpr unsigned EFLS=0x200,CD_STAT_BUSY=0,CD_STAT_PAUSE=0x100,CD_STAT_SEEK=0x
 functions+='\n'+'\n'.join(extract(source,s) for s in (
  'void saturn_cd_hle_device::cmd_abort_file()',
  'void saturn_cd_hle_device::cd_change_status('))
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_audio_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 void abort(D &d){d.cr1=0x7500;d.cmd_abort_file();}
