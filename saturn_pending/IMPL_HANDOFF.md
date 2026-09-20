@@ -7027,3 +7027,85 @@ command paths. This clarifies, without changing, the admission contracts.
   already preserves bytes, but GET still follows mutable partition slots.
   Completing filesystem buffer clearing requires addressing this ownership
   gap rather than making an unrelated transfer disappear or guessing WAIT.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0096 | CD-01 | a4a6da63 | UNVALIDATED | Ordinary GET captures physical slot identity so deletion/compaction of preceding sectors cannot retarget the accepted range |
+
+### IMPL-0096 — CD-01 — GET slot map independent of public partition positions
+
+- branch/commit/base: `arena/01a0b897-mame` @ **a4a6da63**; base **163f72d0**.
+  Publication remains **BLOCKED(GitHub reconnection for push)** at preparation;
+  local recovery bundle refreshed through the source/probe commit.
+- files: `src/mame/sega/saturn_cd_hle.h:250`;
+  `src/mame/sega/saturn_cd_hle.cpp:238-240,277-301,374-376,2030-2034`;
+  `saturn_pending/impl_checks/check_cd_get_snapshot.py`; declaration/actual-
+  registration adapters in buffer-save and shared scope scaffold only.
+- contract: ordinary Get Sector Data captures its physical slot map when
+  accepted, not live public positions for every port read. Delete Sector Data
+  may compact the public partition while GET owns the host interface, without
+  changing which still-allocated sectors that GET reads. Capture adds no
+  buffer allocation, pinning, copying of payload or change to transfer length.
+- primary source: ST-162-062094 p.96 functions7.2/7.3: GET designates a sector
+  range before fetching; deletion advances subsequent sector positions in
+  order. pp.80-81 functions1.9/1.10: accepted transfer ends explicitly and a
+  complete transfer reports the normal word count. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3488-3505` allows DELETE during active DT and captures
+  `DT.BufList` before transfer; `:3507-3525` starts reading that captured
+  list. blobd367dd0c0500ff7b1e2637e748015543b0a3078e. Fork163f72d0 and cached
+  upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d use the public
+  partition directly. Independently written descriptor capture; no code
+  imported. Existing private-PUT pointer serialization provides the local
+  representation pattern, not the hardware evidence.
+- expected observable: with public[A,B,C,D], accept GET(position2,count2),
+  then DELETE(position0,count1), optionally appendE. GET still returns C,D,
+  not D,E or a skipped/null slot. Public sector count/free capacity follow
+  deletion/refill normally; GET adds zero reserved sectors. Bytes and full
+  DataEnd word count exact, zero tolerance. Save/reload preserves the map and
+  continuation without a new HIRQ edge. No cycle timing claim.
+- suggested method: use distinguishable sector payloads, consume0/partial/
+  all GET data, delete preceding sectors, refill public positions and finish
+  GET. Repeat across all24 selectors and registered saves; include a199-
+  sector accepted range reaching physical slot199.
+- falsifier: compaction/refill retargets GET data, consumes extra capacity,
+  destroys host ownership before DataEnd, or restore follows the changed
+  public positions instead of the captured physical identities.
+- self-check run (method-level, unvalidated):15649 compacted/refilled maps,
+ 1304 registered continuations,15649 replacement WAIT controls and288
+ 199-sector controls (included in the map count);256 hard-reset snapshot
+  controls. ASan/fail-fast UBSan exit0. Historical163f72d0 fails on an actual
+  returned word, before representation assertions. Seven mutants fail:
+  no capture/live partition/missing saved IDs/missing pointer repair produce
+  wrong words; missing save encoding/decoding violate replay identity; no
+  reset violates the internal snapshot reset invariant.40 own CD probes:
+ 35 exit0, same five unchanged legacy conflicts documented in0094/0095;
+  `/tmp/impl-ref/cd-0096-aggregate.log`. Native warning-enabled CD TU syntax/
+  diff0. No validator asset or expected value altered; no full build.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: **save-state layout changes**: private
+  `m_get_partition` size/count/IDs registered in this change; pointers rebuilt
+  from saved IDs and saved transfer-descriptor index25 (PUT remains24).
+  Descriptor retains the original offset space, not extra sector storage.
+  This is NOT completion of buffer-clearing ownership: freeing a selected
+  block still makes the current reader reject its allocation size of-1,
+  despite backing bytes surviving. Selected-block reuse/payload replacement,
+  GETDELETE early detachment/deferred freeing, FIFO/prefetch, interrupted
+  DataEnd counting and native save/bus qualification remain outside this
+  candidate. GETDELETE still uses the public partition. Existing sector
+  views, PUT reservations, EOF ownership and five diagnostic conflicts are
+  not silently redefined.
+
+### Additional primary tray evidence retained for the next drive change
+
+ST-162-062094 p.80 function1.8 explicitly states **both DCHG and EFLS become1
+before OPEN**, including manual opening, and says opening stops the drive.
+This strengthens the command-level ordering contract beyond p.53. It does
+not supply a numeric latency or qualify guessed drive-phase delays. Current
+HLE tray opening still lacks EFLS and old buffer-full producer cancellation;
+0095 did not implement either. Proceed from this primary contract rather
+than import reference phase timings.
