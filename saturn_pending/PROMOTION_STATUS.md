@@ -1,6 +1,6 @@
 # Saturn CD candidate promotion status
 
-Updated: 2026-09-20. Scope: the validator's second review of **b3eece68ae156aa90ad25c6c6308194a32e15348**.
+Updated: 2026-09-20. Historical acceptance scope: the validator's second review of **b3eece68ae156aa90ad25c6c6308194a32e15348**. New promotion follow-ups are listed separately below.
 
 ## Decision
 
@@ -76,8 +76,8 @@ The earlier, narrower acceptance of IMPL-0078 remains historical code-review/met
 ## Remaining release / full-branch gates
 
 - The four **scaffold-only** failures have implementation-side repairs in `45dab461`; original assertions/expected values are unchanged. The local end-to-end runner exited 0 with **69 non-skipped scripts and 3 live skips**, not 72 native passes (details below). Obtain the validator's rerun with a native executable before closing the native regression gate. These were not identified production defects.
-- Add the requested live raw-PUT/selector/discard fixture and obtain validator results.
-- Resolve the three genuine CD-DA gaps: Q track during Play, SCAN audibility and SCAN movement.
+- The requested live raw-PUT/selector/discard fixture is added in `07e283e7`; obtain its native result with `--require-runtime` (local run skips without an executable).
+- Candidates `1c8e03d4` (Q track addressing) and `c4eb8b4d` (SCAN movement/entry audibility) address the three reported CDDA gaps. Obtain independent review and native results before treating them as resolved; these candidates are not covered by the earlier acceptance.
 - Do **not** treat `play_tone_1k` / `play_tone_not_2k` as device defects using the present headless mixer capture. First use an appropriate capture point or an audio sink.
 - Obtain the destination-tree integration runs above. Acceptance on the reviewed implementation is not acceptance of an unmeasured merge.
 
@@ -126,3 +126,62 @@ facts at their pinned revisions. This local run is a different evidence event,
 with native skips explicitly retained. Folded host-path/BFUL integration,
 live raw-PUT/selector/discard coverage, the three CDDA gaps and broader method
 probe conflicts remain open; no parent milestone or whole branch is promoted.
+
+
+## New promotion follow-ups — awaiting independent review/runtime
+
+| Work | Commit | Current evidence / gate |
+|---|---|---|
+| IMPL-0131: Q pickup-to-track and control lookup | `1c8e03d4` | 3520 extracted-method images, two admission controls, two assertion-killed mutations; no new native result |
+| IMPL-0132: bounded forward/reverse SCAN and entry-dependent audio | `c4eb8b4d` | 512 images, 1024 modeled intervals, 32 registered continuations, seven assertion-killed mutations; no native audio/timing/save result |
+| Live host raw PUT / selector / discard fixture | `07e283e7` | Generator/parser self-test and Lua syntax check; actual runtime SKIP locally |
+
+**Production has now changed after the reviewed b3eece68 revision.** The source
+identity table above is historical, not a claim that the current tip is that
+same tested binary. The 0120–0130 acceptance remains attributed at the reviewed
+revision; it does not automatically accept 0131/0132 or their integration.
+
+SCAN follows ST-162 p.84's PLAY-entry -12 dB / PAUSE-entry silence and stops at
+the programmed range boundary without data reads. Its stride2 at75Hz is an HLE
+approximation, not measured hardware timing. **Save layout changes:** the new
+scan direction/entry-audibility fields are saved in the same implementation
+change. Older save files are not compatible. Q0131 is only a track/control
+address correction; the existing binary-versus-BCD/FAD-versus-MSF format conflict
+and general pregap/multisession behavior remain open.
+
+Latest local `run_all.py`: **exit0, 73 scripts, 69 non-skipped and 4 live skips**
+(backup RAM, cart runtime, CD HIRQ, new CD host runtime). This supersedes only
+the local runner count above, not the validator's historical native results.
+No full build was run. CD TU syntax check exits0.
+
+Broader implementation-only CD probe batch: **67 scripts, 56 exit0, 11 conflicts**.
+The ten previously recorded conflicts remain. The additional conflict is
+`check_cd_idle_cadence.py`: its inherited SCAN/data-rate and query-count controls
+expect the old track-dependent cadence; the new explicit SCAN policy is75Hz
+for both track types. That expectation was **not edited**. The dedicated SCAN
+probe checks the new policy, but this is not independent acceptance or a green
+implementation-probe batch. Five new mock gain-dependency compile failures
+were repaired with declarations only before the final aggregate rerun.
+
+### Exact remaining promotion sequence
+
+1. Build the candidate externally using the validator's low-memory build setup;
+   do not reuse the b3eece68 binary to qualify new production code.
+2. Run native `-validate` and `regtests/saturn/run_all.py`; distinguish every
+   runtime skip from an executed fixture.
+3. Run the new fixture with missing-prerequisite failure enabled:
+   ```sh
+   python3 regtests/saturn/test_cd_host_runtime.py --require-runtime \
+     --executable /path/to/rebuilt/saturn --rompath /path/to/existing/roms
+   ```
+4. Rerun the unchanged validator CDDA fixture for Q/SCAN with an appropriate
+   audio sink/converter observation. Do not reinterpret the shared headless
+   mixer tone failures as device defects. Review the new SCAN cadence against
+   the untouched legacy probe and hardware evidence.
+5. On the destination folded-host tree, port the accepted shared-cursor/straddle
+   behavior, reconcile allocator/producer/End BFUL cause-clear policy, and run
+   `test_cd_hirq.py`, `test_cd_transfer.py`, `test_cd_lle.py` and the new host
+   fixture. This implementation branch still uses its direct mapped aperture;
+   **no destination merge or folded-driver port has been performed here**.
+6. Record the validator's verdicts. Until then, 0131/0132, broader raw-PUT runtime,
+   destination integration and whole-branch promotion remain open.

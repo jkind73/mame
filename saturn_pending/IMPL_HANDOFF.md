@@ -9632,3 +9632,37 @@ lookup arguments. The method results and limited production change are unchanged
   transaction, masked SCU BFUL delivery without HIRQ polling, selector latency,
   gameplay or headless mixer tone assertions. No existing validator fixture,
   evidence directory or native validation script changed.
+
+## Promotion follow-up aggregate and remaining gates — 2026-09-20
+
+- At07e283e7, `python3 regtests/saturn/run_all.py` exits0: **73 scripts,
+  69 non-skipped exit-zero scripts, four live skips** (backup_ram, cart_runtime,
+  cd_hirq and cd_host_runtime). Scratch log `/tmp/promotion/run-all.log`;
+  counts are durable here. No native acceptance is inferred from skips.
+- Expanded implementation CD batch now has67 scripts (two new probes): final
+  **56 exit0 /11 conflicts**. The initial run found five missing `set_output_gain`
+  declarations in the common fallback Audio mock; this follow-up adds only that
+  dependency and repeats all67. Expectations unchanged. No production change
+  in this declaration/result-record follow-up.
+- Ten prior conflicts retained: change_directory, directory_save, drive_address,
+  empty_media_response, file_abort, file_connections, file_transfer_length,
+  play_default, read_directory_admission, table_invalidation (all filenames
+  `saturn_pending/impl_checks/check_cd_<name>.py`). New conflict: idle_cadence's
+  active-control assertions expect SCAN/data to use75*cd_speed and query the
+  track type.0132 uses75Hz for SCAN in both audio/data areas. The old assertion
+  remains untouched; the new dedicated scan probe exercises that policy.
+  This is an explicitly reported contract conflict, NOT a claimed green batch.
+- Assertion-text audit versus8a7f9497 of existing amended scaffolds found no
+  changed CHECK/assert expressions; the two new scan fields have actual save
+  registrations. Syntax/TU checks and mutation results are in0131/0132 above.
+- `PROMOTION_STATUS.md` now clearly separates the old accepted source from new
+  UNVALIDATED candidates and contains the exact native fixture invocation and
+  destination integration sequence. No folded-driver merge was made: the
+  current branch still uses the direct mapped HLE aperture. Reconciliation of
+  the destination BFUL allocator policy and folded dispatch belongs to that
+  integration gate, not something this local method batch establishes.
+- New native build/fixture results are blocked on a rebuilt candidate executable
+  supplied by the independent validator. Historical native b3eece68 results
+  remain valid for that source, but do not certify these new production changes.
+  No full build, gameplay claim, protected fixture expectation change, validator
+  asset write or whole-branch promotion was performed.

@@ -36,7 +36,7 @@ def extend(head, functions, source):
             declarations.append(f'{kind} {field}={value};')
     if 'm_cdda->audio_active()' in functions:
         if 'm_cdda' not in head:
-            declarations.append('struct Audio{bool audio_active(){return false;}void stop_audio(){}}audio;Audio *m_cdda=&audio;')
+            declarations.append('struct Audio{bool audio_active(){return false;}void stop_audio(){}void set_output_gain(int,double){}}audio;Audio *m_cdda=&audio;')
         else:
             audio=extract(head,'struct Audio')
             if 'audio_active(' not in audio:
