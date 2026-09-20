@@ -7913,3 +7913,71 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   The index helper also feeds the existing Q builder, so its index value can
   change there; Q packet layout/encoding is not reworked or qualified. No
   full build, validator asset changes or frozen sound/video source changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0107 | CD-01 | ba53aead | UNVALIDATED | Abort File cancels buffer-space auto-resume intent without releasing host reservations or clearing selectors/public data |
+
+### IMPL-0107 — CD-01 — Abort is not a temporary buffer-full pause
+
+- branch/commit/base: `arena/01a0b897-mame` @ **ba53aead**;
+  base **ddb16fee**. Published normally.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2650-2660`;
+  `saturn_pending/impl_checks/check_cd_abort_resume.py`;
+  `cd_audio_scaffold.py` (existing pause-reason declaration for status mocks).
+- contract: clear the existing buffer-full resume reason when Abort requests
+  a pause. Later public Reset/Delete or host DataEnd may free capacity, but
+  must not autonomously restart the aborted producer. Preserve the host owner,
+  cursor, backing data, public partitions, selectors and actual allocation
+  accounting. Ordinary non-Abort automatic buffer-space resumption is unchanged.
+- primary source: ST-162-062094 p.101 function8.6 stops file access, pauses
+  the drive and raises EFLS, explicitly preserving partitions/selectors.
+  p.38 distinguishes automatic buffer-full pause/resumption. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:3910-3916`
+  requests FLS.Abort; `:1070-1078,1239-1252` stops the file job and its active
+  play range/repeat state. `:2078-2099` only resumes when the end is not met
+  and space exists. The HLE has a separate saved buffer-pause reason, so this
+  independently written correction clears that reason rather than importing
+  Mednafen's scheduler. Forkddb16fee/upstream398bba74's Abort only request
+  PAUSE; the fork's later space-resume predicate could restart the request.
+- expected observable: after Abort, drive FAD and remaining progress do not
+  advance when space is already available or becomes available through reset,
+  GETDELETE/discard-PUT DataEnd or retained-PUT deletion. Existing BUSY-to-PAUSE
+  staging remains. Host GET/GETDELETE reads and PUT writes continue at the
+  accepted cursor and DataEnd still releases/routs ownership normally. Exact
+  sector/byte counts and unchanged data hashes, zero tolerance; no new latency.
+- suggested method: fill all200 slots with mixtures of public sectors and
+  private reservations, pause for space, issue Abort, then free capacity in
+  different ways. Trace media reads/FAD, host port continuation, capacity and
+  saved/restored continuation. Include ordinary manual/automatic pauses without
+  Abort so the fix cannot merely disable all buffer-space resumption.
+- falsifier: any autonomous post-Abort sector production/FAD progress after
+  freeing space, loss of an accepted host transfer, changed buffered bytes or
+  selectors, incorrect capacity release, or restored auto-resume intent.
+- self-check run (method-level, unvalidated):1344 Abort/phase/capacity/host
+  images and1344 registered pool/host/drive replays; two non-Abort manual/auto
+  controls. Includes space release before/after Abort,0/positive remaining
+  ranges, PUT retain/discard, ordinary GET and private GETDELETE. Hashes public
+  maps, all physical backing and selector/routing data across Abort. Actual
+  Abort/drive/reset/allocator/port/End/Delete/save methods, mock media/IRQ/audio/
+  serializer. ASan/fail-fast UBSan exit0. Historicalddb16fee and six compiled
+  mutants assertion-fail: retain reason, clear only when still full, erase host
+  ownership, clear a public partition, reset a filter, omit reason registration.
+  Historical/reason/save mutants fail actual FAD/progress/no-read controls.
+  Warning-enabled CD TU syntax/diff0. All51 own probes:41 exit0, same ten
+  disclosed conflicts; `/tmp/impl-ref/cd-0107-aggregate.log`.
+- state: **UNVALIDATED**; no native command arbitration/IRQ/save qualification.
+- not covered/known doubts: no new fields/save-layout; buffull_temp_pause was
+  already registered. Active remaining-count bookkeeping is retained, not a
+  claim of complete saved programmed-range semantics. Interrupted directory/
+  hold invalidation, asynchronous FLS arbitration and exact Abort timing remain
+  separate. No host EOF/End, allocator or IRQ-acknowledgement policy change.
+  Ten untouched original conflicts: file_connections, file_transfer_length,
+  directory_save, change_directory, read_directory_admission,
+  table_invalidation, file_abort, drive_address, play_default,
+  empty_media_response. No full build or validator asset/expectation edits.
