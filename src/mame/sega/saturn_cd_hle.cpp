@@ -161,6 +161,9 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(cd_curfad));
   save_item(NAME(cd_fad_seek));
   save_item(NAME(fadstoplay));
+  save_item(NAME(m_play_start_fad));
+  save_item(NAME(m_play_end_fad));
+  save_item(NAME(m_play_range_valid));
   save_item(NAME(buffull));
   save_item(NAME(buffull_temp_pause));
   save_item(NAME(m_seek_ticks_left));
@@ -418,6 +421,8 @@ void saturn_cd_hle_device::device_reset() {
   cd_speed = 2;
   cdda_maxrepeat = 0;
   cdda_repeat_count = 0;
+  m_play_start_fad = m_play_end_fad = 150;
+  m_play_range_valid = false;
 
   // MPEG state is still not registered for save states; reset re-establishes
   // it independently of the saved selector/sector-buffer state.
@@ -1201,127 +1206,80 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
 }
 
 void saturn_cd_hle_device::cmd_play_disc() {
-  // Play Disc. FAD is in lowest 7 bits of cr1 and all of cr2.
-  uint32_t start_pos, end_pos;
-  uint8_t play_mode;
+  const uint32_t start_pos = (uint32_t(cr1 & 0xff) << 16) | cr2;
+  const uint32_t end_pos = (uint32_t(cr3 & 0xff) << 16) | cr4;
+  const uint8_t mode = cr3 >> 8;
 
-  LOGCMD("%s: Play Disc\n", machine().describe_context());
-
-  play_mode = (cr3 >> 8) & 0x7f;
-
-  // preserve current position if bit 7 set
-  if (!(cr3 & 0x8000)) {
-    start_pos = ((cr1 & 0xff) << 16) | cr2;
-    end_pos = ((cr3 & 0xff) << 16) | cr4;
-
-    if (start_pos & 0x800000) {
-      if (start_pos != 0xffffff) {
-        cd_fad_seek = start_pos & 0x7f'ffff;
-        cd_change_status(CD_STAT_SEEK);
-        cd_seek_stat = CD_STAT_PLAY;
-      }
-
-      LOGCMD("\tFAD mode\n");
-      cur_track = m_cdrom_image->get_track(cd_curfad - 150);
-    } else {
-      // Host tracks are one-based; image tracks are zero-based and their
-      // start positions are LBA. Keep the drive position in FAD (LBA + 150).
-      // Track/index 0/0 is the default disc-start position (ST-162 p.66),
-      // not a command error. Index-specific positioning remains separate.
-      cur_track = (start_pos >> 8) ? (start_pos >> 8) - 1 : 0;
-      cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
-      cd_change_status(CD_STAT_SEEK);
-      cd_seek_stat = CD_STAT_PLAY;
-
-      LOGCMD("\ttrack mode %d\n", cur_track);
-    }
-
-    if (end_pos & 0x800000) {
-      if (end_pos != 0xffffff)
-        fadstoplay = end_pos & 0x7f'ffff;
-    } else {
-      uint8_t end_track;
-
-      end_track = (end_pos) >> 8;
-      // The default end is the last sector before lead-out, not the start
-      // of image track zero. The image API uses AA for its lead-out entry.
-      fadstoplay = m_cdrom_image->get_track_start(end_track ? end_track : 0xaa) +
-                  150 - cd_fad_seek;
-    }
-  } else // play until the end of the disc
-  {
-    start_pos = ((cr1 & 0xff) << 16) | cr2;
-    end_pos = ((cr3 & 0xff) << 16) | cr4;
-
-    if (start_pos != 0xffffff) {
-      /* Madou Monogatari sets 0xff80xxxx as end position, needs investigation
-       * ... */
-      if (end_pos & 0x800000)
-        fadstoplay = end_pos & 0xfffff;
-      else {
-        if (end_pos == 0)
-          fadstoplay = (m_cdrom_image->get_track_start(0xaa) + 150) - cd_curfad;
-        else
-          fadstoplay =
-              (m_cdrom_image->get_track_start((end_pos & 0xff00) >> 8) + 150) -
-              cd_curfad;
-      }
-      LOGCMD("\ttrack mode %08x %08x -> %08x %08x\n", start_pos, end_pos,
-             cd_curfad, fadstoplay);
-      // make sure to SEEK anyway:
-      // - Multiplayer Audio CD would otherwise override a previous track seek
-      // command
-      cd_change_status(CD_STAT_SEEK);
-      cd_seek_stat = CD_STAT_PLAY;
-    } else {
-      /* resume from a pause state */
-      // FIXME: verify implementation with Galaxy Fight
-      // it calls 10ff ffff ffff ffff, but then it follows up with
-      // 0x04->0x02->0x06->0x11->0x04->0x02->0x06 command sequence
-      // (and current implementation nukes start/end FAD addresses at 0x04).
-      // I'm sure that this doesn't work like this, but there could
-      // be countless possible combinations ...
-      if (fadstoplay == 0) {
-        // don't override FAD start, Multiplayer Audio CD needs this
-        // (testable by pausing then play again current track)
-        // TODO: need to preserve previous fadstoplay
-        // (in said case, by playing until the end of disc rather than just one
-        // track)
-        // cd_curfad = m_cdrom_image->get_track_start(cur_track);
-        fadstoplay =
-            m_cdrom_image->get_track_start(cur_track + 1) + 150 - cd_curfad;
-        cd_change_status(CD_STAT_SEEK);
-        cd_seek_stat = CD_STAT_PLAY;
-      }
-      LOGCMD("\ttrack resume %08x %08x (%06x %06x)\n", cd_curfad, fadstoplay,
-             start_pos, end_pos);
-    }
+  if (!m_cdrom_image->exists()) {
+    cr_standard_return(cd_stat);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
   }
 
-  LOGCMD("\tPlay Disc: current %06x -> start %06x length %06x\n", cd_curfad,
-         cd_fad_seek, fadstoplay);
+  const uint32_t leadout = m_cdrom_image->get_track_start(0xaa) + 150;
+  const uint32_t old_start = m_play_range_valid ? m_play_start_fad : 150;
+  const uint32_t old_end = m_play_range_valid ? m_play_end_fad : leadout;
+  uint32_t start = old_start;
+  uint32_t end = old_end;
 
-  cr_standard_return(cd_stat);
-  hirqreg |= (CMOK);
-  update_hirq();
+  // ST-162 pp.65-66: held range is start/end FAD, not remaining length.
+  // The end FAD parameter on the wire is a count from the programmed start.
+  // Track/index-specific positioning beyond the existing track boundaries
+  // remains separate; index zero selects the whole track.
+  if (start_pos != 0xffffff) {
+    if (start_pos & 0x800000)
+      start = std::clamp(start_pos & 0x7fffff, 150U, leadout);
+    else if (!start_pos)
+      start = 150;
+    else
+      start = m_cdrom_image->get_track_start((start_pos >> 8) ?
+                  (start_pos >> 8) - 1 : 0) + 150;
+  }
+  if (end_pos != 0xffffff) {
+    if (end_pos & 0x800000)
+      end = std::min(start + (end_pos & 0x7fffff), leadout);
+    else
+      end = m_cdrom_image->get_track_start((end_pos >> 8) ?
+                  (end_pos >> 8) : 0xaa) + 150;
+  }
 
+  const uint8_t maximum = (mode & 0x7f) == 0x7f ? cdda_maxrepeat : mode & 0xf;
+  if (start != old_start || end != old_end || maximum != cdda_maxrepeat)
+    cdda_repeat_count = 0;
+  cdda_maxrepeat = maximum;
+  m_play_start_fad = start;
+  m_play_end_fad = end; // exclusive; a reversed/empty range is retained
+  m_play_range_valid = true;
+
+  const bool no_move = mode & 0x80;
+  const uint16_t phase = cd_stat & 0x0f00;
+  const bool pending_seek = phase == CD_STAT_SEEK ||
+      (phase == CD_STAT_BUSY && (cd_next_stat & 0x0f00) == CD_STAT_SEEK);
+  // A no-move command must not redirect an already accepted seek to a stale
+  // pre-seek position. Otherwise retain the actual current pickup position.
+  const uint32_t position = no_move ? (pending_seek ? cd_fad_seek : cd_curfad) :
+                                   std::min(start, leadout);
+  const uint32_t limit = std::min(end, leadout);
+  fadstoplay = position >= start && position < limit ? limit - position : 0;
+  buffull_temp_pause = false;
   playtype = 0;
 
-  // cdda
-  // if(m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
-  // cdrom_file::CD_TRACK_AUDIO)
-  //{
-  //	m_cdda->pause_audio(0);
-  //	//m_cdda->start_audio(cd_curfad, fadstoplay);
-  //	//cdda_repeat_count = 0;
-  //}
-
-  // ST-162 p.67: 7F retains the programmed maximum, independently of
-  // bit 7 (pickup movement). The visible repeat counter is separate.
-  if (play_mode != 0x7f)
-    cdda_maxrepeat = play_mode & 0xf;
-
-  cdda_repeat_count = 0;
+  if (!no_move || pending_seek) {
+    cd_fad_seek = position;
+    cd_change_status(CD_STAT_SEEK);
+    cd_seek_stat = fadstoplay ? CD_STAT_PLAY : CD_STAT_PAUSE;
+  } else if (!fadstoplay) {
+    // ST-162 p.67: no pickup movement outside the range means PAUSE.
+    cd_change_status(CD_STAT_PAUSE);
+  } else if (phase != CD_STAT_PLAY) {
+    cd_change_status(CD_STAT_PLAY);
+  }
+  // An in-range, already playing pickup keeps its converter interval. A
+  // changed endpoint is enforced by progress/EOF, not a mid-interval restart.
+  cr_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_seek_disc() {
@@ -4481,18 +4439,16 @@ void saturn_cd_hle_device::cd_playdata() {
               if (cdda_repeat_count < 0xe)
                 cdda_repeat_count++;
 
-              // TODO: untested with cur_track == 0xaa (lead-out)
-              // - dendego (tries to) playback redbook track 3 on title screen
-              // after seek
-              // - girlpuz1 is an easy test case, on both title and Himekuri
-              // mode NOTE: cur_track is -1 at this point vs. redbook spec
-              assert(cur_track >= 0 && cur_track != 0xff);
-              // cd_curfad = m_cdrom_image->get_track_start(cur_track);
-              cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
-              fadstoplay =
-                  m_cdrom_image->get_track_start(cur_track + 1) + 150 - cd_fad_seek;
+              // Repeat the programmed segment, not the track containing
+              // the original pickup. Current progress is not its endpoint.
+              const uint32_t leadout = m_cdrom_image->get_track_start(0xaa) + 150;
+              cd_fad_seek = m_play_range_valid ?
+                  std::min(m_play_start_fad, leadout) : 150;
+              const uint32_t end = m_play_range_valid ?
+                  std::min(m_play_end_fad, leadout) : leadout;
+              fadstoplay = end > cd_fad_seek ? end - cd_fad_seek : 0;
               cd_change_status(CD_STAT_SEEK);
-              cd_seek_stat = CD_STAT_PLAY;
+              cd_seek_stat = fadstoplay ? CD_STAT_PLAY : CD_STAT_PAUSE;
               LOGCMD("Repeat hit track %d count %d/%d FAD %06x -> start %06x "
                      "end %06x\n",
                      cur_track + 1, cdda_repeat_count, cdda_maxrepeat,

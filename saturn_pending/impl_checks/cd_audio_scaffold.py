@@ -12,6 +12,9 @@ def extract(text, signature):
 
 def extend(head, functions, source):
     declarations=[]
+    for field,kind,value in [('m_play_start_fad','uint32_t','150'),('m_play_end_fad','uint32_t','150'),('m_play_range_valid','bool','false')]:
+        if field in functions and field not in head:
+            declarations.append(f'{kind} {field}={value};')
     if 'buffull_temp_pause' in functions and 'buffull_temp_pause' not in head:
         declarations.append('bool buffull_temp_pause=false;')
     sig='void saturn_cd_hle_device::cd_update_cdda()'

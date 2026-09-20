@@ -289,7 +289,10 @@ private:
   uint16_t cd_seek_stat;
   uint32_t cd_curfad; // = 0;
   uint32_t cd_fad_seek;
-  uint32_t fadstoplay; // = 0;
+  uint32_t fadstoplay; // current producer progress, not the programmed range
+  uint32_t m_play_start_fad = 150;
+  uint32_t m_play_end_fad = 150; // exclusive
+  bool m_play_range_valid = false; // false selects the default disc range
   int buffull, sectorstore, freeblocks;
   bool buffull_temp_pause;
 
