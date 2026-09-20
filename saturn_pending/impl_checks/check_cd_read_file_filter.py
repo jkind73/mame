@@ -8,6 +8,9 @@ scope={'__file__':str(fixture),'__name__':'read_file_filter_scaffold'}
 exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),scope)
 head,functions,source,header,extract=(scope[k] for k in ('head','functions','source','header','extract'))
 head='namespace cdrom_file {constexpr unsigned MAX_SECTOR_DATA=2352;}\n'+head
+# Replace an inherited minimal pool declaration with the actual sector type.
+if 'struct blockT' in head:
+    head=head.replace(extract(head,'struct blockT')+';','',1)
 head=head.replace(' filterT filters[24]{};',extract(header,'struct blockT')+';\n uint8_t cd_filter_destination(uint8_t,const blockT&) const;\n filterT filters[24]{};')
 functions+='\n'+extract(source,'uint8_t saturn_cd_hle_device::cd_filter_destination(')
 tail=r'''

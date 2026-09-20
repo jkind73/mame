@@ -2612,6 +2612,10 @@ void saturn_cd_hle_device::cmd_read_file() {
     return;
   }
 
+  // ST-162 section 6.2.3(2)(c): clear the selected work partition before
+  // file access. Private host reservations are not public partition entries.
+  cd_clear_partition(file_filter);
+
   // File offsets are logical (2048-byte) sectors, independent of the host's
   // Get Sector Length selection. Widen the byte-size rounding before adding
   // so neither large files nor a range exceeding 65535 sectors is truncated.
@@ -3862,6 +3866,18 @@ void saturn_cd_hle_device::cd_free_block(blockT *blktofree) {
   buffull = 0;
   hirqreg &= ~BFUL;
   update_hirq();
+}
+
+void saturn_cd_hle_device::cd_clear_partition(uint8_t bufnum) {
+  assert(bufnum < MAX_FILTERS);
+  partitionT &part = partitions[bufnum];
+  for (unsigned i = 0; i < MAX_BLOCKS; ++i) {
+    cd_free_block(part.blocks[i]);
+    part.blocks[i] = nullptr;
+    part.bnum[i] = 0xff;
+  }
+  part.size = -1;
+  part.numblks = 0;
 }
 
 void saturn_cd_hle_device::cd_getsectoroffsetnum(uint32_t bufnum,

@@ -25,6 +25,30 @@ def extend(head, functions, source):
             declarations.append('void cd_setup_directory_filter(uint8_t,const direntryT &);')
         if setup not in functions:
             functions+='\n'+extract(source,setup)
+    if 'cd_clear_partition(' in functions:
+        # Legacy file-only fixtures model an empty pool. Supply only missing
+        # dependencies; the dedicated clearing probe uses the full pool types.
+        import re
+        if 'struct blockT' not in head:
+            declarations.append('struct blockT{int32_t size=-1;};')
+        if 'struct partitionT' not in head:
+            declarations.append('struct partitionT{int32_t size=-1;blockT *blocks[200]{};uint8_t bnum[200]{},numblks=0;};')
+        if 'partitionT partitions[' not in head:
+            declarations.append('partitionT partitions[24]{};')
+        if 'blockT blocks[' not in head:
+            declarations.append('blockT blocks[200]{};')
+        for field,value in [('freeblocks',200),('buffull',0)]:
+            if not re.search(r'\b'+field+r'\b',head):
+                declarations.append(f'int {field}={value};')
+        for name,args in [('cd_clear_partition','uint8_t'),('cd_free_block','blockT *')]:
+            if name+'(' not in head:
+                declarations.append(f'void {name}({args});')
+            signature='void saturn_cd_hle_device::'+name+'('
+            if signature not in functions:
+                functions+='\n'+extract(source,signature)
+        for name,value in [('MAX_BLOCKS',200),('BFUL',8)]:
+            if name not in head:
+                head=f'constexpr unsigned {name}={value};\n'+head
     if 'MAX_FILTERS' in functions and 'MAX_FILTERS' not in head:
         head='constexpr unsigned MAX_FILTERS=24;\n'+head
     if 'm_file_scope_start' not in head:
