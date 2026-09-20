@@ -32,8 +32,11 @@ void sh7032_device::sh7032_map(address_map &map)
 	// the Saturn CD block firmware drives all of them (saturn_cdb.cpp).
 	sh1_peripheral_map(map);
 
-	// 4KB of on-chip RAM.  The CD block firmware's reset vector sets SP to
-	// 0x0f001000, the top of exactly this RAM, and runs its scheduler and
-	// command tasks out of it.
-	map(0x0f000000, 0x0f000fff).ram().mirror(0x00fff000);
+	// 4KB of on-chip RAM, physically at 0x0f000000 but reached at 0x07000000
+	// because the SH-1 clears address bits 29-30 before the bus cycle (the same
+	// 0xc7ffffff mask the SH7021's 1KB RAM is mapped through upstream).  The
+	// CD block firmware's reset vector sets SP to 0x0f001000 - the top of
+	// exactly this RAM - and runs its scheduler and command tasks out of it,
+	// so a wrong address here loses the stack entirely.
+	map(0x07000000, 0x07000fff).ram().mirror(0x00fff000);
 }

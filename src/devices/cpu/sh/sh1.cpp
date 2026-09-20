@@ -252,6 +252,17 @@ void sh1_device::device_start()
 	}
 
 	// Interrupt Controller (INTC)
+	// The external pins are part of the visible state: the CD block firmware's
+	// IRQ6/IRQ7 path (host command / data transfer done) is only observable
+	// through IPRB and the latched pin levels, and a debugger or a test wants
+	// them without reading the peripheral registers' side effects.
+	static const char *const irq_names[8] = { "IRQ0", "IRQ1", "IRQ2", "IRQ3", "IRQ4", "IRQ5", "IRQ6", "IRQ7" };
+	state_add(SH1_IPRA, "IPRA", m_ipra).formatstr("%04X");
+	state_add(SH1_IPRB, "IPRB", m_iprb).formatstr("%04X");
+	state_add(SH1_ICR, "ICR", m_icr).formatstr("%04X");
+	for (int i = 0; i < 8; ++i)
+		state_add(SH1_IRQ0 + i, irq_names[i], m_irq_level[i]);
+
 	save_item(NAME(m_iprc));
 	save_item(NAME(m_iprd));
 	save_item(NAME(m_ipre));
@@ -352,6 +363,7 @@ void sh1_device::device_start()
 void sh1_device::device_reset()
 {
 	sh2_device::device_reset();
+	refresh_irq_levels();
 
 	// Interrupt Controller (INTC)
 	m_ipra = 0;
@@ -664,6 +676,15 @@ int sh1_device::irq_level(int irq) const
 	return 0;
 }
 
+// Mirror the per-pin priority nibbles into m_irq_level, which carries the same
+// values for the debugger's state view (state_add can only bind a plain
+// member, and IPRA/IPRB themselves go through COMBINE_DATA).
+void sh1_device::refresh_irq_levels()
+{
+	for (int i = 0; i < 8; ++i)
+		m_irq_level[i] = irq_level(i);
+}
+
 void sh1_device::execute_set_input(int inputnum, int state)
 {
 	if (inputnum < IRQ0 || inputnum > IRQ7)
@@ -744,6 +765,7 @@ void sh1_device::intc_ipra_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_INTC_WR, "%s: intc_ipra_w = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 	COMBINE_DATA(&m_ipra);
+	refresh_irq_levels();
 }
 
 uint16_t sh1_device::intc_iprb_r()
@@ -757,6 +779,7 @@ void sh1_device::intc_iprb_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_INTC_WR, "%s: intc_iprb_w = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 	COMBINE_DATA(&m_iprb);
+	refresh_irq_levels();
 }
 
 uint16_t sh1_device::intc_iprc_r()
@@ -2368,9 +2391,13 @@ void sh1_device::pfc_padr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 uint16_t sh1_device::pfc_pbdr_r()
 {
-	const uint16_t data = ((m_pfc.pbdr_in & ~m_pfc.pbior) | (m_pfc.padr & m_pfc.pbior)) & m_pfc.pa_gpio_mask;
+	// Input pins read the pin level, output pins read the data latch, and the
+	// per-pin function bits gate both (this used to return the *port A* latch
+	// masked with the port A GPIO mask, which hid every port B input pin - the
+	// Saturn CD block firmware polls PB2 for the drive's /COMSYNC there).
+	const uint16_t data = (m_pfc.pbdr_in & ~m_pfc.pbior) | (m_pfc.pbdr & m_pfc.pbior);
 	if (!machine().side_effects_disabled())
-		LOGMASKED(LOG_PFC_RD, "%s: Port B Data Register, pfc_pbdr_r: %04x\n", machine().describe_context(), data);
+		LOGMASKED(LOG_PFC_RD, "%s: Port B Data Register, pfc_pbdr_r: %04x ((%04x & ~%04x) | (%04x & %04x)) & %04x\n", machine().describe_context(), data, m_pfc.pbdr_in, m_pfc.pbior, m_pfc.pbdr, m_pfc.pbior, m_pfc.pb_gpio_mask);
 	return data;
 }
 

@@ -30,9 +30,12 @@ class saturn_cdblock_interface : public device_interface
 public:
 	virtual ~saturn_cdblock_interface() = default;
 
-	// Host (SH-2) register window access.  Offsets are relative to
-	// 0x05800000, and the implementation is responsible for the mirroring
-	// inside its window.
+	// Host (SH-2) register window access.  The driver folds the window's
+	// word-index addressing and mirroring into byte offsets relative to the
+	// register block, so implementations only decode the small register
+	// offsets: 0x00/0x02 DATA, 0x08 HIRQ, 0x0c HIRQMASK, 0x10..0x16 the
+	// SH-1 side RR/CR, 0x18..0x24 CR1-4 (host write) and DR1-4 (host read),
+	// 0x28 the MPEG express registers, 0x5029 the NetLink status byte.
 	virtual uint16_t host_r(offs_t offset, uint16_t mem_mask = ~0) = 0;
 	virtual void host_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0) = 0;
 

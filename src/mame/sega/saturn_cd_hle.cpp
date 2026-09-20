@@ -620,10 +620,6 @@ void saturn_cd_hle_device::update_hirq() {
    onto 0x05880000) is normalised away first so both forms reach the same
    register.  Everything the amap leaves unmapped stays open bus. */
 uint16_t saturn_cd_hle_device::host_r(offs_t offset, uint16_t mem_mask) {
-  offset &= 0xffff;
-  if ((offset & 0x18000) == 0x18000)
-    offset ^= 0x18000;
-
   switch (offset) {
   case 0x0000:
   case 0x0002:
@@ -646,10 +642,6 @@ uint16_t saturn_cd_hle_device::host_r(offs_t offset, uint16_t mem_mask) {
 }
 
 void saturn_cd_hle_device::host_w(offs_t offset, uint16_t data, uint16_t mem_mask) {
-  offset &= 0xffff;
-  if ((offset & 0x18000) == 0x18000)
-    offset ^= 0x18000;
-
   switch (offset) {
   case 0x0000:
   case 0x0002:

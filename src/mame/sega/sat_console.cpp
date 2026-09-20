@@ -591,17 +591,47 @@ private:
   void scsp_mem(address_map &map) ATTR_COLD;
 };
 
+// The CD block window is one 0x05800000-0x0589ffff entry, but MAME hands a
+// 16-bit handler the address as a 16-bit *word index*: the register block at
+// 0x05880008 arrives as 0x040004.  Both CD block implementations work in byte
+// offsets, so the index is converted here, once, for both of them.
+//
+// Window layout (register block at +0x80000, with address bits 16 and 15 as
+// aliases of one another - that is the mirroring the HLE's address map used to
+// declare; the bottom of the window is a data port alias):
+//
+//   +0x00000 / +0x18000   DATA alias
+//   +0x80000/+0x90000/+0x98000 + 0x00  DATA
+//                         + 0x08  HIRQ
+//                         + 0x0c  HIRQMASK
+//                         + 0x18..0x24  CR1-4 (write) / DR1-4 (read)
+//                         + 0x5029  NetLink modem status byte (HLE only)
+//
+// Without the conversion the BIOS's command writes land on no register, its
+// response poll reads zero forever, and the LLE firmware never sees a command.
+static offs_t cd_reg_offset(offs_t offset) {
+  offs_t const byte_offset = (offset << 1) & 0xfffff;
+  if (byte_offset & 0x80000)
+    return byte_offset & ~0x98000; // register block, aliases folded away
+  return 0;                        // data port alias
+}
+
 uint16_t sat_console_state::cd_r(offs_t offset, uint16_t mem_mask) {
-  if (m_cd_lle)
-    return m_cdblock->host_r(offset, mem_mask);
-  return m_saturn_cd_hle->host_r(offset, mem_mask);
+  offs_t const o = cd_reg_offset(offset);
+  if (!m_cd_lle && (o & ~1) == 0x5028)
+    // NetLink / Sega Saturn modem status ("most likely for status", read by
+    // dragndrm).  This used to be an 8-bit entry in the HLE's address map.
+    return (mem_mask & 0xff00) ? 0x1100 : 0x0011;
+  uint16_t const rv = m_cd_lle ? m_cdblock->host_r(o, mem_mask) : m_saturn_cd_hle->host_r(o, mem_mask);
+  return rv;
 }
 
 void sat_console_state::cd_w(offs_t offset, uint16_t data, uint16_t mem_mask) {
+  offs_t const o = cd_reg_offset(offset);
   if (m_cd_lle)
-    m_cdblock->host_w(offset, data, mem_mask);
+    m_cdblock->host_w(o, data, mem_mask);
   else
-    m_saturn_cd_hle->host_w(offset, data, mem_mask);
+    m_saturn_cd_hle->host_w(o, data, mem_mask);
 }
 
 uint8_t sat_console_state::saturn_cart_type_r() {

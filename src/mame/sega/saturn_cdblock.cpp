@@ -48,5 +48,9 @@ void saturn_cdblocks(device_slot_interface &device)
 	// The default is an empty slot, which leaves the driver's own HLE drive
 	// model in charge.  Selecting this option hands the host window to the
 	// real CD block firmware.
-	device.option_add("lle", SATURN_CDB);
+	// The block's SH-1 runs at 20 MHz (Sega's own Saturn overview manual lists
+	// "SH-1 32-bit RISC chip 20.0 MHz" and 512KB of RAM for the CD block), and
+	// the card has to be given that clock explicitly: a slot option's clock
+	// defaults to zero, which would leave the CPU with no cycles to run.
+	device.option_add("lle", SATURN_CDB).clock(20'000'000);
 }

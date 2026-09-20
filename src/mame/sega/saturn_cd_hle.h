@@ -26,8 +26,9 @@ public:
   void set_tray_close();
 
   // Host register window access through the CD block interface, so the same
-  // driver can select this model or the LLE core.  The offsets are the same
-  // ones the amap below decodes, with the 0x18000 mirror normalised away.
+  // driver can select this model or the LLE core.  The driver normalises the
+  // window addressing, so the offsets here are the register block offsets the
+  // amap below decodes (0x00 DATA, 0x08 HIRQ, 0x18 CR1/DR1, ...).
   virtual uint16_t host_r(offs_t offset, uint16_t mem_mask = ~0) override;
   virtual void host_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0) override;
 

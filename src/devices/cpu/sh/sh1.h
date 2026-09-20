@@ -27,6 +27,22 @@ public:
 
 	// External DMA request inputs /DREQ0 and /DREQ1 (channels 0 and 1).  The
 	// peripherals that hand data to the DMAC (the Saturn CD block's transfer
+	// State indices (debugger / state visible inspection)
+	enum
+	{
+		SH1_IPRA = 0x1000,
+		SH1_IPRB,
+		SH1_ICR,
+		SH1_IRQ0,
+		SH1_IRQ1,
+		SH1_IRQ2,
+		SH1_IRQ3,
+		SH1_IRQ4,
+		SH1_IRQ5,
+		SH1_IRQ6,
+		SH1_IRQ7
+	};
+
 	// FIFO, for instance) assert these; one transfer unit is performed per
 	// asserted request while the channel is set up for external requests.
 	void set_dreq_input(int channel, int state);
@@ -50,6 +66,7 @@ protected:
 	virtual void execute_set_input(int inputnum, int state) override;
 	virtual void sh2_exception(const char *message, int irqline) override;
 	int irq_level(int irq) const;
+	void refresh_irq_levels();
 
 	// Shared SH-1 on-chip peripheral register map.  Subclasses install this
 	// together with the internal RAM/ROM layout their part has.
@@ -225,6 +242,7 @@ protected:
 
 	// Interrupt Controller (INTC)
 	uint16_t m_ipra = 0;
+	int m_irq_level[8] = { }; // IPRA/IPRB nibble per pin, mirrored for state_add
 	uint16_t m_iprb = 0;
 	uint16_t m_iprc = 0;
 	uint16_t m_iprd = 0;

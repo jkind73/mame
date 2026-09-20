@@ -19,7 +19,7 @@ saturn_cdb_device::saturn_cdb_device(const machine_config &mconfig, const char *
 	: device_t(mconfig, SATURN_CDB, tag, owner, clock)
 	, saturn_cdblock_interface(mconfig, *this)
 	, m_cdbcpu(*this, "cdbcpu")
-	, m_dram(*this, "dram")
+	, m_dram(*this, "cdbdram")
 {
 }
 
@@ -29,7 +29,7 @@ saturn_cdb_device::saturn_cdb_device(const machine_config &mconfig, const char *
 
 uint16_t saturn_cdb_device::host_r(offs_t offset, uint16_t mem_mask)
 {
-	offset &= 0x3c;
+		offset &= 0x3c;
 
 	switch (offset)
 	{
@@ -48,7 +48,7 @@ uint16_t saturn_cdb_device::host_r(offs_t offset, uint16_t mem_mask)
 	case 0x18:
 	case 0x1c:
 	case 0x20:
-		return m_ygr.rr[offset >> 2 & 3];
+			return m_ygr.rr[(offset - 0x18) >> 2];
 
 	case 0x24:
 		// Reading the last response register latches the "periodic response"
@@ -92,7 +92,11 @@ void saturn_cdb_device::host_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0x18:
 	case 0x1c:
 	case 0x20:
-		m_ygr.cr[offset >> 2 & 3] = data;
+		// CR1..CR3: the register window runs 0x18/0x1c/0x20/0x24, so the
+		// index is relative to the first one (this used to shift the offset
+		// by two instead of four, which delivered a header command out of
+		// order and left CR1/CR2 for the firmware unreadable).
+		m_ygr.cr[(offset - 0x18) >> 2] = data;
 		break;
 
 	case 0x24:
@@ -119,7 +123,14 @@ void saturn_cdb_device::host_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 uint16_t saturn_cdb_device::ygr_r(offs_t offset, uint16_t mem_mask)
 {
-	switch (offset & 0x1e)
+	// The SH-1's program space is 32 bits wide, so MAME hands a 16-bit handler
+	// the address as a 16-bit word index: the register file at byte 0x08 comes
+	// in as 0x04, and the old `offset & 0x1e` decode therefore read and wrote
+	// the register next door (CDMSKL landed in CDIRQL, CR1 in CDMSKL, and the
+	// firmware never saw a host command).
+	offs_t const reg = (offset & 0x0f) << 1;
+
+	switch (reg)
 	{
 	case 0x00: // DATA
 	{
@@ -148,7 +159,7 @@ uint16_t saturn_cdb_device::ygr_r(offs_t offset, uint16_t mem_mask)
 	case 0x12:
 	case 0x14:
 	case 0x16:
-		return m_ygr.cr[offset >> 1 & 3];
+		return m_ygr.cr[(reg - 0x10) >> 1];
 	case 0x18:
 		return m_ygr.reg18;
 	case 0x1a:
@@ -164,9 +175,10 @@ uint16_t saturn_cdb_device::ygr_r(offs_t offset, uint16_t mem_mask)
 
 void saturn_cdb_device::ygr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	LOGMASKED(LOG_YGR, "%s: YGR %02x = %04x & %04x\n", machine().describe_context(), offset & 0x1e, data, mem_mask);
+	offs_t const reg = (offset & 0x0f) << 1; // word index -> register byte offset
+	LOGMASKED(LOG_YGR, "%s: YGR %02x = %04x & %04x\n", machine().describe_context(), reg, data, mem_mask);
 
-	switch (offset & 0x1e)
+	switch (reg)
 	{
 	case 0x00: // DATA
 		fifo_push(data);
@@ -215,7 +227,7 @@ void saturn_cdb_device::ygr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0x12:
 	case 0x14:
 	case 0x16: // RR1-RR4, read back by the host as DR1-DR4
-		m_ygr.rr[offset >> 1 & 3] = data;
+		m_ygr.rr[(reg - 0x10) >> 1] = data;
 		break;
 
 	case 0x18:
@@ -317,7 +329,7 @@ void saturn_cdb_device::sector_transfer_done()
 void saturn_cdb_device::cdb_map(address_map &map)
 {
 	map(0x00000000, 0x0000ffff).rom().region("cdbcpu", 0);
-	map(0x01000000, 0x017fffff).ram().share("dram"); // firmware's 0x09000000
+	map(0x01000000, 0x017fffff).ram().share("cdbdram"); // firmware's 0x09000000
 	map(0x02000000, 0x0200001f).rw(FUNC(saturn_cdb_device::ygr_r), FUNC(saturn_cdb_device::ygr_w)); // 0x0a000000
 }
 
@@ -349,6 +361,23 @@ void saturn_cdb_device::device_start()
 	save_item(NAME(m_fifo_head));
 	save_item(NAME(m_fifo_tail));
 	save_item(NAME(m_fifo_count));
+}
+
+// The drive's /COMSYNC handshake line, seen on the CD block's PFC port B pin 2.
+// The boot code parks in a poll loop on that pin and never reaches its task
+// scheduler without it, so the drive is modelled as present and synced.  This
+// has to happen after the SH-1's own reset, which clears its port input pins.
+// (The serial command link and the drive's own state machine are not emulated
+// yet - see saturn_stv_completion.md CD-03.)
+void saturn_cdb_device::device_reset_after_children()
+{
+	// The firmware polls two port B pins for the drive handshake, and its own
+	// comments call both of them /COMSYNC: the boot code reads the *high* byte
+	// of PBDR (0x05ffffc2, so pin 10) and the command link code reads the low
+	// byte (0x05ffffc3, pin 2).  Drive both, i.e. model the drive as present
+	// and synced.
+	m_cdbcpu->write_pbdr_bit<2>(1);
+	m_cdbcpu->write_pbdr_bit<10>(1);
 }
 
 void saturn_cdb_device::device_reset()

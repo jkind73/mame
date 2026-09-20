@@ -84,12 +84,16 @@ protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_reset_after_children() override ATTR_COLD;
 	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 private:
 	required_device<sh7032_device> m_cdbcpu;
-	required_shared_ptr<uint16_t> m_dram;
+	// The SH-1 program space is 32 bits wide (the SH core's bus), so the block's
+	// 512KB DRAM is a 32-bit share even though the chip's external bus is 16 bits;
+	// the CPU's own accesses go through the space and are byte/word exact.
+	required_shared_ptr<uint32_t> m_dram;
 
 	static constexpr int FIFO_SIZE = 8; // "depth 6-8 words" (YGR register sheet)
 
