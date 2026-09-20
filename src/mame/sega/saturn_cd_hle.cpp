@@ -1795,8 +1795,10 @@ void saturn_cd_hle_device::cmd_reset_selector() {
       partitions[i].numblks = 0;
     }
 
-    buffull = sectorstore = 0;
-    buffull_temp_pause = false;
+    // Only released public blocks create free space; private host
+    // reservations may still fill the pool. Keep the buffer-space pause
+    // reason so the drive resumes when capacity actually becomes available.
+    sectorstore = 0;
   }
 
   // TODO: bit 3, initialize all partition output connectors
