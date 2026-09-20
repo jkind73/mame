@@ -8856,3 +8856,105 @@ word reads/ignored word writes.0120-0122 address that sector-port prerequisite;
 the slot/interface/LLE code is **not** imported or claimed integrated, and the
 hardware SH-1/controller/CD-03 milestone is not claimed complete. Reconcile and
 measure rather than replacing either branch's HLE wholesale.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0123 | CD-02 | ca86d951 | UNVALIDATED | Track-only Play clamps host track numbers before zero-based image TOC lookup |
+| IMPL-0124 | CD-02 | ca86d951 | UNVALIDATED | Track Seek clamps its target and distinguishes default track from the all-zero Home request |
+
+### IMPL-0123 — CD-02 — Bound track-only Play positions
+
+- branch/commit/base: `arena/01a0b897-mame` @ **ca86d951**, base **bab7f06a**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1284-1298`;
+  `saturn_pending/impl_checks/check_cd_track_bounds.py`,
+  `cd_audio_scaffold.py` (track-count dependency API: explicit count from the
+  authored drive-address TOC; legacy file-only mocks without a TOC receive a
+  documented99-track placeholder, not metadata evidence).
+- contract: decode the host's8-bit TNO and clip track-only Play start/end to the
+  supported disc's track range before passing an image index. Start defaults to
+  first track; end defaults to last. Above-last targets select last track, not
+  an unrelated/unallocated TOC slot. Keep the programmed normalized endpoints
+  and compare effective ranges, not the unnormalized wire numbers, for repeat-
+  count retention. Reversed ranges remain retained without production.
+- primary source: ST-162-062094 pp.65-66 CdcPos section6.4, especially p.66
+  section5 table: TNO0 and outside-disc exceptions; index0 is whole track;
+  p.38 effective-range/count policy. Pinned SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafenf0ee9d595db68ad5247ba5ac6a8367fdced9c3fc
+  `src/ss/cdb.cpp:1923-1945,2043-2074` clamps start and end tracks. Ymir
+  6d779960127ced72087a418c1daefc637d0aaa80
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:810-835` clamps both track
+  numbers. Existing MAME image contract `src/lib/util/cdrom.h:157,170` takes
+  a zero-based image index and reports track count;0xaa is its lead-out sentinel.
+  Forkbab7f06a passed unbounded host numbers directly. Independent correction
+  retaining that image API and the new saved-range model, no peer transplant.
+- expected observable: on N-track media with ordinary track numbering1..N,
+  start=min(max(TNO,1),N), end=min(TNO,N) or N when zero; stored FADs correspond
+  to that track's start and the exclusive end of the selected ending track.
+  No TOC lookup beyond the supported range. Exact track/FAD/count values, zero
+  tolerance. This contract is for track-only positions, not arbitrary indices.
+- suggested method: authored1/2/3/99-track TOCs with a guarded index accessor;
+  sweep every8-bit start TNO and boundary/default/above-last end TNOs; preserve
+  or change the effective range, save after command acceptance and replay the
+  pending move. Native follow-up should use actual TOC/session metadata.
+- falsifier: out-of-range accessor call, wrong last-track conversion, default
+  end mapped to first track, wrong repeat notification after equivalent clipping,
+  nonempty reversed range or a different restored target/range.
+- self-check run (method-level, unvalidated): shared0123/0124 probe5120 Play
+  images,2044 Seek images,7164 registered continuations and4 Home controls;
+  ASan/fail-fast UBSan0. Actual Play/Seek/drive/save methods with bounded authored
+  metadata and mock report/image/audio/IRQ/serializer. Historicalbab7f06a and
+  eight compiled mutants assertion-fail: no start/end/Seek clamp, broad
+  zero-track Home, start/end off-by-one, last-track-minus-one and omitted saved
+  seek target. Existing programmed-range, Seek-repeat and FAD-bounds probes
+  exit0. Warning-enabled CD TU syntax/diff0. Full61 own probes atca86d951:
+  51 exit0/same ten conflicts; `/tmp/impl-ref/cd-0124-aggregate.log`.
+- state: **UNVALIDATED**. Validator0ce91cd3's native merge-readiness rejection
+  remains; **BLOCKED(native CI result for current implementation revision)**.
+  No full build or CI dispatch.
+- not covered/known doubts: no new saved state/layout. Nontrivial/missing index
+  positioning, pregap/index acquisition, discs whose first host TNO is not1,
+  multisession mapping, mixed-type admission, invalid reserved bits, empty/absent
+  media and native TOC identity/save/timing/title behavior remain unqualified.
+  Native track count0 is defensively bounded to1, not a claim of valid empty-
+  disc track admission. Existing fixture expected values remain untouched.
+
+### IMPL-0124 — CD-02 — Bound track Seek and separate Home
+
+- branch/commit/base: `arena/01a0b897-mame` @ **ca86d951**, base **bab7f06a**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1393-1406`; shared dependency API/probe
+  from0123.
+- contract: for the supported indexed image geometry, TNO above the last track
+  seeks the last track start; TNO0/index1 selects the first track rather than
+  Home. Only the all-zero track/index designation remains Home. Keep the
+  retained programmed Play range/maximum/count unchanged through Seek.
+- primary source: ST-162-062094 p.66 section5 distinguishes TNO0 from TNO=IDX=0
+  and clips out-of-disc targets; p.83 function2.2 Seek, p.38 retained settings.
+  Same pinned SDK/blob as0123.
+- cross-checks/provenance: Mednafenf0ee9d59 `src/ss/cdb.cpp:1923-1945` clamps
+  the seek track; Ymir6d779960
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2099-2141` distinguishes default
+  track and above-last exceptions before lookup. Independent correction to the
+  prior raw subtraction; broader peer index acquisition is not transplanted.
+- expected observable: accepted index0/1 track seek selects image track
+  min(max(TNO,1),N)−1 and its start FAD. TNO0/index1 reaches first track PAUSE;
+  TNO0/index0 retains Home/STANDBY behavior. Programmed range and repeat settings
+  unchanged, including after registered replay. Exact tracks/FAD/counts, zero
+  tolerance; no seek-duration claim.
+- suggested method: every8-bit TNO with index0/1 on1/2/3/99-track authored
+  media; capture pending seek, poison target/progress, restore and compare final
+  PAUSE position. Keep separate all-zero Home controls and retained-range checks.
+- falsifier: out-of-range lookup, off-by-one last track, TNO0/index1 treated as
+  Home, lost repeat/range state or different target after replay.
+- self-check run (method-level, unvalidated):2044 track Seek images and replays
+  plus4 Home controls within0123's shared probe; same eight mutants, syntax and
+  full61 aggregate. Existing Seek-repeat1080/1080/180 and FAD-bounds468/468/72
+  probes also exit0; no validator assets/expectations modified.
+- state: **UNVALIDATED**, same native gate as0123.
+- not covered/known doubts: no additional fields/layout. Nontrivial index
+  positioning, non-1 first-track media, pregap/multisession identity, absent or
+  zero-track media admission, Home's invalid-position report and native
+  timing/IRQ/host-overlap/save-file behavior remain open.
