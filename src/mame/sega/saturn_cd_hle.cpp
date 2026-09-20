@@ -1223,6 +1223,10 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
 
   if (pending_put) {
     finish_put();
+    // Publish fullness after routing: discarded PUT reservations may have
+    // released capacity, while retained sectors can leave the pool full.
+    if (!freeblocks)
+      hirqreg |= BFUL;
     hirqreg |= EHST;
   }
 
