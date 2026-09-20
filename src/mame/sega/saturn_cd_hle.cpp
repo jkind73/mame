@@ -2549,8 +2549,8 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
   LOGCMD("%s: Get File Info\n", machine().describe_context());
   cd_stat |= CD_STAT_TRANS;
   cd_stat &= 0xff00;
-  playtype = 0;
-  cdda_repeat_count = 0;
+  // This host metadata transfer does not change the drive producer or
+  // its repeat notification count (ST-162 pp.38,53,100 function 8.4).
 
   if (temp == 0xffffff) // special
   {
