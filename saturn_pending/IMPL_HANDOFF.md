@@ -9069,3 +9069,109 @@ artifact hygiene and retained evidence logs; its code/native verdicts remain
 unchanged. The old implementation's native graft is not a current-source result.
 The requested native integration gate/reconciliation remains outstanding; do not
 replace either HLE wholesale. Validator assets were only read, not changed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0127 | CD-01/CD-02 | 61504f0efdb | UNVALIDATED | A sector discarded by the selector advances the drive and raises CSCT without becoming buffer storage |
+| IMPL-0128 | CD-01/CD-02 | 61504f0efdb | UNVALIDATED | A disconnected CD output discards its stream rather than pinning the pickup at one FAD |
+
+### IMPL-0127 — CD-01/CD-02 — Selector discard is consumed stream progress
+
+- branch/commit/base: `arena/01a0b897-mame` @ **61504f0efdb**, base **66bda6e31fb**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:4345-4348,4388-4395,4487-4506`;
+  `saturn_cd_hle.h:248`; `saturn_pending/impl_checks/check_cd_discard_progress.py`;
+  dependency API adaptations in `check_cd_filter_routing.py`,
+  `check_cd_buffer_save.py`, `check_cd_drive_phase_save.py` and
+  `check_cd_drive_address.py`. The old mock reader forwards its existing
+  delivery flag to the added consumed output; the dedicated probe uses the
+  actual reader/filter/pool, not that mock. Existing assertions remain unchanged.
+- contract: sectors reaching an unconnected selector output are canceled, not
+  retried at the same FAD. Separate consumed-stream progress from successful
+  buffer storage with a local optional reader result. Stored-sector callers
+  retain their old result; discarded sectors allocate no public buffer and do
+  not change the last stored destination. The drive advances/decrements its
+  finite range, emits CSCT and eventually applies normal EOF/repetition logic.
+- primary source: ST-162-062094 p.42 section5.2 and p.43 section5.3.1/fig5.4 say
+  unconnected outputs cancel/delete sectors; p.28 explicitly defines CSCT as
+  a sector **stored or discarded**; p.38 preserves full-buffer pause/resume.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafenf0ee9d595db68ad5247ba5ac6a8367fdced9c3fc
+  `src/ss/cdb.cpp:1750-1780` frees a sector at an unconnected output;
+  `:2292-2372` consumes the prebuffer, raises CSCT and advances CurSector even
+  when FilterBuf discarded it. Peer last-destination handling differs (stores
+  FilterBuf's FF return); this change deliberately retains the previously
+  disclosed stored-destination contract rather than claiming full agreement.
+  Fork66bda6e31fb used storage success alone as progress. Independent local
+  consumed-result extension; no peer FIFO/prefetch implementation copied.
+- expected observable: each completed discarded producer interval advances
+  FAD by1 and remaining range by−1, sets CSCT, adds zero partition entries and
+  leaves storage-success false. Finite EOF, file EFLS and segment repetition
+  still occur. Host owner/cursor/private data unaffected. Exact FAD/sectors/
+  flags/bytes, zero tolerance; native cadence/IRQ-edge latency not asserted.
+- suggested method: all24 inputs, FAD range misses, alternating Mode2 file IDs,
+  true-output disconnection and false-filter chains; interleave stored/dropped
+  sectors through ordinary Play and finite Read File with none/PUT/GETDELETE/
+  ordinary GET host owners. Save at several producer positions and replay.
+  Ordinary GET backing must be outside partitions being cleared/reused.
+- falsifier: repeated same FAD on a discard, counted storage for a drop, missing
+  CSCT/EOF, allocated/damaged private buffer, lost host cursor or divergent saved
+  continuation. A full pool must still pause and resume at the retained FAD.
+- self-check run (method-level, unvalidated):4608 route/producer/host/cut images
+  and4608 registered continuations;6 full-pool release,6 stored-versus-consumed
+  and6 segment-repeat controls. Actual Play/Read File/drive/reader/filter/pool/
+  host/End/save methods with authored Mode2 sectors and mock image/audio/IRQ/
+  serializer; directory metadata outside replay. ASan/fail-fast UBSan0.
+  Historical66bda6e31fb and eight compiled mutants assertion-fail: connected
+  stall, disconnected stall, ignored full-buffer gate, false storage result,
+  missing CSCT, erased last destination, omitted position/progress registrations.
+  Existing filter-routing/audio-range/file-end-repeat probes exit0. Warning-
+  enabled CD TU syntax/diff0. Full63 own probes at61504f0efdb:53 exit0/same ten
+  conflicts; `/tmp/impl-ref/cd-0128-aggregate.log`. No expectation edits.
+- state: **UNVALIDATED**; **BLOCKED(native CI result for current implementation
+  revision)**. Latest validator review pinned in0125/0126 remains applicable.
+- not covered/known doubts: no saved fields/layout added; consumed result is
+  local to the synchronous call. Existing ignored read_data failure remains
+  outside this change. Native FIFO/scratch allocation, selector-set effective
+  latency, invalid filter cycles, XA interleaved file extents, full-buffer IRQ
+  delivery/ack timing, native media/save/title behavior remain unqualified.
+  No claim that ordinary GET protects backing from explicit public-buffer reuse.
+
+### IMPL-0128 — CD-01/CD-02 — Disconnected CD output progresses
+
+- branch/commit/base: `arena/01a0b897-mame` @ **61504f0efdb**, base **66bda6e31fb**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:4398-4403`; shared reader result,
+  drive branch, header and probe from0127.
+- contract: an unconnected CD device output cancels its stream sectors, so data
+  Play advances rather than waiting indefinitely for a destination. Reconnecting
+  resumes routing at the then-current FAD. The existing global buffer-full
+  pause takes precedence, even with no destination; no storage is fabricated.
+- primary source: ST-162-062094 p.42 section5.2 includes device output
+  connectors in the cancellation rule; p.28 CSCT covers discarded sectors;
+  p.38 full-buffer pause/resume. Same pinned SDK/blob as0127.
+- cross-checks/provenance: Mednafenf0ee9d59
+  `src/ss/cdb.cpp:1750-1780,2315-2372` handles CDDevConn=FF as discard, with
+  FreeBufferCount gating, CSCT and subsequent CurSector advance. This HLE skips
+  raw image reads when no consumer can use the sector, unlike peer prefetch;
+  the stream progression is the claimed correspondence, not raw IO scheduling.
+- expected observable: disconnected ordinary/file playback progresses by one
+  FAD per modeled interval, remaining length decreases and CSCT/finite EOF are
+  reached, with no new buffers or changed host owner/last stored destination.
+  Full-buffer pause retains position; releasing capacity resumes it. Exact
+  FAD/count/flag/state comparisons, zero tolerance; no raw-read-count hardware
+  assertion.
+- suggested method: start disconnected, or disconnect then reconnect midway;
+  keep host transfers active, replay registered state, exercise finite repeated
+  segments and pause on a full pool before freeing one public block.
+- falsifier: stalled/restarted position, invented storage, lost host transfer,
+  continued progress while the retained full-buffer gate is active, missing
+  CSCT/EOF or divergent replay.
+- self-check run (method-level, unvalidated): included in0127's4608 images and
+  replays,6 full-pool controls and6 repeat controls. Separate disconnected-stall
+  and ignored-full mutants assertion-fail; same syntax/full63 aggregate.
+- state: **UNVALIDATED**, same native gate as0127.
+- not covered/known doubts: no new fields/layout. Native CD prefetch, physical
+  read-error handling while disconnected, exact selector connection timing,
+  full-buffer IRQ edges, media identity and native saves/titles remain open.
