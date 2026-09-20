@@ -1205,10 +1205,11 @@ void saturn_cd_hle_device::cmd_play_disc() {
       LOGCMD("\tFAD mode\n");
       cur_track = m_cdrom_image->get_track(cd_curfad - 150);
     } else {
-      // track mode
+      // Host tracks are one-based; image tracks are zero-based and their
+      // start positions are LBA. Keep the drive position in FAD (LBA + 150).
       if ((start_pos >> 8) != 0) {
-        cur_track = start_pos >> 8;
-        cd_fad_seek = m_cdrom_image->get_track_start(cur_track - 1);
+        cur_track = (start_pos >> 8) - 1;
+        cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PLAY;
         // m_cdda->pause_audio(0);
@@ -1232,7 +1233,7 @@ void saturn_cd_hle_device::cmd_play_disc() {
       uint8_t end_track;
 
       end_track = (end_pos) >> 8;
-      fadstoplay = m_cdrom_image->get_track_start(end_track) - cd_fad_seek;
+      fadstoplay = m_cdrom_image->get_track_start(end_track) + 150 - cd_fad_seek;
     }
   } else // play until the end of the disc
   {
@@ -1246,10 +1247,10 @@ void saturn_cd_hle_device::cmd_play_disc() {
         fadstoplay = end_pos & 0xfffff;
       else {
         if (end_pos == 0)
-          fadstoplay = (m_cdrom_image->get_track_start(0xaa)) - cd_curfad;
+          fadstoplay = (m_cdrom_image->get_track_start(0xaa) + 150) - cd_curfad;
         else
           fadstoplay =
-              (m_cdrom_image->get_track_start((end_pos & 0xff00) >> 8)) -
+              (m_cdrom_image->get_track_start((end_pos & 0xff00) >> 8) + 150) -
               cd_curfad;
       }
       LOGCMD("\ttrack mode %08x %08x -> %08x %08x\n", start_pos, end_pos,
@@ -1274,7 +1275,8 @@ void saturn_cd_hle_device::cmd_play_disc() {
         // (in said case, by playing until the end of disc rather than just one
         // track)
         // cd_curfad = m_cdrom_image->get_track_start(cur_track);
-        fadstoplay = m_cdrom_image->get_track_start(cur_track + 1) - cd_curfad;
+        fadstoplay =
+            m_cdrom_image->get_track_start(cur_track + 1) + 150 - cd_curfad;
         cd_change_status(CD_STAT_SEEK);
         cd_seek_stat = CD_STAT_PLAY;
       }
@@ -1360,8 +1362,8 @@ void saturn_cd_hle_device::cmd_seek_disc() {
   } else {
     // is it a valid track?
     if (cr2 >> 8) {
-      cur_track = cr2 >> 8;
-      cd_fad_seek = m_cdrom_image->get_track_start(cur_track - 1);
+      cur_track = (cr2 >> 8) - 1;
+      cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
       cd_change_status(CD_STAT_SEEK);
       cd_seek_stat = CD_STAT_PAUSE;
 
@@ -3772,7 +3774,8 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
     m_sector_timer->adjust(attotime::from_hz(60));
   else if (state == CD_STAT_SEEK)
     m_sector_timer->adjust(attotime::from_hz(75));
-  else if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
+  else if (m_cdrom_image->get_track_type(
+               m_cdrom_image->get_track(cd_curfad - 150)) ==
            cdrom_file::CD_TRACK_AUDIO)
     m_sector_timer->adjust(
         attotime::from_hz(75)); // 75 sectors / second = 150kBytes/second (cdda
@@ -4364,12 +4367,13 @@ void saturn_cd_hle_device::cd_playdata() {
       break;
     }
 
-    cur_track = m_cdrom_image->get_track(cd_fad_seek);
+    cur_track = m_cdrom_image->get_track(cd_fad_seek - 150);
     LOGSEEK("Ready (track %d)\n", cur_track + 1);
     cd_curfad = cd_fad_seek;
     cd_change_status(cd_seek_stat);
     if (cd_seek_stat == CD_STAT_PLAY &&
-        m_cdrom_image->get_track_type(m_cdrom_image->get_track(cd_curfad)) ==
+        m_cdrom_image->get_track_type(
+            m_cdrom_image->get_track(cd_curfad - 150)) ==
             cdrom_file::CD_TRACK_AUDIO)
       m_cdda->pause_audio(0);
     m_seek_in_progress = false;
@@ -4397,14 +4401,15 @@ void saturn_cd_hle_device::cd_playdata() {
         uint8_t p_ok;
 
         if (m_cdrom_image->get_track_type(m_cdrom_image->get_track(
-                cd_curfad)) != cdrom_file::CD_TRACK_AUDIO) {
+                cd_curfad - 150)) != cdrom_file::CD_TRACK_AUDIO) {
           cd_read_filtered_sector(cd_curfad, &p_ok);
           m_cdda->stop_audio(); // stop any pending CD-DA
         } else {
           // TODO: pinpoint cases when this isn't okay
           // (out of bounds disc for example)
           p_ok = 1;
-          m_cdda->start_audio(cd_curfad, 1);
+          // The image/audio interfaces use LBA, not the drive's FAD.
+          m_cdda->start_audio(cd_curfad - 150, 1);
         }
 
         if (p_ok) {
@@ -4441,9 +4446,9 @@ void saturn_cd_hle_device::cd_playdata() {
               // mode NOTE: cur_track is -1 at this point vs. redbook spec
               assert(cur_track >= 0 && cur_track != 0xff);
               // cd_curfad = m_cdrom_image->get_track_start(cur_track);
-              cd_fad_seek = m_cdrom_image->get_track_start(cur_track);
+              cd_fad_seek = m_cdrom_image->get_track_start(cur_track) + 150;
               fadstoplay =
-                  m_cdrom_image->get_track_start(cur_track + 1) - cd_fad_seek;
+                  m_cdrom_image->get_track_start(cur_track + 1) + 150 - cd_fad_seek;
               cd_change_status(CD_STAT_SEEK);
               cd_seek_stat = CD_STAT_PLAY;
               LOGCMD("Repeat hit track %d count %d/%d FAD %06x -> start %06x "
