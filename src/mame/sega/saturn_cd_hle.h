@@ -420,6 +420,8 @@ private:
   // comms
   uint32_t datatrns_r(offs_t offset, uint32_t mem_mask = ~0);
   void datatrns_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+  u32 dataxfer_sector_r(unsigned bytes);
+  void dataxfer_sector_w(u32 data, unsigned bytes);
   inline u32 dataxfer_long_r();
   inline u16 dataxfer_word_r();
   inline void dataxfer_long_w(u32 data);

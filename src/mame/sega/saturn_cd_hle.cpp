@@ -474,14 +474,22 @@ void saturn_cd_hle_device::amap(address_map &map) {
 }
 
 u32 saturn_cd_hle_device::datatrns_r(offs_t offset, uint32_t mem_mask) {
+  // DATATRNS is a 16-bit FIFO (ST-162, table 3.1). Sector transfers use
+  // the same byte cursor for a host word and the existing longword access.
+  const auto read_word = [this]() -> u16 {
+    if (xfertype32 == XFERTYPE32_GETSECTOR ||
+        xfertype32 == XFERTYPE32_GETDELETESECTOR)
+      return dataxfer_sector_r(2);
+    return dataxfer_word_r();
+  };
   u32 rv;
 
   if (mem_mask == 0xffffffff) {
     rv = dataxfer_long_r();
   } else if (mem_mask == 0xffff0000) {
-    rv = dataxfer_word_r() << 16;
+    rv = u32(read_word()) << 16;
   } else if (mem_mask == 0x0000ffff) {
-    rv = dataxfer_word_r();
+    rv = read_word();
   } else {
     if (!machine().side_effects_disabled())
       LOGWARN("CD: Unknown data buffer read with mask = %08x\n", mem_mask);
@@ -494,12 +502,25 @@ void saturn_cd_hle_device::datatrns_w(offs_t offset, uint32_t data,
                                       uint32_t mem_mask) {
   if (mem_mask == 0xffffffff)
     dataxfer_long_w(data);
+  else if (mem_mask == 0xffff0000)
+    dataxfer_sector_w(data >> 16, 2);
+  else if (mem_mask == 0x0000ffff)
+    dataxfer_sector_w(data & 0xffff, 2);
   else
     LOGWARN("CD: Unknown data buffer write with mask = %08x\n", mem_mask);
 }
 
 inline u32 saturn_cd_hle_device::dataxfer_long_r() {
-  uint32_t rv = 0xffff'ffff;
+  // A longword following an odd number of FIFO words may straddle a sector.
+  if (xferoffs & 2) {
+    const u32 high = dataxfer_sector_r(2);
+    return (high << 16) | dataxfer_sector_r(2);
+  }
+  return dataxfer_sector_r(4);
+}
+
+u32 saturn_cd_hle_device::dataxfer_sector_r(unsigned bytes) {
+  uint32_t rv = bytes == 2 ? 0xffff : 0xffff'ffff;
 
   if (machine().side_effects_disabled())
     return rv;
@@ -534,11 +555,11 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
       // a hole in the partition has nothing to hand over; leave the port at
       // its idle value and move on to the next sector rather than chasing a
       // null pointer or running off a block with a nonsense size
-      if (blk == nullptr || storage_size < 4 ||
-          uint32_t(storage_size) > sizeof(blk->data) || payload_size < 4 ||
+      if (blk == nullptr || storage_size < int32_t(bytes) ||
+          uint32_t(storage_size) > sizeof(blk->data) || payload_size < int32_t(bytes) ||
           payload_offset > sizeof(blk->data) ||
           uint32_t(payload_size) > sizeof(blk->data) - payload_offset ||
-          xferoffs > uint32_t(payload_size) - 4) {
+          xferoffs > uint32_t(payload_size) - bytes) {
         LOGWARN("CD: Get Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -547,11 +568,12 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
         break;
       }
 
-      // get next longword
-      rv = get_u32be(&blk->data[payload_offset + xferoffs]);
+      // Transfer one or two FIFO words, most significant byte first.
+      const uint8_t *const ptr = &blk->data[payload_offset + xferoffs];
+      rv = bytes == 2 ? (u32(ptr[0]) << 8) | ptr[1] : get_u32be(ptr);
 
-      xferdnum += 4;
-      xferoffs += 4;
+      xferdnum += bytes;
+      xferoffs += bytes;
 
       // did we run out of sector? (this tested blocks[xfersect], missing the
       // partition offset the data read above uses)
@@ -576,6 +598,15 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r() {
 }
 
 inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
+  if (xferoffs & 2) {
+    dataxfer_sector_w(data >> 16, 2);
+    dataxfer_sector_w(data & 0xffff, 2);
+    return;
+  }
+  dataxfer_sector_w(data, 4);
+}
+
+void saturn_cd_hle_device::dataxfer_sector_w(u32 data, unsigned bytes) {
   switch (xfertype32) {
   case XFERTYPE32_PUTSECTOR:
     // make sure we have sectors left
@@ -598,11 +629,11 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
       }
 
       // as above: skip anything we cannot safely write into
-      if (blk == nullptr || blk->size < 4 ||
-          uint32_t(blk->size) > sizeof(blk->data) || payload_size < 4 ||
+      if (blk == nullptr || blk->size < int32_t(bytes) ||
+          uint32_t(blk->size) > sizeof(blk->data) || payload_size < int32_t(bytes) ||
           payload_offset > sizeof(blk->data) ||
           uint32_t(payload_size) > sizeof(blk->data) - payload_offset ||
-          xferoffs > uint32_t(payload_size) - 4) {
+          xferoffs > uint32_t(payload_size) - bytes) {
         LOGWARN("CD: Put Sector Data skipping invalid block %d of %d\n",
                 xfersect + 1, xfersectnum);
 
@@ -611,11 +642,17 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data) {
         break;
       }
 
-      // get next longword
-      put_u32be(&blk->data[payload_offset + xferoffs], data);
+      // Transfer one or two FIFO words, most significant byte first.
+      uint8_t *const ptr = &blk->data[payload_offset + xferoffs];
+      if (bytes == 2) {
+        ptr[0] = data >> 8;
+        ptr[1] = data;
+      } else {
+        put_u32be(ptr, data);
+      }
 
-      xferdnum += 4;
-      xferoffs += 4;
+      xferdnum += bytes;
+      xferoffs += bytes;
 
       // did we run out of sector?
       if (xferoffs >= payload_size) {

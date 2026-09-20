@@ -73,6 +73,13 @@ sig='void saturn_cd_hle_device::finish_put()'
 functions+='\n'+(extract(source,sig) if sig in source else sig+' {}')
 sig='bool saturn_cd_hle_device::cd_transfer_wait()'
 functions+='\n'+(extract(source,sig) if sig in source else sig+' {return false;}')
+# Include the real shared sector-port bodies when present; declarations only
+# adapt the old mock. The fixture's assertions and expected bytes are unchanged.
+if 'dataxfer_sector_r(' in source:
+    head=head[:head.rfind('};')]+'u32 dataxfer_sector_r(unsigned);void dataxfer_sector_w(u32,unsigned);\n'+head[head.rfind('};'):]
+    functions+='\n'+extract(source,'u32 saturn_cd_hle_device::dataxfer_sector_r(')
+    functions+='\n'+extract(source,'void saturn_cd_hle_device::dataxfer_sector_w(')
+
 tail=r'''
 using Device=saturn_cd_hle_device;
 std::vector<uint8_t> image(const Device &d){
