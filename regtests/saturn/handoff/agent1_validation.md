@@ -76,9 +76,13 @@ rather than take either file wholesale.
   open native gate, not on the CD work itself:
   - committed build artifacts (policy: no binaries/downloads in the tree):
     `saturn-linux-234c7abcfc9a222978a7545a8491e568cf1781cf.zip` (16.3 MB, repo
-    root), `regtests/saturn/error.zip` (17.3 MB), `regtests/saturn/` screenshots,
-    ~13 MB `afterburner2-boot*.log`, and stray `*.patch` / `error.log` files in
-    the repo root. These also make the branch expensive to fetch and diff.
+    root), `regtests/saturn/error.zip` (17.3 MB, one 233 MB debug log), the
+    `regtests/saturn/` screenshots, ~13 MB `afterburner2-boot*.log`, and stray
+    `*.patch` / `error.log` files in the repo root. These also make the branch
+    expensive to fetch and diff.  On this branch the same class of file was
+    present (`saturn-linux-*.zip`, a root `error.log`); both are now removed
+    here, and the ABII boot logs are kept because the boot analysis cites their
+    line numbers and SHA-256.
   - every CD candidate is still UNVALIDATED with no native result; merging now
     would import method-level claims as if they were runtime behaviour.
 
