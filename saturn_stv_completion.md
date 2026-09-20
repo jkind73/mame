@@ -357,7 +357,7 @@
 - **Source:** `src/mame/sega/{saturn_cd_hle,saturn_cdb}.cpp`.
 - [ ] **CD-01 — Complete host command/transfer-state behavior. [P/V]**
   - Current integration: Inspection reads now avoid HIRQ mutation/IRQ callbacks; CPU read behavior retained. Extracted debugger/CPU matrix passes; linked acceptance pending. See `regtests/saturn/handoff/integration.md`.
-  - Current integration: DCHG read/ack correction is now an implementation WIP; extracted read/ack and old-behavior negative tests pass, live tray/boot acceptance pending. See `regtests/saturn/handoff/integration.md`.
+  - Validator update for implementation revision `b3eece68ae1`: live `test_cd_hirq.py` passed, superseding the earlier DCHG read/ack WIP-only description. This does not establish broader tray/boot or full CD acceptance. The pinned review, accepted candidate scopes and remaining promotion conditions are indexed in `saturn_pending/PROMOTION_STATUS.md`; parent status remains open.
   - DRDY and related status/interrupt transitions, buffer-full/empty behavior, transfer completion, command overlap and dual-port host interface semantics.
   - Audit filters/partitions, sector routing, file/sector access and reset/abort interactions through actual command sequences, not successful executable loading alone.
 - [ ] **CD-02 — Complete drive/media timing and state transitions. [P/V/R]**

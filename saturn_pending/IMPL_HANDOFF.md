@@ -9316,3 +9316,98 @@ replace either HLE wholesale. Validator assets were only read, not changed.
   End; reservation-admission BFUL timing remains open. Native FIFO capacity,
   pending asserted-line save, SCU/CPU delivery, acknowledgement reassertion,
   exact IRQ timing and titles remain unqualified. No validator assets changed.
+
+---
+
+## Validator acceptance supersession — reviewed b3eece68ae1 — 2026-09-20
+
+This is a transcription of the **independent validator's second review**, not
+new validation claimed by the implementation agent and not new implementation
+IDs. The rows below supersede the earlier blanket UNVALIDATED labels for these
+specific accepted contracts. Original entries, qualifications and falsifiers
+remain intact. Candidate-level acceptance is not parent milestone completion or
+whole-branch promotion authorization.
+
+- Reviewed implementation: **b3eece68ae156aa90ad25c6c6308194a32e15348**.
+- Validator revision: **a735e0340a64a5a9369650165e3d423e2a6b9f86**.
+- Authority: `regtests/saturn/handoff/agent1_validation.md:102-194`, blob
+  **066ba4ba5668ab007bfa55a855fbead51adc161f**.
+- Pinned report:
+  https://github.com/jkind73/mame/blob/a735e0340a64a5a9369650165e3d423e2a6b9f86/regtests/saturn/handoff/agent1_validation.md#L102-L194
+- Promotion ledger: **`saturn_pending/PROMOTION_STATUS.md`**. Source commit
+  columns below are provenance within the reviewed tree, not claims that those
+  commits were tested separately or may be cherry-picked without dependencies.
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0117 | CD-01 | 830bd348 | UNVALIDATED — unchanged by validator | Read File defaults the retained Play range; native runtime acceptance still missing |
+| IMPL-0118 | CD-01 | 830bd348 | UNVALIDATED — unchanged by validator | Directory move defaults the retained Play range; native runtime acceptance still missing |
+| IMPL-0119 | CD-01 | 830bd348 | UNVALIDATED — unchanged by validator | Held-window access defaults the retained Play range; native runtime acceptance still missing |
+| IMPL-0120 | CD-01 | b70549aa | ACCEPTED — validator review; integration conditions below | Sector FIFO word reads on both halfword lanes |
+| IMPL-0121 | CD-01 | b70549aa | ACCEPTED — validator review; integration conditions below | Sector FIFO word writes on both halfword lanes |
+| IMPL-0122 | CD-01 | b70549aa | ACCEPTED — validator review; integration conditions below | Mixed-width sector continuation retains cursor and straddle semantics |
+| IMPL-0123 | CD-02 | ca86d951 | ACCEPTED — validator review | Play track bounds precede image lookup |
+| IMPL-0124 | CD-02 | ca86d951 | ACCEPTED — validator review | Seek track bounds and default-track/Home distinction |
+| IMPL-0125 | CD-01 | 650e9468fab | ACCEPTED — validator review; integration conditions below | Metadata FIFO aggregates ordered words |
+| IMPL-0126 | CD-01 | 650e9468fab | ACCEPTED — validator review; integration conditions below | Inspection reads consume no transfer state |
+| IMPL-0127 | CD-01/CD-02 | 61504f0efdb | ACCEPTED — validator review | Selector discard advances the stream and raises CSCT |
+| IMPL-0128 | CD-01/CD-02 | 61504f0efdb | ACCEPTED — validator review | Disconnected output discards rather than pinning the pickup |
+| IMPL-0129 | CD-01/CD-02 | b2b164b2e2b | ACCEPTED — independently corroborated by validator; integration conditions below | Producer BFUL is an interrupt cause without polling |
+| IMPL-0130 | CD-01 | 19d9a83b670 | ACCEPTED — independently corroborated by validator; integration conditions below | PUT End BFUL reflects post-routing capacity |
+
+### Evidence level and closed blocker
+
+The validator reports a native build of this implementation revision (1220 TUs,
+`-O0 -j2`, exit0), `saturn -validate` exit0, and live `test_cd_hirq.py` PASS.
+Therefore the earlier **absence of a native build/result is closed for this
+reviewed source**. No CI run is claimed: the reported build was in the
+validator's worktree. The source in this documentation update is unchanged.
+
+The 72 regression scripts were executed individually: **68 pass, four fail due
+to stale harness scaffolds**. This is not a green end-to-end `run_all.py`.
+The validator independently reproduced ten selected implementation probes;
+that remains method-level evidence, not individual native acceptance of every
+candidate. The prior65-probe/55-exit0/ten-conflict implementation batch is a
+different suite; those ten conflicts are not declared resolved by this record.
+
+The explicit verdict grounds are code review, primary-source citation and,
+where applicable, the report's live cross-check. Do not expand these into
+per-candidate live tests the report does not identify. In particular, discard
+logic is accepted while its live fixture is still requested; PUT End BFUL is
+accepted while the broader raw-PUT/selector runtime contract is unvalidated.
+
+### Conditions retained before integration / full promotion
+
+1. **0120-0122 and0125-0126:** port the cursor and straddle semantics into the
+   destination's folded `cd_reg_offset()` /16-bit `host_r`/`host_w` path; never
+   replace the HLE file wholesale or silently drop the width behavior. Obtain
+   destination-tree runs of `test_cd_hirq.py`, `test_cd_transfer.py` and
+   `test_cd_lle.py` after integration.
+2. **0129/0130:** reconcile the destination's allocator latch with producer and
+   PUT End handling into one cause-and-clear policy, not competing BFUL sites.
+3. **Regression batch:** repair only the missing scaffold dependencies in
+   `test_cd_transfer.py`, `test_dma_bus.py`, `test_dma_indirect.py` and
+   `test_dma_source.py`, preserving expectations, and obtain an end-to-end run.
+   The validator identifies these as harness failures, not production faults.
+4. **Native behavior:** obtain the requested live raw-PUT/selector/discard
+   fixture.0117-0119 and unmentioned candidate scopes remain unpromoted.
+5. **CD-DA gaps:** `play_q_track`, `scan_audible` and `scan_moves` remain real
+   implementation gaps in the reviewed binary. The shared tone failures are
+   headless mixer-capture problems; do not treat them as device faults without
+   correcting the capture point or providing an audio sink.
+6. **Gameplay / milestone scope:** no After Burner II/OutRun gameplay acceptance
+   is inferred; relevant media is unavailable in the reported workspaces.
+   CD-01 through CD-05 remain open. Earlier0078 acceptance stays at its stated
+   code-review/method-level scope; no other candidate is accepted by inference.
+
+### Source identity and documentation-only checks
+
+Reviewed Git blobs:
+- `src/mame/sega/saturn_cd_hle.cpp`:0346dbe37889023f303110dcf2091b99da761f75
+- `src/mame/sega/saturn_cd_hle.h`:ab09861a9a04277851fcac4d40d62952197576b2
+- `src/mame/sega/saturn_scu.cpp`:325282dc10e96d3c0e252e3bcbdd5235d56781d2
+
+No production or validator asset/expectation changes are made by this record.
+The completion report only replaces the stale DCHG WIP-only sentence with the
+attributed live-HIRQ result and ledger pointer; IDs, parent labels and checkboxes
+are unchanged. No new build, runtime validation, merge or release is claimed.
