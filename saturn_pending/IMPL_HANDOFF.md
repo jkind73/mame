@@ -6353,3 +6353,78 @@ addendum stated; production range1811-1855 is unchanged.
   Held254-record window/scope semantics, larger directories, XA metadata,
   MPEG state, native save-file/endian and frozen-title acceptance remain open.
   No validator assets/expectations or milestone statuses changed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0087 | CD-01 | 59961773 | UNVALIDATED | File Info reports XA file numbers/attributes, not cache ordinals or unrelated ISO flags |
+
+### IMPL-0087 — CD-01 — ISO/XA File Info metadata
+
+- branch/commit/base: `arena/01a0b897-mame` @ **59961773**; base **2c31f69e**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**. A primary
+  blob retry also returned `gh: Bad credentials (HTTP401)`; no credentials
+  requested/stored. Local incremental recovery bundle retained.
+- files: `src/mame/sega/saturn_cd_hle.h:50-69`;
+  `src/mame/sega/saturn_cd_hle.cpp:196,213,666,2490,3866-3867,3945-3954`;
+  `saturn_pending/impl_checks/check_cd_xa_file_info.py:1-49`;
+  own readiness/cache-save probes (new-member input/coverage adapters).
+- contract: find System Use after the full source file identifier and its
+  even-length padding. A complete14-byte XA extension with both signature
+  bytes supplies file number at offset8 and attribute bits11..15 from its
+  big-endian attribute word. CdcFile retains ISO directory bit1 and maps
+  those XA bits into bits3..7. Without valid XA information, number=0 and
+  XA attribute bits=0. Single/table File Info serialize that metadata rather
+  than the cache index/raw ISO flag byte. Register the added member for both
+  root and staged directory save images in the same change.
+- primary source: ST-162-062094 p.72 data6.8 explicitly specifies zero file
+  number without system information and the CdcFile attribute mapping;
+  p.100/function8.4 defines File Info records. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. ST-040-R4-051795 pp.20-22,
+  section3.2.2/Tables3.6-3.11, gives directory padding, XA signature/number
+  positions and attribute bits. The previously cited SDK blob is
+  2e56c214c756ec98944dfca9a843c6b1bbeaf8d3; authentication prevented another
+  download. Read the same titled/revision primary document through this
+  mirror [3](https://antime.kapsi.fi/sega/files/ST-040-R4-051795.pdf).
+  Direct curl also failed TLS, so byte identity of the mirror to that Git
+  blob is NOT claimed.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1034-1064,4374-4389`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, uses the padded System Use
+  offset, complete XA header/signature, zero default number, ISO2|XA_F8
+  attribute mapping and saved fnum. Local base/upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d do not decode that extension and
+  serialize temp/cache ID into finfbuf[10]. No reference block imported.
+- expected observable: an ordinary ISO record reports number0 even when
+  cached at ID2 or another index. XA number35h/attributes3800h with ISO
+  directory bit clear gives final information word3538h, in both streams.
+  Even-length identifiers must not shift the extension by one byte. Exact
+  metadata/stream bytes, zero tolerance; no timing claim.
+- suggested method: authored legal ISO/XA records with unequal ID/number,
+  odd/even identifier lengths and distinct form/interleave/audio attributes;
+  compare both streams and native save/load. Keep invalid/long-name and
+  contradictory flag combinations as storage diagnostics.
+- falsifier: number aliases cache ID, absent/bad/truncated extension produces
+  XA metadata, name truncation changes extension location, attribute bytes
+  are swapped/unmasked, or save/load loses the added number.
+- self-check run (method-level, unvalidated):655360 padded-name/signature/
+  attribute/number images through both streams plus36 boundary controls
+  exit0 with ASan/fail-fast UBSan. Historical2c31f69e fails emitted metadata
+  at generated line382; ordinal, missing padding, short header, missing
+  second signature, raw ISO flags and wrong-endian mutants assertion-fail.
+  Missing cache/root number registrations fail the directory-save probe.
+  Existing196 registered directory images now seed/compare the added field;
+  old-field comparisons unchanged. The readiness probe explicitly seeds
+  file_number=i to preserve its existing byte-pattern expectations; no
+  expected words were rewritten. All31 own CD probes, warning-enabled CD TU
+  syntax and diff checks exit0; `/tmp/impl-ref/cd-0087-aggregate.log`.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: **SAVE-STATE LAYOUT BREAK** from added registered
+  file-number members; no older-save compatibility claim. Window/scope and
+  invalid-ID policy, XA-aware Read File filtering/interleave, conflicting XA
+  versus ISO directory flags, extended attribute records, native media/save/
+  timing and frozen-title acceptance remain separate. Test attributes and
+  very long identifiers include deliberately nonconforming storage images.
+  No validator asset/expectation edits or milestone advancement.
