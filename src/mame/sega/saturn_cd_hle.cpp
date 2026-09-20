@@ -615,10 +615,12 @@ void saturn_cd_hle_device::update_hirq() {
   m_cd_host_irq_cb((hirqreg & hirqmask) ? ASSERT_LINE : CLEAR_LINE);
 }
 
-/* Host window dispatch for the CD block interface.  This is the same decode
-   the amap below performs; the 0x18000 mirror (which repeats 0x05898000
-   onto 0x05880000) is normalised away first so both forms reach the same
-   register.  Everything the amap leaves unmapped stays open bus. */
+/* Host window dispatch for the CD block interface.  The console driver folds
+   the window's word-index addressing and register block aliases before calling
+   here, so these are plain register-block offsets; the amap below serves the
+   machines that install this device's map directly (ST-V), where the map
+   entries already hand out entry-relative offsets.  Anything else is open
+   bus. */
 uint16_t saturn_cd_hle_device::host_r(offs_t offset, uint16_t mem_mask) {
   switch (offset) {
   case 0x0000:
