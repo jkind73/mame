@@ -5951,3 +5951,80 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   selector reset trace compatible with those accepted sequences)** for that
   reset policy. No validator expectations, game-specific branches, CPU,
   sound, video or milestone-status changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0081 | CD-01 | d329912d | UNVALIDATED | Actual-size calculation waits for an available complete range and no host PUT, retaining its previous held result on refusal |
+
+### IMPL-0081 — CD-01 — actual-size range and held-result semantics
+
+- branch/commit/base: `arena/01a0b897-mame` @ **d329912d**; base **9af24b6f**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**; last published
+  1354cfda. An incremental local Git bundle under
+  `/home/user/mame-local-backup/unpublished.bundle` preserves the unpublished
+  branch history outside the repository; no bundle/artifact is committed.
+- files: `src/mame/sega/saturn_cd_hle.cpp` cmd_calculate_actual_data_size;
+  `saturn_pending/impl_checks/check_cd_actual_size_range.py`.
+- contract: resolve sector-position END and sector-count END independently
+  against the partition's logical count. Empty, zero-count, unavailable or
+  overlong ranges return WAIT instead of clamping or counting stale unused
+  slots. Active PUT also returns WAIT, including after its last write until
+  DataEnd; an existing GET does not itself block calculation. Invalid
+  partition byte returns REJECT. Refusal preserves the previous held result
+  and pending causes, with CMOK but no new ESEL. Accumulate a valid complete
+  range's current host-view sizes in16-bit words, then replace the held result
+  atomically and complete with CMOK|ESEL after populating the response.
+  Malformed pool IDs/pointers/free records are guarded defensively rather
+  than being dereferenced or publishing a partial sum.
+- primary source: ST-162-062094 printed p.93 section8.2.6/functions6.3/6.4:
+  designated range/independent END sentinels, host word count and held result;
+  p.95/function7.1 connects fetching length to this calculation; p.31
+  section3.3 defines WAIT/nonacceptance versus malformed-command REJECT;
+  p.30 Table3.2 assigns completed calculation to ESEL. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. The p.93 partition-output
+  disconnection remark is NOT implemented/qualified by this range candidate.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3276-3338`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  resolves the range, waits during writing or insufficient range, and replaces
+  CalcedActualSize only on success. Its guessed240-clock delay is not used.
+  Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2673-2743`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, instead rejects/clamps ranges and
+  raises ESEL on rejected calculations (and the result query); those
+  disagreements are not adopted. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d CD method1492-1514 and local base
+  clear the result early; the local generic helper only bounds the physical
+  array, not the available logical range. No reference block imported.
+- expected observable: with three buffered sectors, offset2/count2 waits and
+  preserves the old result rather than counting one sector; FFFF/FFFF selects
+  exactly the last sector. A partial/fully written but unterminated PUT waits
+  without ESEL; after DataEnd the same available range calculates normally.
+  Get Actual Data Size still reads the prior result after any failed request.
+  Exact words/held value/WAIT flag/cause bits, zero tolerance; no latency claim.
+- suggested method: native mixed Mode1/Form1/Form2 partitions at all fetching
+  lengths, both sentinels, empty and partially available ranges, repeated
+  result queries, PUT before/at EOF/after DataEnd, and GET coexistence.
+- falsifier: out-of-range request silently succeeds/truncates, result changes
+  on refusal, invalid selector manufactures ESEL, a partial sum becomes
+  visible, active PUT is accepted, ordinary GET alone causes WAIT, or
+  successful calculation disagrees with the fresh-GET view's word count.
+- self-check run (method-level, unvalidated):489216 range/END/view/pending-cause
+  images,696 invalid-selector controls and nine ownership/PUT-WAIT/GET controls
+  exit0 with ASan/fail-fast UBSan. Historical9af24b6f fails held-result/status
+  predicate at generated line1169. Partial-result, missing PUT-WAIT,
+  overbroad all-host-WAIT and rejected-ESEL mutants fail at generated
+  lines1191/1199/1202/1182. All25 own CD probes, warning-enabled CD TU syntax
+  and diff checks exit0; no full build.
+- state: **UNVALIDATED**; local publication blocked as above.
+- not covered/known doubts: partition-output/MPEG connection tracking and
+  disconnection, asynchronous calculation latency, full WAIT report/status
+  formatting, FIFO-prefetched GET counts and frozen-game native acceptance
+  remain separate. Stale unused entries and malformed ownership are storage
+  diagnostics, not legal hardware configurations. Existing calcsize save
+  registration retained; no new field/layout break. Validator assets and
+  expectations, HIRQ handlers, frozen CPU/sound/video paths and milestone
+  status untouched. Previously reported validator mock compilation gaps
+  remain; this entry does not claim an unmodified-fixture result.
