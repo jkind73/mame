@@ -3607,7 +3607,7 @@ saturn_cd_hle_device::cd_alloc_block(uint8_t *blknum) {
       }
 
       blocks[i].size = sectlenin;
-      blocks[i].raw_data = false; // PUT/synthetic allocations retain cooked semantics
+      blocks[i].raw_data = false; // raw-sector constructors opt in after allocation
       *blknum = i;
 
       LOG("Allocating block %d, size %x\n", i, sectlenin);

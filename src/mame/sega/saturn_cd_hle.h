@@ -88,7 +88,7 @@ private:
     uint8_t fnum; // file number
     uint8_t subm; // subchannel mode
     uint8_t cinf; // coding information
-    bool raw_data = false; // media data sectors retain their entire raw image
+    bool raw_data = false; // complete sector image rather than a cooked payload
 
     int32_t host_size(int32_t length) const {
       if (!raw_data)
