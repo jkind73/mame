@@ -7,11 +7,15 @@ fixture=Path(__file__).with_name('check_cd_directory_extent.py')
 scope={'__file__':str(fixture),'__name__':'change_directory_scaffold'}
 exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),scope)
 head,functions,extract,source,header=(scope[k] for k in ('head','functions','extract','source','header'))
-head='#include <cassert>\n#define LOGCMD(...) ((void)0)\nconstexpr unsigned MAX_FILTERS=24,CMOK=1,EFLS=0x200,CD_STAT_REJECT=0xff00;\n'+head
-head=head.replace(' direntryT curroot{};',extract(header,'struct filterT')+';\n direntryT curroot{};')
+head='#include <cassert>\n#define LOGCMD(...) ((void)0)\nconstexpr unsigned CMOK=1,EFLS=0x200,CD_STAT_REJECT=0xff00;\n'+head
+if 'MAX_FILTERS' not in head:head='constexpr unsigned MAX_FILTERS=24;\n'+head
+if 'struct filterT' not in head:
+    head=head.replace(' direntryT curroot{};',extract(header,'struct filterT')+';\n direntryT curroot{};')
+if 'filterT filters[' not in head:
+    at=head.rfind('};');head=head[:at]+'filterT filters[24]{};\n'+head[at:]
 head=head[:head.rfind('};')]+r'''
  uint16_t cr1=0,cr2=0,cr3=0,cr4=0,cd_stat=0x100,hirqreg=0;
- filterT filters[24]{};filterT *cddevice=nullptr;int cddevicenum=0xff;
+ filterT *cddevice=nullptr;int cddevicenum=0xff;
  unsigned irqs=0;void (*observe)(saturn_cd_hle_device&)=nullptr;
  void update_hirq(){++irqs;if(observe)observe(*this);}
  void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}

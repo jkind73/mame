@@ -2385,6 +2385,21 @@ bool saturn_cd_hle_device::cd_file_info_held(uint32_t file_id) const {
                          file_id - m_file_scope_start < 254));
 }
 
+void saturn_cd_hle_device::cd_setup_directory_filter(uint8_t input,
+                                                     const direntryT &entry) {
+  assert(input < MAX_FILTERS);
+  // ST-162 section 6.2.3/Table 6.1: directory access selects only the FAD
+  // range. File-number selection is enabled by Read File, not by a hold.
+  filterT &filter = filters[input];
+  filter = {};
+  filter.mode = 0x40;
+  filter.fad = entry.firstfad;
+  filter.range = (uint64_t(entry.length) + 2047) / 2048;
+  filter.fid = entry.file_number;
+  filter.condtrue = input;
+  filter.condfalse = 0xff;
+}
+
 void saturn_cd_hle_device::cmd_change_directory() {
   const uint8_t input = cr3 >> 8;
   const uint32_t file_id = (uint32_t(cr3 & 0xff) << 16) | cr4;
@@ -2404,7 +2419,7 @@ void saturn_cd_hle_device::cmd_change_directory() {
   // its load or displacing the existing input connection/held window.
   if (file_id != 0) {
     cd_connect_cddevice(input);
-    read_new_dir(file_id);
+    read_new_dir(file_id, input);
   }
   cr_standard_return(cd_stat);
   hirqreg |= CMOK | EFLS;
@@ -2425,6 +2440,7 @@ void saturn_cd_hle_device::cmd_read_directory() {
     return;
   }
   cd_connect_cddevice(input);
+  cd_setup_directory_filter(input, curdir[0]);
 
   // The synchronous HLE already cached the parsed directory. Expose the
   // requested window without losing the always-held self/parent records.
@@ -3846,12 +3862,18 @@ void saturn_cd_hle_device::cd_defragblocks(partitionT *part) {
 }
 
 // iso9660 parsing
-void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
+void saturn_cd_hle_device::read_new_dir(uint32_t fileno, uint8_t input) {
   int foundpd, i;
   uint32_t cfad; //, dirfad;
   uint8_t sect[2048];
 
   if (fileno == 0xffffff) {
+    if (input < MAX_FILTERS) {
+      // Before the PVD supplies the root extent, discovery must not inherit
+      // a stale range/subheader match that can discard volume descriptors.
+      cd_setup_directory_filter(input, direntryT{});
+      filters[input].mode = 0;
+    }
     cfad = 166; // first sector of directory as per iso9660 specs
 
     foundpd = 0; // search for primary vol. desc
@@ -3916,6 +3938,8 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
       }
 
       // done with all that, read the root directory now
+      if (input < MAX_FILTERS)
+        cd_setup_directory_filter(input, curroot);
       make_dir_current(curroot.firstfad, curroot.length);
     }
   } else {
@@ -3933,6 +3957,8 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
     if (curdir[fileno].length > MAX_DIR_SIZE) {
       LOGWARN("ERROR: new directory too big (%d)!\n", curdir[fileno].length);
     }
+    if (input < MAX_FILTERS)
+      cd_setup_directory_filter(input, curdir[fileno]);
     make_dir_current(curdir[fileno].firstfad, curdir[fileno].length);
   }
 }
