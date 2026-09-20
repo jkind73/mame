@@ -6428,3 +6428,60 @@ addendum stated; production range1811-1855 is unchanged.
   timing and frozen-title acceptance remain separate. Test attributes and
   very long identifiers include deliberately nonconforming storage images.
   No validator asset/expectation edits or milestone advancement.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0088 | CD-01 | 4340196c | UNVALIDATED | Unsupported subcode selectors reject without DRDY or host ownership, after existing transfer-busy arbitration |
+
+### IMPL-0088 — CD-01 — subcode selector admission
+
+- branch/commit/base: `arena/01a0b897-mame` @ **4340196c**; base **290d615c**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**; local
+  recovery bundle retained relative to the published1354cfda tip.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1394-1407`;
+  `saturn_pending/impl_checks/check_cd_subcode_selector.py:1-34`.
+- contract: with no outstanding host transfer, selector bytes2..255 return
+  REJECT/CMOK before changing transfer ownership, kind, cursors, backing or
+  drive status. Do not manufacture DRDY; preserve any already pending DRDY
+  and other causes. Existing host ownership still takes precedence and
+  returns WAIT, including at EOF before DataEnd, for all selector values.
+- primary source: ST-162-062094 p.85 section8.2.3/functions3.1/3.2 specifies
+  Q and R-W transfers (five/twelve words); p.31 section3.3 defines invalid
+  command-format REJECT/nonacceptance; p.32 excludes rejected requests from
+  the DataEnd obligation. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. Selector-byte coding/priority
+  is cross-checked below rather than inferred from separate SDK functions.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:2878-2894`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  checks active transfer first, then rejects type>=2, accepting only0/1.
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d/local base leave
+  unsupported selectors outside the switch while still asserting DRDY;
+  local explicit ownership also made these phantom transfers hold the host
+  engine until DataEnd. No reference block imported.
+- expected observable: idle command20 with selector02 reports REJECT and
+  CMOK without new DRDY; a subsequent valid transfer needs no intervening
+  DataEnd. The same invalid selector while an EOF transfer remains owned
+  reports WAIT and preserves that stream's byte count. Exact state/cause
+  predicates, zero tolerance; no command latency claim.
+- suggested method: all selector bytes with clear/pending HIRQ masks, then
+  legal Q/R-W starts; repeat while a transfer is live and drained but not
+  terminated. Keep payload-format/media-availability checks separate.
+- falsifier: unsupported request creates ownership/DRDY, changes backing or
+  cursors, blocks the next legal idle start, erases pending causes, or rejects
+  instead of waiting while another transfer owns the host engine.
+- self-check run (method-level, unvalidated):16646144 invalid-selector/
+  pending-HIRQ images,2048 EOF-owner WAIT-precedence images and two legal
+  start/End controls exit0 with ASan/fail-fast UBSan. Historical290d615c fails
+  the admission predicate at generated line1595; new-DRDY, acquired-owner and
+  rejection-before-WAIT mutants fail at lines1603/1603/1611. All32 own CD
+  probes, warning-enabled CD TU syntax and diff checks exit0; aggregate
+  `/tmp/impl-ref/cd-0088-aggregate.log`.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: no new fields/layout change. SubQ geometry and
+  payload layout, R-W packet availability/empty-buffer WAIT/error flags,
+  full native report/timing/frozen-title qualification remain open. The
+  current R-W payload remains a placeholder; valid-selector controls do not
+  establish its hardware accuracy. Invalid idle cursor poison is a storage
+  diagnostic. Validator assets/expectations and milestone statuses untouched.
