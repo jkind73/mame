@@ -2314,17 +2314,29 @@ void saturn_cd_hle_device::cmd_get_sector_data_copy_or_move_error() {
 }
 
 void saturn_cd_hle_device::cmd_change_directory() {
-  uint32_t temp;
-  // change directory
-  LOGCMD("%s: Change Directory\n", machine().describe_context());
-  hirqreg |= (CMOK | EFLS);
-  update_hirq();
+  const uint8_t input = cr3 >> 8;
+  const uint32_t file_id = (uint32_t(cr3 & 0xff) << 16) | cr4;
+  // Only a held directory (or the special filesystem-root ID) designates
+  // a directory move. In particular, a regular file is not a directory
+  // byte stream and must not replace the current held information.
+  if (input >= MAX_FILTERS ||
+      (file_id != 0xffffff &&
+       (file_id >= curdir.size() || !(curdir[file_id].flags & 0x02)))) {
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
 
-  temp = (cr3 & 0xff) << 16;
-  temp |= cr4;
-
-  read_new_dir(temp);
+  // ID zero names the current directory: acknowledge without restarting
+  // its load or displacing the existing input connection/held window.
+  if (file_id != 0) {
+    cd_connect_cddevice(input);
+    read_new_dir(file_id);
+  }
   cr_standard_return(cd_stat);
+  hirqreg |= CMOK | EFLS;
+  update_hirq();
 }
 
 void saturn_cd_hle_device::cmd_read_directory() {
@@ -3824,8 +3836,8 @@ void saturn_cd_hle_device::read_new_dir(uint32_t fileno) {
     /* fileno is the 24-bit value from CR3/CR4 while curdir only ever holds
        as many entries as make_dir_current() parsed, so an out-of-range one
        would read hundreds of megabytes past the allocation.  Leave the
-       current directory alone: cmd_change_directory() has already reported
-       CMOK|EFLS and calls cr_standard_return() on the way out. */
+       current directory alone. The public command preflights this ID, but
+       keep the bound for internal callers as well. */
     if (size_t(fileno) >= curdir.size()) {
       LOGWARN("CD: Change Directory %06x beyond directory (%u entries)\n",
               fileno, unsigned(curdir.size()));
