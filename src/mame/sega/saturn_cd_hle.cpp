@@ -903,6 +903,8 @@ void saturn_cd_hle_device::cmd_get_hw_info() {
 void saturn_cd_hle_device::cmd_get_toc() {
   LOGCMD("%s: Get TOC\n", machine().describe_context());
   cd_readTOC();
+  xfertype = XFERTYPE_TOC;
+  xfercount = 0;
   // nope, hisspach wants just the DTREQ, otherwise hangs at Sega logo
   // cd_stat = CD_STAT_TRANS | CD_STAT_PAUSE;
   cd_stat |= CD_STAT_TRANS;
@@ -3913,9 +3915,6 @@ void saturn_cd_hle_device::device_stop() { curdir.clear(); }
 
 void saturn_cd_hle_device::cd_readTOC(void) {
   int i, ntrks, tocptr, fad;
-
-  xfertype = XFERTYPE_TOC;
-  xfercount = 0;
 
   if (m_cdrom_image->exists()) {
     ntrks = m_cdrom_image->get_last_track();
