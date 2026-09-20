@@ -9175,3 +9175,72 @@ replace either HLE wholesale. Validator assets were only read, not changed.
 - not covered/known doubts: no new fields/layout. Native CD prefetch, physical
   read-error handling while disconnected, exact selector connection timing,
   full-buffer IRQ edges, media identity and native saves/titles remain open.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0129 | CD-01/CD-02 | b2b164b2e2b | UNVALIDATED | The CD producer latches BFUL and drives its masked interrupt without requiring a host HIRQ read |
+
+### IMPL-0129 — CD-01/CD-02 — Producer buffer-full interrupt publication
+
+- branch/commit/base: `arena/01a0b897-mame` @ **b2b164b2e2b**, base **403ac9feea3**.
+- files: `src/mame/sega/saturn_cd_hle.cpp:4493-4496,4552-4556`;
+  `saturn_pending/impl_checks/check_cd_buffer_full_irq.py`;
+  `cd_audio_scaffold.py` (missing BFUL constant declaration only).
+- contract: when a data producer fills the modeled buffer pool, or its next
+  data interval encounters the full gate, latch BFUL in hirqreg and publish
+  the actual masked callback. BFUL cannot depend on the host polling the HIRQ
+  status overlay. A masked cause remains pending; enabling its mask exposes
+  it. Existing capacity release clears BFUL and withdraws that masked source.
+  Preserve the consumed-sector CSCT path and blocked-producer PAUSE behavior.
+- primary source: ST-162-062094 p.28 HIRQREQ defines BFUL bit3; IRQ output is
+  the OR of factors, and masking suppresses output without suppressing the
+  factor. P.38 says a full buffer causes PAUSE and BFUL1, and released capacity
+  resumes production. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafenf0ee9d595db68ad5247ba5ac6a8367fdced9c3fc
+  `src/ss/cdb.cpp:2315-2332` triggers BFUL when the CD processing path exhausts
+  free buffers, independently of HIRQ reads. Fork403ac9feea3
+  `saturn_cd_hle.cpp:819ff` synthesized BFUL for the read result, while the
+  producer only updated buffull and CSCT; its real update_hirq tests hirqreg,
+  not that overlay. The copy/move completion path already latches BFUL; this
+  change is specifically the missing drive-producer path. Independent local
+  bit/publication correction, not an imported FIFO/prefetch model.
+- expected observable: after the last free slot is consumed, BFUL is already
+  present and the callback is asserted if BFUL is enabled, before any HIRQ read.
+  A blocked data interval also publishes the cause without advancing position.
+  Mask0 suppresses output, not cause; enabling bit3 asserts it; deleting a
+  stored sector clears the cause and deasserts bit3-only output. Exact flags,
+  callback level and sector counts, zero tolerance; callback calls are not
+  native SCU IRQ edges or a cycle-latency measurement.
+- suggested method: use the actual producer, allocator, filter, update_hirq,
+  mask-write and deletion methods with a callback recorder. Begin with199 or
+  200 allocated slots, varied masks, one/two-sector ranges and a connected or
+  disconnected already-full output. Do not poll HIRQ before observing callback
+  and cause. Save before the event and replay from poisoned producer/pool/mask
+  state. Include nonfull stored/discarded sectors as no-BFUL controls.
+- falsifier: BFUL visible only through hirq_r, missing callback on the blocked
+  path, asserted output while masked, nonfull discard raising BFUL, incorrect
+  position advancement at full capacity, lost mask/capacity on replay or an
+  uncleared BFUL source after capacity release.
+- self-check run (method-level, unvalidated):108 full/mask/EOF/blocked images,
+  108 registered pre-event continuations and12 nonfull storage/discard controls;
+  ASan/fail-fast UBSan0. Actual producer/filter/pool/IRQ/mask/delete/save bodies,
+  callback recorder and mock image/audio/serializer. Historical403ac9feea3 and
+  seven compiled mutants assertion-fail: omitted cause, unconditional full
+  cause, omitted blocked-path notification, bypassed mask, missing saved mask,
+  missing saved capacity and omitted release clear. Existing discard-progress,
+  buffer-reset/resume and audio-range probes exit0. Warning-enabled native CD
+  TU syntax/diff0. Full64 own probes atb2b164b2e2b:54 exit0/same ten conflicts;
+  `/tmp/impl-ref/cd-0129-aggregate.log`. Existing assertions unchanged.
+- state: **UNVALIDATED**; **BLOCKED(native CI result for current implementation
+  revision)**. Latest validator review da9df9f9 remains applicable; no full
+  build or CI dispatch.
+- not covered/known doubts: no fields/save-layout added; hirqreg/hirqmask and
+  producer/pool fields already registered. The replay is before the new event,
+  not qualification of an already-asserted native SCU line across native save.
+  Host PUT reservation/commit-only BFUL policy, physical FIFO/scratch capacity,
+  HIRQ acknowledgement reassertion while still full, existing read overlays,
+  audio/full interaction and exact pause/IRQ/bus timing remain separate. No
+  native gameplay, firmware, frozen-title or full-branch merge qualification.
