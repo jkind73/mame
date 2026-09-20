@@ -6028,3 +6028,67 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   expectations, HIRQ handlers, frozen CPU/sound/video paths and milestone
   status untouched. Previously reported validator mock compilation gaps
   remain; this entry does not claim an unmodified-fixture result.
+
+### IMPL-0081 citation addendum (append-only)
+
+Production lines at d329912d: `src/mame/sega/saturn_cd_hle.cpp:1811-1855`;
+probe `saturn_pending/impl_checks/check_cd_actual_size_range.py:1-79`.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0082 | CD-01 | cab2a827 | UNVALIDATED | File Info publishes CMOK/DRDY only after its response, stream kind/cursor and readable backing are ready |
+
+### IMPL-0082 — CD-01 — File Info ready-notification ordering
+
+- branch/commit/base: `arena/01a0b897-mame` @ **cab2a827**; base **3dd9764d**.
+  Push retried after this commit; still fails `could not read Username for
+  'https://github.com': terminal prompts disabled`.
+  **BLOCKED(GitHub reconnection for push)**. Local recovery bundle continues
+  to retain unpublished history relative to1354cfda.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2360-2435`;
+  `saturn_pending/impl_checks/check_cd_file_info_ready.py:1-39`.
+- contract: accepted File Info initializes response words, transfer kind and
+  cursor, and (single-file) the12-byte record before making CMOK|DRDY visible
+  through update_hirq. Whole-table transfer has its reader/cursor ready to
+  serialize the existing held directory on the first read. Preserve existing
+  transfer lengths, metadata encoding, host ownership and pending causes.
+- primary source: ST-162-062094 p.32 section3.4 steps(a)-(d), especially
+  DRDY=1 permitting DATATRNS access; p.100 section8.2.8/function8.4 defines
+  the12-byte record and up-to254 held-record fetch. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3808-3863`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e:
+  transfer state and BasicResults precede DRDY; no guessed128-clock delay
+  imported. Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d and local
+  base publish the ready flag before their response/backing assignments;
+  existing builder/encoding retained, no reference block imported.
+- expected observable: at the first unmasked ready notification, CR2 already
+  carries the accepted stream word count, CR3/4 are zero, and a first16-bit
+  port read returns the requested record's FAD high word, not old scratch.
+  Exact response and stream words, zero tolerance; no clock latency claim.
+- suggested method: observe native CMOK/DRDY assertion and immediately read
+  response/data for one file and a fully held254-file table; retain prior
+  unrelated HIRQ bits and finish with DataEnd. Callback-immediate reads in
+  the implementation probe are a publication-order diagnostic, not a claim
+  that the native scheduler reenters the handler in that manner.
+- falsifier: ready notification exposes request/old response registers,
+  invalid/stale stream kind/cursor, stale single-file bytes, changed encoded
+  metadata, duplicate/skipped words or lost pending cause bits.
+- self-check run (method-level, unvalidated):960 single/table callback images
+  with0/1/6/all immediate word reads and exact subsequent continuation/End,
+  ASan/fail-fast UBSan exit0. Historical3dd9764d fails response predicate at
+  generated line305; an otherwise-ready but pre-backing notification mutant
+  fails data comparison. Initial new probe used an incorrect table-relative
+  file-number expectation; corrected it to the existing absolute cached ID
+  before committing. No pre-existing fixture expectation was edited.
+  Interleave/lifecycle probes, all26 own CD probes, warning-enabled CD TU
+  syntax and diff checks exit0. Aggregate `/tmp/impl-ref/cd-0082-aggregate.log`.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: no new fields/layout change. Existing padded254
+  policy, held-directory validity/window/serialization, invalid/empty file
+  response policy, filesystem-busy WAIT, native IRQ/DMA scheduling and
+  frozen-title runtime acceptance remain separate. No validator assets,
+  frozen CPU/sound/video paths or milestone statuses changed.
