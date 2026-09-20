@@ -9472,3 +9472,42 @@ are unchanged. No new build, runtime validation, merge or release is claimed.
   layout changed; no TU/full build was needed or run. Validator evidence,
   `validate_ci_runtime.sh`, fixture expectations, frozen production paths and
   milestone checkboxes were untouched. `git diff --check` exits0.
+
+### IMPL-0131 — CD-02 — Q current-position track/control addressing
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0131 | CD-02 | this entry's commit | UNVALIDATED — implementation method-level | Q uses FAD-150 for the image track lookup and the resulting track index for type |
+
+- Branch/base: `arena/01a0b897-mame`, `8a7f9497`. Files:
+  `src/mame/sega/saturn_cd_hle.cpp:1503–1520` and
+  `saturn_pending/impl_checks/check_cd_subq_position.py`.
+- Contract: an ordinary programme-area Q report identifies the track at the
+  current pickup, not 150 sectors ahead. Its control byte describes that same
+  track, not a second lookup using a track number as LBA. No new fields/save
+  layout changes. This is the narrow address bug behind validator `play_q_track`.
+- Primary: ST-162-062094 printed p.62, Subcode Information (current status/track
+  position); p.85, Get Subcode Q (five-word transfer). SDK pinned commit
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, PDF blob
+  `37cf17209eb176d6580bd55bf11af1694ae1f328`, reread via GH API.
+- Pinned peer: validator `a735e0340a64a5a9369650165e3d423e2a6b9f86`,
+  `src/mame/sega/saturn_cd_hle.cpp:1527–1545`, blob
+  `688b4f4729da3fa8e0876bca5d74ee02605e15d4`: uses `cd_track_at(cd_curfad)`
+  and `get_track_type(track)`. Our existing FAD/LBA API contract is preserved;
+  no wholesale peer file replacement. Local shallow history retains reviewed
+  b3eece68's inherited erroneous expression; this is a new correction to it.
+- Observable/units/tolerance: image lookup LBA exactly FAD minus 150; type lookup
+  exactly the returned zero-based track; Q track/control bytes exact. 3520
+  position/audio-map images and two admission controls exit0 under ASan/UBSan.
+  Both `--mutate fad` and `--mutate control` compile and assertion-fail.
+- Method/checks: actual Q command body extracted, deterministic three-track
+  mock including tracks shorter than 150 sectors. CD TU syntax check exit0.
+  No full build, native CDDA run or changes to existing validator expectations.
+- Falsifier: a native Play Q report selects the next track before its boundary,
+  or reports control from a different track. Request the unchanged validator
+  `play_q_track` fixture on the rebuilt candidate.
+- Limits: this does NOT qualify the entire Q format. ST-162 p.62 specifies
+  binary TNO/index and frame-address fields, while the inherited handler and
+  validator fixture use BCD/MSF. That separate layout conflict, pregaps,
+  lead-in/out, missing-media behavior and multisession remain open. Native
+  acceptance belongs to the validator; CD-02 remains open.

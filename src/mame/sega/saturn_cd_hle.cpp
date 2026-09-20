@@ -1499,7 +1499,8 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
     */
 
     msf_abs = cdrom_file::lba_to_msf_alt(cd_curfad - 150);
-    track = m_cdrom_image->get_track(cd_curfad);
+    // The image API takes LBA, whereas the drive stores Saturn FAD.
+    track = m_cdrom_image->get_track(cd_curfad - 150);
     msf_rel = cdrom_file::lba_to_msf_alt(cd_curfad - 150 -
                                          m_cdrom_image->get_track_start(track));
 
@@ -1507,7 +1508,7 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
     xfercount = 0;
     subqbuf[0] =
         0x01 |
-        ((m_cdrom_image->get_track_type(m_cdrom_image->get_track(track + 1)) ==
+        ((m_cdrom_image->get_track_type(track) ==
           cdrom_file::CD_TRACK_AUDIO)
              ? 0x00
              : 0x40);
