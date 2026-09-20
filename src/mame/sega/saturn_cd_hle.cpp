@@ -1254,7 +1254,7 @@ void saturn_cd_hle_device::cmd_play_disc() {
 
     if (start_pos & 0x800000) {
       // frame address start; 0xFFFFFF is the no-change mark (pause cancel)
-      if ((start_pos & 0x7f'ffff) != 0xffffff) {
+      if (start_pos != 0xffffff) {
         cd_fad_seek = start_pos & 0x7f'ffff;
         range_start = cd_fad_seek;
         cd_change_status(CD_STAT_SEEK);

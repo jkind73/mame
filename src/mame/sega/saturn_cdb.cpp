@@ -307,13 +307,18 @@ void saturn_cdb_device::sector_transfer_done()
 // Device plumbing
 // ---------------------------------------------------------------------------
 
-// The CD block's own bus: 64KB firmware ROM at 0, 512KB of DRAM at 0x09000000
-// and the YGR register file at 0x0a000000 (srg320/Saturn_hw CDB/cdb105.inc).
+/* The CD block's own bus, as the firmware sees it (srg320/Saturn_hw
+   CDB/cdb105.inc): the 64KB firmware ROM at address 0, 512KB of DRAM at
+   0x09000000 and the YGR register file at 0x0a000000.  The SH-1 folds those
+   two addresses down to 0x01000000 and 0x02000000 before they reach the bus
+   (the 0xc7ffffff address mask sh7032_device passes to the core, the same
+   one that puts the SH7021's 0x0f000000 internal RAM at 0x07000000), so the
+   devices are mapped at the addresses the CPU actually emits. */
 void saturn_cdb_device::cdb_map(address_map &map)
 {
 	map(0x00000000, 0x0000ffff).rom().region("cdbcpu", 0);
-	map(0x09000000, 0x097fffff).ram().share("dram");
-	map(0x0a000000, 0x0a00001f).rw(FUNC(saturn_cdb_device::ygr_r), FUNC(saturn_cdb_device::ygr_w));
+	map(0x01000000, 0x017fffff).ram().share("dram"); // firmware's 0x09000000
+	map(0x02000000, 0x0200001f).rw(FUNC(saturn_cdb_device::ygr_r), FUNC(saturn_cdb_device::ygr_w)); // 0x0a000000
 }
 
 void saturn_cdb_device::device_add_mconfig(machine_config &config)
