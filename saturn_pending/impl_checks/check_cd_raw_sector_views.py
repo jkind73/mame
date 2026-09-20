@@ -15,9 +15,8 @@ head=head.replace(' void device_pre_save();',r'''
  void cmd_copy_sector_data();void cmd_move_sector_data();void cd_copy_move_sector_data(bool);
  void cmd_get_sector_data();void cmd_get_and_delete_sector_data();
  void cd_getsectoroffsetnum(uint32_t,uint32_t*,uint32_t*);
- void cr_standard_return(uint16_t status){cr1=status;cr2=cr3=cr4=0;}
  void device_pre_save();''')
-head+='\n#define LOGCMD(...) ((void)0)\nconstexpr unsigned ESEL=0x40,DRDY=2,ECPY=0x100,CD_STAT_REJECT=0xff00,CD_STAT_WAIT=0x8000;\n#include <array>\n'
+head+='\n#define LOGCMD(...) ((void)0)\nconstexpr unsigned ESEL=0x40,DRDY=2,ECPY=0x100,CD_STAT_REJECT=0xff00;\n#include <array>\n'
 functions+='\n'+'\n'.join(extract(source,s) for s in (
  'saturn_cd_hle_device::blockT *\nsaturn_cd_hle_device::cd_alloc_block(',
  'saturn_cd_hle_device::partitionT *\nsaturn_cd_hle_device::cd_filterdata(',

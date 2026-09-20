@@ -17,6 +17,8 @@ head=next(ast.literal_eval(n.value) for n in ast.parse(Path(__file__).with_name(
           if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='head' for t in n.targets))
 head=head.replace('// TYPES','\n'.join(extract(header,s)+';' for s in ('struct direntryT','enum transT','enum trans32T')))
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_get_target_file_info()', 'inline u16 saturn_cd_hle_device::dataxfer_word_r()', 'void saturn_cd_hle_device::cmd_end_data_transfer()'))
+sig='bool saturn_cd_hle_device::cd_transfer_wait()'
+functions+='\n'+(extract(source,sig) if sig in source else sig+' {return false;}')
 tail=r'''
 int main(){saturn_cd_hle_device d;d.curdir.resize(3);auto &f=d.curdir[2];f.firstfad=150;f.length=0x12345;f.flags=2;unsigned words=0;
  for(unsigned unit=0;unit<256;++unit)for(unsigned gap=0;gap<256;++gap)for(bool all:{false,true}){

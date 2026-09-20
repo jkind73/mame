@@ -29,6 +29,7 @@ head=head[:head.rfind('};')]+r'''
  transT xfertype=XFERTYPE_INVALID;trans32T xfertype32=XFERTYPE32_INVALID;
  unsigned xfercount=0,xferoffs=0,tray_is_closed=1,cd_speed=2,cdda_repeat_count=0;
  partitionT *transpart=nullptr;
+ bool m_host_transfer_active=false;uint32_t xfersect=0,xfersectpos=0,xfersectnum=0,xferdnum=0;
  partitionT m_put_partition{};uint8_t m_put_filter=0xff;
  unsigned irqs=0,dir_reads=0,mpeg_resets=0;
  struct Timer{int hz=0;void adjust(int value){hz=value;}} timer;

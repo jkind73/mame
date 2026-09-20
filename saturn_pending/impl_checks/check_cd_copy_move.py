@@ -20,6 +20,7 @@ types='\n'.join(extract(header,s)+';' for s in ('struct filterT','struct blockT'
 head=head.replace('// TYPES',types)
 extra=r'''
  uint16_t cr1=0,cr2=0,cr3=0,cr4=0,cd_stat=0x100,hirqreg=0;
+ bool m_host_transfer_active=false;
  int sectorstore=1,cddevicenum=0xff;unsigned irqs=0;
  transT xfertype=XFERTYPE_INVALID;trans32T xfertype32=XFERTYPE32_INVALID;
  void update_hirq(){++irqs;}

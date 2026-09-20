@@ -267,6 +267,7 @@ private:
 
   transT xfertype;
   trans32T xfertype32;
+  bool m_host_transfer_active = false; // remains active through EOF until DataEnd
   uint32_t xfercount, calcsize;
   uint32_t xferoffs, xfersect, xfersectpos, xfersectnum, xferdnum;
   uint16_t m_xfer_raw_offset = 0, m_xfer_raw_size = 0;
@@ -317,6 +318,7 @@ private:
   void cmd_end_data_transfer();
   void finish_get_delete();
   void finish_put();
+  bool cd_transfer_wait();
   // 0x10
   void cmd_play_disc();
   void cmd_seek_disc();

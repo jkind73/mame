@@ -180,6 +180,7 @@ void saturn_cd_hle_device::device_start() {
   // their meaning, so it has to travel with them
   save_item(NAME(xfertype));
   save_item(NAME(xfertype32));
+  save_item(NAME(m_host_transfer_active));
 
   // Word-transfer cursors must be restored with the staged response bytes.
   // Full-directory transfers additionally depend on curdir (saved separately
@@ -284,8 +285,9 @@ void saturn_cd_hle_device::device_reset() {
 
   xfertype = XFERTYPE_INVALID;
   xfertype32 = XFERTYPE32_INVALID;
+  m_host_transfer_active = false;
   xfercount = 0;
-  xferoffs = 0;
+  xferoffs = xfersect = xfersectpos = xfersectnum = xferdnum = 0;
 
   // reset flag vars
   buffull = sectorstore = 0;
@@ -900,7 +902,23 @@ void saturn_cd_hle_device::cmd_get_hw_info() {
   cr4 = 0x0400;
 }
 
+// A drained FIFO/word response is still an outstanding host transfer until
+// DataEnd. Do not let another command replace its cursors or backing bytes.
+bool saturn_cd_hle_device::cd_transfer_wait() {
+  if (!m_host_transfer_active && xfertype == XFERTYPE_INVALID &&
+      xfertype32 == XFERTYPE32_INVALID && m_put_filter == 0xff)
+    return false;
+  cr_standard_return(cd_stat | CD_STAT_WAIT);
+  hirqreg |= CMOK;
+  update_hirq();
+  return true;
+}
+
 void saturn_cd_hle_device::cmd_get_toc() {
+  if (cd_transfer_wait())
+    return;
+  m_host_transfer_active = true;
+
   LOGCMD("%s: Get TOC\n", machine().describe_context());
   cd_readTOC();
   xfertype = XFERTYPE_TOC;
@@ -1048,6 +1066,8 @@ void saturn_cd_hle_device::cmd_end_data_transfer() {
   // low byte of cr1 (MSB) and cr2 (middle byte, LSB)
   LOGXFER("%s: End data transfer (%d bytes xfer'd)\n",
           machine().describe_context(), xferdnum);
+
+  m_host_transfer_active = false;
 
   // clear the "transfer" flag
   cd_stat &= ~CD_STAT_TRANS;
@@ -1319,6 +1339,10 @@ void saturn_cd_hle_device::cmd_ffwd_rew_disc() {
 }
 
 void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
+  if (cd_transfer_wait())
+    return;
+  m_host_transfer_active = true;
+
   // untested, assume it should set DTREQ
   cd_stat |= CD_STAT_TRANS;
   cd_stat &= 0xff00;
@@ -1904,6 +1928,9 @@ void saturn_cd_hle_device::cmd_get_sector_data() {
     return;
   }
 
+  if (cd_transfer_wait())
+    return;
+
   cd_getsectoroffsetnum(bufnum, &sectofs, &sectnum);
 
   if (partitions[bufnum].numblks < sectnum) {
@@ -1915,6 +1942,7 @@ void saturn_cd_hle_device::cmd_get_sector_data() {
     return;
   }
 
+  m_host_transfer_active = true;
   xfertype32 = XFERTYPE32_GETSECTOR;
   xferoffs = 0;
   xfersect = 0;
@@ -2019,6 +2047,9 @@ void saturn_cd_hle_device::cmd_get_and_delete_sector_data() {
 
   // we need to calculate this before REJECT condition
   // - shadtusk at startup
+  if (cd_transfer_wait())
+    return;
+
   cd_getsectoroffsetnum(bufnum, &sectofs, &sectnum);
 
   /* yoshimj uses the REJECT status to verify when the data is ready. */
@@ -2032,6 +2063,7 @@ void saturn_cd_hle_device::cmd_get_and_delete_sector_data() {
     return;
   }
 
+  m_host_transfer_active = true;
   xfertype32 = XFERTYPE32_GETDELETESECTOR;
   xferoffs = 0;
   xfersect = 0;
@@ -2069,7 +2101,8 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
     respond(CD_STAT_REJECT, false);
     return;
   }
-  if (xfertype != XFERTYPE_INVALID || xfertype32 != XFERTYPE32_INVALID ||
+  if (m_host_transfer_active || xfertype != XFERTYPE_INVALID ||
+      xfertype32 != XFERTYPE32_INVALID ||
       m_put_partition.numblks || !count || count > MAX_BLOCKS || count > freeblocks) {
     respond(cd_stat | CD_STAT_WAIT, false);
     return;
@@ -2106,6 +2139,7 @@ void saturn_cd_hle_device::cmd_put_sector_data() {
   cd_disconnect_filter_input(input);
   transpart = &m_put_partition;
   xfertype32 = XFERTYPE32_PUTSECTOR;
+  m_host_transfer_active = true;
   xferoffs = xfersect = xferdnum = xfersectpos = 0;
   xfersectnum = count;
   m_xfer_raw_offset = sectlenout == 2048 ? 24 : 2352 - sectlenout;
@@ -2194,7 +2228,8 @@ void saturn_cd_hle_device::cd_copy_move_sector_data(bool move) {
     offset = src.numblks ? src.numblks - 1 : 0;
   if (count == 0xffff)
     count = offset < src.numblks ? src.numblks - offset : 0;
-  if (xfertype != XFERTYPE_INVALID || xfertype32 != XFERTYPE32_INVALID ||
+  if (m_host_transfer_active || xfertype != XFERTYPE_INVALID ||
+      xfertype32 != XFERTYPE32_INVALID ||
       !count || offset >= src.numblks || count > src.numblks - offset ||
       src.numblks > MAX_BLOCKS || (!move && count > freeblocks)) {
     respond(cd_stat | CD_STAT_WAIT, false);
@@ -2318,6 +2353,10 @@ void saturn_cd_hle_device::cmd_get_file_scope() {
 }
 
 void saturn_cd_hle_device::cmd_get_target_file_info() {
+  if (cd_transfer_wait())
+    return;
+  m_host_transfer_active = true;
+
   uint32_t temp;
 
   // Get File Info

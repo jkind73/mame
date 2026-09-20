@@ -26,7 +26,7 @@ head=head[:head.rfind('};')]+r'''
 };
 #define NAME(x) x,#x
 '''
-selected={'tocbuf','subqbuf','subrwbuf','finfbuf','xfertype','xfertype32','xfercount','xferdnum','cr1','cr2','cr3','cr4','hirqreg','cd_stat','playtype','cdda_repeat_count'}
+selected={'m_host_transfer_active','tocbuf','subqbuf','subrwbuf','finfbuf','xfertype','xfertype32','xfercount','xferdnum','cr1','cr2','cr3','cr4','hirqreg','cd_stat','playtype','cdda_repeat_count'}
 start=extract(source,'void saturn_cd_hle_device::device_start()')
 regs=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] in selected]
 functions='void saturn_cd_hle_device::register_state(){\n'+'\n'.join(regs)+'\n}\n'
