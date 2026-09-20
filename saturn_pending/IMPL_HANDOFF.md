@@ -6218,3 +6218,71 @@ addendum stated; production range1811-1855 is unchanged.
   filesystem/parser/native timing/save/frozen-title qualification remain
   separate. Maximum32-bit-size controls are storage diagnostics. No new
   fields/layout change, validator edits or milestone advancement.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0085 | CD-01 | ed586831 + b5421477 | UNVALIDATED | Change Directory preflights selector/directory IDs, preserves self-directory state and publishes completion after loading |
+
+### IMPL-0085 — CD-01 — directory-command admission and completion
+
+- branch/commit/base: `arena/01a0b897-mame` @ **ed586831**, historical-probe
+  dependency adapter **b5421477**; base **5d975a8e**. Push retried after the
+  production commit and still fails authentication.
+  **BLOCKED(GitHub reconnection for push)**; local recovery bundle retained.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2316-2340,3837-3841`;
+  `saturn_pending/impl_checks/check_cd_change_directory.py:1-51`.
+- contract: reject selector24..255, an unavailable full24-bit file ID, or
+  an ordinary non-directory ID before reading media, altering the cache or
+  taking the CD input connection. Reject completes with CMOK, not new EFLS;
+  previously pending causes remain. A valid ID0 acknowledges the current
+  directory without reloading or stealing the input. Other accepted directory
+  moves/root requests take the selected CD input through the exclusive-input
+  helper and load the chosen directory before publishing response/CMOK|EFLS.
+  No claim of a complete asynchronous filesystem operation.
+- primary source: ST-162-062094 p.99 section8.2.8/function8.1 selects the
+  operation filter and directory ID/root sentinel, and explicitly rejects a
+  non-directory designation; p.53 section6.2.3 gives filesystem CD-device
+  connection ownership; p.30 Table3.2 associates EFLS with operation end;
+  p.31 section3.3 defines REJECT/nonexecution. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3681-3733,1119-1121`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, validates selector/held directory,
+  handles ID0 as NOP even with a shifted held window, otherwise starts its
+  filesystem operation on the selected input. No400-clock NOP delay imported.
+  Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:3095-3130`, validates through
+  its filesystem state but leaves selector routing TODO and raises EFLS even
+  on refusal; that error-cause behavior is not adopted. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d/local base acknowledge EFLS before
+  loading and lack this command preflight. No reference block imported.
+- expected observable: ordinary file ID2 returns REJECT without replacing
+  its directory or connection; ID010002 must not alias ID000002. Accepted
+  child/root moves report the selected input and loaded directory by the
+  completion callback. ID0 preserves cache/input. Exact status/cause/cache/
+  connection images, zero tolerance; no operation-time claim.
+- suggested method: native selector matrix, file/directory/root/self IDs,
+  mixed root/child extents, pending EFLS, and immediate scope/connection reads
+  when CMOK/EFLS asserts. Exercise busy/media/XA cases separately.
+- falsifier: invalid requests read media, replace held information, steal an
+  input or manufacture EFLS; full ID aliases; ID0 unexpectedly reloads;
+  successful completion observes old response/cache/connection.
+- self-check run (method-level, unvalidated):9600 accepted/self/connection/
+  completion images and6000 refusals exit0 with ASan/fail-fast UBSan.
+  Initial historical scaffold lacked LOGCMD; b5421477 adds only that macro,
+  after which historical5d975a8e fails the actual response/cause predicate at
+  generated line255. Four production mutants (directory guard, reject EFLS,
+  self-NOP, connector) assertion-fail. All29 own CD probes at ed586831 and
+  focused rerun at b5421477 exit0; warning-enabled CD TU syntax/diff0;
+  `/tmp/impl-ref/cd-0085-aggregate.log`. No full build/native validation.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: no new fields/layout change. Full selector
+  condition reset/buffer clearing, FLS-active WAIT/async sequencing, media
+  error/empty-root policy, held-window/scope counts, XA directory-bit
+  distinctions, native save and frozen-game acceptance remain separate.
+  ISO directory flag2 is the existing parser representation, not new XA
+  decoding. Rejection tests include storage-diagnostic stale/invalid input
+  links. Validator assets/expectations and milestone statuses untouched.
