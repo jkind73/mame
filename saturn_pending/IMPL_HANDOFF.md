@@ -6854,3 +6854,85 @@ command paths. This clarifies, without changing, the admission contracts.
   during concurrent cache replacement remain open. Bulk length is latched,
   but its live-cache replacement payload is deliberately not qualified.
   No frozen-game/real-media/runtime validation claimed.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0094 | CD-01 | 99dd1921 | UNVALIDATED | Directory move/hold installs FAD-only work-selector conditions and own-buffer/terminate outputs before directory IO/completion |
+
+### IMPL-0094 — CD-01 — directory work-selector condition setup
+
+- branch/commit/base: `arena/01a0b897-mame` @ **99dd1921**; base **c487fe3a**.
+  Publication **BLOCKED(GitHub reconnection for push)**; local recovery
+  bundle refreshed after the source/probe commit.
+- files: `src/mame/sega/saturn_cd_hle.cpp`: new
+  `cd_setup_directory_filter`, directory commands and `read_new_dir`;
+  `src/mame/sega/saturn_cd_hle.h:240-241` (private helper/optional selector);
+  `saturn_pending/impl_checks/check_cd_directory_filter.py` and declaration
+  adapters (no existing expected values changed).
+- contract: accepted directory moves and holds take the work selector's
+  true output to its own buffer, false output toFF, FAD range from the
+  directory extent in2048-byte sectors and mode40h (FAD only, unlike Read
+  File's41h). Unused channel/masks/values clear; stored directory file number
+  is loaded but NOT selected. Install before reading directory sectors or
+  announcing completion. Root discovery first uses all-pass mode/range0
+  until PVD supplies the extent. Self0 NOP and passive internal root loading
+  do not commandeer/reconfigure selectors. Other conditions are preserved
+  except the established input disconnections.
+- primary source: ST-162-062094 p.53 section6.2.3(2), Table6.1 distinguishes
+  move/hold FAD-only conditions from Read File FAD+file-number selection and
+  defines own-buffer/terminated-false outputs; pp.99-100 identify the work
+  selector. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1118-1177`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e:
+  own/FF outputs, PVD mode0/range0, selected directory FAD/sector range,
+  MODE_SEL_FADR, stored File and cleared other subheader fields. Its range
+  rounding has an explicit hardware FIXME; only sector-aligned extents are
+  asserted here. `:858-861` confirms true-output assignment has no additional
+  exclusive-input operation. Base/upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d omit this setup. Independently
+  written helper/argument plumbing; no reference block imported.
+- expected observable: after directory completion, selected mode40h,
+  range=[directory FAD,directory FAD+length/2048), true=self and false=FF;
+  other fields as above. Matching FAD routes regardless of sector file
+  number/channel/submode/coding; either outside boundary discards. Changing
+  host fetch length does not change this logical range. Exact fields/counts,
+  zero tolerance; no intermediate-cycle/IRQ latency claim.
+- suggested method: poison all selector conditions, move root/child/parent
+  and hold a window at each input0..23; read back configuration and observe
+  admitted/rejected sectors. Include long directory extents, all host fetch
+  sizes, self NOP and hard reset to catch unintended passive setup.
+- falsifier: stale conditions/output survive completion, file-number matching
+  discards directory sectors, host transfer length changes the range,
+  configuration is too late to admit PVD/directory data, or passive loading
+  changes a selector/connection.
+- self-check run (method-level, unvalidated):108000 selection/extent/fetch
+  images,417600 pre-IO observations,108000 ready notifications,27648000
+  all-file-number route pairs and600 passive/self controls exit0 under ASan/
+  fail-fast UBSan. Historicalc487fe3a and nine mutants (wrong mode, stale
+  parameters, output, host-unit range, missing PVD/hold/child setup, late
+  root setup and passive reconfiguration) fail genuine assertions. Native
+  warning-enabled CD TU syntax/diff0. All38 own CD probes run:33 exit0 and
+  five disclosed legacy conflicts; `/tmp/impl-ref/cd-0094-aggregate.log`.
+- fixture conflicts: the three0093 conflicts remain. Existing Change
+  Directory also expects every old true output to survive a move (generated
+ 338); Read Directory admission's retained-success controls expect stale
+  selected mode/output (287). These now contradict documented work-selector
+  setup; expectations were NOT rewritten. External restricted adapters
+  retain2400 self-NOP/6000 refusal assertions and60818560 directory refusal
+  images, exit0; the latter intentionally runs zero obsolete retained-success
+  controls. Valid-selector connection adapter remains30000 +48/24 controls,
+  exit0. New108000-image probe covers the changed successful setup. No claim
+  that original fixtures or native runtime are qualified.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: no new fields/save-layout change. Directory
+  buffer clearing/reservation, work-selector lifetime/backpressure and
+  asynchronous FLS timing remain incomplete. Cached holds still avoid media
+  rereads. PVD search-failure policy, non-sector-aligned directory rounding,
+  oversized/truncated cache and native media/save/frozen-title acceptance
+  remain unqualified. During synchronous discovery this helper clears
+  disabled parameters earlier than Mednafen's later directory-stage clearing;
+  intermediate hardware register-read timing is not asserted. Existing eager
+  passive root loading and its host-length popup are not changed here.
