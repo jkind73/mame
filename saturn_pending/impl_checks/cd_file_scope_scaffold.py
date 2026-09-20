@@ -26,6 +26,8 @@ def extend(head, functions, source):
         if setup not in functions:
             functions+='\n'+extract(source,setup)
     if 'cd_clear_partition(' in functions:
+        if '#define LOG(' not in head:
+            head='#define LOG(...) ((void)0)\n'+head
         # Legacy file-only fixtures model an empty pool. Supply only missing
         # dependencies; the dedicated clearing probe uses the full pool types.
         import re

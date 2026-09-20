@@ -9,7 +9,11 @@ exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),
 head,functions,source,header,extract=(scope[k] for k in ('head','functions','source','header','extract'))
 head='namespace cdrom_file {constexpr unsigned MAX_SECTOR_DATA=2352;}\n'+head
 head=head.replace('reads.push_back(fad);','if(on_read)on_read(*this,fad);reads.push_back(fad);')
-at=head.rfind('};');head=head[:at]+extract(header,'struct blockT')+''';
+block=extract(header,'struct blockT')+';'
+if 'struct blockT' in head:
+    head=head.replace(extract(head,'struct blockT')+';',block,1)
+    block=''
+at=head.rfind('};');head=head[:at]+block+'''
  void (*on_read)(saturn_cd_hle_device&,uint32_t)=nullptr;
  uint8_t cd_filter_destination(uint8_t,const blockT&) const;
  void cmd_read_directory();

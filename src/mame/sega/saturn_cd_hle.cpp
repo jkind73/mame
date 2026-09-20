@@ -2469,6 +2469,7 @@ void saturn_cd_hle_device::cmd_change_directory() {
   // ID zero names the current directory: acknowledge without restarting
   // its load or displacing the existing input connection/held window.
   if (file_id != 0) {
+    cd_clear_partition(input);
     cd_connect_cddevice(input);
     read_new_dir(file_id, input);
   }
@@ -2490,6 +2491,10 @@ void saturn_cd_hle_device::cmd_read_directory() {
     update_hirq();
     return;
   }
+  // Clear the work partition for an ordinary held-window access. Leave
+  // beyond-directory requests outside this still-unresolved error policy.
+  if (first == 2 || first < curdir.size())
+    cd_clear_partition(input);
   cd_connect_cddevice(input);
   cd_setup_directory_filter(input, curdir[0]);
 
