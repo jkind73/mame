@@ -1330,7 +1330,8 @@ void saturn_cd_hle_device::cmd_seek_disc() {
   // clear any pending transfer
   // - asenna when playing back a video and going back in main menu
   fadstoplay = 0;
-  cdda_repeat_count = 0;
+  // ST-162 p.38: seeking (including pause/home) does not clear the
+  // retained repeat notification count or programmed maximum.
   playtype = 0;
 
   LOGCMD("%s: Disc seek\n", machine().describe_context());
@@ -1366,8 +1367,10 @@ void saturn_cd_hle_device::cmd_seek_disc() {
       m_cdda->stop_audio();
       LOGCMD("\tdisc seek to 0: stop\n");
     } else {
-      // Area 51 sets this up (TODO: retest me out)
-      cd_fad_seek = ((cr1 & 0x7f) << 16) | cr2;
+      // ST-162 p.66: FAD seeks below the disc start select 150; seeks
+      // beyond the disc end select lead-out (disc end + 1), not its LBA.
+      const uint32_t leadout = m_cdrom_image->get_track_start(0xaa) + 150;
+      cd_fad_seek = std::clamp(temp & 0x7fffff, 150U, leadout);
       cd_change_status(CD_STAT_SEEK);
       cd_seek_stat = CD_STAT_PAUSE;
       LOGCMD("\tdisc seek with params %04x %04x\n", cr1, cr2);
@@ -4456,7 +4459,10 @@ void saturn_cd_hle_device::cd_playdata() {
           sectorstore = 1;
 
           if (!fadstoplay) {
-            if (cdda_repeat_count >= cdda_maxrepeat) {
+            // Read File is a finite producer, independent of the saved CD
+            // Play repeat limit (ST-162 function 8.5). Keep that limit for
+            // subsequent CD Play commands rather than overwriting it here.
+            if (playtype == 1 || cdda_repeat_count >= cdda_maxrepeat) {
               LOG("cd_playdata: playback ended\n");
               cd_change_status(CD_STAT_PAUSE);
 

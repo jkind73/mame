@@ -8177,3 +8177,291 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   directory-state save qualification. Private-full scratch waiting and ordinary
   GET versus actual directory refill remain unqualified as in0109. No validator
   assets or expected values changed; no full build/CI dispatch.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0111 | CD-01 | 301f42e0 | UNVALIDATED | Get File Information preserves the active producer and repeat state, including a continuing file read's eventual EFLS |
+
+### IMPL-0111 — CD-01 — Held-information transfer does not replace the producer
+
+- branch/commit/base: `arena/01a0b897-mame` @ **301f42e0**;
+  base **ae532f96**. Published normally.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2534-2554`;
+  `saturn_pending/impl_checks/check_cd_file_info_drive.py`.
+- contract: accepting a held-information host transfer does not reset the live
+  drive's producer marker or repeat notification count. In particular, a file
+  read finishing while host metadata is being read still produces its EFLS
+  completion. Metadata payload/count, ownership, WAIT/rejection handling and
+  drive FAD/range are otherwise unchanged.
+- primary source: ST-162-062094 p.100 function8.4 obtains already-held file
+  information; it is not the filesystem reading operation in function8.5.
+  p.53 section6.2.3(4) requires EFLS when file access ends/stops; p.38 identifies
+  play-range/maximum-repeat changes as counter-clearing events. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:3806-3863`
+  accepts Get File Information into DT state without replacing drive producer/
+  repeat state. Its FLS-active arbitration remains distinct and is not imported.
+  Upstream MAME398bba74 `saturn_cd_hle.cpp:1880-1889` and fork ae532f96 clear
+  both fields. The independently written change removes those two assignments,
+  preserving this fork's existing ownership and completion paths.
+- expected observable: subsequent actual CD reports retain the repeat nibble
+  and existing producer flag, and a continuing file producer still raises
+  EFLS at its last sector while the six-word/held-window host packet remains
+  readable. Exact FAD, remaining-sector, packet-word and capacity counts;
+  zero tolerance. No new IRQ edge/latency or CD-ROM-flag-definition claim.
+- suggested method: start a one-sector file read with held directory records,
+  request single/self/parent/bulk information before its last producer tick,
+  interleave host word reads and producer completion, then finish the accepted
+  host transfer. Repeat across PLAY/PAUSE/SEEK/STANDBY status fixtures and
+  repeat-count seeds, with mid-packet registered-state replay and WAIT/rejection
+  controls. Observe an actual standard report, not only private field values.
+- falsifier: changed repeat notification/producer flag after an accepted metadata
+  request, missing continuing-file EFLS, lost/miscounted metadata words, modified
+  drive position/range or a restored continuation that differs.
+- self-check run (method-level, unvalidated):480 producer/phase/repeat/info
+  images,480 registered pool/host/drive replays,60 continuing-file EFLS endings
+  and90 WAIT/rejection controls. Actual commands/parser/ports/report/drive/
+  filter/End/save methods; fixed report track/index helpers and authored image,
+  mock IRQ/audio/serializer. Counter seeds include diagnostic phase combinations;
+  directory metadata is retained outside the replay subset. ASan/fail-fast
+  UBSan0. Historicalae532f96 and seven compiled mutants assertion-fail: clear
+  count, clear producer, force pause, cancel remaining range, suppress EFLS,
+  omit count registration, omit producer registration. Count/producer and
+  registration mutants fail actual report assertions; EFLS mutant fails the
+  finishing producer's interrupt-factor assertion. Warning-enabled CD TU
+  syntax/diff0. All54 own probes:44 exit0/same ten disclosed conflicts;
+  `/tmp/impl-ref/cd-0111-aggregate.log`.
+- state: **UNVALIDATED**; validator0ce91cd3's native merge-readiness rejection
+  remains. **BLOCKED(native CI result for current implementation revision)**.
+- not covered/known doubts: no new fields/save-layout; producer and counter
+  already registered. This does not establish native command arbitration,
+  metadata FIFO/DMA/IRQ ordering, CDDA phase, save-file or title behavior.
+  It does not fix general saved play-range/repeat semantics, seek counter
+  retention, the report CD-ROM flag definition, or the existing filesystem
+  response/early-EHST policy. No validator assets/expected values or frozen
+  CPU/sound/video paths edited; no full build/CI dispatch. Ten existing conflicts
+  remain as listed in0107.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0112 | CD-01 | e39dd8e8 | UNVALIDATED | Seek, pause and seek-home retain the repeat notification count and programmed maximum independently of an accepted host transfer |
+
+### IMPL-0112 — CD-01 — Repeat notification survives seeking
+
+- branch/commit/base: `arena/01a0b897-mame` @ **e39dd8e8**;
+  base **e1331cf7**. Local commit and external recovery bundle only: GitHub
+  authentication failed while pushinge1331cf7. Last successful push was
+  **301f42e0**. **BLOCKED(GitHub reconnection in Arena)**; user notified.
+  No credentials requested/stored and no history rewrite attempted.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1327-1337`;
+  `saturn_pending/impl_checks/check_cd_seek_repeat.py`.
+- contract: Seek must not zero the saved repeat notification count. This includes
+  pause/no-change and seek-home; the programmed maximum likewise stays intact.
+  Existing producer-stop/seek targeting and host ownership behavior is otherwise
+  unchanged. Seek-home's invalid report is not used as the counter observation:
+  a subsequent valid-position seek exposes the retained value.
+- primary source: ST-162-062094 p.38 explicitly separates repeat frequency and
+  play range from tray/seek operations, and says seek-home cannot change the
+  saved range, maximum or notification frequency. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:2820-2868`
+  handles pause/home separately from ordinary target seeks; normal pause/home
+  do not zero PlayRepeatCounter in their command branches. Important divergence:
+  ordinary target seek calls StartSeek, whose `:1985` reset does zero that
+  counter. This candidate follows the explicit primary retention contract
+  instead of importing that reset; native counter traces are still required.
+  Forke1331cf7 unconditionally zeroed the HLE counter for every Seek. The new
+  change independently removes that assignment; no new seek/timing model.
+- expected observable: legal notification counts0..14 survive pause, FAD/track
+  seeks and home followed by a valid seek. An actual standard CD report retains
+  the same low repeat nibble, and the stored maximum remains exact. Accepted
+  metadata words/cursor and DataEnd remain usable. Zero count/word tolerance;
+  no new timing or home-report validity claim.
+- suggested method: reach a nonzero repeated-play notification, seek/pause/home,
+  then query a valid-position report. Include target changes while already
+  seeking, finite/infinite maxima, and an outstanding single-record host packet.
+  Save during pending seek and compare settled report/host continuation.
+- falsifier: repeat nibble/max changed solely by seeking, reset on seek completion,
+  lost host cursor/ownership, or a restored continuation with a different count.
+- self-check run (method-level, unvalidated):1080 pause/home/FAD/track/phase/
+  maximum/host images,1080 registered drive/host replays and180 home-to-valid-
+  position observations. Actual Seek/drive/report/info/ports/End/save methods;
+  mock image metadata/audio/IRQ/serializer. Counter seeds are diagnostics, not
+  generated native repeated-play traces. Historicale1331cf7 and seven compiled
+  mutants assertion-fail: pause-only/home-only/FAD-only resets, erased maximum,
+  erased host owner, completion reset, omitted count registration. ASan/fail-fast
+  UBSan0; warning-enabled CD TU syntax/diff0. Targeted0111 metadata,0105 audio-
+  range and0103 repeat-limit/reset probes exit0. Latest full batch remains
+  54 scripts on301f42e0:44 exit0/ten disclosed conflicts; no full55 batch yet.
+- state: **UNVALIDATED**. Native merge-readiness rejection unchanged;
+  **BLOCKED(native CI result for current implementation revision)**.
+- not covered/known doubts: no new fields/save-layout. The ordinary-seek peer
+  divergence is explicit above. Stored programmed range, no-change Play counter
+  retention, correct repeated span and invalid-home report remain open. This
+  does not qualify native seek latency, IRQ edges, CDDA, full FLS cancellation,
+  title sequences or save files. No validator assets/expected values changed;
+  no full build/CI dispatch. Pushes remain externally blocked, not silently
+  reported as published; local commits and bundle preserve continued work.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0113 | CD-01 | 5e0c645b | UNVALIDATED | A finite Read File producer finishes with EFLS instead of inheriting the saved CD Play repeat loop |
+
+### IMPL-0113 — CD-01 — File EOF is independent of the CD Play repeat limit
+
+- branch/commit/base: `arena/01a0b897-mame` @ **5e0c645b**;
+  base **c34c0851**. Source committed locally and included in the recovery
+  bundle; GitHub publication remained blocked after the authentication failure
+  recorded in0112. Last successful push at that point was301f42e0.
+- files: `src/mame/sega/saturn_cd_hle.cpp:4470-4502`;
+  `saturn_pending/impl_checks/check_cd_file_end_repeat.py`.
+- contract: reaching the end of a finite Read File request ends that producer
+  and raises its existing EFLS completion, even if the programmed CD Play
+  maximum is nonzero/infinite. Do not enter the ordinary disc-repeat seek path
+  or overwrite that retained maximum. Ordinary non-file repeat decisions are
+  unchanged. An overlapping accepted metadata transfer remains readable.
+- primary source: ST-162-062094 p.100 function8.5 reads the designated file from
+  its logical offset; p.53 section6.2.3(4) raises EFLS when file access ends.
+  p.67 defines the maximum-repeat parameter of CD Play, not a Read File
+  repetition request. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:3865-3909`
+  starts the file range with active repeat0 and HIRQ_EFLS, independently of
+  PlayCmdRepCnt retained by `:2798-2802`. Forkc34c0851 shares one repeat-limit
+  field and used it for both producer kinds. This independently written change
+  makes the existing file producer take its finite completion branch without
+  importing the peer's separate scheduler or changing the saved maximum.
+- expected observable: for a nonempty file and valid offset, exactly
+  ceil(file_bytes/2048)-offset sectors are produced. Final FAD equals file start
+  plus ceil(file_bytes/2048), remaining count becomes0, EFLS is raised and no
+  repeat seek or later autonomous production occurs. Retained maximum and
+  notification seed remain identical at EOF; host metadata words and DataEnd
+  survive. Exact sectors/bytes/counts, zero tolerance; no new IRQ timing claim.
+- suggested method: program a finite/infinite CD Play repeat maximum, then
+  read a short file at different logical offsets with/without a simultaneous
+  Get File Information packet. Observe final FAD, output partition occupancy,
+  free capacity, EFLS and subsequent idle callbacks. Replay at a producer/host
+  boundary. Include ordinary non-file repeat decisions as negative controls.
+- falsifier: file production enters a repeat seek, reads past its requested
+  range, omits EFLS, changes the programmed maximum, loses metadata ownership,
+  or disables the ordinary disc-repeat path.
+- self-check run (method-level, unvalidated):1620 nonempty file/range/offset/
+  repeat cases,1620 registered producer/host/pool replays,810 overlapping
+  metadata owners and135 ordinary-repeat controls. Actual Read File/info/parser/
+  drive/filter/ports/End/save methods; authored directory/raw image, mock
+  IRQ/audio/serializer and diagnostic counter seeds. ASan/fail-fast UBSan0.
+  Historicalc34c0851 and seven compiled mutants assertion-fail: always end,
+  wrong producer guard, erase maximum, truncate range, omit producer/maximum
+  registration, suppress EFLS. Warning-enabled CD TU syntax/diff0. Full56 own
+  probes:46 exit0/ten unchanged disclosed conflicts;
+  `/tmp/impl-ref/cd-0113-aggregate.log` (also includes0112).
+- state: **UNVALIDATED**; validator0ce91cd3's merge-readiness rejection remains.
+  **BLOCKED(native CI result for current implementation revision)**.
+- not covered/known doubts: no new fields/save-layout. Empty files, invalid/
+  beyond-EOF offsets, XA interleave, full-buffer resource waiting, native FLS
+  arbitration/IRQ/timing/CDDA/save/title behavior are not qualified. This does
+  not fix programmed range persistence or the ordinary path's currently
+  track-based repeated span. Notification seeds isolate EOF from the separate
+  unfinished range-change counter policy. Existing simultaneous PEND behavior
+  is not redefined or qualified here. No validator assets/expected values,
+  frozen paths or IRQ acknowledgement policy changed; no full build/CI dispatch.
+  Publication blocker is separate from these implementation/native gaps.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0114 | CD-01 | 8719f8ab | UNVALIDATED | Explicit FAD seeks clamp to disc-start150 through lead-out, preserving pause/home special commands |
+
+### IMPL-0114 — CD-01 — Explicit FAD seek bounds
+
+- branch/commit/base: `arena/01a0b897-mame` @ **8719f8ab**;
+  base **6047df3c**. Local commit and recovery bundle. A normal push at6047df3c
+  again failed authentication; last successful push remains301f42e0.
+  **BLOCKED(GitHub reconnection in Arena)**, as notified to the user.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1366-1374`;
+  `saturn_pending/impl_checks/check_cd_seek_bounds.py`.
+- contract: an explicit frame-address seek below disc start targets FAD150;
+  beyond disc end it targets lead-out (end+1), not the last program sector.
+  Convert image lead-out LBA to FAD before bounding the request. The wire
+  no-change/pause and default/home designations remain separate and must not
+  become oversized ordinary FAD seeks.
+- primary source: ST-162-062094 p.66 data6.4 “Exceptions to Frame Address”
+  table, Start and Seek Positions; p.24 Table2.1 for the150-sector LBA/FAD
+  offset. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen
+  f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc `src/ss/cdb.cpp:1897-1904`
+  clamps an explicit FAD target to150 and TOC lead-out LBA+150. Fork6047df3c
+  masks the FAD but does not bound it; upstream398bba74 also leaves that target
+  unbounded. Independently written clamp uses this fork's existing image API
+  and existing saved seek target; no peer scheduler/timing code imported.
+- expected observable: requested FAD0..149 reports/settles at150; in-disc values
+  remain exact; requests at/above lead-out report/settle at lead-out. A pause
+  keeps current position and home remains its separate standby command.
+  Exact sector addresses, zero tolerance; no new seek latency claim.
+- suggested method: issue explicit FAD seeks around150 and several image lead-
+  outs, including wide23-bit addresses, while PLAY/PAUSE/SEEK and with/without
+  an accepted metadata packet. Observe both target-phase and settled actual
+  report FAD, then finish the host packet. Replay pending registered seek state.
+- falsifier: underflow below150, LBA/FAD confusion at the upper bound, clamping
+  to lead-out−1, truncating the FAD to20 bits, moving on pause, lost host data,
+  or a restored seek reaching a different position.
+- self-check run (method-level, unvalidated):468 explicit-FAD boundary/phase/
+  host images,468 registered seek/host replays and72 pause/home controls.
+  Actual Seek/drive/FAD-report/host/save methods; synthetic lead-outs and fixed
+  report track/index helpers, mock audio/IRQ/serializer. ASan/fail-fast UBSan0.
+  Historical6047df3c and seven compiled mutants assertion-fail: missing lower/
+  upper bound, LBA upper bound, last-sector upper bound,20-bit mask, moved pause,
+  omitted target registration. Pause mutation fails the independent sentinel
+  control; target-registration mutation fails settled position. Warning-enabled
+  CD TU syntax/diff0;0112 seek-repeat and0105 audio-range probes exit0.
+  Full57 own probes:47 exit0/ten unchanged disclosed conflicts;
+  `/tmp/impl-ref/cd-0114-aggregate.log`.
+- state: **UNVALIDATED**; validator0ce91cd3's native merge-readiness rejection
+  remains. **BLOCKED(native CI result for current implementation revision)**.
+- not covered/known doubts: no new fields/save-layout. Track/index seek bounds,
+  lead-out TNO/index/control semantics, invalid-home reports, absent-media
+  command admission, real seek timing, CDDA phase, IRQ edges, native saves and
+  titles remain separate. Play-range bounding/retention is not changed by this
+  Seek-only correction. No validator assets/expected values, frozen paths or
+  IRQ acknowledgement policy changed; no full build/CI dispatch. GitHub auth
+  remains an external publication blocker, not a claim that local work is lost.
+
+Continuation/recovery note after0114: committed source and handoffs are included
+in `/home/user/mame-local-backup/unpublished.bundle` (requires7ac21947096).
+Pinned ST-162 PDF, Mednafen and upstream CD source copies are now also preserved
+outside Git in `/home/user/mame-local-backup/reference/`, with blob hashes matching
+37cf1720, d367dd0c and40be1684 respectively. Selected primary page text and the
+latest aggregate log are kept there so an authentication outage plus ephemeral
+`/tmp` loss does not erase the reference basis. No ROM/BIOS/SDK/build artifacts
+were added to Git. The remote-tracking own-branch ref is stale7ac21947; do not
+mistake it for the last published source revision301f42e0 or reset local commits
+to it. Refresh the own-branch ref only after GitHub reconnection.
+
+Recovery/publication correction after0114: the next sandbox restored Git HEAD to
+82152a8b under the newer working files. The previously reported external bundle
+and reference directory did NOT survive this restoration. After preserving the
+restored diff, a targeted shallow fetch of the own branch recovered the last
+published301f42e0, and a mixed reset aligned only HEAD/index with it. No working
+files were overwritten or published history rewritten. The surviving0111-0114
+handoff text,0112-0114 production changes and their three probes are republished
+in the following recovery commit. Earlier local-only hashes e1331cf7 through
+ecf0dc43 identify lost Git objects, not currently fetchable commits; the recovery
+commit replaces their publication identity without changing their surviving
+source contracts. GitHub authentication works again. The three dedicated probes
+were rerun (1080 seek-repeat,1620 file-EOF,468 seek-boundary images and matching
+replays), all exit0, method-level and UNVALIDATED; warning-enabled native CD TU
+syntax/diff0. Previous full57 results remain historical, not rerun recovery
+results. External backups must not be relied upon as surviving sandbox restores.
