@@ -2371,8 +2371,6 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
 
   playtype = 0;
   cdda_repeat_count = 0;
-  hirqreg |= (CMOK | DRDY);
-  update_hirq();
 
   temp = (cr3 & 0xff) << 16;
   temp |= cr4;
@@ -2428,6 +2426,9 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     xfertype = XFERTYPE_FILEINFO_1;
     xfercount = 0;
   }
+  // DRDY exposes a ready response and readable file-information stream.
+  hirqreg |= (CMOK | DRDY);
+  update_hirq();
   LOG("   = %04x %04x %04x %04x %04x\n", hirqreg, cr1, cr2, cr3, cr4);
 }
 
