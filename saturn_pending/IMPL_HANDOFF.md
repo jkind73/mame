@@ -5803,3 +5803,67 @@ handoff commit IDs are historical notes, not claimed present after recovery.
   media/nonmatching cursor cases are storage diagnostics. Full host-transfer
   arbitration and native bus/timing remain open. No new state/layout change,
   validator expectation, game-specific code or milestone-status edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0079 | CD-01 | f9eb36c4 | UNVALIDATED | Abort File stops the filesystem producer without cancelling the independent host transfer or hiding retained sectors |
+
+### IMPL-0079 — CD-01 — filesystem-abort/host-transfer separation
+
+- branch/commit/base: `arena/01a0b897-mame` @ **f9eb36c4**; base **1354cfda**.
+  Publication currently **BLOCKED(GitHub reconnection for push)**: git push
+  returned `could not read Username ... terminal prompts disabled`; user
+  asked to reconnect through Arena, no credentials requested. Last published
+  tip1354cfda; this production commit and this entry are presently local.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2437-2451`;
+  `saturn_pending/impl_checks/check_cd_file_abort.py`.
+- contract: command75 stops filesystem access and requests the existing drive
+  pause, but must not cancel GET/GETDELETE/PUT, zero the host transfer byte
+  count, or clear the retained-sector indicator. Preserve buffered data and
+  selectors. Publish the existing response before CMOK|EFLS notification,
+  preserving already pending causes. This removes0077's specific Abort File
+  cursor-cancellation limitation; other overlapping starts remain separate.
+- primary source: ST-162-062094 printed p.101 section8.2.8/function8.6:
+  Abort File stops directory move, file-information hold and file reading;
+  pauses the drive, raises EFLS, does not clear the buffer partition or
+  initialize selectors. Host DataEnd is a separate function1.10/p.81 and
+  protocol section3.4/p.32. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3910-3916,1070-1078,2733-2778`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, sets FLS.Abort separately from
+  DataEnd/DT. Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:3249-3265`, blob
+  e8fedadb2d7374db35667bd064bb47fdc14b41a8, instead calls EndTransfer:
+  that disagreement is not adopted, following the primary's filesystem
+  scope and Mednafen. Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d
+  and local base cancel the32-bit transfer/count and retained-sector flag
+  in cmd_abort_file. No reference block imported.
+- expected observable: partial PUT -> Abort File -> remaining PUT writes ->
+  DataEnd preserves the complete uploaded payload and reports the complete
+  host word count; GET and GetDelete similarly continue from their previous
+  cursor, with deletion only under their existing transfer completion path.
+  No sector loss, selector reset or cursor rewind from Abort File. Exact
+  bytes/counts/cause bits, zero tolerance; normal drive-pause latency is not
+  specified by this candidate.
+- suggested method: native file reading alongside each host-transfer type,
+  Abort File before/between/after sector-port accesses, then continuation and
+  DataEnd; inspect pool/selector state, remaining bytes, counts and HIRQ.
+- falsifier: lost transfer type/cursor/count, inaccessible retained bytes,
+  dropped PUT reservation, premature GetDelete removal, selector mutation,
+  cleared pending causes, or an IRQ callback seeing the old response.
+- self-check run (method-level, unvalidated):393216 status/pending-cause/
+  cursor images and18 live raw PUT/GET/GETDELETE continuations over six cuts
+  exit0 with ASan/fail-fast UBSan. Actual Abort File/drive-status/transfer
+  methods; mock standard report/IRQ/media. Historical1354cfda fails transfer
+  preservation at generated line1167. All23 own CD probes, warning-enabled
+  CD TU syntax and diff checks exit0; no full build.
+- state: **UNVALIDATED**; remote publication blocked as above.
+- not covered/known doubts: held-file-information invalidation when stopping
+  directory/hold operations, full filesystem state machine, native pause
+  scheduling/status timing, other overlapping commands and frozen-game
+  runtime acceptance remain open. Reserved cause/cursor patterns are storage
+  diagnostics. No new fields/save-layout change, validator asset/expectation,
+  HIRQ-handler, CPU/sound/video or milestone-status edits.
