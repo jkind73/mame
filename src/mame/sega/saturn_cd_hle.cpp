@@ -474,6 +474,10 @@ void saturn_cd_hle_device::amap(address_map &map) {
 }
 
 u32 saturn_cd_hle_device::datatrns_r(offs_t offset, uint32_t mem_mask) {
+  // Debugger inspection is not a host FIFO strobe, for metadata or sectors.
+  if (machine().side_effects_disabled())
+    return mem_mask;
+
   // DATATRNS is a 16-bit FIFO (ST-162, table 3.1). Sector transfers use
   // the same byte cursor for a host word and the existing longword access.
   const auto read_word = [this]() -> u16 {
@@ -485,7 +489,14 @@ u32 saturn_cd_hle_device::datatrns_r(offs_t offset, uint32_t mem_mask) {
   u32 rv;
 
   if (mem_mask == 0xffffffff) {
-    rv = dataxfer_long_r();
+    if (xfertype32 == XFERTYPE32_INVALID && xfertype != XFERTYPE_INVALID) {
+      // The 32-bit host callback aggregates two successive 16-bit FIFO
+      // accesses. Keep them sequenced, including an odd final payload word.
+      const u32 high = read_word();
+      rv = (high << 16) | read_word();
+    } else {
+      rv = dataxfer_long_r();
+    }
   } else if (mem_mask == 0xffff0000) {
     rv = u32(read_word()) << 16;
   } else if (mem_mask == 0x0000ffff) {
