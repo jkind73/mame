@@ -24,6 +24,7 @@ head=head[:head.rfind('};')]+r'''
  uint32_t xferoffs=0,xfersect=0,xfersectpos=0,xfersectnum=0,xferdnum=0;
  uint16_t cd_stat=0x4100,cr1=0,cr2=0,cr3=0,cr4=0,hirqreg=0;
  bool m_host_transfer_active=false;
+ partitionT m_get_partition{};
  partitionT m_put_partition{};uint8_t m_put_filter=0xff;int sectlenout=2048;
  uint16_t m_xfer_raw_offset=0,m_xfer_raw_size=0;
  uint32_t m_xfer_raw_sector=0xffffffff;
@@ -54,7 +55,7 @@ void put_u32be(u8 *p,u32 v){for(int i=3;i>=0;--i){p[i]=v;v>>=8;}}
 start=extract(source,'void saturn_cd_hle_device::device_start()')
 selected={'m_host_transfer_active','sectlenout','m_put_filter','sectlenin','m_xfer_raw_offset','m_xfer_raw_size','m_xfer_raw_sector','xfertype','xfertype32','xferoffs','xfersect','xfersectpos','xfersectnum','xferdnum','cddevicenum','lastbuf','freeblocks','buffull','sectorstore','cd_stat','cr1','cr2','cr3','cr4','hirqreg','m_saved_transpart','m_saved_cddevice'}
 regs=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] in selected]
-regs+=re.findall(r'save_item\(STRUCT_MEMBER\((?:filters|partitions|blocks|curblock|m_put_partition), \w+\)\);',start)
+regs+=re.findall(r'save_item\(STRUCT_MEMBER\((?:filters|partitions|blocks|curblock|m_put_partition|m_get_partition), \w+\)\);',start)
 functions='void saturn_cd_hle_device::register_state(){\n'+'\n'.join(regs)+'\n}\n'
 for name in ('device_pre_save','device_post_load'):
     signature='void saturn_cd_hle_device::'+name+'()'

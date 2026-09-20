@@ -247,6 +247,7 @@ private:
 
   // local variables
   partitionT partitions[MAX_FILTERS];
+  partitionT m_get_partition{}; // captured GET slot map; backing remains in the pool
   partitionT m_put_partition{}; // reserved host sectors, not yet filter output
   uint8_t m_put_filter = 0xff;
 

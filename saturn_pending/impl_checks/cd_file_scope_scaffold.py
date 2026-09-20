@@ -7,6 +7,8 @@ def extract(text, signature):
 
 def extend(head, functions, source):
     declarations=[]
+    if 'm_get_partition' in functions and 'm_get_partition' not in head:
+        declarations.append('partitionT m_get_partition{};')
     if '::read_new_dir(uint32_t fileno, uint8_t input)' in source:
         head=head.replace('void read_new_dir(uint32_t);','void read_new_dir(uint32_t,uint8_t=0xff);')
     setup='void saturn_cd_hle_device::cd_setup_directory_filter('

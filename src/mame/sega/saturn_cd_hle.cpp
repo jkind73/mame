@@ -235,6 +235,9 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(m_saved_transpart));
   save_item(NAME(m_saved_cddevice));
   save_item(NAME(m_put_filter));
+  save_item(STRUCT_MEMBER(m_get_partition, size));
+  save_item(STRUCT_MEMBER(m_get_partition, numblks));
+  save_item(STRUCT_MEMBER(m_get_partition, bnum));
   save_item(STRUCT_MEMBER(m_put_partition, size));
   save_item(STRUCT_MEMBER(m_put_partition, numblks));
   save_item(STRUCT_MEMBER(m_put_partition, bnum));
@@ -271,7 +274,8 @@ void saturn_cd_hle_device::device_start() {
 }
 
 void saturn_cd_hle_device::device_pre_save() {
-  m_saved_transpart = transpart == &m_put_partition ? MAX_FILTERS : -1;
+  m_saved_transpart = transpart == &m_get_partition ? MAX_FILTERS + 1 :
+                      transpart == &m_put_partition ? MAX_FILTERS : -1;
   m_saved_cddevice = -1;
   for (unsigned i = 0; i < MAX_FILTERS; ++i) {
     if (transpart == &partitions[i])
@@ -288,7 +292,11 @@ void saturn_cd_hle_device::device_post_load() {
   for (unsigned i = 0; i < MAX_BLOCKS; ++i)
     m_put_partition.blocks[i] = m_put_partition.bnum[i] < MAX_BLOCKS ?
                                    &blocks[m_put_partition.bnum[i]] : nullptr;
-  transpart = m_saved_transpart == MAX_FILTERS ? &m_put_partition :
+  for (unsigned i = 0; i < MAX_BLOCKS; ++i)
+    m_get_partition.blocks[i] = m_get_partition.bnum[i] < MAX_BLOCKS ?
+                                   &blocks[m_get_partition.bnum[i]] : nullptr;
+  transpart = m_saved_transpart == MAX_FILTERS + 1 ? &m_get_partition :
+              m_saved_transpart == MAX_FILTERS ? &m_put_partition :
               m_saved_transpart >= 0 && m_saved_transpart < MAX_FILTERS ?
                   &partitions[m_saved_transpart] : nullptr;
   cddevice = m_saved_cddevice >= 0 && m_saved_cddevice < MAX_FILTERS ?
@@ -363,6 +371,9 @@ void saturn_cd_hle_device::device_reset() {
   transpart = nullptr;
   m_saved_transpart = m_saved_cddevice = -1;
   curblock = {};
+  m_get_partition = {};
+  m_get_partition.size = -1;
+  std::fill(std::begin(m_get_partition.bnum), std::end(m_get_partition.bnum), 0xff);
   m_put_partition = {};
   m_put_partition.size = -1;
   std::fill(std::begin(m_put_partition.bnum), std::end(m_put_partition.bnum), 0xff);
@@ -2016,7 +2027,11 @@ void saturn_cd_hle_device::cmd_get_sector_data() {
   xferdnum = 0;
   xfersectpos = sectofs;
   xfersectnum = sectnum;
-  transpart = &partitions[bufnum];
+  // Capture the physical slot map at acceptance. A concurrent Delete may
+  // compact the public partition, but must not retarget this GET to the
+  // sectors that move into its old positions. This does not copy or pin data.
+  m_get_partition = partitions[bufnum];
+  transpart = &m_get_partition;
   // The first host view is selected when GET starts, before its first read.
   m_xfer_raw_sector = 0xffffffff;
   if (sectnum && sectofs < MAX_BLOCKS) {
