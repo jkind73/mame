@@ -7190,3 +7190,9 @@ than import reference phase timings.
   pending0220H/FFFFH cases (no expectation edits):112 partial/EOF File Info
   registered continuations,788 refusals,56 root recoveries and112 notices,
   plus reset control, exit0. This is NOT success of the original fixture.
+
+**0097 citation-path correction:** the Ymir blob/line range above is unchanged,
+ but the full path is
+ `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:236-269`, as recorded for the
+ same pinned source in earlier entries. The abbreviated path in0097 omitted
+ `ymir/hw`; this correction changes no source or behavior claim.
