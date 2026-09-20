@@ -2544,6 +2544,18 @@ void saturn_cd_hle_device::cmd_read_file() {
   cd_curfad = (curdir[file_id].firstfad + file_offset) & 0xffffff;
   fadstoplay = file_size;
   cd_connect_cddevice(file_filter < MAX_FILTERS ? file_filter : 0xff);
+  if (file_filter < MAX_FILTERS) {
+    // ST-162 section 6.2.3/Table 6.1: file access replaces the work
+    // selector's conditions with FAD-range and stored file-number matching.
+    filterT &filter = filters[file_filter];
+    filter = {};
+    filter.mode = 0x41;
+    filter.fid = curdir[file_id].file_number;
+    filter.fad = cd_curfad;
+    filter.range = file_size;
+    filter.condtrue = file_filter;
+    filter.condfalse = 0xff;
+  }
 
   LOGWARN("Read file %08x (%08x %08x) %02x %d\n", curdir[file_id].firstfad,
           cd_curfad, fadstoplay, file_filter, sectlenin);
