@@ -7,6 +7,8 @@ def extract(text, signature):
 
 def extend(head, functions, source):
     declarations=[]
+    if 'cdda_maxrepeat' in functions and 'cdda_maxrepeat' not in head:
+        declarations.append('uint8_t cdda_maxrepeat=0;')
     if 'm_get_partition' in functions and 'm_get_partition' not in head:
         declarations.append('partitionT m_get_partition{};')
     if '::read_new_dir(uint32_t fileno, uint8_t input)' in source:

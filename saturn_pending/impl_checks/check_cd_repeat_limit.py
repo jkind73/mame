@@ -49,3 +49,22 @@ with tempfile.TemporaryDirectory(prefix='impl-cd-repeat-limit-') as directory:
     cpp=Path(directory)/'check.cpp';exe=Path(directory)/'check';cpp.write_text(head+functions+tail)
     subprocess.run(['g++','-std=c++20','-O2','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
+# Also run the complete device_reset body with the shared declaration-only
+# reset scaffold. Media loading, status changes and timers remain mocked.
+fixture=Path(__file__).with_name('check_cd_selector_reset.py')
+scope={'__file__':str(fixture),'__name__':'repeat_reset_scaffold'}
+exec(compile(fixture.read_text().split("\ntail=r'''",1)[0],str(fixture),'exec'),scope)
+head,functions=(scope[k] for k in ('head','functions'))
+tail=r'''
+int main(){unsigned images=0;
+ for(unsigned old=0;old<256;++old)for(bool inserted:{false,true}){
+  auto d=std::make_unique<saturn_cd_hle_device>();d->cdda_maxrepeat=old;d->cdda_repeat_count=14;d->media.inserted=inserted;
+  d->device_reset();CHECK(!d->cdda_maxrepeat&&!d->cdda_repeat_count);++images;
+ }
+ std::printf("method-level, unvalidated: %u complete device_reset method repeat-default images; mock media reload/status/timers, not native device-reset qualification\n",images);
+}
+'''
+with tempfile.TemporaryDirectory(prefix='impl-cd-repeat-reset-') as directory:
+    cpp=Path(directory)/'check.cpp';exe=Path(directory)/'check';cpp.write_text(head+functions+tail)
+    subprocess.run(['g++','-std=c++20','-O2','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)
+    subprocess.run([str(exe)],check=True)
