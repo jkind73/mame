@@ -6620,3 +6620,69 @@ change is part of0088.
   change: filter members and stored file number are already registered.
   Native media/IRQ/save integration and frozen-title qualification remain
   with the validator; no validator assets or expected values edited.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0091 | CD-01 | fea7635c | UNVALIDATED | Read File refuses selectors24..255 and absent/out-of-range IDs with REJECT/CMOK before playback, routing or transfer effects |
+
+### IMPL-0091 — CD-01 — Read File parameter admission
+
+- branch/commit/base: `arena/01a0b897-mame` @ **fea7635c**; base **42d99598**.
+  **BLOCKED(GitHub reconnection for push)**; recovery bundle retained.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2519-2550`;
+  `saturn_pending/impl_checks/check_cd_read_file_admission.py`;
+  own range scaffold adds the REJECT constant, no expected values changed.
+- contract: with the filesystem idle, a non-selector (24..255, including
+  FFh) or unavailable full24-bit file ID is not a Read File operation.
+  Respond REJECT/CMOK without new EHST/EFLS/DRDY, preserving pending causes,
+  drive/seek state, directory contents, routing, filter conditions and any
+  independent host transfer. A valid selector is no longer normalized to a
+  disconnection sentinel. Existing valid file-range/filter setup retained.
+- primary source: ST-162-062094 p.31 section3.3 invalid-format REJECT means
+  nonexecution; p.52 section6.2.2(1) excludes file operations without a file
+  information table; p.100 section8.2.8 Read File specifies the file ID and
+  selector (0..23). p.32 section3.4 excludes DataEnd for REJECT/WAIT.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:3876-3885`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  rejects fnum>=24 or invalid/unheld file info before buffer/routing effects.
+  Its FLS-active WAIT precedes rejection; that missing HLE arbitration is
+  explicitly NOT established here. Local base mapped bad selector toFF
+  and returned normal status/EHST for absent IDs. Upstream MAME
+  398bba74ed7997d29c2316316da230f6d85fda0d similarly lacks this admission;
+  independently written guard, no reference block imported.
+- expected observable: idle-filesystem invalid packet produces REJECT and
+  only adds CMOK to existing HIRQ, with no drive/host-transfer changes.
+  Exact register/state values, zero tolerance, no latency claim.
+- suggested method: issue command74 with every selector24..255, a valid
+  file ID, then absent IDs and an empty table with valid selectors. Repeat
+  while a separate host transfer owns its interface; observe IRQ causes,
+  CD input/filter readbacks, seek/FAD state and host-stream continuation.
+- falsifier: malformed request starts a seek, disconnects or rewrites a
+  selector, acquires/ends a host transfer, creates new completion causes,
+  or aliases a high file-ID byte onto an existing low ID.
+- self-check run (method-level, unvalidated):30410816 selector/HIRQ/host-owner
+  and absent-ID images plus24 accepted-selector controls exit0 under ASan/
+  fail-fast UBSan. Historical base fails response predicate243; wrong
+  response, extraEHST, early disconnect and invalid-ID normal-response
+  mutants fail235/235/237/235. Native warning-enabled CD TU syntax/diff0.
+  All35 own CD probes run:34 exit0, **one existing diagnostic fails** below;
+  aggregate `/tmp/impl-ref/cd-0091-aggregate.log`. No full build/verification.
+- fixture conflict, left unchanged: `check_cd_file_connections.py` expects
+  invalid Read File selectorFF to disconnect (its own text already labels
+  that a legacy/nonlegal diagnostic). It now fails its connection predicate.
+  The new rejection contract intentionally supersedes that behavior; this
+  is NOT reported as an all-probe success. An external `/tmp/impl-ref/`
+  adapter excludes only those625 FF-Read-File images, retains every remaining
+  assertion and returns0 for30625 connection images,48 displacements and24
+  absent-ID controls. Original file and all expected values untouched.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: FLS-active WAIT precedence needs a real
+  filesystem operation lifetime; playtype alone is not such a lifetime.
+  Full held-window validity, no-media/EOF/empty-file command policy,
+  destination-buffer clearing and native response/IRQ/timing/frozen-title
+  qualification remain open. No new state/save-layout change. Validator
+  assets untouched; a failing legacy diagnostic is disclosed, not rewritten.
