@@ -183,12 +183,48 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(m_host_transfer_active));
 
   // Word-transfer cursors must be restored with the staged response bytes.
-  // Full-directory transfers additionally depend on curdir (saved separately
-  // once the directory model supports native save-state serialization).
+  // Full-directory transfers also use the directory cache registered below.
   save_item(NAME(tocbuf));
   save_item(NAME(subqbuf));
   save_item(NAME(subrwbuf));
   save_item(NAME(finfbuf));
+
+  // Never register the initially empty/resizable vector's allocation.
+  save_item(NAME(m_saved_dir_count));
+  save_item(STRUCT_MEMBER(curroot, record_size));
+  save_item(STRUCT_MEMBER(curroot, xa_record_size));
+  save_item(STRUCT_MEMBER(curroot, firstfad));
+  save_item(STRUCT_MEMBER(curroot, length));
+  save_item(STRUCT_MEMBER(curroot, year));
+  save_item(STRUCT_MEMBER(curroot, month));
+  save_item(STRUCT_MEMBER(curroot, day));
+  save_item(STRUCT_MEMBER(curroot, hour));
+  save_item(STRUCT_MEMBER(curroot, minute));
+  save_item(STRUCT_MEMBER(curroot, second));
+  save_item(STRUCT_MEMBER(curroot, gmt_offset));
+  save_item(STRUCT_MEMBER(curroot, flags));
+  save_item(STRUCT_MEMBER(curroot, file_unit_size));
+  save_item(STRUCT_MEMBER(curroot, interleave_gap_size));
+  save_item(STRUCT_MEMBER(curroot, volume_sequencer_number));
+  save_item(STRUCT_MEMBER(curroot, name));
+  save_item(STRUCT_MEMBER(m_saved_dir, record_size));
+  save_item(STRUCT_MEMBER(m_saved_dir, xa_record_size));
+  save_item(STRUCT_MEMBER(m_saved_dir, firstfad));
+  save_item(STRUCT_MEMBER(m_saved_dir, length));
+  save_item(STRUCT_MEMBER(m_saved_dir, year));
+  save_item(STRUCT_MEMBER(m_saved_dir, month));
+  save_item(STRUCT_MEMBER(m_saved_dir, day));
+  save_item(STRUCT_MEMBER(m_saved_dir, hour));
+  save_item(STRUCT_MEMBER(m_saved_dir, minute));
+  save_item(STRUCT_MEMBER(m_saved_dir, second));
+  save_item(STRUCT_MEMBER(m_saved_dir, gmt_offset));
+  save_item(STRUCT_MEMBER(m_saved_dir, flags));
+  save_item(STRUCT_MEMBER(m_saved_dir, file_unit_size));
+  save_item(STRUCT_MEMBER(m_saved_dir, interleave_gap_size));
+  save_item(STRUCT_MEMBER(m_saved_dir, volume_sequencer_number));
+  save_item(STRUCT_MEMBER(m_saved_dir, name));
+  machine().save().register_presave(save_prepost_delegate(FUNC(saturn_cd_hle_device::directory_pre_save), this));
+  machine().save().register_postload(save_prepost_delegate(FUNC(saturn_cd_hle_device::directory_post_load), this));
 
   // Save ownership by indices, never process-local pointers.
   save_item(NAME(m_saved_transpart));
@@ -253,6 +289,21 @@ void saturn_cd_hle_device::device_post_load() {
   cddevice = m_saved_cddevice >= 0 && m_saved_cddevice < MAX_FILTERS ?
                  &filters[m_saved_cddevice] : nullptr;
   // Pointer repair neither reruns a transfer nor produces a new HIRQ edge.
+}
+
+void saturn_cd_hle_device::directory_pre_save() {
+  // All cache entries produced by make_dir_current fit this staging array.
+  assert(curdir.size() <= std::size(m_saved_dir));
+  m_saved_dir_count = std::min<size_t>(curdir.size(), std::size(m_saved_dir));
+  std::copy_n(curdir.begin(), m_saved_dir_count, std::begin(m_saved_dir));
+  std::fill(std::begin(m_saved_dir) + m_saved_dir_count, std::end(m_saved_dir), direntryT{});
+}
+
+void saturn_cd_hle_device::directory_post_load() {
+  const uint32_t count = std::min<uint32_t>(m_saved_dir_count, std::size(m_saved_dir));
+  curdir.assign(std::begin(m_saved_dir), std::begin(m_saved_dir) + count);
+  // Restore held information without rereading media, changing a connection,
+  // restarting a host stream or manufacturing a filesystem/IRQ completion.
 }
 
 void saturn_cd_hle_device::device_reset() {

@@ -301,8 +301,15 @@ private:
   bool m_status_change_in_progress, m_seek_in_progress;
   int get_timing_command(void);
 
-  direntryT curroot;             // root entry of current filesystem
+  direntryT curroot{};           // root entry of current filesystem
   std::vector<direntryT> curdir; // current directory
+  // The bounded parser accepts records of at least 34 bytes. Stage its
+  // resizable cache in fixed storage for native save-state registration.
+  static constexpr uint32_t MAX_DIR_ENTRIES = MAX_DIR_SIZE / 34;
+  direntryT m_saved_dir[MAX_DIR_ENTRIES]{};
+  uint32_t m_saved_dir_count = 0;
+  void directory_pre_save();
+  void directory_post_load();
   int numfiles;                  // # of entries in current directory
   int firstfile;                 // first non-directory file
 
