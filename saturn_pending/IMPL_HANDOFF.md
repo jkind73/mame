@@ -7695,3 +7695,63 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   Invalid/reserved modes are not newly specified. Full reset method uses
   mocks, not native reset/save/audio qualification. No full build or validator
   asset/expectation edits.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0104 | CD-01 | 6e02f2f5907 | UNVALIDATED | Track/index0/0 selects disc start for Play's start and the last sector before lead-out for its end |
+
+### IMPL-0104 — CD-01 — default Play range endpoints
+
+- branch/commit/base: `arena/01a0b897-mame` @ **6e02f2f5907**;
+  base **f205d644577**. Source/probe published normally.
+- files: `src/mame/sega/saturn_cd_hle.cpp:1209-1231`;
+  `saturn_pending/impl_checks/check_cd_play_default.py`.
+- contract: valid track-only Play commands use track/index0/0 as a default
+  position, not an error. A default start selects the disc's first track;
+  a default end covers the last track through the sector preceding lead-out.
+  Remove the title-specific warning/early return for start track0. Explicit
+  nonzero track endpoints retain their existing interpretation.
+- primary source: ST-162-062094 p.65 data6.4 defines default disc start/end;
+  p.66 sections5-6 and the track/index table define0/0 and track defaults.
+  p.82 function2.1 example(3) explicitly plays using both defaults. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: validator tree
+  0ce91cd3f35620ed19eab6c623e5498365d19b93,
+  `src/mame/sega/saturn_cd_hle.cpp:1261-1272,1295-1304`, maps zero start
+  to first track and zero end to lead-out. Forkf205d644577 instead returns
+  early for start0 and uses image track0's start as end0. Independently
+  written narrow endpoint correction; no import of its wider Play handler,
+  no-change logic, clamping policy or audio machinery.
+- expected observable: with first-track LBA0 and lead-out LBA L, a both-default
+  range starts at FAD150, consumes exactly L sectors and finishes at FAD L+150
+  without reading that lead-out sector. Default-start/explicit-end and explicit-
+  start/default-end consume the corresponding inclusive track ranges. Counts,
+  FADs and image addresses exact, zero tolerance; no audible-duration claim.
+- suggested method: synthetic mixed-track disc with distinct sector markers,
+  accepting/discarding data routing so full-buffer pause cannot mask progress.
+  Issue0/0 defaults independently and together, compare equivalent explicit
+  first/last-track requests, trace actual sectors and final PEND/PAUSE. Repeat
+  on a native binary and include the validator's range/tone fixtures.
+- falsifier: default start does not enter the play path, default end gives an
+  empty/underflowed range, the first/last programme sector is skipped, or a
+  following sector is read after range completion.
+- self-check run (method-level, unvalidated):56 default-position ranges,
+ 48 explicit controls,80000 physical-sector dispatch checks over eight mixed
+  audio/data layouts; actual Play/drive/status methods, mock image/accepting
+  data producer/audio sink. Checks PEND/PAUSE and no following read. ASan/
+  fail-fast UBSan exit0. Historicalf205d644577 and four compiled mutants fail:
+  default starts at track2, default end uses track0/track1, range one sector
+  short. Re-ran0102 address/replay and0103 repeat/reset probes exit0. Native
+  warning-enabled CD TU syntax/diff0. The last complete aggregate is0103's
+ 47-probe40-exit0/seven-conflict run, NOT a full48-probe run of this revision.
+- state: **UNVALIDATED**; no native CD-DA acceptance or milestone advancement.
+- not covered/known doubts: no state fields/layout changes. Valid inserted
+  disc, index0 and nonempty in-range endpoints only. Specific indices,
+  out-of-range track clamping, reversed/empty ranges, no-change/resume,
+  programmed range persistence, pickup-retention semantics, CD-DA sample
+  continuity/stop timing and SCAN remain separate. Removing a warning is not
+  title-specific acceptance. No full build, validator expectation changes,
+  native save/timer qualification or frozen sound/video source changes.
