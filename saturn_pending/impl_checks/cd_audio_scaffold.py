@@ -12,6 +12,8 @@ def extract(text, signature):
 
 def extend(head, functions, source):
     declarations=[]
+    if 'buffull_temp_pause' in functions and 'buffull_temp_pause' not in head:
+        declarations.append('bool buffull_temp_pause=false;')
     sig='void saturn_cd_hle_device::cd_update_cdda()'
     if 'cd_update_cdda(' in functions:
         if 'void cd_update_cdda(' not in head:

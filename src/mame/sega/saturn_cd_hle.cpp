@@ -2650,6 +2650,9 @@ void saturn_cd_hle_device::cmd_abort_file() {
   LOGCMD("%s: Abort File\n", machine().describe_context());
   // Stop the filesystem producer, not the independent host data transfer.
   // ST-162 p.101 also preserves buffer partitions and selector settings.
+  // This is a commanded pause, not a temporary buffer-space pause: later
+  // Delete/DataEnd/reset frees must not restart the aborted file producer.
+  buffull_temp_pause = false;
   if (((cd_stat & 0x0f00) != CD_STAT_NODISC) &&
       ((cd_stat & 0x0f00) != CD_STAT_OPEN))
     cd_change_status(CD_STAT_PAUSE); // force to pause
