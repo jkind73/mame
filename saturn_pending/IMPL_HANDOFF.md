@@ -7755,3 +7755,90 @@ during filesystem work. The seven unchanged original-fixture conflicts in its
   continuity/stop timing and SCAN remain separate. Removing a warning is not
   title-specific acceptance. No full build, validator expectation changes,
   native save/timer qualification or frozen sound/video source changes.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0105 | CD-01 | bab40bb35b4 + 0e68f1017d1 | UNVALIDATED | Arm a continuous converter range on PLAY entry instead of restarting its cache every sector; stop obsolete/data/non-playing output |
+
+### IMPL-0105 — CD-01 — converter lifecycle within the existing drive phases
+
+- branch/commit/base: `arena/01a0b897-mame` @ **bab40bb35b4** (source/probe/
+  mock dependencies), **0e68f1017d1** (combined command/interval coverage);
+  base **1798fa35575**. Both published normally.
+- files: `src/mame/sega/saturn_cd_hle.cpp:927-949,965-968,4357,4432-4434,4491`;
+  `src/mame/sega/saturn_cd_hle.h:218` (method declaration only);
+  `saturn_pending/impl_checks/check_cd_audio_range.py`, `cd_audio_scaffold.py`
+  and dependency hooks in existing own probes. No fixture assertions changed.
+- contract: in the existing HLE phase model, entering PLAY arms the converter
+  at the current FAD-150 for the remaining range, bounded by lead-out. A
+  sector step does not restart an already active converter/sample cache.
+  Advance the logical cursor, then prepare output for the next interval;
+  data/non-playing/empty/missing-media conditions stop output. Starting a
+  new drive operation invalidates the previous converter range. Range-end
+  status/IRQ publication follows the converter stop/update, not vice versa.
+- primary source: ST-162-062094 p.82 function2.1 plays music in CD-DA areas
+  and reads data in CD-ROM areas; pp.65-66 data6.4 define the requested segment;
+  p.31 gives standard-speed13.3 ms communication intervals. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328. These support segment/output
+  behavior, NOT an assertion that every pickup/decoder phase in this HLE is
+  physically accurate. p.82's four-frame pre-start unmute remains excluded.
+- cross-checks/provenance: validator tree
+  0ce91cd3f35620ed19eab6c623e5498365d19b93,
+  `src/mame/sega/saturn_cd_hle.cpp:883-905,960-966,4546-4554`, starts a
+  multi-sector converter range, avoids per-sector restarts and stops on
+  non-playing transitions. Its first-start phase is NOT imported verbatim:
+  starting only on the first consuming PLAY step and stopping on the Nth
+  such step would leave only N-1 model intervals. This candidate arms at
+  BUSY-to-PLAY entry before the first interval instead. Existing MAME converter
+  `src/devices/sound/cdda.cpp:62-73,80-85,164-169` (base1798fa35575) updates
+  the sound stream and resets its cache on start_audio; repeated starts are
+  not harmless position notifications. Independently written reconciliation.
+- expected observable: within the model, an uninterrupted N-sector all-audio
+  range starts once and supplies all N addressed intervals, including the
+  first and final, with no additional output after PEND/PAUSE. Adjacent audio
+  tracks do not cause restarts; data intervals are silent. Converter requests
+  use LBA and do not extend beyond lead-out. Integer interval/address/count
+  expectations exact, zero tolerance. Nominal active audio interval is1/75 s;
+  native sample phase/precision must be measured separately, not inferred
+  from the ideal interval-clocked sink.
+- suggested method: native synthetic distinct-tone/marked-sector disc,
+  requested lengths1/2/3 and longer segments, adjacent audio and audio/data
+  boundaries, pause/seek interruption, PEND versus output cessation, and
+  save/load mid-audio. Run validator CD-DA, HIRQ, transfer and LLE gates on a
+  binary tied to this source. Compare actual first/final PCM sample positions
+  and pre-start output, not merely audible RMS or converter call counts.
+- falsifier: lost/duplicated first/final programme intervals, per-sector cache
+  restarts, data-sector output, output left active at range completion, wrong
+  physical source addresses, or continued old-range output after retargeting.
+- self-check run (method-level, unvalidated):448 direct audio/data ranges,
+ 104 actual explicit/default track commands,114496 model intervals,326
+  uninterrupted audio runs,12 pause interruptions and552 stopped-output PEND
+  observations. Actual Play/Seek/drive/status/periodic/converter-control
+  methods; ideal interval-clocked audio sink and mock image/timer, not PCM.
+  ASan/fail-fast UBSan exit0. Historical1798fa35575 and five compiled mutants
+  assertion-fail: late start, per-boundary restart, FAD passed as LBA, data
+  output, stop deferred until after PEND. Native warning-enabled CD TU syntax/
+  diff0. All49 own CD probes ran atbab40bb35b4:40 exit0/nine conflicts;
+  expanded combined probe rerun at0e68f1017d1 exit0 with source unchanged.
+  `/tmp/impl-ref/cd-0105-aggregate.log`.
+- state: **UNVALIDATED**; validator's native range/tone findings are NOT claimed
+  resolved by these mocks. Full native gate/merge-readiness remain open.
+- not covered/known doubts: the seven prior conflicts remain; two newly
+  disclosed originals are `check_cd_drive_address.py` (expects exactly one
+  track lookup per producer step) and `check_cd_play_default.py` (expects the
+  final lookup to concern the just-consumed sector). Both also assume
+  per-sector audio starts. Their assertions remain untouched. The new probe
+  separately checks actual producer and next-interval timer addresses plus
+ 104 command ranges under continuous output; this does not relabel the two
+  old fixtures as passing. Mock dependency adapters expose an inactive
+  converter in old data/transfer fixtures, or the existing playing flag in
+  the tray mock; only the dedicated range probe models converter intervals.
+  No new device fields/save-layout changes. Native converter/timer save
+  replay and compatibility with old active-audio snapshots remain unqualified
+  because the phase semantics changed. No SCSP/sound-device source change.
+  Four-frame pre-start unmute, full programmed repeat/range persistence,
+  invalid-range drive clamping, SCAN movement/audio/rate and host-window/LLE
+  reconciliation remain separate. No full build or validator-asset edits.
