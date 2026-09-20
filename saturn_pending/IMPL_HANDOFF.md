@@ -6485,3 +6485,71 @@ addendum stated; production range1811-1855 is unchanged.
   current R-W payload remains a placeholder; valid-selector controls do not
   establish its hardware accuracy. Invalid idle cursor poison is a storage
   diagnostic. Validator assets/expectations and milestone statuses untouched.
+
+### IMPL-0088 additional source disagreement (append-only)
+
+Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+`libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:2194-2230`, maps failed
+subcode setup, including unsupported types, to8000h/WAIT; that disagreement
+is not adopted over the explicit Mednafen invalid-type rejection.
+SubQ payload correction remains **BLOCKED(command20 Q ten-byte capture at
+known FAD/relative position and track>=10, or a primary payload-layout table)**:
+Mednafen cdb.cpp:2499-2508 emits binary track/index and24-bit FAD fields,
+while Ymir cdblock.cpp:1413-1437 copies its DiscPosition time fields and the
+current HLE synthesizes BCD/MSF. Do not silently choose a format or merely
+adjust the150-frame offset without resolving that contract. No Q payload
+change is part of0088.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0089 | CD-01 | 6d80b9d1 | UNVALIDATED | Hard reset clears root and scope alongside the directory vector before any fresh media reload |
+
+### IMPL-0089 — CD-01 — filesystem metadata hard-reset coherence
+
+- branch/commit/base: `arena/01a0b897-mame` @ **6d80b9d1**; base **fd3fea06**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**; local
+  incremental recovery bundle retained outside Git.
+- files: `src/mame/sega/saturn_cd_hle.cpp:337-339`;
+  `saturn_pending/impl_checks/check_cd_directory_reset.py:1-30`;
+  own selector-reset scaffold (root/count declarations only).
+- contract: reset root metadata and the legacy numfiles/firstfile counters
+  when clearing the directory cache. Do so before the pre-existing optional
+  root reload, preserving freshly loaded metadata afterward. No-media or
+  unsuccessful reload must not retain the previous disc's root/scope data.
+- primary source: ST-162-062094 p.52 section6.2.2(1) describes file information
+  cleared at startup/disc changes and creating a new table via root-directory
+  access. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. This candidate only addresses the
+  existing device_reset entry point, not software Init-CD or tray sequencing.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1538-1629`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e,
+  clears FileInfo/RootDirInfo and their validity on powering-up reset. Its
+  separate invalid-table report policy is not replaced by a zero-scope claim.
+  Local base/upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d reset
+  clear curdir but omit its associated root/counters; no reference imported.
+- expected observable: after reset without a replacement table, no old root
+  FAD/size/attributes/names or scope counters remain; successful reload wins
+  over clearing. Exact stored fields, zero tolerance. The legacy Get Scope
+  validity/status encoding is still not qualified by this storage change.
+- suggested method: native reset after navigating a populated directory,
+  with media absent, invalid filesystem and valid replacement filesystem;
+  inspect subsequent scope/root navigation and save images.
+- falsifier: stale root/counters survive absent/failed reload, clearing runs
+  after and destroys a valid fresh reload, or existing reset IRQ/timer/pool
+  behavior changes.
+- self-check run (method-level, unvalidated):1024 poison/media/reload images
+  exit0 with ASan/fail-fast UBSan. Historicalfd3fea06 fails empty-state
+  predicate at generated line270; omitted root, omitted counters and
+  post-reload clobber mutants fail at lines271/271/272. Existing selector and
+  host-lifecycle reset expectations unchanged; all33 own CD probes,
+  warning-enabled CD TU syntax/diff exit0. Aggregate
+  `/tmp/impl-ref/cd-0089-aggregate.log`. No full build/native validation.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: existing eager root read on hard reset retained,
+  not asserted to be firmware-accurate. Software Init-CD, tray/abort table
+  invalidation, held-window/scope validity and native reset/save/frozen-game
+  acceptance remain open. All cleared fields were already registered; no
+  new fields/layout change. Validator assets/expectations and milestones
+  untouched.
