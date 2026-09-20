@@ -70,6 +70,10 @@ def extend(head, functions, source):
         for name,value in [('MAX_BLOCKS',200),('BFUL',8)]:
             if name not in head:
                 head=f'constexpr unsigned {name}={value};\n'+head
+    # Metadata-only fixtures have no sector pool. DataEnd's unused PUT arm
+    # still needs its capacity declaration; integrated PUT probes use real pools.
+    if 'freeblocks' in functions and 'freeblocks' not in head and not any('freeblocks' in d for d in declarations):
+        declarations.append('int freeblocks=200;')
     if 'MAX_FILTERS' in functions and 'MAX_FILTERS' not in head:
         head='constexpr unsigned MAX_FILTERS=24;\n'+head
     if 'm_file_scope_start' not in head:
