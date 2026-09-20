@@ -309,6 +309,9 @@ private:
   // 254-record ordinary-file window plus the self/parent records.
   uint32_t m_file_scope_start = 2;
   uint16_t m_file_info_words = 0; // accepted host transfer length, not live scope
+  // Command validity is separate from the retained cache backing an already
+  // accepted host stream. An empty cache is invalid even without this latch.
+  bool m_file_info_invalidated = false;
   uint32_t cd_file_info_count() const;
   bool cd_file_info_held(uint32_t file_id) const;
   // The bounded parser accepts records of at least 34 bytes. Stage its

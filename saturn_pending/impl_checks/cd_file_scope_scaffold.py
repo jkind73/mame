@@ -27,6 +27,8 @@ def extend(head, functions, source):
         declarations.append('uint32_t m_file_scope_start=2;')
     if 'm_file_info_words' not in head:
         declarations.append('uint16_t m_file_info_words=0;')
+    if 'm_file_info_invalidated' not in head:
+        declarations.append('bool m_file_info_invalidated=false;')
     if 'curdir' not in head:
         declarations.append('std::vector<int> curdir;')
     for result,name,args in [('uint32_t','cd_file_info_count',''),('bool','cd_file_info_held','uint32_t file_id')]:

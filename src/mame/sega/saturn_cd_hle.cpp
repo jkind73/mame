@@ -178,6 +178,7 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(firstfile));
   save_item(NAME(m_file_scope_start));
   save_item(NAME(m_file_info_words));
+  save_item(NAME(m_file_info_invalidated));
   // the transfer type gives the saved xfercount/xferoffs/xfersect* positions
   // their meaning, so it has to travel with them
   save_item(NAME(xfertype));
@@ -341,6 +342,7 @@ void saturn_cd_hle_device::device_reset() {
   numfiles = firstfile = 0;
   m_file_scope_start = 2;
   m_file_info_words = 0;
+  m_file_info_invalidated = false;
 
   xfertype = XFERTYPE_INVALID;
   xfertype32 = XFERTYPE32_INVALID;
@@ -2380,6 +2382,8 @@ uint32_t saturn_cd_hle_device::cd_file_info_count() const {
 }
 
 bool saturn_cd_hle_device::cd_file_info_held(uint32_t file_id) const {
+  // This is a backing-cache lookup, not command admission. Tray invalidation
+  // must not destroy the bytes of a previously accepted File Info transfer.
   return file_id < curdir.size() &&
          (file_id < 2 || (file_id >= m_file_scope_start &&
                          file_id - m_file_scope_start < 254));
@@ -2408,7 +2412,8 @@ void saturn_cd_hle_device::cmd_change_directory() {
   // byte stream and must not replace the current held information.
   if (input >= MAX_FILTERS ||
       (file_id != 0xffffff &&
-       (!cd_file_info_held(file_id) || !(curdir[file_id].flags & 0x02)))) {
+       (m_file_info_invalidated || !cd_file_info_held(file_id) ||
+        !(curdir[file_id].flags & 0x02)))) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
     update_hirq();
@@ -2433,7 +2438,7 @@ void saturn_cd_hle_device::cmd_read_directory() {
       std::max<uint32_t>(2, (uint32_t(cr3 & 0xff) << 16) | cr4);
   // Holding another window requires an existing file-information table
   // and a real work selector; FF is not a filesystem disconnection command.
-  if (input >= MAX_FILTERS || curdir.empty()) {
+  if (input >= MAX_FILTERS || m_file_info_invalidated || curdir.empty()) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
     update_hirq();
@@ -2457,7 +2462,7 @@ void saturn_cd_hle_device::cmd_read_directory() {
 void saturn_cd_hle_device::cmd_get_file_scope() {
   // Get file system scope
   LOGCMD("%s: Get file system scope\n", machine().describe_context());
-  if (curdir.empty()) {
+  if (m_file_info_invalidated || curdir.empty()) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
     update_hirq();
@@ -2480,7 +2485,7 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     return;
   const uint32_t temp = (uint32_t(cr3 & 0xff) << 16) | cr4;
   const uint32_t count = cd_file_info_count();
-  if (curdir.empty() ||
+  if (m_file_info_invalidated || curdir.empty() ||
       (temp == 0xffffff ? !count : !cd_file_info_held(temp))) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
@@ -2553,7 +2558,8 @@ void saturn_cd_hle_device::cmd_read_file() {
   // Filesystem selectors are 0..23, not the FF disconnection sentinel.
   // Refuse an absent/out-of-range directory entry before changing playback,
   // routing or filter conditions. REJECT completes no host/file transfer.
-  if (file_filter >= MAX_FILTERS || !cd_file_info_held(file_id)) {
+  if (file_filter >= MAX_FILTERS || m_file_info_invalidated ||
+      !cd_file_info_held(file_id)) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
     update_hirq();
@@ -3972,6 +3978,7 @@ void saturn_cd_hle_device::make_dir_current(uint32_t fad, uint32_t length) {
   const uint32_t bytes = std::min(length, MAX_DIR_SIZE);
   uint8_t sector[2048];
   m_file_scope_start = 2;
+  m_file_info_invalidated = true;
   curdir.clear();
   for (uint32_t offset = 0; offset < bytes; offset += sizeof(sector)) {
     std::fill(std::begin(sector), std::end(sector), 0);
@@ -4029,6 +4036,7 @@ void saturn_cd_hle_device::make_dir_current(uint32_t fad, uint32_t length) {
       break;
     }
   }
+  m_file_info_invalidated = false;
 }
 
 void saturn_cd_hle_device::device_stop() { curdir.clear(); }
@@ -4432,6 +4440,11 @@ void saturn_cd_hle_device::cd_readblock(uint32_t fad, uint8_t *dat) {
 void saturn_cd_hle_device::set_tray_open() {
   if (!tray_is_closed)
     return;
+
+  // ST-162 section 6.2.2: a disc change invalidates filesystem information.
+  // Retain its backing cache for an outstanding host transfer, but reject
+  // new file accesses until a directory is freshly loaded.
+  m_file_info_invalidated = true;
 
   hirqreg |= DCHG;
   update_hirq();
