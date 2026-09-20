@@ -6165,3 +6165,56 @@ addendum stated; production range1811-1855 is unchanged.
   validator assets/expectations, frozen sound/video/CPU paths or milestone
   statuses changed. The authored method-level sectors are not complete
   native-media conformance images.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0084 | CD-01 | b23542c6 | UNVALIDATED | A held zero-byte file returns its twelve-byte File Info record instead of terminating the emulator |
+
+### IMPL-0084 — CD-01 — empty-file information
+
+- branch/commit/base: `arena/01a0b897-mame` @ **b23542c6**; base **21464b48**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**; local
+  incremental recovery bundle retained outside Git.
+- files: `src/mame/sega/saturn_cd_hle.cpp:2414-2422`;
+  `saturn_pending/impl_checks/check_cd_empty_file_info.py:1-31`.
+- contract: byte length0 is valid information for an empty held file, not a
+  missing-file sentinel. Get File Info still exposes six16-bit words with
+  the original FAD, zero byte length and existing metadata, and uses the
+  ordinary transfer/DataEnd lifetime. Remove only the zero-length fatal
+  condition; zero-FAD and invalid-ID legacy policy are not changed here.
+- primary source: ST-162-062094 p.72 CdcFile/CDC_FILE_SIZE byte-count field,
+  p.100 section8.2.8/function8.4 twelve-byte File Info record. SDK
+  0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. ECMA-119,2nd edition1987,
+  printed p.6 sections6.4.4.2/6.4.4.3/6.4.5 explicitly permit zero logical
+  blocks/zero recorded file bytes and define byte data length:
+  https://ecma-international.org/wp-content/uploads/ECMA-119_2nd_edition_december_1987.pdf
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1034-1048,3808-3857`, blob
+  d367dd0c0500ff7b1e2637e748015543b0a3078e, copies the directory's size field
+  and returns a valid held record without treating size0 as absent. Local
+  base and upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d File Info
+  method throw on a found zero-length entry; no reference block imported.
+- expected observable: a cached ordinary empty file with nonzero FAD gives
+  CR2=6 and DRDY; data words2/3 contain zero length. No host exception;
+  DataEnd after six words reports six. Exact words/count, zero tolerance.
+- suggested method: author an empty ISO file, fetch its information singly
+  and within the held table, then terminate/replay its word transfer. Keep
+  directory validity/held-window and read-empty-file command74 separate.
+- falsifier: a legitimate cached empty file crashes/rejects solely because
+  its length is0, loses metadata or has a different six-word transfer path
+  from the same nonempty held record.
+- self-check run (method-level, unvalidated):1270 single/table record
+  comparisons and8890 every-word state-copy continuations exit0 with
+  ASan/fail-fast UBSan. Historical21464b48 terminates with the old File ID
+  not found exception on the first empty record. All28 own CD probes,
+  warning-enabled CD TU syntax and diff checks exit0; aggregate
+  `/tmp/impl-ref/cd-0084-aggregate.log`. No full build/native media execution.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: existing zero-FAD/missing-ID policies, XA file
+  number/attributes, held-window validity, empty-file Read File/EOF behavior,
+  filesystem/parser/native timing/save/frozen-title qualification remain
+  separate. Maximum32-bit-size controls are storage diagnostics. No new
+  fields/layout change, validator edits or milestone advancement.
