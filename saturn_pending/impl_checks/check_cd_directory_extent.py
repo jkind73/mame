@@ -42,6 +42,9 @@ struct saturn_cd_hle_device {
 head=head.replace('// TYPES',extract(header,'struct direntryT')+';')
 head=head.replace('// DECLARE','void make_dir_current(uint32_t,uint32_t);' if 'make_dir_current(uint32_t fad, uint32_t length)' in source else 'void make_dir_current(uint32_t);')
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::read_new_dir(', 'void saturn_cd_hle_device::make_dir_current('))
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 void both32(uint8_t *p,uint32_t v){for(unsigned i=0;i<4;++i){p[i]=v>>(i*8);p[4+i]=v>>(24-i*8);}}

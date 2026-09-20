@@ -30,6 +30,9 @@ functions+='\n'+'\n'.join(extract(source,s) for s in (
  'void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel()',
  'void saturn_cd_hle_device::cmd_get_target_file_info()',
  'void saturn_cd_hle_device::cmd_abort_file()'))
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 void seed(D &d){uint8_t id=255;auto *b=d.cd_alloc_block(&id);CHECK(id==0&&b);b->size=2352;b->raw_data=true;b->FAD=150;

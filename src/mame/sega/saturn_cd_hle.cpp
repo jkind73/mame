@@ -176,6 +176,8 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(m_seek_in_progress));
   save_item(NAME(numfiles));
   save_item(NAME(firstfile));
+  save_item(NAME(m_file_scope_start));
+  save_item(NAME(m_file_info_words));
   // the transfer type gives the saved xfercount/xferoffs/xfersect* positions
   // their meaning, so it has to travel with them
   save_item(NAME(xfertype));
@@ -337,6 +339,8 @@ void saturn_cd_hle_device::device_reset() {
   curdir.clear();
   curroot = {};
   numfiles = firstfile = 0;
+  m_file_scope_start = 2;
+  m_file_info_words = 0;
 
   xfertype = XFERTYPE_INVALID;
   xfertype32 = XFERTYPE32_INVALID;
@@ -644,20 +648,13 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     }
     break;
 
-  case XFERTYPE_FILEINFO_254: // Lunar 2
+  case XFERTYPE_FILEINFO_254:
     if ((xfercount % (6 * 2)) == 0) {
-      uint32_t temp = 2 + (xfercount / (0x6 * 2));
-
-      /* this transfer promises 254 records no matter how many entries
-         make_dir_current() actually parsed, so temp runs past the end of
-         curdir on any disc with fewer than 257 of them - and curdir is empty
-         until a directory has been read at all.  Report the entries that are
-         not there as an absent file, which is how this protocol already
-         spells "not found", instead of reading past the allocation.
-         Deliberately no warning here: this is the normal case, so one would
-         fire per record on every title that asks for the whole directory. */
+      const uint32_t temp = m_file_scope_start + xfercount / (6 * 2);
+      // Keep the host read bounded even if a later filesystem operation
+      // replaces the cache while the accepted transfer is outstanding.
       direntryT const entry =
-          (size_t(temp) < curdir.size()) ? curdir[temp] : direntryT{};
+          cd_file_info_held(temp) ? curdir[temp] : direntryT{};
 
       // first 4 bytes = FAD
       put_u32be(&finfbuf[0], entry.firstfad);
@@ -674,7 +671,7 @@ inline u16 saturn_cd_hle_device::dataxfer_word_r() {
     xfercount += 2;
     xferdnum += 2;
 
-    if (xfercount >= (254 * 6 * 2)) {
+    if (xfercount >= m_file_info_words * 2U) {
       xfercount = 0;
       xfertype = XFERTYPE_INVALID;
     }
@@ -2376,6 +2373,18 @@ void saturn_cd_hle_device::cmd_get_sector_data_copy_or_move_error() {
   update_hirq();
 }
 
+uint32_t saturn_cd_hle_device::cd_file_info_count() const {
+  return m_file_scope_start < curdir.size()
+             ? std::min<size_t>(254, curdir.size() - m_file_scope_start)
+             : 0;
+}
+
+bool saturn_cd_hle_device::cd_file_info_held(uint32_t file_id) const {
+  return file_id < curdir.size() &&
+         (file_id < 2 || (file_id >= m_file_scope_start &&
+                         file_id - m_file_scope_start < 254));
+}
+
 void saturn_cd_hle_device::cmd_change_directory() {
   const uint8_t input = cr3 >> 8;
   const uint32_t file_id = (uint32_t(cr3 & 0xff) << 16) | cr4;
@@ -2384,7 +2393,7 @@ void saturn_cd_hle_device::cmd_change_directory() {
   // byte stream and must not replace the current held information.
   if (input >= MAX_FILTERS ||
       (file_id != 0xffffff &&
-       (file_id >= curdir.size() || !(curdir[file_id].flags & 0x02)))) {
+       (!cd_file_info_held(file_id) || !(curdir[file_id].flags & 0x02)))) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
     update_hirq();
@@ -2403,13 +2412,10 @@ void saturn_cd_hle_device::cmd_change_directory() {
 }
 
 void saturn_cd_hle_device::cmd_read_directory() {
-  // Read directory entry
   LOGCMD("%s: Read Directory Entry\n", machine().describe_context());
-  //  uint32_t read_dir;
-
-  //  read_dir = ((cr3&0xff)<<16)|cr4;
-
   const uint8_t input = cr3 >> 8;
+  const uint32_t first =
+      std::max<uint32_t>(2, (uint32_t(cr3 & 0xff) << 16) | cr4);
   // Holding another window requires an existing file-information table
   // and a real work selector; FF is not a filesystem disconnection command.
   if (input >= MAX_FILTERS || curdir.empty()) {
@@ -2420,8 +2426,12 @@ void saturn_cd_hle_device::cmd_read_directory() {
   }
   cd_connect_cddevice(input);
 
-  // TODO: how to actually read?
-  // read_new_dir(read_dir - 2);
+  // The synchronous HLE already cached the parsed directory. Expose the
+  // requested window without losing the always-held self/parent records.
+  // Beyond-directory requests retain the prior window: their error policy
+  // is not established by the ordinary, in-directory hold contract.
+  if (first < curdir.size() || curdir.size() <= 2)
+    m_file_scope_start = first;
 
   cr_standard_return(cd_stat);
   hirqreg |= (CMOK | EFLS);
@@ -2431,10 +2441,19 @@ void saturn_cd_hle_device::cmd_read_directory() {
 void saturn_cd_hle_device::cmd_get_file_scope() {
   // Get file system scope
   LOGCMD("%s: Get file system scope\n", machine().describe_context());
+  if (curdir.empty()) {
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
+  const uint32_t count = cd_file_info_count();
+  const uint32_t first = count ? m_file_scope_start : 0;
+  const bool at_end = m_file_scope_start + count >= curdir.size();
   cr1 = cd_stat;
-  cr2 = numfiles;  // # of files in directory
-  cr3 = 0x0100;    // report directory held
-  cr4 = firstfile; // first file id
+  cr2 = count; // ordinary records only; self and parent are always held
+  cr3 = (at_end ? 0x0100 : 0) | ((first >> 16) & 0xff);
+  cr4 = first;
   // A scope query reports state; it does not complete a filesystem operation.
   hirqreg |= CMOK;
   update_hirq();
@@ -2443,20 +2462,23 @@ void saturn_cd_hle_device::cmd_get_file_scope() {
 void saturn_cd_hle_device::cmd_get_target_file_info() {
   if (cd_transfer_wait())
     return;
+  const uint32_t temp = (uint32_t(cr3 & 0xff) << 16) | cr4;
+  const uint32_t count = cd_file_info_count();
+  if (curdir.empty() ||
+      (temp == 0xffffff ? !count : !cd_file_info_held(temp))) {
+    cr_standard_return(CD_STAT_REJECT);
+    hirqreg |= CMOK;
+    update_hirq();
+    return;
+  }
   m_host_transfer_active = true;
+  m_file_info_words = temp == 0xffffff ? count * 6 : 6;
 
-  uint32_t temp;
-
-  // Get File Info
   LOGCMD("%s: Get File Info\n", machine().describe_context());
   cd_stat |= CD_STAT_TRANS;
-  cd_stat &= 0xff00; // clear top byte of return value
-
+  cd_stat &= 0xff00;
   playtype = 0;
   cdda_repeat_count = 0;
-
-  temp = (cr3 & 0xff) << 16;
-  temp |= cr4;
 
   if (temp == 0xffffff) // special
   {
@@ -2464,7 +2486,7 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     xfercount = 0;
 
     cr1 = cd_stat;
-    cr2 = 0x5f4;
+    cr2 = m_file_info_words;
     cr3 = 0;
     cr4 = 0;
   } else {
@@ -2481,20 +2503,8 @@ void saturn_cd_hle_device::cmd_get_target_file_info() {
     cr3 = 0;
     cr4 = 0;
 
-    /* temp is the 24-bit value from CR3/CR4 while curdir only ever holds
-       as many entries as make_dir_current() parsed, so validate it before
-       indexing: an out-of-range read here lands hundreds of megabytes past
-       the allocation.  An ID beyond the directory is reported as an absent
-       file rather than joining the not-found path below, because the ISO
-       9660 parser here is incomplete and a real title can legitimately ask
-       for an ID past it; killing the machine over that would be worse than
-       what the unchecked read used to return. */
-    bool const found = size_t(temp) < curdir.size();
-    direntryT const entry = found ? curdir[temp] : direntryT{};
-    if (!found)
-      LOGWARN("CD: Get File Info %06x beyond directory (%u entries)\n", temp,
-              unsigned(curdir.size()));
-    else if (entry.firstfad == 0)
+    direntryT const &entry = curdir[temp];
+    if (entry.firstfad == 0)
       throw emu_fatalerror("File ID not found in XFERTYPE_FILEINFO_1");
     // A held empty file still has a valid twelve-byte information record;
     // its zero byte length is not a missing-file sentinel.
@@ -2527,7 +2537,7 @@ void saturn_cd_hle_device::cmd_read_file() {
   // Filesystem selectors are 0..23, not the FF disconnection sentinel.
   // Refuse an absent/out-of-range directory entry before changing playback,
   // routing or filter conditions. REJECT completes no host/file transfer.
-  if (file_filter >= MAX_FILTERS || size_t(file_id) >= curdir.size()) {
+  if (file_filter >= MAX_FILTERS || !cd_file_info_held(file_id)) {
     cr_standard_return(CD_STAT_REJECT);
     hirqreg |= CMOK;
     update_hirq();
@@ -3935,6 +3945,7 @@ void saturn_cd_hle_device::make_dir_current(uint32_t fad, uint32_t length) {
   // parse records outside the selected directory's declared byte extent.
   const uint32_t bytes = std::min(length, MAX_DIR_SIZE);
   uint8_t sector[2048];
+  m_file_scope_start = 2;
   curdir.clear();
   for (uint32_t offset = 0; offset < bytes; offset += sizeof(sector)) {
     std::fill(std::begin(sector), std::end(sector), 0);
@@ -3985,8 +3996,7 @@ void saturn_cd_hle_device::make_dir_current(uint32_t fad, uint32_t length) {
     }
   }
   numfiles = curdir.size();
-  // Retain the existing scope policy; held-window/first-ID semantics are
-  // separate from reading the selected directory's byte extent.
+  // Retain parser bookkeeping independently of the exposed held window.
   for (unsigned i = 0; i < curdir.size(); ++i) {
     if (!(curdir[i].flags & 0x02)) {
       firstfile = i;

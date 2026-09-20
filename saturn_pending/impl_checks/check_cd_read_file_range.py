@@ -30,6 +30,9 @@ functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_
 head='#include <cassert>\n'+head
 if 'void saturn_cd_hle_device::cd_connect_cddevice(' in source:
     functions+='\n'+extract(source,'void saturn_cd_hle_device::cd_connect_cddevice(')+'\n'+extract(source,'void saturn_cd_hle_device::cd_disconnect_filter_input(')
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 void issue(D &d,unsigned filter,unsigned fid,unsigned offset){d.cr1=0x7400|(offset>>16);d.cr2=offset;d.cr3=(filter<<8)|(fid>>16);d.cr4=fid;d.cmd_read_file();}

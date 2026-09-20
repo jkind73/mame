@@ -21,6 +21,9 @@ head=head[:head.rfind('};')]+r'''
 functions+='\n'+'\n'.join(extract(source,'void saturn_cd_hle_device::'+n+'(') for n in ('cmd_change_directory','cd_connect_cddevice','cd_disconnect_filter_input'))
 # Reuse only authored-sector builders, not the extent probe's main/expectations.
 builders=fixture.read_text().split("\ntail=r'''",1)[1].split('int main()',1)[0]
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 unsigned wanted_owner=0,wanted_records=0,wanted_reads=0,wanted_causes=0,wanted_status=0;
 void observe(D &d){CHECK(d.irqs==1&&d.cr1==wanted_status&&d.cr2==0&&d.cr3==0&&d.cr4==0&&d.hirqreg==wanted_causes);

@@ -51,6 +51,9 @@ types='\n'.join(extract(header,s)+';' for s in ('struct direntryT','enum transT'
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_get_target_file_info()', 'inline u16 saturn_cd_hle_device::dataxfer_word_r()', 'void saturn_cd_hle_device::cmd_end_data_transfer()'))
 sig='bool saturn_cd_hle_device::cd_transfer_wait()'
 functions+='\n'+(extract(source,sig) if sig in source else sig+' {return false;}')
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 void seed(D &d,unsigned count){d.curdir.resize(count);for(unsigned i=0;i<count;++i){auto &f=d.curdir[i];f.firstfad=150+i*0x10001;f.length=12345*(i+1);f.file_unit_size=i+3;f.interleave_gap_size=i+7;f.flags=i&3;}}

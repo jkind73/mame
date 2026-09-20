@@ -304,6 +304,12 @@ private:
 
   direntryT curroot{};           // root entry of current filesystem
   std::vector<direntryT> curdir; // current directory
+  // The HLE parser caches the directory, but firmware exposes only this
+  // 254-record ordinary-file window plus the self/parent records.
+  uint32_t m_file_scope_start = 2;
+  uint16_t m_file_info_words = 0; // accepted host transfer length, not live scope
+  uint32_t cd_file_info_count() const;
+  bool cd_file_info_held(uint32_t file_id) const;
   // The bounded parser accepts records of at least 34 bytes. Stage its
   // resizable cache in fixed storage for native save-state registration.
   static constexpr uint32_t MAX_DIR_ENTRIES = MAX_DIR_SIZE / 34;

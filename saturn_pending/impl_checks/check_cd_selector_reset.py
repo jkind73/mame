@@ -41,6 +41,9 @@ head=head[:head.rfind('};')]+r'''
 };
 '''
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::device_reset()', 'uint8_t saturn_cd_hle_device::cd_filter_destination('))
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 int main(){
  unsigned resets=0,topologies=0;

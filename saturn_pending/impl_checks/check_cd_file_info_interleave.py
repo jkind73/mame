@@ -19,6 +19,9 @@ head=head.replace('// TYPES','\n'.join(extract(header,s)+';' for s in ('struct d
 functions='\n'.join(extract(source,s) for s in ('void saturn_cd_hle_device::cmd_get_target_file_info()', 'inline u16 saturn_cd_hle_device::dataxfer_word_r()', 'void saturn_cd_hle_device::cmd_end_data_transfer()'))
 sig='bool saturn_cd_hle_device::cd_transfer_wait()'
 functions+='\n'+(extract(source,sig) if sig in source else sig+' {return false;}')
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 int main(){saturn_cd_hle_device d;d.curdir.resize(3);auto &f=d.curdir[2];f.firstfad=150;f.length=0x12345;f.flags=2;unsigned words=0;
  for(unsigned unit=0;unit<256;++unit)for(unsigned gap=0;gap<256;++gap)for(bool all:{false,true}){

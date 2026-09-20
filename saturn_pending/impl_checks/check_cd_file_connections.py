@@ -31,6 +31,9 @@ head='#include <cassert>\n'+head
 names=['cmd_read_file','cmd_read_directory','cmd_get_cddevice_connection','cmd_set_filter_connection','cd_change_status','cd_disconnect_filter_input']
 if 'void saturn_cd_hle_device::cd_connect_cddevice(' in source:names+=['cd_connect_cddevice']
 functions='\n'.join(extract(source,'void saturn_cd_hle_device::'+s+'(') for s in names)
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 unsigned endpoint(unsigned value){return value==24?0xff:value;}

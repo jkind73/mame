@@ -31,6 +31,9 @@ start=extract(source,'void saturn_cd_hle_device::device_start()')
 regs=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] in selected]
 functions='void saturn_cd_hle_device::register_state(){\n'+'\n'.join(regs)+'\n}\n'
 functions+='\n'.join(extract(source,s) for s in ('inline u16 saturn_cd_hle_device::dataxfer_word_r()', 'void saturn_cd_hle_device::cmd_end_data_transfer()'))
+import runpy
+head,functions=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,functions,source)
+
 tail=r'''
 using D=saturn_cd_hle_device;
 std::vector<u16> finish(D &d,unsigned words,unsigned cut){std::vector<u16> data;for(unsigned i=cut;i<words;++i)data.push_back(d.dataxfer_word_r());CHECK(d.xfertype==D::XFERTYPE_INVALID&&d.xfercount==0&&d.xferdnum==words*2);d.cmd_end_data_transfer();CHECK(d.cr2==words);return data;}

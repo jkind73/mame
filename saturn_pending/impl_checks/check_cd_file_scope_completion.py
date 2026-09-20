@@ -29,6 +29,9 @@ struct saturn_cd_hle_device {
 };
 '''
 method=extract(source,'void saturn_cd_hle_device::cmd_get_file_scope()')
+import runpy
+head,method=runpy.run_path(str(Path(__file__).with_name('cd_file_scope_scaffold.py')))['extend'](head,method,source)
+
 tail=r'''
 int main(){saturn_cd_hle_device d;unsigned cases=0;
  for(unsigned status:{0x100U,0x380U,0x400U,0x4100U})for(unsigned pending=0;pending<65536;++pending){

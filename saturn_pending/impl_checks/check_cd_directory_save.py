@@ -29,7 +29,7 @@ head=head[:head.rfind('};')]+r'''
 #define NAME(x) x,#x
 #define STRUCT_MEMBER(s,m) s,&std::remove_extent_t<decltype(s)>::m,#s "." #m
 '''.replace('if(PRE)',f'if({str(pre).lower()})').replace('if(POST)',f'if({str(post).lower()})')
-selected={'m_saved_dir_count','numfiles','firstfile','finfbuf','m_host_transfer_active','xfertype','xfertype32','xfercount','xferdnum','cr1','cr2','cr3','cr4','hirqreg','cd_stat','playtype','cdda_repeat_count'}
+selected={'m_file_scope_start','m_file_info_words','m_saved_dir_count','numfiles','firstfile','finfbuf','m_host_transfer_active','xfertype','xfertype32','xfercount','xferdnum','cr1','cr2','cr3','cr4','hirqreg','cd_stat','playtype','cdda_repeat_count'}
 regs=[m[0] for m in re.finditer(r'save_item\(NAME\((\w+)\)\);',start) if m[1] in selected]
 regs+=re.findall(r'save_item\(STRUCT_MEMBER\((?:curroot|m_saved_dir), \w+\)\);',start)
 functions+='\nvoid saturn_cd_hle_device::register_state(){\n'+'\n'.join(regs)+'\n}\n'
