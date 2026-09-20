@@ -6092,3 +6092,76 @@ probe `saturn_pending/impl_checks/check_cd_actual_size_range.py:1-79`.
   response policy, filesystem-busy WAIT, native IRQ/DMA scheduling and
   frozen-title runtime acceptance remain separate. No validator assets,
   frozen CPU/sound/video paths or milestone statuses changed.
+
+### IMPL-0081 line-range correction (append-only)
+
+The actual-size probe ends at line71, not79 as the preceding citation
+addendum stated; production range1811-1855 is unchanged.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0083 | CD-01 | 85f7460d | UNVALIDATED | Directory parsing uses the selected directory's own byte extent, bounded per logical sector and by the existing HLE cap |
+
+### IMPL-0083 — CD-01 — selected-directory extent and record bounds
+
+- branch/commit/base: `arena/01a0b897-mame` @ **85f7460d**; base **355b5d31**.
+  Publication remains **BLOCKED(GitHub reconnection for push)**; unpublished
+  history is also held in `/home/user/mame-local-backup/unpublished.bundle`.
+- files: `src/mame/sega/saturn_cd_hle.cpp:3819,3836,3842-3897`;
+  `src/mame/sega/saturn_cd_hle.h:238`;
+  `saturn_pending/impl_checks/check_cd_directory_extent.py:1-83`.
+- contract: select the root's or requested child's own FAD AND byte length.
+  Read that extent in2048-byte logical sectors, not the root's sector count
+  when entering a child. Honor sector-end zero padding and do not parse a
+  record across a logical sector/declared-byte boundary. Bound record/name
+  accesses; malformed records stop the current sector's walk rather than
+  reading arbitrary host memory. Retain the pre-existing256KiB HLE cap as
+  an explicit implementation limitation, now bounded instead of overflowing.
+  Preserve the filesystem-root record while entering children.
+- primary source: ST-162-062094 p.99 section8.2.8/function8.1 selects the
+  designated directory file; p.72 CdcFile carries its starting FAD and byte
+  size. SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73 blob
+  37cf17209eb176d6580bd55bf11af1694ae1f328. ECMA-119,2nd edition1987,
+  reprinted1998, pp.8-9 sections6.8.1/6.8.1.1/6.8.1.3: directory is a file,
+  records finish in their starting logical sector, remaining sector bytes
+  are zero padding, directory length includes that padding. Official archive:
+  https://ecma-international.org/wp-content/uploads/ECMA-119_2nd_edition_december_1987.pdf
+  (read through fetch_page; direct curl failed TLS, so no claimed local PDF
+  hash). Malformed-record recovery is defensive, not a measured hardware
+  error response.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:1155-1180`, blobd367dd0c0500ff7b1e2637e748015543b0a3078e:
+  root versus selected FileInfo determines fi->fad()/fi->size() and
+  FLS.total_max. Its buffered asynchronous filesystem engine is not imported.
+  Upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d and local base use
+  curroot.length for every make_dir_current call; original field decoding
+  retained, parser rewritten as a bounded single-sector walk.
+- expected observable: with a one-sector root and a three-sector child,
+  entering the child reads all three sectors and exposes their records;
+  with a larger root and one-sector child, following neighboring sectors
+  must not become directory entries. Exact FAD/read count/record metadata,
+  zero tolerance. No sector latency claim;256KiB is NOT a hardware maximum.
+- suggested method: authored ISO directories with different root/child
+  extents and sector padding, followed by distinct neighboring records;
+  compare native File Info/Read File metadata. Separate partial lengths,
+  malformed records and over-cap descriptors as storage diagnostics.
+- falsifier: entering a child reuses root length, leaks following records,
+  loses later child records, changes curroot, crosses record/sector bounds,
+  or relies on host fetching length instead of2048-byte filesystem sectors.
+- self-check run (method-level, unvalidated):80 root/child/fetch images and16
+  partial-length/cap/malformed controls exit0 with ASan/fail-fast UBSan.
+  Historical355b5d31 fails extent predicate at generated line262; root-length,
+  no-cap, whole-final-block and missing-name-bound mutants fail at generated
+  lines203/209/210/217. All27 own CD probes exit0; warning-enabled CD TU
+  syntax and diff checks exit0. Aggregate `/tmp/impl-ref/cd-0083-aggregate.log`.
+- state: **UNVALIDATED**; publication blocked as above.
+- not covered/known doubts: full directories beyond256KiB, held254-record
+  window/scope policy, XA metadata/extended attributes, command70 invalid
+  directory/filter/notification policy, async media errors/timing, curdir/
+  curroot save serialization and native frozen-title acceptance remain open.
+  Existing field types unchanged; no new saved field/layout change. No
+  validator assets/expectations, frozen sound/video/CPU paths or milestone
+  statuses changed. The authored method-level sectors are not complete
+  native-media conformance images.
