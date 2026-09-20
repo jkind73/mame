@@ -7196,3 +7196,77 @@ than import reference phase timings.
  `libs/ymir-core/src/ymir/hw/cdblock/cdblock.cpp:236-269`, as recorded for the
  same pinned source in earlier entries. The abbreviated path in0097 omitted
  `ymir/hw`; this correction changes no source or behavior claim.
+
+---
+
+| ID | parent | commit | state | one-line contract |
+|----|--------|--------|-------|-------------------|
+| IMPL-0098 | CD-01 | 56c4e118 | UNVALIDATED | A captured raw GET reads retained physical backing after allocation release instead of treating the free marker as missing data |
+
+### IMPL-0098 — CD-01 — raw backing extent distinct from allocation marker
+
+- branch/commit/base: `arena/01a0b897-mame` @ **56c4e118**; base **3ad63899**.
+  Publication **BLOCKED(GitHub reconnection for push)**; recovery bundle
+  refreshed after the coherent source/probe commit.
+- files: `src/mame/sega/saturn_cd_hle.cpp:509-533`;
+  `saturn_pending/impl_checks/check_cd_freed_backing.py`.
+- contract: allocation release does not erase physical raw backing or make
+  an accepted GET's captured slot unreadable. The raw-data representation is
+ 2352bytes even when `size==-1` marks the pool allocation free. Host view
+  offset/length still obey the existing sector-boundary latch. Deletion
+  releases capacity immediately and compacts the public partition, but adds
+  no pin, payload copy or implicit host DataEnd.
+- primary source: ST-162-062094 p.96 functions7.2/7.3 distinguish the accepted
+  GET range and deletion/advancing public positions; p.48 figure5.8 defines
+  physical raw sector extent and user-data views. pp.80-81 functions1.9/1.10
+  require accepted transfer termination and define full transfer word count.
+  SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob37cf17209eb176d6580bd55bf11af1694ae1f328.
+- cross-checks/provenance: Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+  `src/ss/cdb.cpp:754-770` explicitly preserves Data because it may be used
+  while freed; `:1389-1426` reads captured physical buffer IDs without an
+  allocation check; `:3488-3550` permits DELETE alongside active DT.
+  blobd367dd0c0500ff7b1e2637e748015543b0a3078e. Its `Buffers` store
+ 2352bytes independently of free-list metadata. Fork3ad63899 already keeps
+  bytes/raw flag in cd_free_block, but the reader rejects the free size-1;
+  upstream MAME398bba74ed7997d29c2316316da230f6d85fda0d does not provide this
+  captured raw-backing path. Independent bounded read adjustment, no import.
+- expected observable: accept ordinary GET, delete its selected public
+  sectors, and do not reuse/overwrite those physical slots. Remaining GET
+  words still match their raw backing; free capacity increases at deletion,
+  not at GET DataEnd. Fully consumed DataEnd reports the normal word count.
+  Registered restore retains this behavior even when every selected block
+  is marked free. Exact words/counts/bytes, zero tolerance; no FIFO latency
+  claim and no guarantee that reused backing retains old payload.
+- suggested method: use distinct raw sectors, start GET, consume0/partial/
+  boundary/all data, delete selected/all public records, change fetching
+  length, save/reload and complete the stream. Observe capacity and attempts
+  to start GET/PUT before the outstanding transfer is ended.
+- falsifier: a freed raw slot is skipped, buffer data/format is destroyed,
+  capacity stays pinned, restore loses the retained raw representation, or
+  freeing buffers silently releases the host interface.
+- self-check run (method-level, unvalidated):19680 freed raw continuations,
+ 1728 registered replays,39360 GET/PUT WAIT controls,1248 slot198/199/full-
+  pool cases (included),2048 all-mode/submode view controls and6 bounds/
+  legacy guards. ASan/fail-fast UBSan exit0. Historical3ad63899 and five
+  mutants fail genuine assertions: old allocation guard, treating cooked
+  invalid storage as raw, missing raw registration, free clearing raw format,
+  free clearing bytes.42 own CD probes:36 exit0, same six disclosed legacy
+  conflicts; `/tmp/impl-ref/cd-0098-aggregate.log`. Native warning-enabled
+  CD TU syntax/diff0. No full build, validator assets or expected-value edits.
+- state: **UNVALIDATED**; no milestone advancement.
+- not covered/known doubts: no new state or save-layout change. Existing saved
+  raw flag, pool bytes, captured IDs and host views suffice. Non-raw/cooked
+  invalid sizes still take the defensive skip path; this does not change the
+  cooked/audio model. Physical-slot reuse, FIFO/prefetch, interrupted DataEnd
+  count, GETDELETE early detachment and filesystem-buffer clearing remain
+  separate work. Pointer identity is not immutable payload ownership.
+
+### GETDELETE follow-on reference detail
+
+The pinned Mednafen code frees all `DT.BufList` reservations in **DataEnd**
+(`cdb.cpp:2762-2768`), not in `DT_ReadIntoFIFO` (`:1389-1426`). Its
+`NeedBufFree` flag is registered at4297; the captured list at4314. Thus
+GETDELETE's early partition unlink and its later allocation release are
+separate operations. Do not introduce speculative per-sector prefetch frees
+when addressing HLE's current EOF-read cleanup.
