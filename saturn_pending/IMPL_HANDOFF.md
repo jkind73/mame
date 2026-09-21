@@ -9666,3 +9666,97 @@ lookup arguments. The method results and limited production change are unchanged
   remain valid for that source, but do not certify these new production changes.
   No full build, gameplay claim, protected fixture expectation change, validator
   asset write or whole-branch promotion was performed.
+
+## Third-review acceptance supersession — reviewed dd21cbcf194 — received
+
+This append-only record supersedes the “awaiting independent review/native
+runtime” status of0131/0132, the scaffold repair and the requested live host
+fixture in preceding entries. Historical local runs/skips remain historical.
+The user correctly pointed out that the independent review had already run.
+
+- Branch/base: `arena/01a0b897-mame`,
+  `dd21cbcf194775da984b8e401de8799cc8d461d5` (also the reviewed source).
+- Validator report at `c6fc1b264e9862c7db9c1a8e9ff01687d5835b4a`,
+  `regtests/saturn/handoff/agent1_validation.md:5–200`, exact blob
+  `26ddb6af665e5c23908acb62a56ca6e9f578fdf9`. Third review introduced by
+  `f8eafb040424c42df0dd0b8defa1f31367d27c11`; report labels it2026-09-21.
+  Retrieved read-only via GH API and hash matched. The second review is
+  preserved at a735e034 (and b2c9a5481b5), not revoked by the rewritten report.
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0131 | CD-02 | 1c8e03d4 | ACCEPTED — independent third review | Q current-position track/control lookup; not complete Q format/readout |
+| IMPL-0132 | CD-02/CD-05 | c4eb8b4d | ACCEPTED — independent third review | Bounded SCAN, entry-dependent audibility, saved scan direction/policy |
+
+0120–0130 keep their second-review acceptance. Scaffold45dab461 is explicitly
+accepted for substance (assertions preserved, three mock tripwires added).
+No new candidate ID, parent completion or whole-branch authorization is inferred.
+
+### Attributed measured results and superseded blockers
+
+- Native1218-TU build exit0, approximately202MB binary; `-validate` exit0.
+- Native `run_all.py`: **73 scripts, zero skips, exit0**. This closes the four
+  local live-skip evidence gaps at the reviewed source revision.
+- `test_cd_host_runtime.py --require-runtime`: **PASS checks=2638**, exit0.
+  The requested PUT/reservation/selector/discard host fixture is now measured;
+  it must no longer be described as lacking any runtime result.
+- Live HIRQ PASS; read/ack and masked-delivery review explicitly closed/accepted.
+- SCAN state/boundary/audibility accepted. Scan rms0.223951, play0.718065,
+  approximately-10.1dB mixer ratio reported, programmed gain-12dB accepted.
+  This is not a claim of exact-12dB measured output or analog fidelity.
+- Periodic play13.00ms/idle17.00ms. The validator adjudicates the legacy
+  idle_cadence SCAN/data control **against the fixture**, not0132. Its old
+  expectation remains unchanged. Hardware SCAN rate remains an HLE approximation.
+- Validator CDDA fixture still exits1 with four labels. `play_q_track` and
+  `scan_moves` are withdrawn as defect evidence because the Q instrument is
+  unreliable; movement falsifier remains unadjudicated, not a live pass.
+  Shared tone/capture labels remain outside device-defect conclusions.
+- LLE fixture's `-cdblock` option is absent here: harness incompatibility,
+  not evidence of a device regression. It belongs on the destination tree.
+- Backup RAM/cart runtime/sound_boot/SMPC transport exit0; BIOS runtime
+  save/load/replay PASS with full image identical. Coverage remains that of
+  the actual fixtures, not every active transfer/audio phase.
+-67 implementation probes:56exit0/11 assertion conflicts reproduced exactly.
+  Validator retracts its contention-affected55/12 result. This remains distinct
+  from the73-script native suite and is not a green method-probe aggregate.
+
+### Remaining gates and review cautions
+
+- Destination folded-host semantic port remains implementation work: preserve
+  raw views, shared byte cursor, two FIFO words per longword/straddle and debug
+  nonconsumption. Do not replace entire files or claim a merge happened here.
+- Normal-path BFUL equivalence is accepted. The report retains the reset/Home
+  edge that clears buffull without restoring freeblocks. Reconcile the cause
+  rule with the destination and rerun integrated fixtures.
+- Repair/audit Q observation and actual field encoding. Some source expressions
+  quoted by the report (`cd_track_at`, extra index subtraction) are not literal
+  matches to our reviewed handler; do not blindly patch those illustrations or
+  treat the invalid165/10065 readout as an established production operand.
+  The report's msf_abs argument fix landed on the validator branch as reviewed
+  source only, without runtime remeasurement; not imported by this record.
+- BIOS checkpoint cross-tree delta is retained for fold notes: our
+  time15.560998664/PC06040226 versus destination10.541321676/PC06040228;
+  both replay identically. No isolated cause measurement is asserted.
+-0117–0119 are not individually named in the third-review verdict. The new host
+  runtime result removes the blanket “no live PUT/selector fixture” caveat,
+  not every filesystem-reset, save phase or gameplay evidence limit by inference.
+- Pre-0132 save compatibility was not tested. Loader rule supplies the warning:
+  reviewed `src/emu/save.cpp:502–520` hashes registered entry names/types/counts;
+  `:554–559` rejects differing signatures. Current BIOS save replay is measured;
+  old-save loading is not. No golden state/media added.
+
+### Accounting and documentation-only checks
+
+The validator requests168 original/171 resulting C++ assertions, whereas our
+fresh AST-literal count finds169/172 (CD36/36, bus21/22, indirect105/106,
+source7/8). This does not justify silently substituting either tally or editing
+assertions: original preservation and three added tripwires are agreed; the
+one-count convention/discrepancy is retained explicitly in the ledger. The
+former blanket exact-count claim is no longer used as a gate.
+
+Corrected the orphaned default-disc-range comment back onto m_play_range_valid,
+not m_scan_audible. No executable/header declaration changes, save layout
+changes, expected-value edits, validator-asset changes or full build in this
+status update. `PROMOTION_STATUS.md` now leads with the current accepted status,
+not stale pending-native gates. Completion-report addition is attributed
+review evidence only; milestone IDs/checklists unchanged.

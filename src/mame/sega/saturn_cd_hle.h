@@ -294,9 +294,9 @@ private:
   uint32_t fadstoplay; // current producer progress, not the programmed range
   uint32_t m_play_start_fad = 150;
   uint32_t m_play_end_fad = 150; // exclusive
-  bool m_play_range_valid = false;
+  bool m_play_range_valid = false; // false selects the default disc range
   bool m_scan_reverse = false;
-  bool m_scan_audible = false; // false selects the default disc range
+  bool m_scan_audible = false;
   int buffull, sectorstore, freeblocks;
   bool buffull_temp_pause;
 
