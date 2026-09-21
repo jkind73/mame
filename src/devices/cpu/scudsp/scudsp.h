@@ -117,14 +117,15 @@ private:
 	address_space_config m_program_config;
 	address_space_config m_data_config;
 
-	uint8_t   m_pc;   /* registers */
+	uint8_t   m_pc;   /* Program-RAM fetch/host address */
 	uint32_t  m_flags;  /* flags */
 	bool      m_paused;
 	uint8_t   m_ra;
 	uint8_t   m_ct0,m_ct1,m_ct2,m_ct3;
-	uint8_t   m_delay;                                   /* Delay-slot address */
-	uint32_t  m_delay_opcode;                            /* Fetched slot word */
-	bool      m_delay_pending;                           /* Address zero is valid */
+	uint8_t   m_delay;                                   /* Latched instruction address (also branch slots) */
+	uint32_t  m_delay_opcode;                            /* Latched instruction word */
+	bool      m_delay_pending;                           /* False executes a pipeline NOP; address zero is valid */
+	bool      m_lps_active;                             /* Hold fetch PC for LPS */
 	uint8_t   m_top;                                     /*Jump Command memory*/
 	uint16_t  m_lop;                                    /*Counter Register*/   /*12-bits*/
 	SCUDSPREG32 m_rx;                                /*X-Bus register*/

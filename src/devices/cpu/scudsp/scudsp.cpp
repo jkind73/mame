@@ -231,9 +231,9 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 		switch( mode )
 		{
 			case 0xc:   /* PC */
-				m_delay = m_pc;  /* address next after this command will be executed twice */
-				m_delay_pending = true;
-				m_top = m_pc;
+				// The next word has already been fetched. TOP points to that
+				// word, which executes both before the call and on return.
+				m_top = m_delay;
 				m_pc = value;
 				// Program-RAM DMA is serialized by the following MVI to PC
 				// (ST-097 p.89). Its first write uses this new PC; completion
@@ -357,7 +357,7 @@ uint32_t scudsp_cpu_device::program_control_r()
 		m_out_irq_cb(0);
 	}
 
-	return ((m_pc + 1) & 0xff) | flags;
+	return m_pc | flags;
 }
 
 void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -392,7 +392,9 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 	if (BIT(commands, LEF) && stopped_on_entry)
 	{
 		m_pc = newval & 0xff;
+		m_delay = m_pc;
 		m_delay_pending = false;
+		m_lps_active = false;
 	}
 
 	update_execution_state();
@@ -846,15 +848,11 @@ void scudsp_cpu_device::op_jump( uint32_t opcode )
 	{
 		if ( compute_condition( (opcode & 0x3f80000) >> 19 ) )
 		{
-			m_delay = m_pc;
-			m_delay_pending = true;
 			m_pc = opcode & 0xff;
 		}
 	}
 	else
 	{
-		m_delay = m_pc;
-		m_delay_pending = true;
 		m_pc = opcode & 0xff;
 	}
 
@@ -869,9 +867,10 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		if ( m_lop != 0 )
 		{
 			m_lop--;
-			m_delay = m_pc;
-			m_delay_pending = true;
-			m_pc--;
+			m_lps_active = true;
+			// Hold the fetch address at the repeated word, rather than
+			// fetching/executing LPS again between every repetition.
+			m_pc = m_delay;
 		}
 	}
 	else
@@ -880,8 +879,6 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		if ( m_lop != 0 )
 		{
 			m_lop--;
-			m_delay = m_pc;
-			m_delay_pending = true;
 			m_pc = m_top;
 		}
 	}
@@ -923,6 +920,7 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 				m_pc = m_top;
 				m_delay = 0;
 				m_delay_pending = false;
+				m_lps_active = false;
 			}
 			m_dma.stalled = false;
 			update_execution_state();
@@ -995,17 +993,24 @@ void scudsp_cpu_device::execute_run()
 	{
 		m_update_mul = 0;
 
-		debugger_instruction_hook(m_delay_pending ? m_delay : m_pc);
+		// Execute the instruction latched on the previous cycle. Reset/LE
+		// empty the latch: the first cycle executes a pipeline NOP while
+		// fetching the word at PC. Do not report that bubble as a guest
+		// instruction to the debugger.
+		opcode = m_delay_pending ? m_delay_opcode : 0;
+		if (m_delay_pending)
+			debugger_instruction_hook(m_delay);
 
-		if ( m_delay_pending )
-		{
-			opcode = m_delay_opcode;
-			m_delay_pending = false;
-			m_delay = 0;
-		}
+		// Fetch BEFORE executing. A branch changes only the subsequent fetch
+		// address, retaining this word as its delay slot (ST-097 p.85).
+		m_delay = m_pc;
+		m_delay_opcode = scudsp_readop(m_pc);
+		m_delay_pending = true;
+		if (m_lps_active && m_lop != 0)
+			m_lop--;
 		else
 		{
-			opcode = scudsp_readop(m_pc);
+			m_lps_active = false;
 			m_pc++;
 		}
 
@@ -1039,11 +1044,6 @@ void scudsp_cpu_device::execute_run()
 				break;
 		}
 
-		// Preserve the fetched slot word, not just its address. Program RAM can
-		// change while paused without replacing this already-fetched instruction.
-		if (m_delay_pending)
-			m_delay_opcode = scudsp_readop(m_delay);
-
 		if ( m_update_mul == 1 )
 		{
 			m_mul = (int64_t)m_rx.si * (int64_t)m_ry.si;
@@ -1071,6 +1071,7 @@ void scudsp_cpu_device::device_start()
 	m_delay = 0;
 	m_delay_opcode = 0;
 	m_delay_pending = false;
+	m_lps_active = false;
 	m_top = 0;
 	m_lop = 0;
 	memset(&m_rx, 0x00, sizeof(m_rx));
@@ -1107,6 +1108,7 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_delay));
 	save_item(NAME(m_delay_opcode));
 	save_item(NAME(m_delay_pending));
+	save_item(NAME(m_lps_active));
 
 	save_item(NAME(m_top));
 	save_item(NAME(m_lop));
@@ -1159,7 +1161,7 @@ void scudsp_cpu_device::device_start()
 	state_add( SCUDSP_CT2, "CT2", m_ct2 ).formatstr("%02X");
 	state_add( SCUDSP_CT3, "CT3", m_ct3 ).formatstr("%02X");
 	state_add( STATE_GENPC, "GENPC", m_pc ).noshow();
-	state_add( STATE_GENPCBASE, "CURPC", m_pc ).noshow();
+	state_add( STATE_GENPCBASE, "CURPC", m_delay ).noshow();
 	state_add( STATE_GENFLAGS, "GENFLAGS", m_flags ).formatstr("%17s").noshow();
 
 	set_icountptr(m_icount);
@@ -1176,6 +1178,7 @@ void scudsp_cpu_device::device_reset()
 	m_delay = 0;
 	m_delay_opcode = 0;
 	m_delay_pending = false;
+	m_lps_active = false;
 	m_out_ddwt_cb(0);
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::never);

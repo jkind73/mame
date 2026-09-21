@@ -11024,3 +11024,118 @@ claim. Next implementation work needs a coherent ordinary-prefetch/control-flow
 model before exposing ES, preserving the previously accepted delayed-branch,
 program-DMA serialization and pause contracts. This is remaining implementation
 work, not a claim that a hardware artifact blocks all progress.
+
+
+## IMPL-0150 — ordinary DSP instruction prefetch and fetch-PC representation
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0150 | DSP-01/DSP-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Fetch the next instruction before retiring the latched word; retain it through branches, stops and pauses |
+
+- Branch `arena/01a0b897-mame`; base `ff84a2fc8a2b13b7f19c3761ccf975874e8ff378`.
+  Production `src/devices/cpu/scudsp/scudsp.cpp:233–244,348–398,845–885,
+  912–926,987–1055,1065–1111,1161–1182` and scudsp.h state comments/field.
+- Contract: PC is the next Program-RAM fetch/host address. Each cycle first
+  retains the previously latched opcode for execution, fetches RAM[PC] into
+  the next-instruction latch, then executes the old opcode. The normal fetch
+  advance wraps at8 bits. After reset/accepted LE/program-DMA completion,
+  an invalid latch executes a NOP bubble while refilling; a bubble is not
+  reported as a guest retirement to the debugger. EX-only stop/EP preserve
+  the latch. Host program writes do not replace an already-fetched word.
+- Taken JMP/BTM change only the subsequent fetch address, so the prefetched
+  word executes once before the target. MVI-to-PC stores the prefetched
+  address in TOP (the return word is executed before the call and after the
+  return), then changes fetch PC. Serialized program-DMA still starts at the
+  MVI destination, restores TOP and flushes its latch on completion. PPAF
+  returns the actual fetch PC instead of the old unconditional +1 adjustment.
+  Debugger CURPC/hook use the latched instruction address.
+- LPS: hold fetch PC at the repeated instruction rather than reexecuting
+  LPS between repetitions. For stable LOP=N and a non-control-flow repeated
+  instruction that does not rewrite LOP, retire that instruction N+1 times.
+  The saved active-repeat bit controls fetch holding; ordinary instruction
+  effects still execute each cycle. Retain the existing documented behavior
+  of decrementing only nonzero LOP and finishing at zero. Accepted LE and
+  program-DMA pipeline flush also discard the old repeat state.
+- Primary: Sega ST-097-R5, SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`,
+  blob `ffa8932249634ebd98947dad123621cebe3f24fa`: printed p.52/PDF68 (PC/LE),
+  p.85/PDF101 Figure4.2 (prefetched branch command), p.86/PDF102 Figure4.3
+  (loop branch prefetch), p.89/PDF105 (program DMA followed by MVI-PC;
+  LPS repeats the following command N+1 times), p.90/PDF106 Figure4.4
+  (return word executes twice), pp.154–155/PDF170–171 (BTM/LPS and zero
+  termination). The initial pipeline NOP/fetch ordering is additionally
+  established by three-peer agreement below, not an explicit primary reset
+  timing diagram. No undocumented bus timing is inferred from that agreement.
+- Pinned cross-check, GH API sources, no code imported:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`:
+    `src/ss/scu_dsp_common.inc:196–210`, blob
+    `7f3e07a8c613c9baefec84b8d72e372304d462af`, executes NextInstr and fetches
+    from PC first; `scu_dsp_jmp.cpp:35–43`, blob
+    `7e9b1cd8c7795fa3e36d9f7ee6e6dee7270285ef`, changes PC after prefetch;
+    `scu_dsp_mvi.cpp:79–87`, blob `d07724cb811398b854d066e16c218ed1d6a38217`,
+    stores TOP=PC-1 for ordinary MVI-PC. `scu.inc:691–695,1802–1810`, blob
+    `8cc45219ca5ffc3e24c97779e01691129f3ea12c`, loads/resets an empty NOP
+    pipeline. Its LPS keeps the repeated cached opcode instead of fetching
+    RAM repeatedly; not claimed equivalent under paused code modification.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SCU/DSP.sv`, blob `3aa3859355005d4a57de850c813fe064e2cdb8d5`:
+    IC90–115, PC333–374, PPAF595 show the instruction latch, reset/LE NOP,
+    fetch-PC hold for LPS, TOP from entry PC and unchanged branch slot.
+    Program-DMA invalidation101–103 and PC restoration382–384 support
+    flushing rather than executing the old word after the transfer.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/scu/scu_dsp.cpp`, blob
+    `1cf68aee296e79254e9b2ebe44d4fd616b641cef`:101–117,340–350,600–638
+    executes nextInstr after fetching RAM[PC], holds PC during repeat and
+    branches without overwriting the fetched word; program-DMA248–249
+    empties the latch/restores TOP. `include/ymir/hw/scu/scu_dsp.hpp:61–71`,
+    blob `1e8cb89c2db19f37c7d16b14b026bbbdd23a3cbd`, LE empties the latch.
+- Peer limits: all three decrement zero LOP with12-bit underflow in at least
+  some loop paths, contrary to the primary's nonzero-only wording/current
+  accepted local zero contract. This change does not adopt that underflow.
+  Mednafen's repeated-word caching differs from MiSTer/Ymir's held fetch
+  address. Mednafen invalidates repeat attributes on LE; MiSTer/Ymir can
+  retain a separate loop latch. LE during an active LPS, looped LOP writes,
+  nested control-flow repeats and DMA inside LPS are not qualified here.
+- Provenance: base caches only taken-branch slots, reads ordinary words at
+  execution time and approximates PC readback with +1. Generalize its
+  existing saved word/address/valid latch to all instructions; remove the
+  post-branch reread and use the common fetch stage instead. No arithmetic,
+  parallel-bus, multiplier, condition decoder or DMA address-rule changes.
+- Observable/units/tolerance: exact guest retirements, fetch PC, latched
+  opcode/address/validity, TOP and LOP; zero tolerance for ordering/word
+  mismatches. With LE=A and EX enabled: cycle1 has no guest retirement,
+  latches RAM[A], PC=A+1; cycle2 retires A and fetches A+1. A JMP atFF with
+  target10 retires FF,00,10 while PC after the branch is10 (not11). A
+  stopped/paused mutation of the prefetched next word must not replace it;
+  an accepted LE must invalidate it. LOP0/1/2 yields1/2/3 repeats, with only
+  one LPS retirement. Hardware sub-cycle time/host synchronization is open.
+- Proposed validator method (not run): native ordinary/branch/BTM/MVI-PC
+  flows with wrap, taken/not-taken flags, cold/LE bubble, stopped PPAF
+  readback and PPD upload addressing; legal paused code modification without
+  LE using the actual host pointer; EP/PR and EX-only restart; LPS counts
+  and retirement trace; serialized program-DMA overlay and refetch; active
+  same-revision save replay of ordinary, branch, and repeat stages. Preserve
+  all existing arithmetic/control/guest flag setups. Do not silently change
+  protected oracles or infer hardware timing from an instruction hook.
+- Falsifier: guest word retires on the initial empty-stage cycle; a taken
+  branch loses/duplicates its slot; TOP is one word late; PC readback needs
+  another synthetic increment; paused code mutation replaces a latched
+  word; LPS executes itself between repetitions or wrong repeat count;
+  program DMA executes a stale prefetched instruction after completion.
+- Protected fixture impact (static inspection only): pipeline.py:27–35
+  save-field filter/mutations assume branch-only capture and now miss LPS;
+  wrong-fetch/missing-capture/wrong-hook/zero-sentinel mutations target old
+  text or require retargeting. Immediate method-level one-cycle execution
+  needs explicit initial prefetch. lop.py:76–79 expects branch-based loop
+  internals rather than one LPS plus fetch holding. Hostflags/DMA/pause and
+  imported harnesses need m_lps_active and updated pipeline context for
+  MVI-PC/TOP; historical +1 port/internal-PC expectations need review.
+  IMPL-0149 helper/scheduler issues remain. No protected fixture edited/run.
+- Checks: prescribed scudsp.cpp C++20 TU syntax exits0; git diff --check
+  exits0. No test/runtime/full build. New m_lps_active is initialized,
+  reset and saved in this change. Existing opcode/address/valid fields
+  remain saved but now represent ordinary instructions too. Save signature
+  changes; cross-revision states are not compatible. Frozen acknowledgement,
+  clock/sound/game fixes unchanged. DSP-01/DSP-03 remain open; ES is still
+  inert in this commit, with its pipeline dependency now implemented as a
+  candidate. No native/hardware qualification claimed.
