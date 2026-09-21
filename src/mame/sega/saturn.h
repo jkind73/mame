@@ -509,6 +509,7 @@ protected:
                     uint8_t pri);
 
   void vdp2_state_save_postload();
+  void vdp2_rebuild_memory_views();
   void vdp2_exit();
   int vdp2_start();
 

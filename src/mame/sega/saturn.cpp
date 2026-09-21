@@ -465,6 +465,10 @@ void saturn_state::system_reset_w(int state) {
   memset(m_vdp1_legacy.gfx_decode.get(), 0x00, 0x100000);
   // A-Bus
 
+  // Rebuild every derived VRAM/CRAM view after the existing memory clear,
+  // just as on load. Otherwise scanout can retain pre-reset pixels/colors
+  // even though CPU reads and pattern-name fetches already see zero.
+  vdp2_rebuild_memory_views();
   // CRAM and the color offset registers were cleared behind the VDP2's back
   mark_fade_effects_dirty();
   vdp2_window_cache_invalidate();
@@ -11073,6 +11077,10 @@ void saturn_state::vdp2_state_save_postload() {
   m_vdp2_gradation_layer = 7;
   m_vdp2_priority_pass = -1;
   vdp2_window_cache_invalidate();
+  vdp2_rebuild_memory_views();
+}
+
+void saturn_state::vdp2_rebuild_memory_views() {
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
   int offset;
   uint32_t data;

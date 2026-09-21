@@ -1950,3 +1950,11 @@ Denied fetches use the existing transparent fallback policy, not a claimed
 hardware stale-latch value. Both VRAM capacities are addressed; no new saved
 fields. TU syntax/diff checks only, no validator tests or gameplay claims.
 V2-T02 and V2-R04 remain open for timing, failed-fetch behavior and qualification.
+
+Candidate IMPL-0138 shares the existing postload memory-view rebuild with the
+system-reset RAM-clear path. Byte-decoded graphics, decoded tiles, retained RBG
+source caches and base palette colors now follow the changed VRAM/CRAM instead
+of retaining old pixels. This does not change the existing clearing policy or
+claim hardware zero-filled reset RAM. No new saved fields; syntax/diff checks
+only. Detailed primary/three-peer references and proposed falsifier are in the
+append-only handoff; V2-T03/V2-A05 remain open.

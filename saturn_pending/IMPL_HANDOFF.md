@@ -10138,3 +10138,64 @@ not claimed and may yield further fixes when those conflicts are resolved.
   fetch latch reconstruction, prohibited-mode guarantee or performance result.
   V2-T02/V2-R04 remain open. IO-02 support inventory is unchanged by these
   video-only candidates; no new peripheral or external-video support is claimed.
+
+## IMPL-0138 — synchronize VDP2 derived memory views after system reset
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0137 | V2-T02/V2-R04 | 1a0ee469 | UNVALIDATED — implementation | Rotation image bank ownership; syntax checked only |
+| IMPL-0138 | V2-T03/V2-A05 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Reset-cleared VDP2 VRAM/CRAM cannot retain old decoded graphics, rotation-cache pixels or palette colors |
+
+- Branch/base: `arena/01a0b897-mame`, `1a0ee469`.
+- Production: saturn.cpp system_reset_w, vdp2_state_save_postload and extracted
+  vdp2_rebuild_memory_views; declaration in saturn.h. Postload's memory-view
+  rebuild is shared unchanged with the system-reset RAM-clear path.
+- Defect: system reset directly cleared VDP2 VRAM/CRAM, bypassing the ordinary
+  write handlers, and invalidated only window/fade state. CPU/name reads could
+  see zero while byte-decoded patterns, legacy decoded tiles, cached RBG source
+  images and palette pens still described pre-reset memory. A CRMD0-to-CRMD0
+  setup in particular did not force the missing palette refresh.
+- Contract: whenever this existing reset path changes VRAM/CRAM, rebuild the
+  byte view, dirty decoded tiles, invalidate rotation source caches and refresh
+  the base palette from the current memory/register values. Existing window,
+  fade and rotation-latch reset handling remains intact. No new RAM clear or
+  device/clock reset is introduced, and the already-existing RAM-clearing policy
+  is NOT represented as a silicon power-on or soft-reset RAM-value guarantee.
+- Primary: ST-058-R2-060194, SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed pp.26–28/PDF44–46
+  VRAM organization and pp.43–46/PDF61–64 CRAM/color layouts. The cache invariant
+  follows from CPU and renderer consuming the same documented memories; these
+  pages do not mandate zero-filled reset RAM.
+- Pinned required peers:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    `src/ss/vdp2.cpp:869–871,980–991`,
+    blobce329dc7f7f92ed4cd609ed4805274fbabec4cae: writes forwarded to renderer;
+    power-up clear paired with VDP2REND_Reset. Its conditional power-up-only RAM
+    clearing differs from the inherited MAME system-reset policy; not copied.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    `rtl/Saturn/VDP2/VDP2.sv:1494–1517,1598–1604,3556–3595`,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: shared VRAM interface and
+    dual-port color RAM for CPU/display, rather than independent stale caches.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    `libs/ymir-core/src/ymir/hw/vdp/vdp.cpp:419–436`,
+    blobec15ff9be1d16f628141179407e32ecc5e58930f: renderer notification paired
+    with memory writes; `libs/ymir-core/include/ymir/hw/vdp/vdp_state.hpp:102–145`,
+    blob837cdf66a4e4b5ba2d0cc73172153f83ab776c6c: common memory and callback.
+- Provenance: inherited system_reset_w and postload cache rebuilding inspected;
+  this mirrors the scope of the earlier VDP1 reset-coherence correction0135,
+  without modifying its reset trigger or the frozen video-clock/sound fixes.
+- Observable: after system reset, byte view must equal the CPU VRAM byte stream
+  exactly; decoded tiles must be dirty, RBG cache dirty mask3, and base palette
+  must represent the cleared CRAM in the reset mode. No new device state/save
+  registration or save-signature change. Postload keeps its prior rebuild path.
+- Suggested validator method, NOT executed: seed distinct VRAM/CRAM patterns,
+  materialize source/tile/palette caches, then invoke the existing system-reset
+  route. Re-enable legal background settings without rewriting pattern memory
+  or changing CRMD. Old graphics/colors must not return. Cover reset from each
+  legal CRMD and compare postload with the same memory image. Exact bytes/RGB
+  and invalidation flags, zero tolerance. Removing the reset rebuild call is
+  the falsifier. This tests cache coherence, not physical reset RAM contents.
+- Checks: prescribed saturn.cpp TU syntax exits0; `git diff --check` exits0.
+  No regression, runtime, mutation, validator, media or full-build runs.
+- Limits: no reset-electrical sequencing, fetch-latch or game acceptance claim;
+  parent qualification gates and hardware reset-memory policy remain open.
