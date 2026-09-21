@@ -9879,3 +9879,90 @@ reopened and does not confer acceptance on the following VDP1 change.
 - Scope: unspecified register reset values, framebuffer RAM contents,
   shared sound/video-clock reset behavior and other devices are unchanged.
   Parent milestones remain open; independent acceptance is pending.
+
+
+## 2026-09-21 — implementation-first VDP1 audit, checkpoint 3
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0134 | V1-02/V1-06 | 8b229a14 | UNVALIDATED — implementation, TU syntax checked | Published reset-to-idle candidate; not independent acceptance |
+| IMPL-0135 | V1-03/V1-06 | this entry's commit | UNVALIDATED — implementation, TU syntax checked | System-reset VRAM mutation updates the renderer's derived byte view as well as CPU/command memory |
+
+### IMPL-0135 — reset texture-view coherence
+
+- Branch `arena/01a0b897-mame`; base `8b229a14`.
+- Production: `src/mame/sega/saturn.cpp:462–465`.
+- Defect: system reset directly zeroed `m_vdp1_vram`, bypassing the normal
+  write handler's update of `m_vdp1_legacy.gfx_decode`. CPU reads/commands
+  then saw zeros while character/END sampling could still see pre-reset
+  texture bytes. A later save/load rebuilt the byte view and could change
+  the resulting image without any guest texture write.
+- Primary contract: ST-013-R3-061694 printed pp.18–19/PDF33–34 and
+  pp.24–25/PDF39–40 define one4-Mbit VRAM for command tables and character
+  patterns, accessed by CPU and drawing. Same pinned SDK commit/blob as
+  IMPL-0133. A host decoding mirror cannot be independent guest memory.
+  This is **not** a claim that physical reset clears VRAM to zero: the
+  existing driver's RAM-clear policy is unchanged, only its derived view
+  is brought into agreement with that policy.
+- Pinned peer comparisons (same peer revisions as0133/0134):
+  - Mednafen `src/ss/vdp1.cpp:365–447,1241–1251,1277–1278,1303` uses
+    the same VRAM array for pattern reads and CPU reads/writes. Its reset
+    initialization at254–264 is patterned, not our zero-clear policy.
+  - Ymir `libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:825–833`
+    reads `m_state.mem1` directly in the nonthreaded path; the threaded
+    path has a renderer memory context. `vdp_state.hpp:31–45,836–847`
+    uses patterned hard initialization and retains memory on soft reset.
+    This supports the unified-memory contract, not a claim of equivalent
+    reset fill or proven threaded reset timing.
+  - MiSTer `rtl/Saturn/VDP1/VDP1.sv:2027–2100` arbitrates CPU,
+    command and pattern accesses onto the same VRAM interface. Its reset
+    control registers do not establish a zero-filled VRAM contract.
+- Observable / suggested validator method (not run): write a distinct
+  pattern through mapped VRAM; invoke actual system reset; recreate only
+  legal command/clip data, not the pattern; explicitly trigger drawing.
+  With SPD/ECD disabled as rejection mechanisms (both bits1), RGB replace
+  mode and no mesh/Gouraud, a texture byte range that reads zero from CPU
+  VRAM must render zero, not the old pattern. Compare immediately after
+  reset with a save/load round trip before drawing: output must agree.
+  Exact bytes, no image-error tolerance. Reverting just the new byte-view
+  clear must expose the stale-pattern falsifier.
+- Checks: specified saturn.cpp C++20 syntax-only compile exit0; no runtime,
+  regression/probe suites, full build, fixture expectation edits or evidence
+  writes. No new fields/save-layout change beyond0133. Does not alter
+  framebuffer RAM, sound/reset-clock fixes, or unrelated system RAM policy.
+- Scope/status: cache coherence candidate only; no reset hardware timing,
+  game acceptance, parent completion or full VDP1 exhaustion claim.
+
+### VDP1 source-audit continuation notes (not completion gates closed)
+
+Primary plus all three required peers were compared for coordinates, texture
+transparency/END/HSS, color calculations, erase controls and reset. Several
+historical TODOs describe behavior already implemented; they are not grounds
+for replacement. Source-path history was inspected through GitHub commits for
+`saturn.cpp` (including `3fd815e67e33164b3fd86753d126a4593c09375b` recovery).
+No peer source was copied and no validator expectations were changed.
+
+- Legal signed coordinates remain unchanged. Primary p.105 specifies
+  -1024..1023/sign extension. Mednafen local coordinates use11 bits, Ymir
+ 13, MiSTer12-bit storage/bit10 sign handling in clipping. Behavior of
+  out-of-range encodings is **BLOCKED(hardware local-coordinate trace with
+  bits10–12 disagreeing)**, not an all-peer-agreement fix.
+- Texture transparency in64/128-color modes correctly tests the raw byte
+  before masking to palette index; RGB transparency already checks MSB.
+  HSS/individual END and second-END behavior already has explicit code.
+  No changes justified merely from stale TODOs or the manual's ambiguous
+  transparent-code summaries.
+- Transfer-over/frame-swap termination is **BLOCKED(hardware trace of a
+  live primitive across a manual bank swap with PTMR=1)**: Mednafen stops
+  drawing at swap, Ymir/MiSTer do not show the same unconditional stop in
+  the inspected paths. Do not assert all-peer agreement or inject a stop
+  based only on an ambiguous transfer-over paragraph.
+- Reversed/empty erase windows: primary p.49 describes a minimum-dot
+  fallback, but Mednafen display loop writes two stored words, VBlank loop
+  eight; Ymir/MiSTer differ. **BLOCKED(hardware erase footprint for X1>=X3
+  and Y1>Y3 in16-bit, packed8-bit and rotation modes)** for exact minimum
+  footprint. This must not be silently reported as implemented.
+- Exact within-raster erase/CPU/draw arbitration, first/last burst and
+  display-readout phases remain open under V1-01/V1-02/V1-04. The new
+  capacity charge is not a physical bus scheduler. Continue VDP1 before
+  moving to VDP2; no component-exhaustion claim is made by this checkpoint.

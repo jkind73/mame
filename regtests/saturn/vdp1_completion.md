@@ -816,3 +816,25 @@ scripts and eleven objects pass, including the modified SH core. This is a
 concrete code correction, not confirmed game-boot acceptance. A rebuilt
 executable is now required; the existing probe needs no further change.
 See `regtests/saturn/afterburner2_boot_analysis.md` for ordering and limits.
+
+
+## Implementation-first audit checkpoint (2026-09-21)
+
+Candidates, not a new validation result or completion claim:
+
+- IMPL-0133 / `a74a4302`: charge the documented additional eight budget
+  units per VBlank-erase row; save partially consumed row setup.
+- IMPL-0134 / `8b229a14`: reset PTMR to idle on both machine and system
+  reset, preventing unsolicited automatic drawing at the next bank change.
+- IMPL-0135 / this entry's commit: synchronize the texture-byte mirror
+  with the existing system-reset VRAM clear; do not render old texture
+  data that CPU/command reads can no longer see.
+
+Detailed primary-page contracts, pinned MiSTer/Mednafen/Ymir comparisons,
+peer disagreements and independent-validator falsifiers are appended in
+`saturn_pending/IMPL_HANDOFF.md`. Only touched-TU syntax compilation was
+run, per the implementation-only direction. Parent milestones and existing
+independent acceptance remain unchanged. IMPL-0133 adds a saved field and
+therefore changes the save signature; old-state compatibility is not claimed.
+The VDP1 audit continues; this is not a declaration that its defensible gaps
+are exhausted or that runtime/hardware qualification is complete.

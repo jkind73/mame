@@ -460,6 +460,9 @@ void saturn_state::system_reset_w(int state) {
   memset(m_vdp2_vram.get(), 0x00, 0x100000);
   memset(m_vdp2_cram.get(), 0x00, 0x001000);
   memset(m_vdp1_vram.get(), 0x00, 0x100000);
+  // This byte view is derived from the same VRAM, not independent texture
+  // storage. Keep it coherent with the existing system-reset RAM clear.
+  memset(m_vdp1_legacy.gfx_decode.get(), 0x00, 0x100000);
   // A-Bus
 
   // CRAM and the color offset registers were cleared behind the VDP2's back
