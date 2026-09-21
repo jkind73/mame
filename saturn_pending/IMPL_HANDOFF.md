@@ -11139,3 +11139,106 @@ work, not a claim that a hardware artifact blocks all progress.
   clock/sound/game fixes unchanged. DSP-01/DSP-03 remain open; ES is still
   inert in this commit, with its pipeline dependency now implemented as a
   candidate. No native/hardware qualification claimed.
+
+
+## IMPL-0151 — stopped DSP pipeline stepping through ES
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0151 | DSP-01/DSP-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | An accepted ES strobe advances one prefetched pipeline stage and stops without reset |
+
+- Branch `arena/01a0b897-mame`; base `8a2d24bf132651d9355b0940d9ad0d139ca6290b`.
+  Production `src/devices/cpu/scudsp/scudsp.cpp:97,363–416,1057–1065,
+  1082–1089,1121–1127,1186–1209`, pending-state declaration in scudsp.h.
+- Contract: in the normal (not EP/PR) host-control write path, ES is a masked
+  write-one command accepted only if the internal execute latch was clear
+  on entry. A masked-out ES bit or active-entry write cannot enqueue a step;
+  EX's own masked level update remains independent. ES is no longer stored
+  in the readable status flags. Existing EP/PR priority and active-LE guard
+  remain. The request is a saved pending bit, not a queue of instructions.
+- The shared EX/pause/DMA execution gate admits an unpaused stopped step
+  only after any existing private DMA stall clears. Normal execute_run
+  advances one complete stage, then consumes the step bit and suspends if
+  EX is still clear. Initial reset/LE refill is a pipeline NOP, not immediate
+  execution of RAM[PC]. Branch slots, normal prefetch, LPS hold state, ALU/
+  multiplier changes and DMA side effects are preserved when stopping again.
+  If EX has meanwhile been set, consuming the pending bit does not stop
+  continuous execution. True reset cancels a pending request.
+- Primary: Sega ST-097-R5-072694, SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `ffa8932249634ebd98947dad123621cebe3f24fa`, printed p.52/PDF68,
+  Figure3.14 ES/EX/LE definitions: ES is write-only, executes one step when
+  stopped and is invalid while executing. Printed pp.51–52/PDF67–68 give
+  pause/resume and status access directions. Prefetched execution and its
+  initial bubble rely on the primary/three-peer tracing in IMPL-0150.
+- Pinned peer checks (no imported code):
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SCU/DSP.sv`, blob `3aa3859355005d4a57de850c813fe064e2cdb8d5`:
+    RUN86 combines EX/ES with host/internal pause, ES567–568 tests entry EX,
+    readback595 returns zero at bit17, and611 clears ES after one executing
+    cycle. Initial IC/LE90–112 provides the refill bubble. This is the
+    closest support for a pending, stopped-only pipeline-stage request.
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/scu.inc`,
+    blob `8cc45219ca5ffc3e24c97779e01691129f3ea12c`:655–699 executes one
+    decoded NextInstr when the stopped-state check permits ES. It executes
+    synchronously in the host write after updating state, not via a pending
+    scheduler bit; its entry-EX/combined EX+ES and LE+ES ordering differs.
+    `scu_dsp_common.inc:196–210`, blob
+    `7f3e07a8c613c9baefec84b8d72e372304d462af`, advances the prefetched stage.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/scu/scu.cpp:2121–2132`, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`, writes programStep;
+    `scu_dsp.cpp:88–117,133–134`, blob
+    `1cf68aee296e79254e9b2ebe44d4fd616b641cef`, permits stopped execution
+    for that bit, honors pause, and clears it after one pipeline command.
+    Its host write lacks the primary's active-entry ES guard and replaces
+    the pending bit on later writes; not claimed equivalent for back-to-back
+    control strobes. Reset38–46 clears step/prefetch.
+- Provenance: base still stored ES as a readable flag without executing it.
+  IMPL-0149 separates execution suspension from reset; IMPL-0150 supplies
+  ordinary prefetch, so the new command uses the CPU scheduler/normal
+  pipeline rather than a host-write call into an ad-hoc opcode executor.
+  No arithmetic, opcode decoder, bus addressing or acknowledgement rewrite.
+- Observable/units/tolerance: exact one pipeline advance per isolated
+  accepted request, zero or one guest retirement depending on latch validity,
+  exact PC/marker/flags and persistent next instruction. Example: stopped
+  LE=A, RAM[A] writes a distinct marker. After first ES completes, marker
+  unchanged, PC=A+1 and RAM[A] latched. After second, marker changes once,
+  PC=A+2 and RAM[A+1] latched; EX and ES read as0 throughout stopped stepping.
+  A stepped branch is followed by its saved slot on the next request, then
+  its target. A masked ES or an ES-only masked write while EX1 does not leave
+  a future stopped step pending. Zero tolerance for extra/lost retirements;
+  no hardware sub-cycle strobe-to-execution latency claim.
+- Proposed validator method (not run): native legal PPAF/PPD/PDA/PDD setup,
+  isolated ES requests spaced for the stage to finish; bubble/ordinary/
+  wrapped branch/MVI-PC/BTM/LPS/END/ENDI sequences; mask and active-entry
+  controls; EP/PR controls; data DMA started by a step, waiting step while
+  DMA-stalled, and serialized program-DMA refill; same-revision save/reload
+  before servicing a pending step and while waiting for DMA. Count actual
+  pipeline stages and guest words separately. Require no automatic next
+  instruction after stopped DMA completion without a new ES request.
+- Falsifier: ES runs an addressed word instead of the initial NOP refill,
+  runs more than one stage while EX0, vanishes across save/load, bypasses
+  pause/DMA stall, resets the next latch, or is spuriously accepted from an
+  active-entry/masked-out write. ES remains write-only; E/V read-clear and
+  guest-computed status flags must retain their existing behavior.
+- Protected-fixture impact: hostflags.py's writable mask0x00030000 and
+  readback expectations treat ES as storage; the new strobe needs validator
+  review rather than retaining that oracle. Extracted pipeline/ALU/LOP/
+  multiplier/parallel harnesses using execute_run need the new pending
+  field and scheduler helper; pause/DMA save filters do not include it.
+  Prior IMPL-0149/0150 fixture and mutation conflicts still apply. No
+  protected tests/expectations/evidence edited or executed.
+- Checks: prescribed scudsp.cpp C++20 TU syntax exits0; git diff --check
+  exits0. No regression/runtime/full build. m_step_pending initialized,
+  reset and registered in the same change; save signature changes again,
+  so older revision states are incompatible. Frozen DMA acknowledgement,
+  SH-2 delay-slot IRQ, clock/sound/game fixes remain untouched.
+- Limits/state: candidate only; DSP-01/DSP-03 remain open. Exact concurrent
+  strobes, ES combined with EX/LE/EP/PR, paused EX readback versus internal
+  execution state, pending-request overwrite/coalescing, DMA bus grants and
+  terminal-clock phase are not hardware-qualified. Entry guard and pending
+  bit follow primary/MiSTer rather than claiming all-three agreement on
+  those combinations. Ordinary pipeline/LPS disagreements from0150 remain.
+  The ES implementation missing at0149/0150 is now supplied as this candidate;
+  no broader completion or native acceptance is claimed.

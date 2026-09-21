@@ -94,7 +94,7 @@ DEFINE_DEVICE_TYPE(SCUDSP, scudsp_cpu_device, "scudsp", "Sega SCUDSP")
 #define SET_V(_val) (m_flags |= ((_val) ? 0x00080000 : 0))
 
 
-#define FLAGS_MASK 0x06ff8000
+#define FLAGS_MASK 0x06fd8000 // ES is a write-only command, not a readable latch
 
 #define scudsp_readop(A) m_program->read_dword(A)
 #define scudsp_writeop(A, B) m_program->write_dword(A, B)
@@ -363,7 +363,8 @@ uint32_t scudsp_cpu_device::program_control_r()
 void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	uint32_t oldval, newval;
-	bool const stopped_on_entry = !BIT(m_flags, EXF) || m_paused;
+	bool const executing_on_entry = BIT(m_flags, EXF);
+	bool const stopped_on_entry = !executing_on_entry || m_paused;
 
 	oldval = (m_flags & 0xffffff00) | (m_pc & 0xff);
 	newval = oldval;
@@ -383,8 +384,11 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 	}
 	else
 	{
-		// ST-097 p.51: arithmetic status flags, including S/Z, are read-only.
-		m_flags = (newval & 0x0003'0000) | (m_flags & ~0x0003'0000);
+		// ST-097 pp.51-52: EX is a latch; ES is a masked write strobe,
+		// accepted only when EX was clear on entry. Status is read-only.
+		m_flags = (newval & (1U << EXF)) | (m_flags & ~(1U << EXF));
+		if (BIT(commands, ESF) && !executing_on_entry)
+			m_step_pending = true;
 	}
 
 	// LE is a masked write strobe, accepted only while stopped (ST-097 p.52).
@@ -402,11 +406,11 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 
 void scudsp_cpu_device::update_execution_state()
 {
-	// ST-097 p.52: EX controls execution, not device reset. A stop/restart
-	// must retain the fetched branch slot and must not reset an active DMA.
-	// Combine all private execution gates so DMA completion cannot resume
-	// a program that the host has stopped or paused.
-	if (m_paused || m_dma.stalled || !BIT(m_flags, EXF))
+	// ST-097 p.52: EX/ES control execution, not device reset. A stop/restart
+	// must retain the fetched instruction and must not reset an active DMA.
+	// DMA completion cannot bypass host pause, or a stop with no pending ES.
+	// A pending step must also wait for the private DMA stall to clear.
+	if (m_paused || m_dma.stalled || (!BIT(m_flags, EXF) && !m_step_pending))
 		suspend(SUSPEND_REASON_HALT, true);
 	else
 		resume(SUSPEND_REASON_HALT);
@@ -1050,6 +1054,16 @@ void scudsp_cpu_device::execute_run()
 			m_update_mul = 0;
 		}
 
+		// ES advances exactly one pipeline stage, including an initial NOP
+		// refill after LE/reset. Preserve the newly fetched word, loop state
+		// and any DMA started by this instruction when stopping again.
+		if (m_step_pending)
+		{
+			m_step_pending = false;
+			if (!BIT(m_flags, EXF))
+				update_execution_state();
+		}
+
 	} while( m_icount > 0 );
 }
 
@@ -1068,6 +1082,7 @@ void scudsp_cpu_device::device_start()
 	m_pc = 0;
 	m_flags = 0;
 	m_paused = false;
+	m_step_pending = false;
 	m_delay = 0;
 	m_delay_opcode = 0;
 	m_delay_pending = false;
@@ -1105,6 +1120,7 @@ void scudsp_cpu_device::device_start()
 
 	save_item(NAME(m_flags));
 	save_item(NAME(m_paused));
+	save_item(NAME(m_step_pending));
 	save_item(NAME(m_delay));
 	save_item(NAME(m_delay_opcode));
 	save_item(NAME(m_delay_pending));
@@ -1172,6 +1188,7 @@ void scudsp_cpu_device::device_reset()
 	// Reset the control flags and host address latches (ST-097 pp.51/53).
 	// Host EX commands no longer pass through this reset path.
 	m_flags = 0;
+	m_step_pending = false;
 	m_pc = 0;
 	m_ra = 0;
 	m_out_irq_cb(0);
@@ -1188,7 +1205,7 @@ void scudsp_cpu_device::device_reset()
 	m_paused = false;
 	m_dma.count = 0;
 	// The DMA stall is released, but EX=0 keeps instruction execution
-	// stopped until a host execute command arrives.
+	// stopped until a host execute/step command arrives.
 	update_execution_state();
 }
 
