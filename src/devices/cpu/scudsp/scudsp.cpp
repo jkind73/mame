@@ -241,7 +241,7 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 				if (m_dma.ex && !m_dma.dir && m_dma.dst == 4)
 				{
 					m_dma.stalled = true;
-					set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+					update_execution_state();
 				}
 				break;
 		}
@@ -395,10 +395,19 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 		m_delay_pending = false;
 	}
 
-	//printf("%08x PRG CTRL\n",data);
-	// run DSP if EXF is on
-	set_input_line(INPUT_LINE_RESET, (BIT(m_flags, EXF)) ? CLEAR_LINE : ASSERT_LINE);
-	set_input_line(INPUT_LINE_HALT, (m_paused || m_dma.stalled) ? ASSERT_LINE : CLEAR_LINE);
+	update_execution_state();
+}
+
+void scudsp_cpu_device::update_execution_state()
+{
+	// ST-097 p.52: EX controls execution, not device reset. A stop/restart
+	// must retain the fetched branch slot and must not reset an active DMA.
+	// Combine all private execution gates so DMA completion cannot resume
+	// a program that the host has stopped or paused.
+	if (m_paused || m_dma.stalled || !BIT(m_flags, EXF))
+		suspend(SUSPEND_REASON_HALT, true);
+	else
+		resume(SUSPEND_REASON_HALT);
 }
 
 void scudsp_cpu_device::program_w(uint32_t data)
@@ -826,7 +835,7 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	if (m_dma.dir || m_dma.dst != 4)
 	{
 		m_dma.stalled = true;
-		set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+		update_execution_state();
 	}
 	m_icount -= 1;
 }
@@ -890,7 +899,7 @@ void scudsp_cpu_device::op_end(uint32_t opcode)
 
 	// clear the execute control flag (not running anymore)
 	m_flags &= ~(1 << EXF);
-	set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
+	update_execution_state();
 	m_icount -= 1;
 }
 
@@ -916,7 +925,7 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 				m_delay_pending = false;
 			}
 			m_dma.stalled = false;
-			set_input_line(INPUT_LINE_HALT, m_paused ? ASSERT_LINE : CLEAR_LINE);
+			update_execution_state();
 
 			break;
 		case DMA_STATE_WAIT:
@@ -1158,6 +1167,12 @@ void scudsp_cpu_device::device_start()
 
 void scudsp_cpu_device::device_reset()
 {
+	// Reset the control flags and host address latches (ST-097 pp.51/53).
+	// Host EX commands no longer pass through this reset path.
+	m_flags = 0;
+	m_pc = 0;
+	m_ra = 0;
+	m_out_irq_cb(0);
 	m_delay = 0;
 	m_delay_opcode = 0;
 	m_delay_pending = false;
@@ -1169,9 +1184,9 @@ void scudsp_cpu_device::device_reset()
 	m_dma.stalled = false;
 	m_paused = false;
 	m_dma.count = 0;
-	m_flags &= ~(1 << T0F);
-	// A reset during DMA must also release its private execution stall.
-	set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
+	// The DMA stall is released, but EX=0 keeps instruction execution
+	// stopped until a host execute command arrives.
+	update_execution_state();
 }
 
 // TODO: do we need this?

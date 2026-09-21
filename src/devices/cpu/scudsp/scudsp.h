@@ -165,6 +165,7 @@ private:
 	uint32_t get_mem_source_dma( uint32_t memcode );
 	void set_dest_dma_mem( uint32_t memcode, uint32_t value );
 
+	void update_execution_state();
 	void op_illegal(uint32_t opcode);
 	void op_alu(uint32_t opcode);
 	void op_move_immediate(uint32_t opcode);

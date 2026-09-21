@@ -10897,3 +10897,130 @@ No production change was made for these inspected leads:
   every display mode, event/grant arbitration and hardware qualification
   remain outside this change. Mednafen's suppressed-zero recurrence is
   explicitly not resolved by consensus.
+
+
+## IMPL-0149 — DSP execution stop is not device reset
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0149 | DSP-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | EX/END suspend instruction execution without a reset on restart; reset and DMA/pause gates remain distinct |
+
+- Branch: `arena/01a0b897-mame`; base: `9f6d24dae44d8351eeb074af6ba9c9fc0716e6d4`.
+  Files: `src/devices/cpu/scudsp/scudsp.cpp:234–245,363–410,830–840,
+  891–903,912–929,1168–1189`, private helper declaration in scudsp.h;
+  removed SCU `device_reset_after_children()` override in saturn_scu.cpp/.h.
+- Contract: EX=0 and END stop instruction retirement, not reset the device.
+  EX-only stop/start with LE=0 retains the existing fetched branch-slot word,
+  its validity/address, registers and active DMA. DMA runs through the
+  existing independent timer; completion can resume instruction execution
+  only if EX remains set and the host has not paused. A restart during an
+  active private DMA stall must not release that stall. Accepted LE writes
+  still invalidate the old slot; program-DMA completion still restores TOP
+  and discards its serialized slot according to the inherited contract.
+- Implementation: one `update_execution_state()` combines EX, saved pause
+  and saved DMA-stall latches using MAME's execution suspension API.
+  It is used by host control, END, DMA start/serialization/completion and
+  device reset. The parent no longer asserts a permanent RESET input after
+  resetting the child: the DSP owns its stopped state. True device reset
+  clears stored PPAF flags, PC and PDA address, pending branch slot, pause,
+  DMA progress/stall and output lines, and leaves execution stopped via EX0.
+  Program/data RAM policy and other internal arithmetic registers unchanged.
+- Primary: SDK `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-097-R5-072694,
+  blob `ffa8932249634ebd98947dad123621cebe3f24fa`; printed p.38/PDF54,
+  Figures2.21–2.22 distinguish execution start/forced stop; pp.51–53/PDF67–69,
+  Figure3.14 and EX/LE definitions distinguish execution control from loading
+  PC and give reset values for stored controls/host addresses; p.83/PDF99
+  defines END as stopping execution/clearing EX and ENDI additionally setting
+  E; p.85/PDF101, Figure4.2 requires execution of a prefetched branch slot.
+  The manual does not provide a full EX-only restart/DMA interleaving trace;
+  preservation of the pending word and independent DMA follows the peer
+  implementations below, not a claimed primary cycle diagram.
+- Pinned three-peer cross-check (GH API blobs, no imported source):
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/scu.inc`,
+    blob `8cc45219ca5ffc3e24c97779e01691129f3ea12c`:655–699 changes execute/
+    pause state without DSP_Reset; NextInstr is invalidated by LE at691–695,
+    not an EX-only restart. Real reset1785–1810 resets control/address/flags
+    and end signal. Its force-finish/timing machinery is not imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/scu/scu.cpp:2121–2132`, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`: host EX toggles execution,
+    not reset. `scu_dsp.cpp:88–117` continues RunDMA while stopped/paused
+    and retains nextInstr; reset30–51 separately clears controls, PC/PDA and
+    flags (blob `1cf68aee296e79254e9b2ebe44d4fd616b641cef`). Header
+    `libs/ymir-core/include/ymir/hw/scu/scu_dsp.hpp:61–71`, blob
+    `1e8cb89c2db19f37c7d16b14b026bbbdd23a3cbd`, invalidates prefetch on LE.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SCU/DSP.sv`, blob `3aa3859355005d4a57de850c813fe064e2cdb8d5`:
+    RUN86, retained IC90–112, EX transitions560–565 and END610–616 separate
+    execution from reset. DMA428–477 continues independently of EX once
+    started; only a stopped LE write explicitly cancels it465–469. Reset
+    control/host-address clearing520–543 is separate. This does NOT endorse
+    the local DMA stall policy or LE-during-DMA behavior; both remain open.
+- Local provenance: base maps EX to INPUT_LINE_RESET and the framework
+  invokes device.reset() on release of an asserted RESET (`src/emu/diexec.cpp:
+  717–729`). That cancels DMA and clears the fetched-slot state on restart,
+  despite no LE/reset request from the guest. Shared suspension instead uses
+  diexec.cpp:95–109,116–153, which stops the current execution slice without
+  invoking device reset. Framework reset already visits the DSP child
+  (`src/emu/device.cpp:345–364`); removing the parent RESET hold does not
+  remove system-reset delivery. Only SCU config instantiates this CPU in
+  the current source tree. No frozen DMA-acknowledgement code changed.
+- Observable/units/tolerance: exact retired instruction addresses/words,
+  saved slot-valid bit, DMA count/cursor/data, EX/T0/E bits and execution
+  suspension. Zero tolerance for lost/duplicated words or changed register
+  values; no claim about sub-cycle host-write acknowledgement latency.
+  With a taken branch's slot pending, an EX-only stop/start must execute
+  that same saved slot once before the target. With DMA part-complete,
+  stop/start must not reset count or cancel its timer; completion while
+  EX0 must leave the instruction stream stopped. True reset must clear
+  flags/pending slot/DMA, retain RAM and remain stopped until EX1.
+- Proposed validator method (not run): native legal-port stop/start with
+  LE0 at a controlled pending-slot boundary, including FF-to00 wrap; stop
+  during data-DMA WAIT/MOVE, restart before/after completion; EP/PR controls
+  during DMA; stopped LE load/start and ENDI/read-clear controls; reset
+  during running/paused/DMA states; same-revision save/reload at each cut.
+  Observe CPU retirement separately from DMA callbacks. A debugger boundary
+  may be used to place a stop deterministically; do not infer hardware
+  timing from it. Continue all earlier qualified arithmetic/pipeline controls.
+- Falsifier: EX-only restart loses/replaces the saved slot or cancels a live
+  DMA; DMA completion wakes EX0 or host-paused execution; restart bypasses
+  a live DMA stall; accepted LE fails to invalidate the old slot; true reset
+  leaves control flags/DMA active or executes instructions before EX1.
+- Protected fixtures: static inspection only. `test_scudsp_hostflags.py`
+  extracts the span up to program_w, now including the new helper, and its
+  harness/RESET-output assertions need scheduler-aware review. DMA/pause/
+  pipeline extractors call changed methods without extracting the helper;
+  reset assertions (`test_scudsp_dma.py:183–189`, pause:76) incorrectly
+  equate releasing the DMA stall with running after reset. DMA fixtures that
+  invoke op_dma with EX0 and expect instruction-HALT release also need to
+  distinguish bus progress from execution eligibility. Pause mutants at
+  lines24–25 and DMA reset-halt mutation67–68 target removed expressions.
+  Other extractors importing set_dest_mem_reg_2/op_dma (count-operand,
+  C-bus, multiplier, parallel, LOP) need the helper/scheduler context too.
+  No fixture/expectation/evidence edits, runs, or claimed observed failures.
+- Checks: prescribed C++20 syntax on scudsp.cpp and saturn_scu.cpp exits0;
+  `git diff --check` exits0. No tests, runtime, or full builds. No new saved
+  fields or save-signature change. Cross-revision state compatibility is
+  NOT claimed: old stopped states can retain obsolete framework RESET
+  suspension; same-revision replay is the proposed acceptance target.
+- Limits: candidate only; DSP-03 remains open. PC readback's inherited +1
+  representation is unchanged; reset clears the stored PC, not a claim
+  that the whole returned PPAF word is zero. Exact host-write phase, ordinary
+  instruction prefetch, active host RAM accesses, ES, LE while DMA is active,
+  DMA serialization/overlap/grants and legacy-save migration remain open.
+
+### DSP single-step audit at IMPL-0149 — not implemented
+
+An initial ES implementation using the existing instruction-retirement loop was
+removed before this candidate. All three peers advance a prefetched pipeline
+stage, not simply execute RAM at PC on the first request: MiSTer DSP.sv:90–112,
+567–568,610–611; Ymir scu_dsp.hpp:61–71/scu_dsp.cpp:101–117,133–134;
+Mednafen scu.inc:680–695. LE empties that stage, so the first step after a load
+has a pipeline bubble. The local core only latches branch-delay words and lacks
+ordinary prefetch. Implementing one immediate addressed instruction per ES
+would knowingly disagree at the first step. ES remains stored/inert as before;
+there is no new step latch, step save-layout change, or single-step completion
+claim. Next implementation work needs a coherent ordinary-prefetch/control-flow
+model before exposing ES, preserving the previously accepted delayed-branch,
+program-DMA serialization and pause contracts. This is remaining implementation
+work, not a claim that a hardware artifact blocks all progress.

@@ -407,14 +407,6 @@ void saturn_scu_device::device_clock_changed() {
   LOG("New ref DMA clock %u\n", m_dma_clock_ref);
 }
 
-//-------------------------------------------------
-//  device_reset_after_children
-//-------------------------------------------------
-
-void saturn_scu_device::device_reset_after_children() {
-  m_scudsp->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
-}
-
 //**************************************************************************
 //  DMA logic
 //**************************************************************************
