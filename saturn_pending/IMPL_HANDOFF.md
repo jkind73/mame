@@ -10704,3 +10704,109 @@ not claimed and may yield further fixes when those conflicts are resolved.
   change; parent V2-C03/V2-H02 remain open. Exact raster-latch/blanking behavior,
   out-of-range compatibility and hardware resolution of peer differences are
   not established by this implementation candidate.
+
+## IMPL-0147 — one horizontal counter for rotation geometry and coefficients
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0146 | V2-C03/V2-H02 | 0efce155 | UNVALIDATED — implementation | Nine-bit vertical windows include both fields of the double-density end line |
+| IMPL-0147 | V2-R02/V2-R03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | High-resolution rotation geometry and coefficient addresses use integer native-dot counters |
+
+- Branch/base: arena/01a0b897-mame, 0efce155. Files: saturn.cpp,
+  vdp2_copy_roz_bitmap near9547–9823; vdp2_completion.md and this handoff.
+- Defects: high-resolution per-dot geometry already used floor(output_x/2),
+  while coefficient fetches used output_x. This made scale/viewpoint,
+  transparency, mode-2 A/B selection and coefficient line color advance twice
+  as fast as the geometry. The coefficient-free/per-line walker instead
+  advanced a fractional half-step for every output pixel, producing different
+  odd-pixel source coordinates from the per-dot path even with identical
+  constant coefficients.
+- Contract: apply horizontal mosaic in output coordinates, then convert that
+  anchor to the integer rotation-dot counter. Use the same counter for both
+  short/long active coefficients, mode-2 A-table selection, A-table line color
+  and the coefficient-free/per-line geometry. The latter computes from the
+  absolute left-screen origin using a full native-dot increment with explicit
+  wrapping; clipped rendering no longer depends on advancing a half-step
+  accumulator to the clip boundary. Normal-resolution arithmetic is unchanged
+  modulo the existing32-bit representation. Vertical stepping is unchanged.
+- Primary: ST-058-R2-060194 at SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed p.147/PDF165 gives
+  X/Y using Hcnt; p.152/PDF170 uses the same H counter for screen X/Y and
+  KAst+deltaKAst*Vcnt+deltaKAx*Hcnt. These prohibit mixing output-pixel and
+  rotation-dot units between the equations. Pp.163–167 define per-dot
+  coefficients and MSB selection/transparency; p.164 defines coefficient
+  line-color data. Native320/352-dot high-resolution rotation stepping is
+  corroborated by the three implementations below, rather than attributed to
+  an explicit width statement in the cited equations.
+- Three pinned peers, independently source-inspected, no code copied:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    src/ss/vdp2_render.cpp:1975–2005,2095–2113,2701,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: fixed320/352 rbg_w;
+    coefficient addressing/selection/line-color use native x; RBGPP doubles
+    the completed dots for high-resolution before applying coverage windows.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    rtl/Saturn/VDP2/VDP2.sv:216–220,1817,1988–1997,2041–2052,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: high-resolution DCLK
+    adds DOT_CE_F, but coefficient KAx, geometry Xsp/Ysp and rotation output
+    update on DOT_CE_R, not on both edges. Geometry and coefficient stepping
+    therefore use one common normal-rate rotation dot, not a half-dot sample.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:2175–2180,
+    2204–2230,4599–4606,4628–4669,4710–4718,4755–4759,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: coordinate/coefficient
+    arrays are calculated at half the high-resolution width; both cell and
+    bitmap rotation outputs duplicate each result, with per-output-dot
+    coverage windows still applied separately.
+- Observable/method, NOT executed: use a varying source pattern and non-unit
+  dx/dy in high-resolution RBG0, comparing disabled coefficients, constant
+  per-line coefficients and the same constant per-dot coefficients. With the
+  same selected parameter and no output effects, adjacent pixel pairs must
+  share the native sample rather than interpolate odd dots. Then alternate
+  coefficient values/MSBs/line-color bits by table entry and require one
+  advance per native dot, including mode2 A/B selection and RBG1 line color.
+  Cover short/long tables, all coefficient modes, legal bank/CRAM permissions,
+  both320/352 native widths, mosaic, physical wrapping, odd-left split clips
+  and normal-resolution controls. Exact counter/address/source-dot comparison,
+  zero tolerance. Restoring output_x coefficient indexing or fractional
+  per-line stepping is the corresponding falsifier. Do not infer analog,
+  raster timing or general fixed-point precision qualification from this.
+- Protected fixture conflicts by source inspection only:
+  test_vdp2_rotation_clip.py:185–189 explicitly preserves the old per-line/
+  per-dot high-resolution coordinate difference; its mosaic mode2 reference
+  near437 advances A coefficients by doubled output anchor. Its origin mutation
+  at38–39 matches the removed clip-accumulator statements and must be reviewed
+  by the validator, not treated as an effective mutation unchanged. No fixture
+  edits/runs or claimed runtime failure. Previous fixture conflicts still apply.
+- Provenance: traced every coefficient-address site in the compositor; mode2
+  selection and A-derived line color needed the same correction as the active
+  table. The already-integer per-dot geometry established the local counter
+  representation. No changes to table decoding, permission policy, cache
+  lifetime, VDP1, CRTC, or frozen clock/sound/game fixes.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No regression, mutation, runtime or full build. No saved fields/signature
+  change. Parent V2-R02/V2-R03 remain open. Rotation-parameter window sampling
+  phase at a high-resolution odd boundary is unchanged and not qualified;
+  ordinary coverage/calculation windows continue using output coordinates.
+
+### Additional VDP2 audit limits at IMPL-0147
+
+No production change was made for these inspected leads:
+
+- Double-density mosaic: ST-058 pp.117/119 says mosaic makes the layer display
+  single-density, while the peers retain field-sensitive coordinate counters
+  (Mednafen vdp2_render.cpp:2734,3020–3028,3160–3167; MiSTer VDP2.sv:1714–1735;
+  Ymir renderer:2496–2513,2834–2837 at the pins above). Simply preserving parity
+  or halving source Y is not established. BLOCKED(double-density hardware
+  capture with MZSZV0/1, contrasting adjacent source rows, separated odd/even
+  fields, with and without line scroll). Existing vertical mosaic code retained.
+- Extended calculation: the known CRMD0+line-insertion Table12.2 ratio discrepancy
+  remains open; Mednafen's2:1:0 and MiSTer/Ymir's2:1:1 must not be reported as
+  agreement. Sprite lower-image eligibility also differs between Mednafen's
+  layer CC-enable bit and MiSTer/Ymir's sprite condition handling. No speculative
+  compositor change. BLOCKED(hardware pixel capture independently varying the
+  fourth color and lower sprite SPCCCS/CRAM-MSB with a fixed calculated top).
+- Vertical-cell-scroll interleaving: current addressing is based on enable bits;
+  peers derive stepping from scheduled accesses, with differing disabled-layer/
+  mosaic/delay treatment. Any further implementation needs a coherent access
+  schedule rather than changing only stride. Slot arbitration/delay remains
+  open; the existing addressed-bank early-window gate is not a full arbiter.

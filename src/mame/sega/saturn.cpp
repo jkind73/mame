@@ -9547,6 +9547,9 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   bool const per_dot_coefficients = vdp2_per_dot_coefficients(VDP2_RAMCTL);
   int32_t const coefficient_dx = !per_dot_coefficients ? 0 : VDP2_RPMD == 2 && iRP == 2 &&
       VDP2_RAKTE && parameter_a.dkax != 0 ? 0 : RP.dkax;
+  // Coefficient addresses use rotation dots, not doubled output pixels.
+  // Apply this to the active table, mode-2 A/B selection and A line-color
+  // lookup alike; all share the geometry's H counter (ST-058 p.152).
   uint32_t last_a_address = 0, last_a_entry = 0;
   bool have_a_entry = false;
   auto const selected = [&](int hx, int vy) {
@@ -9556,7 +9559,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       return false;
     uint32_t const index = (parameter_a.kast +
         coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
-        coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, mosaic_x(hx))) >> 16;
+        coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, mosaic_x(hx) >> hcnt_shift)) >> 16;
     uint32_t const a_address = VDP2_RAKDBS
         ? (VDP2_RAKTAOS & 7) * 0x20000 + index * 2
         : (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
@@ -9580,7 +9583,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
     uint8_t color = coeff_line_color_screen_data;
     if (enabled && from_a && iRP == 2) {
       uint32_t const index = (parameter_a.kast + coef_delta(parameter_a.dkast, vy >> vcnt_shift) +
-          coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, mosaic_x(hx))) >> 16;
+          coef_delta(per_dot_coefficients ? parameter_a.dkax : 0, mosaic_x(hx) >> hcnt_shift)) >> 16;
       uint32_t const a_address = (VDP2_RAKTAOS & 3) * 0x40000 + index * 4;
       if (!have_a_entry || last_a_address != a_address) {
         last_a_entry = vdp2_read_rotation_coefficient(a_address);
@@ -9712,18 +9715,17 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
       // y = RP.ky * ( ysp + dy * (hcnt << 16)) + yp;
       xs = vdp2_wrap_sum(mul_fixed32(kx, xsp), xp);
       ys = vdp2_wrap_sum(mul_fixed32(ky, ysp), yp);
-      dxs = mul_fixed32(kx, mul_fixed32(dx, 1 << (16 - hcnt_shift)));
-      dys = mul_fixed32(ky, mul_fixed32(dy, 1 << (16 - hcnt_shift)));
-      // Partial updates retain the screen-left coordinate origin. Advance
-      // both accumulators to the first output pixel, with 32-bit wrapping.
-      xs = uint32_t(xs) + uint32_t(int64_t(dxs) * cliprect.left());
-      ys = uint32_t(ys) + uint32_t(int64_t(dys) * cliprect.left());
-
-      for (hcnt = cliprect.left(); hcnt <= cliprect.right();
-           xs = vdp2_wrap_sum(xs, dxs), ys = vdp2_wrap_sum(ys, dys), hcnt++) {
+      dxs = mul_fixed32(kx, dx);
+      dys = mul_fixed32(ky, dy);
+      // ST-058 pp.147/152 uses the same integer H counter for geometry
+      // and coefficients. Rotation runs at the normal dot rate even in
+      // high-resolution output: duplicate a dot, do not interpolate the
+      // intervening half-step. Keep the origin independent of partial clips.
+      for (hcnt = cliprect.left(); hcnt <= cliprect.right(); hcnt++) {
         int const sample_h = mosaic_x(hcnt);
-        x = int32_t(uint32_t(xs) + uint32_t(int64_t(dxs) * (sample_h - hcnt))) >> 16;
-        y = int32_t(uint32_t(ys) + uint32_t(int64_t(dys) * (sample_h - hcnt))) >> 16;
+        int const sample_counter = sample_h >> hcnt_shift;
+        x = int32_t(uint32_t(xs) + uint32_t(int64_t(dxs) * sample_counter)) >> 16;
+        y = int32_t(uint32_t(ys) + uint32_t(int64_t(dys) * sample_counter)) >> 16;
 
         bool const outside = (x & clipxmask) || (y & clipymask);
         if ((outside && !repeat_pattern) || !selected(sample_h, vcnt))
@@ -9760,7 +9762,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 0:
           address = coeff_table_offset +
                     ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
-                      coef_delta(coefficient_dx, sample_h)) >>
+                      coef_delta(coefficient_dx, sample_h >> hcnt_shift)) >>
                      16) *
                         4;
           coeff_table_val = read_coefficient(address);
@@ -9775,7 +9777,7 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
         case 1:
           address = coeff_table_offset +
                     ((RP.kast + coef_delta(RP.dkast, vcnt >> vcnt_shift) +
-                      coef_delta(coefficient_dx, sample_h)) >>
+                      coef_delta(coefficient_dx, sample_h >> hcnt_shift)) >>
                      16) *
                         2;
           coeff_table_val = read_coefficient(address);

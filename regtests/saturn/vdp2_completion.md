@@ -2022,3 +2022,15 @@ the field-line comparison; MiSTer/Ymir differ at the boundary, as documented in
 the handoff. X-coordinate compatibility, line-table addressing and CRTC timing
 are unchanged. The protected table-wrap fixture's raw-start assumption is flagged
 without edits/runs. Syntax/diff checks only; no saved fields or parent closure.
+
+Candidate IMPL-0147 aligns high-resolution rotation geometry and coefficient
+lookups to one integer native-dot counter. Previously coefficients advanced at
+the doubled output rate while per-dot geometry did not; the coefficient-free/
+per-line path also interpolated half-dots instead of duplicating native samples.
+Active coefficients, mode2 selection and A-derived line color now use the same
+counter. Absolute-origin evaluation preserves odd-left partial clips; coverage
+windows remain at output resolution. Sega's shared-counter equations and all
+three peers' normal-rate rotation paths are recorded in the handoff. Protected
+rotation fixture references/mutation assumptions are flagged without edits or
+runs. Syntax/diff checks only; no saved fields or parent closure. The handoff also
+records unresolved mosaic/extended-color/vertical-cell-fetch audit limits.
