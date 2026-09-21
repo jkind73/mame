@@ -164,6 +164,7 @@
   - Replace approximate command delays where hardware evidence establishes the correct behavior.
 - [ ] **SMPC-02 — Complete system-control integration. [P/V/R]**
   - Master/slave/sound reset and start/stop, clock changes, reset-button/NMI behavior and region/status reporting.
+  - IMPL-0156 replaces the immediate console reset-button NMI with three VBlank samples and one NMI per held press, while preserving first-sample RESB reporting (syntax-only implementation candidate; enable-edge timing remains unqualified).
   - Audit source-noted undocumented security commands separately; research behavior before implementing guessed responses.
 - [ ] **SMPC-03 — Qualify RTC, backup settings and power/reset semantics. [V/R]**
   - RTC counting and leap-year behavior, SETTIME/INTBACK, cold versus warm reset and battery persistence.

@@ -27,8 +27,6 @@ public:
   // I/O operations
   void io_map(address_map &map) ATTR_COLD;
 
-  DECLARE_INPUT_CHANGED_MEMBER(trigger_nmi_r);
-
   void m68k_reset_trigger();
 
   void vblank_in();
@@ -149,6 +147,7 @@ private:
   bool m_command_in_progress;
   bool m_NMI_reset;
   bool m_resb = false;
+  uint8_t m_reset_button_count = 0; // VBlank samples: 0-3; 4 = NMI sent
   bool m_cur_dotsel;
 
   void master_sh2_nmi();

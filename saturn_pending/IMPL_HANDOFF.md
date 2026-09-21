@@ -11574,3 +11574,94 @@ No production wait-rule change was made for the following program-DMA issue:
   bodies are not coverage of this case. No protected fixture/evidence edits.
   IO-02 inventory and frozen sound/video-clock/acknowledgement paths unchanged.
   SMPC-03 remains open; prior subsecond/STE peer disagreements still apply.
+
+
+## IMPL-0156 — qualify the console reset-button NMI over three VBlanks
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0156 | SMPC-02 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Reset-button NMI follows three pressed VBlank samples, once per hold; RESB remains first-sample status |
+
+- Branch `arena/01a0b897-mame`; base `e9af95cc51affc863e97d4c1be66d6fc64376670`.
+  Production smpc.cpp:155–156,201–203,610–632; smpc.h saved counter and
+  removed input-change declaration; sat_console.cpp:747–750 removes the
+  immediate NMI callback from the existing RESET input field.
+- Contract: sample the console physical reset input at the existing
+  VBlank-IN callback independently of INTBACK and RESENAB/RESDISA. RESB
+  reflects that sample immediately. For NMI, count consecutive pressed
+  samples up to3. If reset NMI is enabled, send one master NMI once qualified
+  and mark that hold serviced. A sampled release clears qualification and
+  rearms. While disabled, qualification saturates at3; enabling a qualified
+  held press allows NMI at the next VBlank, not at command completion.
+  Disable/re-enable alone does not rearm an already-serviced held press.
+- Implementation: new uint8_t m_reset_button_count uses0–3 for qualification
+  and4 for already-sent, initialized, reset and saved. Remove the raw input
+  edge callback entirely so it cannot bypass sampling. The RESET input name
+  and physical read binding remain unchanged. Keep the existing no-controller/
+  ST-V early return, INTBACK cancellation order and RESB status encoding.
+  NMIREQ and the frozen clock-change/sound-reset code paths are untouched.
+- Primary: ST-169-R1-072694, printed p.33/PDF43 RESENAB explicitly requires
+  the3VINT period to prevent chattering; p.34/PDF44 RESDISA says RESB shows
+  button state at VBlank-IN even when NMI is disabled; p.19/PDF29 describes
+  the reset-button task immediately after VBlank-IN. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp`,
+    blob `af6cb315fe2126f923a5dabfc4af98c088463318`:1098–1125 sets RESB
+    from the sampled switch, increments through3, sends NMI only if enabled,
+    uses a serviced sentinel and rearms on release. Direct semantic support.
+    Its own FIXME questions RESENAB-edge timing, so that is not silicon proof.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/include/ymir/hw/smpc/smpc.hpp:52–58`, blob
+    `5c6026cc389ae513f12b730f486c1d65c9ef8d01`, calls UpdateResetNMI on
+    physical state change; `src/ymir/hw/smpc/smpc.cpp:244–248,693–714`, blob
+    `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, raises immediately when
+    enabled/pressed and also checks on enable. This differs from the
+    documented3VINT qualifier; not reported as agreement.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv:327–334`, blob
+    `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`, asserts on a pressed input
+    with a60000-clock hold; no3VINT prequalification there. Current LLE
+    `rtl/Saturn/Saturn.sv:732–745`, blob
+    `023d40e78dbda01a658b6a718922146c7b490800`, wires SRES_N to SMPC D3,
+    master NMI to D7 and VBlank to R01_INT2; behavior is firmware-driven.
+    Inspected HDL is not a debounce oracle. No firmware downloaded/run.
+- Provenance: base trigger_nmi_r sends master_sh2_nmi directly on newval
+  while enabled and has a TODO for3VINT. Accepted RESB work already samples
+  the actual port in vblank_in. Reuse that sample rather than introducing a
+  host-time timer or weakening the accepted first-sample RESB contract.
+- Observable/units/tolerance: exact VBlank sample index, master NMI pulse
+  count and RESB bit. With RESENAB already active, a press before sample1
+  yields RESB1 at1 and NMI counts0,0,1 at samples1,2,3. Samples4+ while
+  held produce no additional NMI. A sampled release after only1/2 pressed
+  samples produces none and starts a new3-sample qualification on re-press.
+  Zero pulse/sample tolerance; sub-VBlank task latency remains unqualified.
+- Proposed validator method (not run): native authored RESET input sequences
+  around VBlank, with enabled/disabled controls, idle and active INTBACK,
+  short bounces, held/released/repressed sequences, enable after qualification,
+  and machine reset while held. Same-revision save/replay after1/2 samples
+  and after the serviced sentinel must preserve the remaining count/no-repeat
+  rule. Observe RESB and NMI separately. Check NMIREQ remains unconditional
+  and the no-controller/ST-V path remains untouched.
+- Falsifier: NMI on the raw edge or before sample3, repeated NMI on a steady
+  hold, RESB withheld until debounce, disabled NMI, loss of qualification or
+  duplicate pulse after restore, or regressions to accepted timeout/paging.
+- Protected fixture impact (inspection only): test_smpc_handshake/transport
+  extract reset and need the new counter in their stubs; test_smpc_timeout
+  and saturn_pending/test_smpc_resb.py extract vblank_in and need counter/NMI
+  endpoints. The native RESB fixture explicitly runs with NMI disabled and
+  disclaims debounce qualification; its prior acceptance is not new coverage
+  of this change. No protected fixture/expectation/evidence modified or run.
+  Requested agent1_validation.md remains absent in this checkout; no new
+  validator acceptance inferred from that absence.
+- Checks: prescribed C++20 TU syntax on smpc.cpp and sat_console.cpp exits0;
+  git diff --check exits0. No validation/runtime/full build. The counter is
+  saved in this change and changes the save signature; older states are
+  incompatible. IO-02 support inventory unchanged; no peripheral added.
+- State/limits: candidate only; SMPC-02 remains open. Counting during disable
+  and next-VBlank enable semantics follow Mednafen, not all-peer consensus.
+  Exact simultaneous RESENAB/sample boundaries, NMI pulse width, firmware
+  task collisions, switch transitions between samples and physical chatter
+  need hardware timing evidence. No change to frozen acknowledgement,
+  SH-2 delay-slot IRQ, sound/reset/video-clock or game-specific fixes.

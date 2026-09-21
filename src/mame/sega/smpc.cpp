@@ -153,6 +153,7 @@ void smpc_hle_device::device_start() {
   save_item(NAME(m_cur_dotsel));
   save_item(NAME(m_NMI_reset));
   save_item(NAME(m_resb));
+  save_item(NAME(m_reset_button_count));
 
   m_cmd_timer = timer_alloc(FUNC(smpc_hle_device::handle_command), this);
   m_rtc_timer = timer_alloc(FUNC(smpc_hle_device::handle_rtc_increment), this);
@@ -199,6 +200,7 @@ void smpc_hle_device::device_reset() {
   m_command_in_progress = false;
   m_NMI_reset = false;
   m_resb = false;
+  m_reset_button_count = 0;
   m_cur_dotsel = false;
   m_ckchg_tick = 0;
   m_prev_sndoff = m_prev_sshoff = 0xff;
@@ -615,6 +617,20 @@ void smpc_hle_device::vblank_in() {
   // button held across machine reset is sampled again on the next edge.
   m_resb = bool(m_reset_button_read());
 
+  // ST-169 pp.19/33-34: RESB follows the first VBlank sample, but the
+  // reset-button NMI is qualified over three VINTs to reject chatter.
+  // Count even while RESDISA is active; 3 is qualified and 4 means an NMI
+  // has already been sent for this hold. A sampled release rearms it.
+  if (!m_resb)
+    m_reset_button_count = 0;
+  else if (m_reset_button_count < 3)
+    ++m_reset_button_count;
+
+  if (m_reset_button_count == 3 && m_NMI_reset) {
+    m_reset_button_count = 4;
+    master_sh2_nmi();
+  }
+
   bool const pending = m_command_in_progress && m_comreg == 0x10 &&
                        (m_intback_buf[1] & 8);
   if (!pending && !m_intback_stage)
@@ -918,16 +934,6 @@ void smpc_hle_device::read_saturn_ports() {
   // replace later bytes with input from a different polling instant.
   // Extended-size peripheral IDs need a controller-interface extension;
   // all currently registered devices use the <=15-byte format handled here.
-}
-
-INPUT_CHANGED_MEMBER(smpc_hle_device::trigger_nmi_r) {
-  // punt if NMI trigger is disabled
-  if (!m_NMI_reset)
-    return;
-
-  // TODO: generated during the 3VINT period according to manual
-  if (newval)
-    master_sh2_nmi();
 }
 
 /* Official documentation says that the "RESET/TAS opcodes aren't supported",
