@@ -1987,3 +1987,10 @@ back-screen sources. Channel31 now enters VDP2 arithmetic as248, not255; RGB888
 and VDP1 drawing/storage are unchanged. Sega p.43 and all three peers agree.
 The handoff identifies stale full-range fixture assumptions without editing or
 running them. Syntax/diff checks only; no saved fields or gameplay acceptance.
+
+Candidate IMPL-0143 removes a second single-density-interlace scaling of NBG0/1
+line-scroll intervals. MAME's single-density bitmap already uses picture rows,
+so table cadence is1/2/4/8 rows just as in non-interlace. Sega's physical-line
+counts and all three peers' counter representations are reconciled in the handoff.
+Non-interlace/double-density setup values and CRTC timing are unchanged. Syntax/
+diff checks only; no fixtures changed or validation runs. V2-S02 remains open.

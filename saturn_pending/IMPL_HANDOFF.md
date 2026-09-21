@@ -10451,3 +10451,60 @@ not claimed and may yield further fixes when those conflicts are resolved.
   to7 channel units before calculation where the old expansion was incorrect.
 - Limits: no whole-color-pipeline or frozen gameplay requalification claimed.
   Existing geometry/timing/sound fixes and parent statuses remain unchanged.
+
+## IMPL-0143 — line-scroll interval uses picture-row units
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0142 | V2-A05/V2-C05 | c6ebb9ea | UNVALIDATED — implementation | RGB555 channels append three zeros before VDP2 calculation |
+| IMPL-0143 | V2-S02 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Single-density NBG0/NBG1 line-scroll intervals are 1/2/4/8 bitmap rows, not doubled again |
+
+- Branch/base: arena/01a0b897-mame, c6ebb9ea. Files: saturn.cpp,
+  vdp2_draw_NBG0 and vdp2_draw_NBG1 layer setup only.
+- Defect: LSMD2 multiplied the interval by2 even though reconfigure_crtc exposes
+  the same picture height for non-interlace and single-density. Both shared
+  point sampling and legacy line-scroll helpers index this interval in bitmap
+  rows. Entry0 consequently lasted twice as many picture rows as intended,
+  affecting horizontal/vertical line scroll and line zoom.
+- Primary: ST-058-R2-060194 at SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed p.17/PDF35 defines
+  single-density as the same picture in both fields, with the same picture
+  resolution as non-interlace. P.137/PDF155 lists non-interlace1/2/4/8 versus
+  single-density2/4/8/16 interlaced lines. Those single-density physical-line
+  counts correspond to1/2/4/8 rows in MAME's un-woven single-density bitmap.
+  Pp.131–133 define shared H/V/zoom entry ordering and vertical interpolation.
+- Three pinned peers, checked specifically for coordinate representation:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    src/ss/vdp2_render.cpp:2791–2798,2831–2833,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: line comparison shifts only
+    for IM_DOUBLE, not single-density; entry stepping likewise singles out
+    double-density. No peer source copied.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    rtl/Saturn/VDP2/VDP2.sv:374–375,647,1298–1305,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: WSCRNY equals SCRNY unless
+    double-density; NxLSSMask is0/1/3/7 at VDP2_pkg.sv:1920–1930,
+    blob467989289f89a0fec5e444f6628eee95ed6ce0f8.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:2063–2094,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: refresh condition uses
+    1<<lineScrollInterval, with special extra reads only in DoubleDensity;
+    vdp2_regs.hpp:1857,1863 (blob71ab14fbd3950df17c0cdfca54b188a42fcb1761)
+    takes the interval directly from the two register bits.
+- Observable: NBG0/NBG1 SCRCTL LSS0/1/2/3 consumes a new compact table entry
+  every1/2/4/8 picture rows in LSMD2. LSMD0 and LSMD3 setup values are unchanged.
+  This changes no CRTC/field scheduling, oscillator selection or frozen clock
+  reset logic. No new saved state/signature; descriptor value remains derived.
+- Suggested validator method, NOT executed: dispatch both layers through real
+  NBG setup in LSMD0 and LSMD2 with distinguishable consecutive table entries.
+  Compare equal picture rows for all four intervals and H-only/V-only/zoom/
+  combined tables; include partial-update clips across an entry boundary.
+  Exact table-index and pixel comparisons, zero tolerance. Restoring the LSMD2
+  factor2 is the falsifier. Existing test_vdp2_scroll_pixels.py sets intervals
+  directly and selects LSMD0/3, so it does not establish coverage of this setup
+  defect; no fixture expectation/scaffold was edited.
+- Provenance: local layer setup traced through vdp2_draw_scroll_screen and
+  saturn_vdp2_device::reconfigure_crtc; this is a coordinate-unit correction,
+  not a claim that the primary table is wrong or that all interlace behavior
+  is qualified. Double-density field-phase/table-fetch timing remains open.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No regression, mutation, runtime or full build. Parent V2-S02 stays open.

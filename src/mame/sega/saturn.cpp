@@ -10050,8 +10050,10 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   current_tilemap.incy = VDP2_ZMYN0;
 
   current_tilemap.linescroll_enable = VDP2_N0LSCX;
-  current_tilemap.linescroll_interval = ((m_vdp2->get_lsmd() == 2) ? (2) : (1))
-                                        << (VDP2_N0LSS);
+  // ST-058 pp.17/137: single-density fields repeat the same picture.
+  // Our bitmap has one row per picture line, not both interlaced raster
+  // positions, so its table interval is the same as non-interlace.
+  current_tilemap.linescroll_interval = 1U << VDP2_N0LSS;
   current_tilemap.linescroll_table_address =
       (((VDP2_LSTA0U << 16) | VDP2_LSTA0L) & base_mask) * 2;
   current_tilemap.vertical_linescroll_enable = VDP2_N0LSCY;
@@ -10171,8 +10173,8 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   current_tilemap.incy = VDP2_ZMYN1;
 
   current_tilemap.linescroll_enable = VDP2_N1LSCX;
-  current_tilemap.linescroll_interval = ((m_vdp2->get_lsmd() == 2) ? (2) : (1))
-                                        << (VDP2_N1LSS);
+  // Interval is in bitmap rows, as for NBG0 (not physical interlace lines).
+  current_tilemap.linescroll_interval = 1U << VDP2_N1LSS;
   current_tilemap.linescroll_table_address =
       (((VDP2_LSTA1U << 16) | VDP2_LSTA1L) & base_mask) * 2;
   current_tilemap.vertical_linescroll_enable = VDP2_N1LSCY;
