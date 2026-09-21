@@ -459,7 +459,6 @@ void saturn_state::system_reset_w(int state) {
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
   vdp2_reset_rotation_latches();
-  memset(m_vdp2_regs.get(), 0x00, 0x000200);
   memset(m_vdp2_vram.get(), 0x00, 0x100000);
   memset(m_vdp2_cram.get(), 0x00, 0x001000);
   memset(m_vdp1_vram.get(), 0x00, 0x100000);
@@ -11067,6 +11066,23 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
     m_vdp2_legacy.old_crmd = VDP2_CRMD;
     refresh_palette_data();
   }
+}
+
+void saturn_state::vdp2_register_reset_w(int state) {
+  if (!state)
+    return;
+
+  // ST-058: rendering controls clear on reset as well as TVMD/EXTEN.
+  // Keep the device-owned register/counter slots separate. VRAM and CRAM
+  // are not registers and are deliberately retained by this callback.
+  std::fill_n(m_vdp2_regs.get() + 0x00e / 2, (0x120 - 0x00e) / 2, uint16_t(0));
+  m_vdp2_legacy.old_crmd = 0;
+  vdp2_reset_rotation_latches();
+  vdp2_window_cache_invalidate();
+  RBG0_cache_data = _RBG0_cache_data();
+  RBG0_cache_data.is_cache_dirty = 3;
+  // Retained CRAM must immediately be interpreted in the reset color mode.
+  refresh_palette_data();
 }
 
 void saturn_state::vdp2_state_save_postload() {

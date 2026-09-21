@@ -1157,6 +1157,7 @@ void sat_console_state::saturn(machine_config &config) {
   m_vdp2->set_is_pal(false);
   m_vdp2->vint_cb().set(FUNC(sat_console_state::vint_callback));
   m_vdp2->hint_cb().set(FUNC(sat_console_state::hint_callback));
+  m_vdp2->register_reset_cb().set(FUNC(sat_console_state::vdp2_register_reset_w));
 
   PALETTE(config, m_palette)
       .set_entries(

@@ -26,7 +26,7 @@ saturn_vdp2_device::saturn_vdp2_device(const machine_config &mconfig,
                                        uint32_t clock)
     : device_t(mconfig, SATURN_VDP2, tag, owner, clock),
       m_screen(*this, finder_base::DUMMY_TAG), m_vint_cb(*this),
-      m_hint_cb(*this), m_is_pal(false) {}
+      m_hint_cb(*this), m_register_reset_cb(*this), m_is_pal(false) {}
 
 void saturn_vdp2_device::preserve_scanned_output() {
   if (!m_screen->started() || (!m_disp && !m_bdclmd))
@@ -103,6 +103,10 @@ void saturn_vdp2_device::device_reset() {
   // 2.5 defines their event/read-clear behavior; MiSTer resets TVSTAT too.
   m_exltfg = false;
   m_exsyfg = false;
+  // A VDP2 reset covers both this device and the legacy rendering half.
+  // Notify the owner without changing RAM contents or the selected clock.
+  m_register_reset_cb(1);
+  m_register_reset_cb(0);
   reconfigure_crtc();
 }
 

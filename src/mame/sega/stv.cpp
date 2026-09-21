@@ -1442,6 +1442,7 @@ void stv_state::stv(machine_config &config) {
   m_vdp2->set_is_pal(false);
   m_vdp2->vint_cb().set(FUNC(stv_state::vint_callback));
   m_vdp2->hint_cb().set(FUNC(stv_state::hint_callback));
+  m_vdp2->register_reset_cb().set(FUNC(stv_state::vdp2_register_reset_w));
 
   GFXDECODE(config, m_gfxdecode, m_palette, gfx_stv);
 

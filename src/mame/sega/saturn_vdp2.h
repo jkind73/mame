@@ -31,6 +31,8 @@ public:
 
   auto vint_cb() { return m_vint_cb.bind(); }
   auto hint_cb() { return m_hint_cb.bind(); }
+  // Reset the rendering registers still owned by the Saturn driver.
+  auto register_reset_cb() { return m_register_reset_cb.bind(); }
 
   // TODO: follows stuff that eventually needs to be privatized
   bool is_pal() const { return m_is_pal; }
@@ -52,6 +54,7 @@ private:
   required_device<screen_device> m_screen;
   devcb_write_line m_vint_cb;
   devcb_write_line m_hint_cb;
+  devcb_write_line m_register_reset_cb;
 
   // CRTC
   emu_timer *m_video_sync_timer;

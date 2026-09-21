@@ -1964,3 +1964,11 @@ previous driver-array clear missed device-owned TVMD/EXTEN/VRSIZE and decoded
 CRTC controls. No clock-selection or sound-reset code changed. Sega SYSRES and
 VDP2 reset documentation plus Mednafen/MiSTer/Ymir routing are recorded in the
 handoff. Syntax/diff checks only; no new saved state or parent completion claim.
+
+Candidate IMPL-0140 connects the VDP2 device reset to the driver-owned rendering
+registers on both Saturn and ST-V. Machine/device/clock-change resets now clear
+those controls too, invalidate dependent caches/latches and reinterpret retained
+CRAM using reset mode0. The clock-selection/sound-reset body is unchanged, and
+the callback does not erase VRAM/CRAM. No new saved fields. Four touched TUs syntax
+checked; ST-V required its shared include path and generated layout headers.
+No validation runs; see the handoff for primary/three-peer contracts and limits.

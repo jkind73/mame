@@ -213,6 +213,7 @@ protected:
   TIMER_DEVICE_CALLBACK_MEMBER(saturn_scanline);
   void vint_callback(int state);
   void hint_callback(int state);
+  void vdp2_register_reset_w(int state);
   int m_prev_hint = 0, m_prev_vint = 0;
 
   TIMER_CALLBACK_MEMBER(vdp1_draw_end);

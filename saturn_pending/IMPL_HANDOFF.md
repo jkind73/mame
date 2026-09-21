@@ -10255,3 +10255,72 @@ not claimed and may yield further fixes when those conflicts are resolved.
   rearms its sync timer and resets existing saved controls; no duplicated state.
 - Limits: broader SYSRES chip coverage and electrical reset/IRQ edge sequencing
   remain separate work; this is not whole-system reset completion.
+
+## IMPL-0140 — one reset boundary for both halves of VDP2
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0139 | V2-A03/SYS-01 | 9f673a00 | UNVALIDATED — implementation | SYSRES reaches the VDP2 device |
+| IMPL-0140 | V2-A03/SYS-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Every VDP2 device reset also clears driver-owned rendering controls and invalidates their derived views |
+
+- Branch/base: `arena/01a0b897-mame`, `9f673a00`.
+- Files: saturn_vdp2.cpp/.h add register_reset_cb; saturn.cpp/.h add
+  vdp2_register_reset_w; sat_console.cpp and stv.cpp bind the callback in both
+  base machine configurations. The redundant SYSRES driver-array clear is
+  replaced by the callback reached through0139's device reset.
+- Defect: the reverse half of the split-register reset omission. A machine or
+  existing clock-change reset cleared device TVMD/EXTEN but retained RAMCTL,
+  BGON, cycle patterns, maps, scrolling, window and composition registers in
+  the driver. Re-enabling display could therefore reuse the previous setup.
+- Contract: reset the implemented rendering register range0x00e–0x11e through
+  a device-owned notification, invalidate rotation latches/window/RBG cache,
+  and refresh retained CRAM's palette under reset CRMD0. Device-owned slots,
+  including HCNT/VCNT samples, remain under their existing device reset policy.
+  The callback does not clear VRAM/CRAM; SYSRES retains its separately existing
+  memory-clear policy and0138's subsequent memory-view rebuild.
+- Primary: ST-058-R2-060194, SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1. Printed p.4/PDF22 general
+  reset contract, p.39/PDF57 cycle patterns, p.48/PDF66 BGON, p.148/PDF166
+  RAMCTL, and p.240/PDF258 color calculation control all specify reset-zero
+  controls. Other rendering-register sections likewise specify cleared values.
+  Reserved locations inside the range are cleared deterministically without
+  claiming undocumented readback. ST-169 p.30 identifies VDP2 among devices
+  reset by clock change; the existing reset call, not its timing, is reused.
+- Required peers:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    `src/ss/vdp2.cpp:920–946,991`, blobce329dc7f7f92ed4cd609ed4805274fbabec4cae:
+    device and renderer reset; `src/ss/vdp2_render.cpp:1000–1036` onward,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec, clears rendering controls
+    independently of powering_up-only memory clear.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    `rtl/Saturn/VDP2/VDP2.sv:3792–3940`, blob91dcc5a4012b9ef93c43a7f0214796549bc31d20:
+    RES_N clears rendering registers as well as TVMD/EXTEN, while commented
+    HCNT/VCNT clearing is not adopted as a new counter reset claim.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    `libs/ymir-core/include/ymir/hw/vdp/vdp_state.hpp:836–852`,
+    blob837cdf66a4e4b5ba2d0cc73172153f83ab776c6c: regs2.Reset on both reset kinds;
+    `libs/ymir-core/include/ymir/hw/vdp/vdp2_regs.hpp:16–75`,
+    blob71ab14fbd3950df17c0cdfca54b188a42fcb1761: rendering controls reset with
+    device controls. Memory/reset distinctions are preserved, not flattened.
+- Provenance: source review of machine_reset, SYSRES, device_reset and the
+  already-existing dot_select_w reset call. The frozen dot_select_w body,
+  oscillator selection, sound resets, DMA acknowledgement and SH IRQ code are
+  unchanged. Only the missing register reset consumer is connected.
+- Observable/method, NOT executed: seed rendering controls and differing CRAM
+  banks; invoke machine reset, direct device reset and the existing reset-bearing
+  SMPC routes. The rendering range must be zero and retained CRAM must decode
+  as mode0 immediately; device reset alone must preserve exact VRAM/CRAM bytes.
+  Reprogramming the display must not reuse old window/rotation caches. Cover
+  Saturn and ST-V bindings. Exact register/byte/RGB comparisons, zero tolerance.
+  Unbinding the callback on either machine or removing the register clear is
+  the falsifier. Reset-edge timing and game behavior require separate evidence.
+- Checks: saturn.cpp, saturn_vdp2.cpp and sat_console.cpp syntax checks exit0
+  with the prescribed includes. stv.cpp initially lacked rax.h and then generated
+  layout headers. Retried syntax successfully with `-Isrc/mame/shared` and
+  `-I/tmp/vdp-audit/layout`; the three layout headers were generated from existing
+  .lay files using scripts/build/complay.py solely to supply TU dependencies.
+  No full build or validation/test execution. git diff --check exits0.
+- State/save: callback is configuration, not emulated state; no new saved fields
+  or save signature. Existing register/latch fields remain saved as before.
+- Limits: register-reset consistency only, not reset electrical timing, RAM
+  power-on patterns or whole-system SYSRES completion. IO-02 inventory unchanged.
