@@ -9966,3 +9966,70 @@ No peer source was copied and no validator expectations were changed.
   display-readout phases remain open under V1-01/V1-02/V1-04. The new
   capacity charge is not a physical bus scheduler. Continue VDP1 before
   moving to VDP2; no component-exhaustion claim is made by this checkpoint.
+
+## Implementation-first VDP1 audit — command-local color table
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0135 | V1-03/V1-06 | 9fbe664f | UNVALIDATED — implementation | Published reset texture-view coherence candidate; retained unchanged |
+| IMPL-0136 | V1-01/V1-03/V1-06 | this entry's commit | UNVALIDATED — implementation, syntax checked only | LUT sprites retain the command's 16-entry color table through raster slices and save/load |
+
+### IMPL-0136 — latch the color lookup table before drawing
+
+- Branch/base: `arena/01a0b897-mame`, `9fbe664fed5b069ad73d4d4a653a8ed41bfdd9d5`.
+  Existing published0133–0135 remain in place. A recycled checkout contained
+  older b40450be copies of four files; those copies were backed up and compared
+  byte-for-byte with that published revision before restoring the current tip.
+  No later user edits were discarded.
+- Defect: drawpixel_generic reread each LUT color directly from VRAM. CPU writes
+  between scheduled raster slices could therefore recolor the remainder of the
+  current sprite even though its color table was already supposed to be loaded.
+- Production: `src/mame/sega/saturn.cpp`, LUT branch of drawpixel_generic,
+  vdp1_latch_color_lookup, normal/scaled/distorted primitive entry and vdp1_start
+  save registration; `saturn.h`, the helper declaration and16-word array.
+- Primary: SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  ST-013-R3-061694.pdf blob59c0f0d269048d16097a2c155db170d201e6ecc2,
+  printed p.29/PDF44 table-access steps5–6 (read shading/LUT before character
+  drawing), pp.62–63/PDF77–78 (16 entries/32-byte aligned table). Fetched from
+  GH API and read directly. No SDK binary/media content added to the repository.
+- Pinned required peers, inspected rather than copied:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    `src/ss/vdp1_sprite.cpp:277–286`, blob346c71ac1b3d7ca50bb1bf8cbe871585af380347:
+    copies16 CLUT words and charges a table load; `vdp1.cpp:377–391,1400`
+    (blob7b61a1b7aea69d3f8b40892ee745a8f97185a613) indexes and saves that copy.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    `rtl/Saturn/VDP1/VDP1.sv:721–726,772–776,1618,2091–2097,2543–2554`,
+    blobeccd9d2261988de4d80963a979a8220ab95b9b75: CLT-load command phase,
+    aligned base, all16 reads and dedicated color-table RAM before drawing.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    `libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:1292–1297,1443–1445`,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: reads LUT words through the
+    renderer VRAM accessor per sample, unlike the explicit saved CLUT above.
+    Its renderer memory/scheduling model is not proof of the same mid-command
+    CPU-edit behavior. This difference is disclosed, not called three-way agreement.
+- Provenance: inspected fork saturn.cpp history including3fd815e67e33164b3fd86753d126a4593c09375b
+  (recovered integrated rendering) and9fbe664f reset-cache fix. The per-pixel LUT
+  VRAM read is present in that inherited path; no game-specific substitution.
+- Contract/observable: normal, scaled and distorted LUT commands load once at
+  primitive entry; subsequent pixel lookup uses the saved16-word table. The
+  next command loads again. END/SPD/HSS/MON/mesh/color arithmetic and bank-code
+  paths are unchanged. Legal LUT bases are32-byte aligned; low address bits are
+  masked as in Mednafen/MiSTer. No guarantee for prohibited LUT placement.
+- Suggested validator method, NOT executed: start a long LUT-mode sprite, let
+  it yield after some raster work, edit the source LUT through mapped VRAM, and
+  complete it. The current command must retain old colors, the next command
+  must use new colors. Repeat after saving mid-command with divergent source
+  LUT and latched table; the same remaining pixels must be produced. Include
+  all three primitives and unchanged no-edit/END/HSS controls. Exact16-bit
+  color equality, zero tolerance. Reintroducing per-pixel VRAM reads is the
+  falsifier. CPU-versus-table-fetch races before the latch are outside this model.
+- Save layout changes: adds saved `m_vdp1_color_lookup` (16 uint16_t entries).
+  It is architectural in-flight data, not reconstructed from mutable VRAM on
+  load. New commands overwrite it; no hardware reset fill is claimed. Older
+  save signatures differ; native replay acceptance belongs to the validator.
+- Checks: targeted `g++ -fsyntax-only -std=c++20` saturn.cpp with prescribed
+  include paths exits0; `git diff --check` exits0. No regression, mutation,
+  method-probe, runtime or full-build execution. No expectation/evidence edits.
+- Limits: atomic table acquisition at command entry, not per-word bus arbitration
+  or calibrated CLUT fetch cost. Protected AB2/Power Drift/OutRun fixes are not
+  rewritten; no new gameplay result or VDP1 completion claim is made.

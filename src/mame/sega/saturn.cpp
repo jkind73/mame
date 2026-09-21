@@ -1937,11 +1937,9 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       // shienryu explosions (and some enemies) use this mode
       raw = m_vdp1_legacy.gfx_decode[(patterndata + offsetcnt / 2) & 0x7ffff];
       raw = offsetcnt & 1 ? (raw & 0x0f) : ((raw & 0xf0) >> 4);
-      {
-        const unsigned address = ((current_sprite.CMDCOLR * 8) + raw * 2) & 0x7ffff;
-        pix = (m_vdp1_legacy.gfx_decode[address] << 8) |
-              m_vdp1_legacy.gfx_decode[(address + 1) & 0x7ffff];
-      }
+      // The command loaded this table before starting its raster work.
+      // CPU edits to VRAM must not recolor a partly drawn sprite.
+      pix = m_vdp1_color_lookup[raw];
       // mode = 5;
       transpen = 0;
       endcode = 0xf;
@@ -2032,6 +2030,21 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
 
   if ((raw != transpen) || spd)
     vdp1_draw_color(x, y, pix);
+}
+
+void saturn_state::vdp1_latch_color_lookup() {
+  if (current_sprite.ispoly || (current_sprite.CMDPMOD & 0x0038) != 0x0008)
+    return;
+
+  // ST-013 p.29 step 5 precedes character drawing; pp.62-63 define a
+  // 16-word table aligned to 32 bytes. Mednafen and MiSTer also load all
+  // entries per command. This is a data latch, not a bus-timing model.
+  const unsigned base = (unsigned(current_sprite.CMDCOLR) << 3) & 0x7ffe0;
+  for (unsigned i = 0; i < m_vdp1_color_lookup.size(); ++i) {
+    const unsigned address = base + i * 2;
+    m_vdp1_color_lookup[i] = (m_vdp1_legacy.gfx_decode[address] << 8) |
+                             m_vdp1_legacy.gfx_decode[address + 1];
+  }
 }
 
 void saturn_state::vdp1_set_drawpixel() {
@@ -2610,6 +2623,7 @@ void saturn_state::vdp1_draw_quad_pixels(const rectangle &cliprect, int width, i
 }
 
 void saturn_state::vdp1_draw_distorted_sprite(const rectangle &cliprect) {
+  vdp1_latch_color_lookup();
   const int width = current_sprite.ispoly ? 1 : ((current_sprite.CMDSIZE >> 8) & 0x3f) * 8;
   const int height = current_sprite.ispoly ? 1 : current_sprite.CMDSIZE & 0xff;
   if (!height)
@@ -2623,6 +2637,7 @@ void saturn_state::vdp1_draw_distorted_sprite(const rectangle &cliprect) {
 }
 
 void saturn_state::vdp1_draw_scaled_sprite(const rectangle &cliprect) {
+  vdp1_latch_color_lookup();
   struct spoint q[4];
 
   int xsize, ysize;
@@ -2818,6 +2833,7 @@ bool saturn_state::vdp1_is_end_code(int address, int texel) const {
 
 void saturn_state::vdp1_draw_normal_sprite(const rectangle &cliprect,
                                            int sprite_type) {
+  vdp1_latch_color_lookup();
   int y, ysize, drawypos;
   int x, xsize, drawxpos;
   int direction;
@@ -3386,6 +3402,7 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_display_erase.step));
 
   save_item(NAME(m_vdp1_texture_end));
+  save_item(NAME(m_vdp1_color_lookup));
   save_item(NAME(current_sprite.CMDCTRL));
   save_item(NAME(current_sprite.CMDLINK));
   save_item(NAME(current_sprite.CMDPMOD));

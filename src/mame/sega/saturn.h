@@ -254,6 +254,7 @@ protected:
   static int vdp1_scaled_coordinate(int source, int destination, int pixel, bool reverse);
   void vdp1_draw_scaled_pixels(const rectangle &cliprect, int address, int width, int height, const spoint *q);
   std::array<int16_t, 256> m_vdp1_texture_end{};
+  std::array<uint16_t, 16> m_vdp1_color_lookup{};
   bool vdp1_texture_sample_visible(int address, int width, int texel);
   bool vdp1_is_end_code(int address, int texel) const;
   void vdp1_draw_normal_sprite(const rectangle &cliprect, int sprite_type);
@@ -315,6 +316,7 @@ protected:
   uint16_t vdp1_apply_gouraud_shading(int x, int y, uint16_t pix);
   void vdp1_setup_shading(const struct spoint *q, const rectangle &cliprect);
   void vdp1_setup_rectangle_shading(const spoint *q, const rectangle &cliprect);
+  void vdp1_latch_color_lookup();
   uint8_t read_gouraud_table();
   void clear_gouraud_shading();
 

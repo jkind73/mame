@@ -838,3 +838,17 @@ independent acceptance remain unchanged. IMPL-0133 adds a saved field and
 therefore changes the save signature; old-state compatibility is not claimed.
 The VDP1 audit continues; this is not a declaration that its defensible gaps
 are exhausted or that runtime/hardware qualification is complete.
+
+## Implementation-first continuation — command-local LUT
+
+Candidate IMPL-0136 retains each LUT sprite's16 color words from command setup
+through its scheduled raster slices and save/load. CPU edits to the VRAM table
+therefore affect later commands, not pixels remaining in the current command.
+Sega ST-013 p.29 steps5–6 and pp.62–63, Mednafen's saved CLUT and MiSTer's CLT
+load/RAM support this change; Ymir's software renderer uses direct lookup reads,
+a disclosed difference. END/HSS/transparency/color-calculation logic is unchanged.
+
+A new16-word field is saved in the same change, changing the save signature.
+Only source review and TU syntax checking were performed; no validation suites
+or runtime tests were run. Exact per-word acquisition timing/arbitration remains
+open. See the append-only IMPL-0136 handoff for pins and a proposed falsifier.
