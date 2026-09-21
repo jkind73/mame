@@ -240,6 +240,7 @@ protected:
   /* VDP1 */
   void vdp1_latch_framebuffer_config();
   void vdp1_set_framebuffer_config();
+  void vdp1_reset();
   void vdp1_reset_framebuffers();
   void vdp1_prepare_framebuffers();
   void vdp1_change_framebuffers();

@@ -9825,3 +9825,57 @@ reopened and does not confer acceptance on the following VDP1 change.
 - Limitations: within-raster grants, CPU/draw arbitration, exact first/last
   write timing and invalid/reversed erase windows remain separate work.
   Candidate and parent milestones are not accepted/complete by this entry.
+
+
+## 2026-09-21 — implementation-first VDP1 audit, checkpoint 2
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0133 | V1-02/V1-06 | a74a4302 | UNVALIDATED — implementation, TU syntax checked | Nominal VBlank erase row charge; published identity, no acceptance inferred |
+| IMPL-0134 | V1-02/V1-06 | this entry's commit | UNVALIDATED — implementation, TU syntax checked | Both machine and SMPC system reset return VDP1 PTMR to idle instead of retaining automatic plot triggering |
+
+### IMPL-0134 — documented plot-trigger reset
+
+- Branch `arena/01a0b897-mame`; base `a74a4302`.
+- Production: `src/mame/sega/saturn.cpp:202–206` machine reset,
+  `:446–454` system reset, `:938–945` shared VDP1 reset;
+  `src/mame/sega/saturn.h:243` method declaration.
+- Defect: the existing paths cancelled the current command/erase timers and
+  restored bank ownership, but retained PTMR. PTMR=2 could start a new list
+  at the next bank change after reset, without a new guest plot request.
+- Primary: ST-013-R3-061694 printed p.45/PDF60, section4.3: PTM resets to00B
+  on power-on/reset;00B idles at frame change. Same pinned SDK commit/blob
+  as IMPL-0133. This is a defined reset value, not an inference from peers.
+- Three pinned cross-checks:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    `src/ss/vdp1.cpp:312–318`, blob
+    `7b61a1b7aea69d3f8b40892ee745a8f97185a613`: PTMR=0 in the block
+    explicitly labelled registers confirmed initialized on reset.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/VDP1/VDP1.sv:2572–2591`, blob
+    `eccd9d2261988de4d80963a979a8220ab95b9b75`: clears PTMR under
+    both RST_N and RES_N reset inputs.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/include/ymir/hw/vdp/vdp1_regs.hpp:22–34`, blob
+    `779d5490a793cfcc2d60cca71aa7629aa339aad7`: Reset sets plotTrigger=0;
+    `vdp_state.hpp:836–847`, blob `837cdf66a4e4b5ba2d0cc73172153f83ab776c6c`,
+    calls regs1.Reset on both hard and soft resets.
+- Observable / validator method (not run): arm PTMR=2 with valid commands,
+  reset through each actual integration path, rewrite a legal END list
+  afterward but do not write PTMR, and advance through a bank change.
+  The engine must remain idle, with no new command fetch or draw-end IRQ.
+  Existing command/termination/erase timers must stay cancelled. Then an
+  explicit guest PTMR=1 must start normally. Exact state-transition
+  expectation; no calibrated IRQ latency claim.
+- Falsifier: retaining PTMR=2 across either reset, or restarting drawing
+  before a new guest trigger/mode write. A current draw merely stopping is
+  not enough to establish the post-reset idle contract.
+- Checks: targeted saturn.cpp C++20 syntax compilation. Initial compile
+  rejected assignment through the read-expression PTMR macro; changed to
+  the register array lvalue and final compile exit0. No validation suites,
+  runtime tests, full build or fixture/evidence changes.
+- No new saved field or additional save-layout change. PTMR already lives
+  in the saved register array; the IMPL-0133 signature change still applies.
+- Scope: unspecified register reset values, framebuffer RAM contents,
+  shared sound/video-clock reset behavior and other devices are unchanged.
+  Parent milestones remain open; independent acceptance is pending.

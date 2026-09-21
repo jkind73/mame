@@ -202,9 +202,7 @@ void saturn_state::reset_halt_state() {
 void saturn_state::machine_reset() {
   m_prev_hint = m_prev_vint = 0;
   vdp2_reset_rotation_latches();
-  vdp1_reset_framebuffers();
-  vdp1_abort_draw();
-  vdp1_cancel_erase();
+  vdp1_reset();
   reset_halt_state();
   m_scsp_last_line = 0;
 
@@ -453,9 +451,7 @@ void saturn_state::system_reset_w(int state) {
   /*Only backup ram and SMPC ram are retained after that this command is
    * issued.*/
   m_scu->reset();
-  vdp1_abort_draw();
-  vdp1_cancel_erase();
-  vdp1_reset_framebuffers();
+  vdp1_reset();
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);
@@ -937,6 +933,15 @@ void saturn_state::vdp1_clear_framebuffer(int which_framebuffer) {
              m_vdp1_legacy.framebuffer_current_draw);
   //  memset( m_vdp1_legacy.framebuffer[ which_framebuffer ],
   //  m_vdp1_legacy.ewdr, 1024 * 256 * sizeof(uint16_t) * 2 );
+}
+
+void saturn_state::vdp1_reset() {
+  vdp1_abort_draw();
+  vdp1_cancel_erase();
+  // ST-013 section 4.3: reset PTM to idle, including on system reset.
+  // Cancelling today's draw is insufficient if PTM=2 restarts it next field.
+  m_vdp1_regs[0x004 / 2] = 0;
+  vdp1_reset_framebuffers();
 }
 
 void saturn_state::vdp1_reset_framebuffers() {
