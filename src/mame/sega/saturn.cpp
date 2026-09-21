@@ -6267,6 +6267,22 @@ bool saturn_state::vdp2_normal_vram_access(uint32_t address, unsigned command) c
   return slots != 0;
 }
 
+bool saturn_state::vdp2_rotation_vram_access(uint32_t address, bool pattern_name) const {
+  if (!m_vdp2_fetch_access_active)
+    return true; // isolated source decoders, as for normal-screen fetches
+
+  unsigned const bank = (address >> (m_vdp2->get_vramsz() ? 18 : 17)) & 3;
+  // ST-058 pp.148-150: RBG1 owns B1 for names and B0 for characters.
+  // These fixed assignments do not depend on the normal cycle registers.
+  if (current_tilemap.layer_name == 0x81)
+    return bank == (pattern_name ? 3 : 2);
+  if (VDP2_R1ON && bank >= 2)
+    return false; // RBG0 cannot share RBG1's image banks
+
+  unsigned const effective = (VDP2_RAMCTL & (0x100U << (bank / 2))) ? bank : bank & ~1U;
+  return ((VDP2_RAMCTL >> (effective * 2)) & 3) == (pattern_name ? 2 : 3);
+}
+
 uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
     uint8_t access_command_pnmdr, uint8_t access_command_cpdr,
     uint8_t bitmap_enable) {
@@ -9159,8 +9175,9 @@ rgb_t saturn_state::vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned
 // the rotation compositor applies windows, color offset and calculation once.
 rgb_t saturn_state::vdp2_dot_pixel(uint32_t address, int x, unsigned palette) {
   unsigned const depth = current_tilemap.colour_depth;
-  if (current_tilemap.layer_name < 4 &&
-      !vdp2_normal_vram_access(address, current_tilemap.layer_name + 4))
+  if ((current_tilemap.layer_name < 4 &&
+       !vdp2_normal_vram_access(address, current_tilemap.layer_name + 4)) ||
+      ((current_tilemap.layer_name & 0x80) && !vdp2_rotation_vram_access(address, false)))
     return rgb_t::transparent();
   unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
   auto const read = [this, mask](unsigned a) { return m_vdp2_legacy.gfx_decode[a & mask]; };
@@ -9286,8 +9303,9 @@ rgb_t saturn_state::vdp2_scroll_pixel(int32_t x, int32_t y) {
   unsigned const name_index = ((sy & 511) / cell_size) * page_columns + ((sx & 511) / cell_size);
   unsigned const address = (base_page + page) * page_bytes + name_index * name_bytes;
   unsigned const word_mask = m_vdp2->get_vramsz() ? 0x3ffff : 0x1ffff;
-  if (current_tilemap.layer_name < 4 &&
-      !vdp2_normal_vram_access(address, current_tilemap.layer_name))
+  if ((current_tilemap.layer_name < 4 &&
+       !vdp2_normal_vram_access(address, current_tilemap.layer_name)) ||
+      ((current_tilemap.layer_name & 0x80) && !vdp2_rotation_vram_access(address, true)))
     return rgb_t::transparent();
   uint32_t data = m_vdp2_vram[(address / 4) & word_mask];
   if (name_bytes == 2)
@@ -9476,7 +9494,10 @@ void saturn_state::vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap,
   }
 
   bool const special_priority = vdp2_special_priority_mode() != 0;
-  bool const sample_attributes = (current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
+  // Production scanout must check the bank of each transformed sample;
+  // an RGB source cache cannot encode RAMCTL/RBG1 fetch permissions.
+  bool const sample_attributes = m_vdp2_fetch_access_active ||
+      (current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
       special_priority || (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode());
   bool have_source = false;
   int last_source_x = 0, last_source_y = 0;
@@ -10037,9 +10058,9 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
 
   current_tilemap.layer_name = (VDP2_R1ON) ? 0x81 : 0;
 
-  if (current_tilemap.enabled &&
-      (!(VDP2_R1ON))) /* TODO: check cycle pattern for RBG1 */
-  {
+  // RBG1 has fixed image-bank assignments, checked at each source fetch.
+  // Normal-screen cycle commands apply only to NBG0 here.
+  if (current_tilemap.enabled && !VDP2_R1ON) {
     current_tilemap.enabled = vdp2_check_vram_cycle_pattern_registers(
         VDP2_CP_NBG0_PNMDR, VDP2_CP_NBG0_CPDR, current_tilemap.bitmap_enable);
   }
@@ -10526,7 +10547,11 @@ void saturn_state::vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap,
   // rotation maps, rather than rebuilding a full multi-megapixel cache.
   // The legacy cell decoder has only 4/8-bit palette layouts. Decode
   // 11-bit palette cells directly as well, even with no special effects.
-  if ((current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
+  // Bank permissions are checked in the point sampler. Bypass the RGB
+  // source cache during scanout so a RAMCTL/BGON change cannot reuse pixels
+  // fetched under the old bank ownership (including identity transforms).
+  if (m_vdp2_fetch_access_active ||
+      (current_tilemap.colour_depth == 2 && !current_tilemap.bitmap_enable) ||
       vdp2_special_priority_mode() ||
       (current_tilemap.colour_calculation_enabled && vdp2_special_color_mode())) {
     vdp2_copy_roz_bitmap(bitmap, m_vdp2_legacy.roz_bitmap[iRP - 1], cliprect,

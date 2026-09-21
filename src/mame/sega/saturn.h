@@ -167,6 +167,7 @@ protected:
   std::array<std::array<uint8_t, 16>, 4> m_vdp2_fetch_slots{};
   void vdp2_prepare_vram_access();
   bool vdp2_normal_vram_access(uint32_t address, unsigned command) const;
+  bool vdp2_rotation_vram_access(uint32_t address, bool pattern_name) const;
   bool m_vdp2_composition_active = false;
   void vdp2_begin_composition(bitmap_rgb32 &bitmap, const rectangle &cliprect);
   void vdp2_compose_pixel(bitmap_rgb32 &bitmap, int x, int y, rgb_t color,

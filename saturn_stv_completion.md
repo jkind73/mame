@@ -299,7 +299,8 @@
   - Reconcile defined fields with actual consumers, prohibited settings and reset/access behavior; shared foundation is **SYS-01**.
 - [ ] **V2-T02 — Complete bank/slot-aware fetch behavior and contention. [M/P/R]**
   - Implement PN/CP access counts, dependencies/order, screen-mode/reduction bandwidth and actual fetch/latch timing.
-  - Finish RBG1 and coefficient/table permissions, CPU/SCU-DMA grants/waits and insufficient-fetch consequences supported by hardware evidence.
+  - Qualify rotation PN/CP permissions; finish coefficient/table timing, CPU/SCU-DMA grants/waits and insufficient-fetch consequences supported by hardware evidence.
+  - **Implementation candidate IMPL-0137:** addressed-bank RBG0 PN/CP permissions and fixed RBG1 B1/B0 ownership now route through transformed point sampling. Syntax checked only; failed fetches use a conservative transparent policy, not qualified hardware latch behavior.
   - **Already implemented at `812ec7a8`:** addressed-bank normal PN/CP permission, partition/rotation ownership and active-slot handling, plus VCSC early-window/order gating.
   - Current transparent PN/CP and zero-offset VCSC fallbacks are conservative policies, not verified stale-latch hardware behavior. The slot cache is not a full arbiter.
 - [ ] **V2-T01 — Complete raster preservation and latch granularity. [P/V/R]**

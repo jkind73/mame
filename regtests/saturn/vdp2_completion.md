@@ -1936,3 +1936,17 @@ This report audits local production code and existing test scope; it is **not** 
 | 2026-09-15 | Initial VDP2 source audit and stable-ID tracker against `ad5ae529` | Both production components, renderer gates, selected function bodies and all current test descriptions inspected | Documentation baseline; no new VDP2 implementation or runtime acceptance |
 
 For future rows: include checklist IDs, commit, tests/mutations, object/linked-build result, source references and any remaining acceptance gate.
+
+## Implementation-first continuation — rotation bank ownership
+
+IMPL-0137 adds addressed-bank PN/CP permissions for rotation scanout: RBG0 uses
+RAMCTL's effective name/character designations, while RBG1 uses fixed B1/B0 and
+excludes RBG0 from those image banks. Active rotation output uses transformed
+point sampling, avoiding stale RGB-cache pixels across ownership changes.
+Sega ST-058 pp.148–150 and pinned Mednafen, MiSTer and Ymir source references
+are recorded in the append-only implementation handoff.
+
+Denied fetches use the existing transparent fallback policy, not a claimed
+hardware stale-latch value. Both VRAM capacities are addressed; no new saved
+fields. TU syntax/diff checks only, no validator tests or gameplay claims.
+V2-T02 and V2-R04 remain open for timing, failed-fetch behavior and qualification.

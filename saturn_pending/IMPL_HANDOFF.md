@@ -10033,3 +10033,108 @@ No peer source was copied and no validator expectations were changed.
 - Limits: atomic table acquisition at command entry, not per-word bus arbitration
   or calibrated CLUT fetch cost. Protected AB2/Power Drift/OutRun fixes are not
   rewritten; no new gameplay result or VDP1 completion claim is made.
+
+## VDP1 source-audit boundary before continuing to VDP2
+
+The current pass reviewed VDP1 command control, register access, erase/swap,
+framebuffer layout/readout, pixel dispatch, primitive setup and live save state.
+IMPL-0136 is published as `60dd59a3`. No additional documented legal-input defect
+was selected from that review. Specifically, the generic/fast polygon SPD0
+mismatch is not a legal-input fix: ST-013 p.88 requires SPD1 for non-textures.
+The supplement ST-013-SP1-052794, SDK blobf7e0b1e04f803171d9265968ba607df6a745795c,
+was also read; it does not resolve the status/transfer-over conflicts below.
+
+These are retained open, not silently assigned speculative behavior:
+- BEF at manual restart: primary p.53 says copy at swap or start; the inspected
+  three peers copy at swap only. BLOCKED(hardware EDSR sequence after completed
+  draw, PTMR01 restart and a second restart without a framebuffer swap).
+- Transfer-over: BLOCKED(trace of a live primitive across manual bank change,
+  recording COPR/CEF/framebuffer writes and PTMR1 behavior).
+- Invalid coordinate encodings and reversed/empty erase windows: retain the
+  previously recorded exact coordinate/footprint trace requirements. Neither is
+  a basis for changing legal inputs to imitate an arbitrary peer.
+- Timing/arbitration/readout phase: nominal resumable scheduling and0133's row
+  budget do not establish physical first/last burst, CPU wait or fetch latency.
+  BLOCKED(VDP1 VRAM/framebuffer bus traces spanning CPU access, drawing, erase
+  and field edges in the relevant modes), not a claim that these are implemented.
+
+The implementation audit now proceeds to VDP2 rather than running validation or
+inventing behavior to close V1 parents. VDP1 completion/hardware qualification is
+not claimed and may yield further fixes when those conflicts are resolved.
+
+## IMPL-0137 — addressed-bank rotation image fetch permissions
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0136 | V1-01/V1-03/V1-06 | 60dd59a3 | UNVALIDATED — implementation | Command-local saved LUT; no new validator result |
+| IMPL-0137 | V2-T02/V2-R04 | this entry's commit | UNVALIDATED — implementation, syntax checked only | RBG0 PN/CP reads require the addressed RAMCTL bank; RBG1 names/characters use B1/B0 |
+
+- Branch/base: `arena/01a0b897-mame`, `60dd59a3`.
+- Production: `src/mame/sega/saturn.cpp`, new vdp2_rotation_vram_access,
+  vdp2_dot_pixel and vdp2_scroll_pixel fetch guards, rotation dispatch and
+  vdp2_copy_roz_bitmap source selection; declaration in saturn.h.
+- Defect: normal screens had addressed-bank permissions, but rotation layers
+  bypassed them, either reading directly through the point sampler or using an
+  RGB source cache with no RAMCTL ownership key. RBG1's fixed image-bank rules
+  were not enforced. Arbitrary addressed VRAM could appear as rotation imagery.
+- Contract: RBG0 pattern names require RAMCTL designation2 and character/bitmap
+  data designation3 in the actual addressed bank. Unpartitioned A/B use A0/B0's
+  designation. RBG1 uses B1 for names and B0 for characters; RBG0 cannot reuse
+  those banks while RBG1 is enabled. Bank selection includes physical wrapping
+  and the512KiB/1MiB bank-size selection. Normal cycle slots remain independent
+  of these fixed rotation assignments. Register-sourced OVPNR names bypass a
+  PN memory fetch, but their character data still needs permission.
+- Routing/cache: active scanout uses bounded transformed point sampling rather
+  than the RGB-only rotation source cache. This prevents RAMCTL/BGON changes
+  reusing pixels fetched under the old ownership, with no persistent permission
+  cache or new state. Both identity and transformed output take this route;
+  retained isolated rendering helpers outside active scanout remain ungated, as
+  with existing normal-screen helpers. No claim is made that an isolated source
+  helper alone exercises the complete device fetch contract.
+- Primary: SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  ST-058-R2-060194.pdf blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1,
+  printed pp.148–150/PDF166–168: RBG1 fixed B banks, separate rotation images,
+  effective RAMCTL designation when unpartitioned, and no read when the address
+  does not lie in the assigned bank. Primary text explicitly says the correct
+  image cannot be displayed; it does NOT define the failed-fetch pixel value.
+- Required peer cross-checks:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    `src/ss/vdp2_render.cpp:271–287,368–370,432–438`,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: addressed-bank nt_ok/cg_ok,
+    fixed RBG1 assignment, dummy data on denied reads. No source copied.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    `rtl/Saturn/VDP2/VDP2.sv:686–689,739–755`,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: effective RDBS designation
+    and separate RBG0/RBG1 PN/CH enables. Legal RBG1 settings require the B-bank
+    RDBS fields to be00; behavior for conflicting prohibited settings is not
+    inferred from this HDL.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    `libs/ymir-core/include/ymir/hw/vdp/vdp_state.hpp:603–623`,
+    blob837cdf66a4e4b5ba2d0cc73172153f83ab776c6c: RBG0 ownership and RBG1 B1/B0;
+    `libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:5110–5134,5252–5258`,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: denied names/characters use
+    zero data. Its512KiB-only fetch TODO is not borrowed for MAME's larger mode.
+- Provenance: inherited normal-access implementation at5fb22e28954aa0f996c2eb1aa7f0016ecd5a5e22
+  was inspected alongside the rotation bypass; the new helper extends the
+  ownership distinction rather than modifying CPU/SCU-DMA or cycle-slot timing.
+- Failed-fetch policy: transparent output, matching the existing MAME normal
+  permission policy. Peer zero/dummy/stale pipeline handling need not produce
+  transparency with every transparency-disable or palette setting. No consensus
+  or hardware-defined color is claimed for denied fetches.
+- Observable/units/tolerance: exact permitted/denied bank decision per PN or CP
+  address (byte units); correct legal image pixels must remain exact. Suggested
+  validator method, NOT executed: contrast all four banks, independent PN/CP
+  permissions, bitmap versus cells and OVPNR, both VRAM capacities, A/B partition
+  changes and RBG1 takeover. Make identity and nonidentity transforms sample
+  across a bank boundary; change RAMCTL between partial updates and compare
+  the prefix/suffix with their respective settings. A mutation removing either
+  PN or CP guard, or restoring cache dispatch during active scanout, is the
+  falsifier. Include existing frozen gameplay controls in validator-owned runs.
+- Checks: prescribed saturn.cpp `g++ -fsyntax-only -std=c++20` exits0;
+  `git diff --check` exits0. No runtime, regression, mutation or full build run.
+  No fixture expectations or validator evidence modified.
+- Save layout: no new device fields; no save-signature change beyond0136.
+- Limits: no slot-accurate rotation/CPU arbitration, coefficient timing, stale
+  fetch latch reconstruction, prohibited-mode guarantee or performance result.
+  V2-T02/V2-R04 remain open. IO-02 support inventory is unchanged by these
+  video-only candidates; no new peripheral or external-video support is claimed.
