@@ -2002,3 +2002,15 @@ wrapping and non-interlace/single-density picture-row behavior are unchanged.
 The existing table-wrap fixture deliberately preserves old indexing; the handoff
 flags its reference/mutation assumptions for the validator without editing or
 running it. Syntax/diff checks only; no new saved fields or V2-C03 closure.
+
+Candidate IMPL-0145 aligns line-color and back-screen table selection with output
+row units. Per-line LNCL/BACK uses entry y; single-color LNCL uses entry zero,
+including both double-density fields. This removes the shared sampler's extra
+single-density division/alternating single-color word and the retained LNCL/BACK
+renderers' double-density division. Sega Figs.7.1/7.2/7.4 and Mednafen/Ymir support
+the corrected selection. Pinned MiSTer lacks the double-density LN/BACK stride
+adjustment; that disagreement is explicitly documented, not claimed as agreement.
+Physical wrapping, coefficient replacement and color arithmetic are unchanged.
+Protected table/rotation/scroll fixture assumptions are flagged in the handoff;
+no fixture edits or validation runs. Syntax/diff checks only; no new saved fields
+or V2-C07/V2-T03 closure.

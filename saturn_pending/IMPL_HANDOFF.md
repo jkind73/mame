@@ -10561,3 +10561,75 @@ not claimed and may yield further fixes when those conflicts are resolved.
 - Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
   No regression, mutation, runtime or full build. No saved fields/signature change.
   V2-C03 and broader interlace/timing gates remain open.
+
+## IMPL-0145 — consistent line-color/back-screen table row selection
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0144 | V2-C03 | f749e092 | UNVALIDATED — implementation | Double-density line windows retain both fields' table entries |
+| IMPL-0145 | V2-C07/V2-T03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | LNCL/BACK per-line data uses output row y; single-color LNCL uses entry zero |
+
+- Branch/base: arena/01a0b897-mame, f749e092. Files: saturn.cpp,
+  vdp2_draw_line near8600, vdp2_line_color near9267, vdp2_draw_back near10810;
+  regtests/saturn/vdp2_completion.md and this append-only handoff.
+- Defects: shared line-color sampling divided single-density picture y by2 and
+  selected alternating entries0/1 in double-density single-color mode. The
+  retained additive line-color renderer and back renderer instead divided
+  double-density output y by2. This made these paths disagree about the same
+  table layout. All now use per-line index y, or0 when single color is selected.
+  Back single-color selection was already0 and is unchanged.
+- Primary: ST-058-R2-060194, SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed pp.172–177/PDF190–195,
+  Figs.7.1/7.2/7.4: per-line LNCL/BACK includes both fields for double-density;
+  single-density entries cover two physical interlace lines. P.172 explicitly
+  uses lead data for a single-color screen; p.177 states the same for BACK.
+  Printed p.17 defines the single-density repeated picture. Local CRTC at
+  saturn_vdp2.cpp:309–332 doubles height only for double-density, so picture y
+  directly addresses all three normal display modes' per-line tables.
+- Three-peer cross-check; disagreement deliberately retained in this record:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    src/ss/vdp2_render.cpp:2727–2730,2762–2771,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: only per-line double-density
+    adds field parity to the starting entry and advances two words per field
+    scanline. Single-color starts at the lead word for either field and never
+    advances. Single-density uses one-word steps. Direct agreement in output
+    row units with all changed selection rules.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:2595–2610,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: both tables read base+2*y
+    for per-line data, and latch at y0 otherwise. Corroborates row addressing
+    and no alternating single-color entries, not exact latch/write timing.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    rtl/Saturn/VDP2/VDP2.sv:593–602,1323–1328,1465–1466,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: starts at the lead word,
+    increments only for per-line selection, corroborating single-color and
+    single-density cadence. Unlike its line-window logic, these pinned LN/BACK
+    counters have no double-density parity/stride adjustment. It does NOT
+    corroborate the double-density per-line correction. Sega's explicit
+    diagrams plus Mednafen's field stepping and Ymir's row addressing are the
+    basis here; no all-three agreement or hardware qualification is asserted.
+- Provenance: compared the three local fetch paths and CRTC representation;
+  inspected local blame/history, which reaches shallow boundary9fbe664f for
+  these expressions, not a proven original introduction commit. Earlier
+  V2-T03a/c wrapping notes explicitly left interlace indexing unchanged. No
+  peer source copied. This corrects selection, not table-fetch/latch timing.
+- Observable/method, NOT executed: use distinct consecutive table words and
+  compare LSMD0/2 picture rows; in LSMD3 check distinct adjacent full-height
+  rows. In single-color mode put different data at entries0/1 and require
+  constant lead-word selection in both fields. Cover LNCL in ordinary/rotation/
+  sprite calculation, coefficient low-seven-bit replacement, BACK, retained
+  additive LNCL, both capacities, physical-end wrapping and split clips. Exact
+  word index, CRAM pen and digital pixel values, zero tolerance. Restoring
+  the LSMD2 divisor, LSMD3 divisor or single-color y&1 each falsifies its case.
+- Protected fixture conflicts found by source inspection, not execution:
+  test_vdp2_table_wrap.py:94 retains y/2 double-density BACK/legacy-LNCL
+  references; its RGB555 expansion at96 also predates IMPL-0142.
+  test_vdp2_rotation_clip.py:467 encodes both old shared-LNCL selection rules;
+  test_vdp2_scroll_pixels.py:194 encodes alternate-field single-color words.
+  Validator must revise independent assumptions; no expectations/scaffold or
+  evidence edited. Existing historical acceptance is not retroactively removed.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No regression, mutation, runtime or full build. No saved fields/signature
+  change, CRTC scheduling, frozen clock/sound or coefficient-address change.
+  Parent V2-C07/V2-T03 remain open; MiSTer discrepancy and precise hardware
+  fetch/latch timing remain limitations, not completed coverage.

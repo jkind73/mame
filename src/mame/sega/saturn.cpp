@@ -8603,9 +8603,6 @@ void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
   uint8_t *gfxdata = m_vdp2_legacy.gfx_decode.get();
   uint32_t base_offs, base_mask;
   uint32_t pix;
-  uint8_t interlace;
-
-  interlace = (m_vdp2->get_lsmd() == 3) + 1;
 
   {
     base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
@@ -8613,8 +8610,10 @@ void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
     for (y = cliprect.top(); y <= cliprect.bottom(); y++) {
       base_offs = (VDP2_LCTA & base_mask) << 1;
 
+      // ST-058 pp.172-173: per-line entries include both fields in
+      // double-density; single-density output already uses picture rows.
       if (VDP2_LCCLMD)
-        base_offs += (y / interlace) << 1;
+        base_offs += y << 1;
 
       // Apply the physical-size mask after adding the line-table offset.
       base_offs &= (base_mask << 1) | 1;
@@ -9267,9 +9266,10 @@ rgb_t saturn_state::vdp2_screen_over_pattern_pixel(uint16_t data, int x, int y) 
 // bits. Line color has no CRAO addition and is the inserted second image.
 rgb_t saturn_state::vdp2_line_color(int y, bool use_coefficient, uint8_t coefficient_color) {
   unsigned const mask = m_vdp2->get_vramsz() ? 0xfffff : 0x7ffff;
-  unsigned const index = VDP2_LCCLMD
-      ? (m_vdp2->get_lsmd() == 2 ? y / 2 : y)
-      : (m_vdp2->get_lsmd() == 3 ? y & 1 : 0);
+  // ST-058 pp.172-174: a single color always comes from the lead entry.
+  // Per-line tables use picture rows, including both double-density fields;
+  // single-density output is not woven and must not divide y a second time.
+  unsigned const index = VDP2_LCCLMD ? y : 0;
   unsigned const address = (VDP2_LCTA * 2 + index * 2) & mask;
   uint8_t const *const data = m_vdp2_legacy.gfx_decode.get();
   unsigned color = ((data[address] << 8) | data[(address + 1) & mask]) & 0x7ff;
@@ -10811,8 +10811,6 @@ void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
                                   const rectangle &cliprect) {
   uint8_t const *const gfxdata = m_vdp2_legacy.gfx_decode.get();
 
-  uint8_t interlace = (m_vdp2->get_lsmd() == 3) + 1;
-
   //  popmessage("Back screen %08x %08x
   //  %08x",m_vdp2->get_bdclmd(),VDP2_BKCLMD,VDP2_BKTA);
 
@@ -10831,8 +10829,9 @@ void saturn_state::vdp2_draw_back(bitmap_rgb32 &bitmap,
       for (int y = cliprect.top(); y <= cliprect.bottom(); y++) {
         // ST-058 p.177: the high address bit is ignored in 4-Mbit mode.
         // Wrap the complete row address, not just the initial BKTA value.
+        // Fig.7.4 includes both fields: y already names the output row.
         rgb_t const color = vdp2_back_screen_color(
-            gfxdata, (base_offs + ((y / interlace) << 1)) & ((base_mask << 1) | 1));
+            gfxdata, (base_offs + (y << 1)) & ((base_mask << 1) | 1));
 
         for (int x = cliprect.left(); x <= cliprect.right(); x++)
           bitmap.pix(y, x) = color;
