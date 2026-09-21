@@ -167,7 +167,7 @@
   - Audit source-noted undocumented security commands separately; research behavior before implementing guessed responses.
 - [ ] **SMPC-03 — Qualify RTC, backup settings and power/reset semantics. [V/R]**
   - RTC counting and leap-year behavior, SETTIME/INTBACK, cold versus warm reset and battery persistence.
-  - RTC support already exists; determine ST-V-specific battery/settings behavior rather than assuming console semantics.
+  - RTC support already exists. IMPL-0153 removes zero-delay ticks at startup/SETTIME and preserves the running timer across machine reset (syntax-only implementation candidate). Determine ST-V-specific battery/settings behavior rather than assuming console semantics.
 - [ ] **SMPC-04 — Complete peripheral protocol and event routing. [P/V]**
   - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; native 2781 timeout/edge-save positives pass. Physical slot addressing/FF-empty ports and VBlank-sampled RESB now pass the expanded 79f36021 live gate, including both tap types, empty root ports and real sampled-RESB save/load. Extended-size IDs, OPE and wire timing remain open.
   - Direct-port modes, peripheral identification, multitap discovery, packet lengths and handshake timing.

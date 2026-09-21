@@ -168,6 +168,9 @@ void smpc_hle_device::device_start() {
   static constexpr uint8_t cold_reset_rtc[7] = {0x19, 0x93, 0x5c, 0x31,
                                                 0x23, 0x59, 0x59};
   memcpy(m_rtc_data, cold_reset_rtc, sizeof(m_rtc_data));
+  // The battery-backed clock runs independently of machine resets. Its
+  // first count follows a full second, not a zero-delay timer callback.
+  m_rtc_timer->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
 }
 
 //-------------------------------------------------
@@ -208,7 +211,7 @@ void smpc_hle_device::device_reset() {
   m_peripheral_size = m_peripheral_pos = 0;
   m_pmode = 0;
 
-  m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
+  // Keep the battery-backed RTC value and its in-progress second intact.
 }
 
 //-------------------------------------------------
@@ -549,11 +552,10 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command) {
 
     // ST-169: INTBACK OREG0 bit 7 (STE) reads 1 once SETTIME has been
     // issued after an SMPC cold reset, so the BIOS stops presenting the
-    // clock-setting screen; mednafen (RTC.Valid) and Ymir (m_STE) latch
-    // the same flag here.  Restart the per-second phase too, matching
-    // mednafen's sub-second accumulator reset.
+    // clock-setting screen. Restart the per-second phase too, matching
+    // Mednafen's sub-second accumulator reset, without an immediate tick.
     m_smem[4] |= 0x80;
-    m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
+    m_rtc_timer->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
     break;
   }
 

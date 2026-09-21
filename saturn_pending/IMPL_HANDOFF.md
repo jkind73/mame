@@ -11350,3 +11350,91 @@ No production wait-rule change was made for the following program-DMA issue:
   discrepancy is not hardware-qualified. BLOCKED(hardware PPAF reads after
   END and ENDI at known addresses, including FF wrap and a prior branch).
   Do not report ordinary END PC as primary/peer consensus.
+
+
+## IMPL-0153 — SMPC RTC starts counting after an elapsed second
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0153 | SMPC-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Startup and SETTIME do not immediately add one second; machine reset retains the running RTC phase |
+
+- Branch `arena/01a0b897-mame`; base `c7577747d675ccd5f4627064ca2146ea549d1a5f`.
+  Production `src/mame/sega/smpc.cpp:163–174,207–215,546–559`.
+- Contract: start the periodic RTC timer in device_start with a one-second
+  first delay and period. device_reset preserves its deadline and the
+  already-retained RTC contents. SETTIME copies all seven bytes at the
+  existing command-completion point, sets STE as before, and restarts the
+  period with a full second before the next increment. No immediate rollover
+  of a freshly supplied23:59:59, and no extra tick caused by machine reset.
+- Primary: Sega ST-169-R1-072694, printed p.19/PDF29 (count once per second),
+  p.32/PDF42 (STE and definition of SMPC cold reset), p.46/PDF56 (SETTIME,
+  cold-reset date and start of counting). SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`. Ordinary reset is not the
+  battery-box/battery-loss event that initializes the RTC. The manual does
+  not specify the host-write-to-subsecond-divider edge in a timing diagram.
+- Three-peer review:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp`,
+    blob `af6cb315fe2126f923a5dabfc4af98c088463318`:384–397 starts at
+    subsecond accumulator0;1072–1074 accumulates elapsed clocks;
+    1128–1134 increments only on a full4000000-clock second;
+    1524–1532 SETTIME clears that accumulator and copies the seven bytes.
+    Direct support for no immediate increment and restarting the phase.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv`, blob `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`:
+    369–373 uses a4000000-clock divider; SETTIME778–783 resets it rather
+    than ticking immediately. Important difference: it buffers the new time
+    (196–197) and applies it at a later RTC service instead of incrementing
+    (415–421/188–194), so this is NOT full SETTIME visibility-phase agreement.
+    MRES handling292–317 does not reinitialize RTC_CLK_CNT, but has different
+    reset/firmware timing. Current LLE `rtl/Saturn/SMPC/SMPC.sv`, blob
+    `b8d86a09f5b07805dbf6fedc0349689cd5bbc85f`:220,744–766 injects external
+    cold-init data into its firmware; it is not a standalone HLE phase oracle.
+    No firmware ROM downloaded or imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/smpc/rtc.cpp`, blob
+    `f4c9d9fea4ddfc810bc9d08b687817270a517f23`:49–57 advances only whole
+    elapsed seconds;70–81 replaces the timestamp without an increment.
+    SetDateTime does not restart the virtual clock anchor, and Reset38–47
+    resets that anchor, so precise SETTIME/warm-reset fraction behavior
+    differs. `smpc.cpp:881–899`, blob
+    `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, calls this date setter.
+    Support is limited to no unconditional extra second, not phase consensus.
+- Provenance: inherited device_reset and SETTIME both used adjust(zero,
+  ...,one_second), which schedules handle_rtc_increment at the current
+  emulated time. Moving initial arming to device_start and using a nonzero
+  SETTIME delay repairs that without changing calendar arithmetic, host
+  clock seeding or the existing atomic command-completion point. Removed
+  inaccurate old prose claiming pinned Ymir sets STE in SETTIME; its actual
+  flag command differs and is being audited separately.
+- Observable/units/tolerance: at SETTIME completion t, RTC bytes equal the
+  supplied valid date through t+1s exclusive, with exactly one increment at
+  t+1s. If machine reset happens at t+0.25s, the next tick remains t+1s, not
+  t+0.25s or t+1.25s. Exact emulated deadlines and bytes, zero tolerance in
+  the implementation contract. Native INTBACK samples taken well away
+  from a boundary avoid conflating command latency with RTC time. This is
+  not a claim of silicon subsecond phase or VBlank task arbitration.
+- Proposed validator method (not run): legal SETTIME/INTBACK at seconds58,
+  59 and a month/year boundary; sample before the first elapsed second and
+  after it; repeat SETTIME during a partially elapsed second; reset at a
+  fractional deadline; same-revision file save/load before expiry; repeat
+  on Saturn and ST-V without changing the existing clock seed. Compare
+  callback/deadline state separately from observed INTBACK snapshots.
+- Falsifier: an immediate post-command tick; reset causes a new tick or
+  postpones the existing deadline; lost/duplicate increment on save/reload;
+  calendar or STE behavior changes beyond the unchanged SETTIME strobe.
+- Protected fixtures, static inspection only: handshake.py:39 and
+  transport.py:54 contain timer stubs assuming reset arms at n==0. The reset
+  body no longer arms RTC, so these are not RTC-start/phase coverage; any
+  future inclusion of device_start/SETTIME needs updated scheduler modeling
+  by the validator. No tests/evidence/expectations changed or run.
+- Checks: prescribed smpc.cpp C++20 TU syntax exits0; git diff --check
+  exits0. No runtime or full build. No new fields/signature change: RTC bytes
+  and the framework timer deadline/period are already save-registered.
+  Legacy saved timer deadlines are not retroactively rephased. Sound-reset,
+  video-clock, NMI, DMA acknowledgements and game fixes untouched. IO-02
+  inventory unchanged; no peripheral/delegation support added.
+- State/limits: candidate only; SMPC-03 remains open. Real battery loss,
+  powered-off RTC persistence, exact oscillator/VBlank service/SETTIME
+  visibility, invalid calendar inputs and ST-V-specific battery behavior
+  remain separate. Peer phase disagreements are explicit above.
