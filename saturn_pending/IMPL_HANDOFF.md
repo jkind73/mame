@@ -11507,3 +11507,70 @@ No production wait-rule change was made for the following program-DMA issue:
   SMPC-03 remains open; IO-02 support inventory unchanged. Frozen sound/
   video-clock and acknowledgement paths untouched. Powered-off RTC policy,
   real battery-loss signaling and silicon command timing remain unqualified.
+
+
+## IMPL-0155 — RTC century carry stays in BCD
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0155 | SMPC-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | A year-byte rollover increments and re-encodes the century in BCD, including1999-to2000 |
+
+- Branch `arena/01a0b897-mame`; base `1edc6621384e951448cc26af3a5caa31094ac8c4`.
+  Production `src/mame/sega/smpc.cpp:854–861`, handle_rtc_increment.
+- Contract: when the lower BCD year byte carries past99, clear it and encode
+  the incremented decimal century with the existing DectoBCD helper.
+  In the documented operating range,1999-12-31 23:59:59 becomes2000-01-01
+  00:00:00 with year bytes20,00, not invalid BCD1a,00. Day/month/weekday,
+  leap-year rule, timer scheduling, SETTIME and STE behavior otherwise
+  remain as implemented. Remove the stale commented-out century correction.
+- Primary: ST-169-R1-072694, printed p.32/PDF42 INTBACK RTC layout and
+  p.46/PDF56 SETTIME layout define both year bytes in BCD, including the
+  thousands/hundreds byte. The valid-year discussion includes this century
+  crossing (leap correction through2099). SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`.
+- Pinned peers:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp`,
+    blob `af6cb315fe2126f923a5dabfc4af98c088463318`:975–989 implements BCD
+    increment and1033–1038 applies it to both year bytes on carry. Direct
+    support for19,99 to20,00.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/smpc/rtc.cpp:49–66`, blob
+    `f4c9d9fea4ddfc810bc9d08b687817270a517f23`, advances a seconds timestamp;
+    `libs/ymir-core/src/ymir/util/date_time.cpp:26–48`, blob
+    `abe38957856af4d7d364900aece1ee8f060a0245`, returns a decimal calendar
+    year; `smpc.cpp:801–811`, blob `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`,
+    encodes year/100 and year%100 separately with to_bcd. Supports encoding,
+    not wholesale adoption of its host-time/timezone/calendar policy.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv:184–195`, blob
+    `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`, disagrees: its packed
+    RTC_YEAR is assigned from the two SETTIME bytes but incremented as a
+    binary16-bit value. This cannot corroborate a BCD carry. The LLE module
+    delegates counting to firmware; cold-init patching at SMPC.sv:744–766
+    (blob `b8d86a09f5b07805dbf6fedc0349689cd5bbc85f`) is not a rollover
+    implementation. No ROM downloaded/executed to manufacture agreement.
+- Provenance: the existing handler already decodes a decimal year_num for
+  leap handling before any year carry. Reuse its decimal century rather
+  than incrementing m_rtc_data[0] as binary. No calendar model imported.
+- Observable/units/tolerance: exact seven-byte RTC image at the next
+  elapsed-second boundary. Input19,99,5c,31,23,59,59 (Friday1999-12-31)
+  must become20,00,61,01,00,00,00 (Saturday2000-01-01), zero-byte tolerance.
+  Subsequent year output must remain valid BCD; ordinary year09-to10 carry
+  must remain unchanged. This does not claim behavior beyond the documented
+  year range or repair malformed old NVRAM/save images retroactively.
+- Proposed validator method (not run): legal SETTIME followed by INTBACK
+  before/after the next RTC tick at the1999 boundary; ordinary decade and
+  non-century year boundaries as controls; same-revision save/reload before
+  midnight. Observe raw OREG1/2, not just a decimal display that might
+  accidentally normalize invalid BCD. Confirm remaining date/time bytes.
+- Falsifier: upper byte1a after1999, a second/inexact year carry, changed
+  ordinary year/day rollovers, or nondeterministic replay. No approximate
+  host elapsed-time comparison substitutes for the exact byte contract.
+- Checks: prescribed smpc.cpp C++20 TU syntax exits0; git diff --check
+  exits0. No tests/runtime/full build. No new fields, save signature or
+  NVRAM layout change; m_rtc_data is already saved. Inspected SMPC handshake/
+  transport fixtures do not execute the increment handler, so their current
+  bodies are not coverage of this case. No protected fixture/evidence edits.
+  IO-02 inventory and frozen sound/video-clock/acknowledgement paths unchanged.
+  SMPC-03 remains open; prior subsecond/STE peer disagreements still apply.

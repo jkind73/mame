@@ -853,17 +853,11 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_rtc_increment) {
   }
   /* year from 99 -> 100 */
   if ((m_rtc_data[1] & 0xf0) >= 0xa0) {
-    m_rtc_data[0]++;
+    // Both year bytes are BCD (ST-169 pp.32/46): 1999 must carry
+    // into 0x20, not the binary increment 0x19 -> 0x1a.
+    m_rtc_data[0] = DectoBCD(year_num / 100 + 1);
     m_rtc_data[1] = 0;
   }
-
-  // probably not SO precise, here just for reference ...
-  /* year from 999 -> 1000 */
-  // if((m_rtc_data[0] & 0x0f) >= 0x0a)               { m_rtc_data[0]+=0x10;
-  // m_rtc_data[0]&=0xf0; }
-  /* year from 9999 -> 0 */
-  // if((m_rtc_data[0] & 0xf0) >= 0xa0)               { m_rtc_data[0] = 0; }
-  // //roll over
 }
 
 /********************************************
