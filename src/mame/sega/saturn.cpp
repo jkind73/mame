@@ -11330,19 +11330,13 @@ static void fixup_window_x(int *s_x, int *e_x) {
 
 void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
                                                 int *e_y, int y) {
-  /*W0*/
-  switch (m_vdp2->get_lsmd()) {
-  case 0:
-  case 1:
-  case 2:
-    *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
-    *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
-    break;
-  case 3:
-    *s_y = ((VDP2_W0SY & 0x7ff) >> 0);
-    *e_y = ((VDP2_W0EY & 0x7ff) >> 0);
-    break;
-  }
+  // ST-058 pp.180-183: Y is nine bits; in normal/high-resolution
+  // double-density mode bit0 is ignored by the field-line comparison.
+  // Convert its inclusive bounds to the full-height output bitmap, so the
+  // end includes both fields. Exclusive modes retain all nine coordinate bits.
+  bool const double_density = m_vdp2->get_lsmd() == 3 && !(m_vdp2->get_hreso() & 4);
+  *s_y = VDP2_W0SY & (double_density ? 0x1fe : 0x1ff);
+  *e_y = (VDP2_W0EY & 0x1ff) | (double_density ? 1 : 0);
 
   int raw_s_x, raw_e_x;
 
@@ -11384,34 +11378,24 @@ void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
   case 4:
     *s_x = ((raw_s_x & 0x1ff) >> 0);
     *e_x = ((raw_e_x & 0x1ff) >> 0);
-    *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
-    *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
     break;
   /*Exclusive Hi-Res*/
   case 6:
     *s_x = ((raw_s_x & 0x1ff) << 1);
     *e_x = ((raw_e_x & 0x1ff) << 1);
-    *s_y = ((VDP2_W0SY & 0x3ff) >> 0);
-    *e_y = ((VDP2_W0EY & 0x3ff) >> 0);
     break;
   }
 }
 
 void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
                                                 int *e_y, int y) {
-  /*W1*/
-  switch (m_vdp2->get_lsmd()) {
-  case 0:
-  case 1:
-  case 2:
-    *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
-    *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
-    break;
-  case 3:
-    *s_y = ((VDP2_W1SY & 0x7ff) >> 0);
-    *e_y = ((VDP2_W1EY & 0x7ff) >> 0);
-    break;
-  }
+  // ST-058 pp.180-183: Y is nine bits; in normal/high-resolution
+  // double-density mode bit0 is ignored by the field-line comparison.
+  // Convert its inclusive bounds to the full-height output bitmap, so the
+  // end includes both fields. Exclusive modes retain all nine coordinate bits.
+  bool const double_density = m_vdp2->get_lsmd() == 3 && !(m_vdp2->get_hreso() & 4);
+  *s_y = VDP2_W1SY & (double_density ? 0x1fe : 0x1ff);
+  *e_y = (VDP2_W1EY & 0x1ff) | (double_density ? 1 : 0);
 
   int raw_s_x, raw_e_x;
 
@@ -11453,15 +11437,11 @@ void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
   case 4:
     *s_x = ((raw_s_x & 0x1ff) >> 0);
     *e_x = ((raw_e_x & 0x1ff) >> 0);
-    *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
-    *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
     break;
   /*Exclusive Hi-Res*/
   case 6:
     *s_x = ((raw_s_x & 0x1ff) << 1);
     *e_x = ((raw_e_x & 0x1ff) << 1);
-    *s_y = ((VDP2_W1SY & 0x3ff) >> 0);
-    *e_y = ((VDP2_W1EY & 0x3ff) >> 0);
     break;
   }
 }

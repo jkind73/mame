@@ -10633,3 +10633,74 @@ not claimed and may yield further fixes when those conflicts are resolved.
   change, CRTC scheduling, frozen clock/sound or coefficient-address change.
   Parent V2-C07/V2-T03 remain open; MiSTer discrepancy and precise hardware
   fetch/latch timing remain limitations, not completed coverage.
+
+## IMPL-0146 — field-line vertical window bounds
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0145 | V2-C07/V2-T03 | d4483269 | UNVALIDATED — implementation | Line/back tables select picture row y or the single-color lead entry |
+| IMPL-0146 | V2-C03/V2-H02 | this entry's commit | UNVALIDATED — implementation, syntax checked only | W0/W1 use nine-bit Y bounds and include both fields of a double-density end line |
+
+- Branch/base: arena/01a0b897-mame, d4483269. Files: saturn.cpp,
+  vdp2_get_window0_coordinates/vdp2_get_window1_coordinates near11331/11390;
+  vdp2_completion.md and this append-only handoff.
+- Contract: normal/high-resolution double-density windows compare field-line
+  coordinates with bit0 ignored. In full-height output coordinates the start
+  is rounded down to an even row and the inclusive end includes the odd row.
+  All Y bounds are nine bits. Exclusive modes use all nine bits without the
+  double-density conversion. The same helpers serve rectangular/line windows,
+  ordinary/rotation coverage, rotation selection and color calculation windows.
+- Defect: the old helpers treated the double-density Y value as an unmodified
+  eleven-bit pixel coordinate, so an even end value excluded the other field's
+  final row. Non-double-density/exclusive helpers also retained an extra bit.
+  Removed redundant exclusive-mode Y overrides after applying one mode-aware
+  decode per helper. X coordinates, signed X compatibility, line-table row
+  fetches, Boolean rules and CRTC timing are unchanged.
+- Primary: ST-058-R2-060194 at SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed pp.180–183/PDF198–201:
+  p.180 includes the border in the window; p.181 defines WPSY/WPEY bits8..0;
+  pp.182–183/Table8.2 define double-density bit0 as invalid, remaining bits as
+  the V counter in each field, and exclusive-mode Y as ordinary nine bits.
+  For example legal bounds10..20 cover full output rows10..21 in LSMD3.
+- Three pinned peers were checked, with explicit boundary disagreements:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    src/ss/vdp2.cpp:320–332,442–462,696–700,
+    blobce329dc7f7f92ed4cd609ed4805274fbabec4cae: nine-bit register masks,
+    parity-bearing double-density V counter, mask0x1fe for both start/end
+    comparisons, and end exclusion only after the matching line. Supports
+    field-independent inclusive bounds; its raster latches are not ported.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    rtl/Saturn/VDP2/VDP2_pkg.sv:601,615,
+    blob467989289f89a0fec5e444f6628eee95ed6ce0f8: masks Y to0x1ff.
+    VDP2.sv:647,2181–2187 (blob91dcc5a4012b9ef93c43a7f0214796549bc31d20)
+    compares parity-bearing WSCRNY directly, without ignoring bit0: it differs
+    at the corrected end boundary. Its out-of-active-range exceptions are not
+    copied and are not evidence for overriding the documented legal bounds.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:2348,2376–2379,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: direct signed bounds in
+    double-density; only SingleDensity scales its representation. Register
+    writes at vdp2_regs.hpp:2271–2272,2291–2292 retain the full word
+    (blob71ab14fbd3950df17c0cdfca54b188a42fcb1761). It does not corroborate
+    the ignored-bit/end-boundary change. Sega plus Mednafen are the basis;
+    this is not an all-three agreement or hardware qualification claim.
+- Provenance: existing local coordinate helpers and all shared consumers were
+  source-inspected; earlier table-address corrections deliberately did not
+  change vertical-register decoding. No peer code copied, no new state.
+- Observable/method, NOT executed: W0/W1 bounds10..20 in LSMD3 must include
+  rows10/11 and20/21 but not9/22. Toggle ignored bit0 independently on either
+  bound; include a one-field-line window, reversed bounds, both horizontal
+  modes, rectangular/line-window tables and split clips. Compare non-interlace/
+  single-density/exclusive controls without row-pair expansion. Exact bounds
+  and coverage, zero tolerance. Restoring the old raw end value rejects row21
+  and is the primary falsifier. Also exercise nine-bit aliases separately from
+  legal-zero unused-bit programs; no undefined-write timing claim.
+- Protected fixture impact by inspection: test_vdp2_table_wrap.py:73,90 uses
+  start3/end479 and requires start3 in every mode. LSMD3 now decodes start2;
+  its table indexing/RGB555 assumptions also predate0142/0144/0145. No fixture
+  edits or runs; validator owns independent expectation review.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No tests, mutation runs, runtime or full build. No saved fields/signature
+  change; parent V2-C03/V2-H02 remain open. Exact raster-latch/blanking behavior,
+  out-of-range compatibility and hardware resolution of peer differences are
+  not established by this implementation candidate.

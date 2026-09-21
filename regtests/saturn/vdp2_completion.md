@@ -2014,3 +2014,11 @@ Physical wrapping, coefficient replacement and color arithmetic are unchanged.
 Protected table/rotation/scroll fixture assumptions are flagged in the handoff;
 no fixture edits or validation runs. Syntax/diff checks only; no new saved fields
 or V2-C07/V2-T03 closure.
+
+Candidate IMPL-0146 corrects W0/W1 vertical-bound decoding: nine-bit coordinates,
+and both fields included at the inclusive double-density end boundary. Exclusive
+modes retain ordinary nine-bit Y coordinates. Sega pp.180–183 and Mednafen support
+the field-line comparison; MiSTer/Ymir differ at the boundary, as documented in
+the handoff. X-coordinate compatibility, line-table addressing and CRTC timing
+are unchanged. The protected table-wrap fixture's raw-start assumption is flagged
+without edits/runs. Syntax/diff checks only; no saved fields or parent closure.
