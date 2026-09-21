@@ -11351,13 +11351,14 @@ void saturn_state::vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y,
   if (VDP2_W0LWE) {
     uint32_t base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
     uint32_t address = (VDP2_W0LWTA & base_mask) * 2;
-    // double density makes the line window to fetch data every two lines
-    uint8_t interlace = (m_vdp2->get_lsmd() == 3);
+    // ST-058 p.185, Fig.8.4: double-density tables include both fields.
+    // y is already a full output-bitmap row; do not collapse adjacent rows
+    // onto one field's entry. Single-density output is not woven here.
     // Apply the physical-size mask after adding the row offset. Masking
     // only LWTA lets a 512 KiB table spill into the unused upper half.
     // ST-058 pp.186-187: the high address bit is ignored in 4-Mbit mode.
     uint32_t vram_data =
-        m_vdp2_vram[((address >> 2) + (y >> interlace)) & (base_mask >> 1)];
+        m_vdp2_vram[((address >> 2) + y) & (base_mask >> 1)];
 
     raw_s_x = (int16_t)(vram_data >> 16);
     raw_e_x = (int16_t)(vram_data & 0xffff);
@@ -11419,13 +11420,14 @@ void saturn_state::vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y,
   if (VDP2_W1LWE) {
     uint32_t base_mask = m_vdp2->get_vramsz() ? 0x7ffff : 0x3ffff;
     uint32_t address = (VDP2_W1LWTA & base_mask) * 2;
-    // double density makes the line window to fetch data every two lines
-    uint8_t interlace = (m_vdp2->get_lsmd() == 3);
+    // ST-058 p.185, Fig.8.4: double-density tables include both fields.
+    // y is already a full output-bitmap row; do not collapse adjacent rows
+    // onto one field's entry. Single-density output is not woven here.
     // Apply the physical-size mask after adding the row offset. Masking
     // only LWTA lets a 512 KiB table spill into the unused upper half.
     // ST-058 pp.186-187: the high address bit is ignored in 4-Mbit mode.
     uint32_t vram_data =
-        m_vdp2_vram[((address >> 2) + (y >> interlace)) & (base_mask >> 1)];
+        m_vdp2_vram[((address >> 2) + y) & (base_mask >> 1)];
 
     raw_s_x = (int16_t)(vram_data >> 16);
     raw_e_x = (int16_t)(vram_data & 0xffff);

@@ -1994,3 +1994,11 @@ so table cadence is1/2/4/8 rows just as in non-interlace. Sega's physical-line
 counts and all three peers' counter representations are reconciled in the handoff.
 Non-interlace/double-density setup values and CRTC timing are unchanged. Syntax/
 diff checks only; no fixtures changed or validation runs. V2-S02 remains open.
+
+Candidate IMPL-0144 fixes W0/W1 line-window indexing in double-density interlace:
+full-height output row y now selects entry y, rather than duplicating entry y/2.
+Sega Fig.8.4 and all three peers retain entries for both fields. Physical VRAM
+wrapping and non-interlace/single-density picture-row behavior are unchanged.
+The existing table-wrap fixture deliberately preserves old indexing; the handoff
+flags its reference/mutation assumptions for the validator without editing or
+running it. Syntax/diff checks only; no new saved fields or V2-C03 closure.

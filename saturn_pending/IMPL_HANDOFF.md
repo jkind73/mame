@@ -10508,3 +10508,56 @@ not claimed and may yield further fixes when those conflicts are resolved.
   is qualified. Double-density field-phase/table-fetch timing remains open.
 - Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
   No regression, mutation, runtime or full build. Parent V2-S02 stays open.
+
+## IMPL-0144 — double-density line windows retain both fields' entries
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0143 | V2-S02 | ae4b3fdc | UNVALIDATED — implementation | Single-density line-scroll cadence is expressed in picture rows |
+| IMPL-0144 | V2-C03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | W0/W1 line-window fetches use the full double-density output row |
+
+- Branch/base: arena/01a0b897-mame, ae4b3fdc. Files: saturn.cpp,
+  vdp2_get_window0_coordinates/vdp2_get_window1_coordinates near11371/11438;
+  regtests/saturn/vdp2_completion.md and this append-only handoff.
+- Contract/defect: a double-density bitmap has rows for both fields. Fetching
+  line-window entry y>>1 wrongly repeats each pair of X bounds on two output
+  rows. Both helpers now fetch entry y. The complete address still wraps at
+  the selected physical VRAM size; X-coordinate conversion, vertical bounds,
+  window Boolean operations and signed out-of-range compatibility are unchanged.
+- Primary: ST-058-R2-060194 at SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed pp.184–185/PDF202–203,
+  Fig.8.4: non-interlace and double-density have an entry per line; double-density
+  stores both odd and even fields. Single-density's paired physical lines use
+  one entry, corresponding to one row of MAME's un-woven picture (p.17).
+  Pp.186–187 define paired 16-bit entries and physical address masking.
+- Pinned peers, independently inspected, no source copied:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    src/ss/vdp2_render.cpp:2751–2756,2849–2856,2884,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: starts one 32-bit entry
+    later for the alternate double-density field, then advances two entries
+    per field scanline. This is full-output-row indexing, not entry duplication.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    rtl/Saturn/VDP2/VDP2.sv:1311–1314,1463–1464,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: field-dependent starting
+    word address and four-word double-density stride likewise retain both fields.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:2393–2397,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: table address is base+4*y.
+- Provenance: existing local helpers explicitly divided double-density rows;
+  traced consumers through regular/rotation/calculation windows and the common
+  window cache. This correction applies to table addressing only, not window
+  vertical-register interpretation or interlace field scheduling.
+- Observable/method, NOT executed: in LSMD3, alternate distinguishable W0/W1
+  entries on consecutive full-height bitmap rows. Check horizontal bounds and
+  regular/rotation/color-calculation coverage independently for each row, both
+  VRAM sizes, an end-of-VRAM table and partial-update clips. Retain LSMD0/2
+  controls with identical picture-row bounds. Exact address/bounds/pixel values,
+  zero tolerance; restoring either y>>1 is the corresponding falsifier.
+- Protected fixture conflict found by source inspection: test_vdp2_table_wrap.py
+  explicitly preserves old interlace indexing (line6), derives W0/W1 reference
+  address using y/2 in LSMD3 (line84), and its row-shift mutations match the old
+  expression (lines27–28). Validator must review these assumptions; no fixture
+  expectations/scaffold edited, and no executed failure or acceptance asserted.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No regression, mutation, runtime or full build. No saved fields/signature change.
+  V2-C03 and broader interlace/timing gates remain open.
