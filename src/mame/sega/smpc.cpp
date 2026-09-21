@@ -286,7 +286,9 @@ uint8_t smpc_hle_device::status_flag_r() {
 }
 
 void smpc_hle_device::status_flag_w(uint8_t data) {
-  m_sf = BIT(data, 0);
+  // ST-169 p.6: the SH-2 can only set SF; the SMPC clears it on completion.
+  // The write strobe sets the latch regardless of the data byte.
+  m_sf = true;
   m_cd_sf = false;
 }
 

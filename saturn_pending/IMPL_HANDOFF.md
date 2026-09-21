@@ -11746,3 +11746,61 @@ No production wait-rule change was made for the following program-DMA issue:
   and review of the frozen ST-V PDR2 sound-reset coupling, not a console-only
   policy hack. Contention, pullups, IOSEL ownership and bit7 bus semantics
   remain outside this read-selection correction.
+
+
+## IMPL-0158 — make CPU writes to SF set-only
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0158 | SMPC-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | A CPU write strobe sets SF regardless of data; only SMPC completion/reset paths clear it |
+
+- Branch `arena/01a0b897-mame`; base `470296aded8d50a0808e35f7e65e8ffb20dc36ef`.
+  Production `src/mame/sega/smpc.cpp:288–293`, status_flag_w only.
+- Contract: SF is a CPU-set/SMPC-clear latch, not an ordinary writable bit.
+  Replace BIT(data,0) assignment with true on the CPU write handler. Leave
+  SF readback, command busy tracking, completion/reset/BREAK/timeout clearing,
+  CONTINUE sequencing and the existing CD flag side effect untouched.
+- Primary: ST-169-R1-072694 printed p.6/PDF16 SF description: from SH-2
+  only set is possible; software must write01H; SMPC resets at command end.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`. Arbitrary write data is not
+  the documented software idiom; unconditional strobe behavior is independently
+  supported by all three peers below, not inferred solely from that idiom.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp:
+    800–809`, blob `af6cb315fe2126f923a5dabfc4af98c088463318`, SF=true
+    on any write to decoded SF address31, independent of V.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv:1303`, blob
+    `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`, and
+    `rtl/Saturn/SMPC/SMPC.sv:694`, blob
+    `b8d86a09f5b07805dbf6fedc0349689cd5bbc85f`, both assign SF<=1 on
+    external write to63 independently of DI. LLE:659 firmware clear is separate.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:524–531`, blob
+    `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, ordinary WriteSF sets
+    true regardless of value; debugger/state poke has a separate assignment.
+    This MAME change concerns the mapped CPU handler, not saved-field restore.
+- Provenance: the inherited handler assigns data bit0 directly, allowing a
+  CPU write00 to clear SF without completion. No timing or acknowledgement
+  algorithm is being imported. Existing saved m_sf field is sufficient.
+- Observable/units/tolerance: exact SF bit, zero tolerance. Write01,00,02,FF
+  with SF initially0 or1: SF is1 afterward in each case. A pending command
+  remains busy after a write00 and completes/clears via its original callback.
+  An idle write00 sets SF but must not issue a command or create an interrupt.
+- Proposed validator method (not run): native mapped SF writes using all256
+  data bytes and both initial SF states; normal command completion and reset
+  controls, plus a mid-command write00 followed by completion. Observe SF,
+  busy state, OREG31 and interrupt counts separately. Same-revision state
+  restore of SF0/1 must retain the stored value rather than invoke the CPU
+  handler. Legal write01 command/INTBACK sequences remain unchanged.
+- Falsifier: a CPU write clears SF, a write starts/restarts a command, SMPC
+  completion fails to clear, state restore forces SF1, or any interrupt/timer/
+  acknowledgement sequence changes without another command action.
+- Checks: prescribed C++20 smpc.cpp TU syntax exits0; git diff --check exits0.
+  No runtime/tests/full build. Static inspection: handshake/transport fixtures
+  extract sf_set/sf_ack, not status_flag_w, so previous acceptance is not
+  coverage of this mapped write. No protected fixtures/evidence modified.
+- State/limits: candidate only; SMPC-01 stays open. No new state or save-layout
+  change. Undocumented upper SF bits, CDON/CDOFF behavior, IO-02 inventory,
+  frozen DMA acknowledgement, clock/sound reset and delay-slot IRQ unchanged.
