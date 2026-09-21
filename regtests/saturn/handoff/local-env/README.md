@@ -128,3 +128,38 @@ against a native build earlier: `-validate` exit 0, `test_cd_hirq`,
 `test_backup_ram`, `test_cart_runtime`, `test_sound_boot`, `test_smpc_transport`
 all exit 0, and `run_vdp2_runtime.py --bios` replaying bit-identically after a
 save/load.
+
+## Link errors, and `git describe` noise
+
+`./build.sh` now takes `-jN` (also honoured as `JOBS=N`) and prints where the number
+came from, because ignoring a `-j2` and quietly running `-j$(nproc)` is how a small
+VM gets its compiler killed: the giant `luaengine*.cpp` translation units each want
+roughly 2.4 GB of RSS, which is why `-j2` is the right answer under ~8 GB of RAM.
+`--dry-run` shows the resolved `make` command line without building anything.
+
+If the failure is at `Linking mame...` rather than in a compile, the usual shape is:
+
+    undefined reference to `vtable for X_device'
+    undefined reference to `typeinfo for X_device'
+    ... named from build/*/bin/**/libsomething.a(X.o)
+
+The classes involved always define their key function out of line, so the vtable has
+to be emitted in that object file; when the link says it is missing, the object set
+and the generated project files disagree about which archive owns which `.o`, and
+the library that would have provided it is not on the link line.  That is stale build
+state (an interrupted first build, or a reconfigure that left archives behind), not a
+source error -- `make -j3` of this tree links clean in CI.  In order:
+
+```sh
+./build.sh --regen      # REGENIE=1: regenerate project files, keep every object
+./build.sh --clean      # make clean, then rebuild
+```
+
+Also benign, on this fork specifically:
+
+    fatal: No names found, cannot describe anything.
+
+The makefile asks git for a version via `git describe`, and `jkind73/mame` has **no
+tags at all** (`git tag | wc -l` -> 0), so that line appears on every build of every
+branch and MAME falls back to its compiled-in version.  It is not a sign your clone is
+wrong -- `git rev-parse HEAD` is the check that matters.
