@@ -9140,6 +9140,16 @@ static constexpr bool vdp2_priority_pass_matches(unsigned base, unsigned mode, u
   return mode == 1 || mode == 2 ? (base & 6) == (pass & 6) : base == pass;
 }
 
+bool saturn_state::vdp2_palette_color_msb(unsigned pen) {
+  // The RGB palette cache discards this flag. Read the selected color's
+  // physical CRAM MSB, including mode-0 aliasing and mode-2 bank mapping.
+  if (VDP2_CRMD < 2) {
+    pen &= VDP2_CRMD == 0 ? 0x3ff : 0x7ff;
+    return (m_vdp2_cram[pen >> 1] >> ((pen & 1) ? 15 : 31)) & 1;
+  }
+  return (vdp2_cram_r(pen & 0x3ff) >> 31) & 1;
+}
+
 // Private decoded-dot metadata: zero alpha is uncovered; FE/FF are covered
 // with calculation disabled/enabled when priority is ordinary. Special-priority
 // dots use bit 7 for coverage, bit 0 for calculation, bit 1 for code match and
@@ -9157,13 +9167,7 @@ rgb_t saturn_state::vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned
     unsigned const code = current_tilemap.colour_depth < 3 ? (raw >> 1) & 7 : 7;
     calculate = (codes >> code) & 1;
   } else if (mode == 3 && current_tilemap.colour_depth < 3) {
-    // Read the physical CRAM MSB, which the RGB palette cache discards.
-    if (VDP2_CRMD < 2) {
-      pen &= VDP2_CRMD == 0 ? 0x3ff : 0x7ff;
-      calculate = (m_vdp2_cram[pen >> 1] >> ((pen & 1) ? 15 : 31)) & 1;
-    } else {
-      calculate = (vdp2_cram_r(pen & 0x3ff) >> 31) & 1;
-    }
+    calculate = vdp2_palette_color_msb(pen);
   }
   unsigned metadata = calculate ? 0xff : 0xfe;
   if (vdp2_special_priority_mode()) {
@@ -11699,7 +11703,10 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         vdp1_sprite_priorities_in_fb_line[y][priority] = 1;
         continue;
       }
-      bool const calculate = alpha_enabled && (alpha_enabled != 2 || (pix & 0x8000));
+      // ST-058 pp.205/207: condition 3 tests the selected color data,
+      // not a priority/shadow bit in the palette-coded framebuffer pixel.
+      // RGB sprites always qualify; palette sprites check CRAM below.
+      bool calculate = alpha_enabled != 0;
       bool const self_shadow = !direct && !sprite_window && (pix & sprite_shadow) && (pix & 0x7fff);
       rgb_t color;
       if (direct) {
@@ -11725,7 +11732,10 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
         if (!dot)
           continue;
         ccr = sprite_ccr[(pix >> sprite_ccrr_shift) & sprite_ccrr_mask];
-        color = m_palette->pen(((dot + (VDP2_SPCAOS << 8)) & 0x7ff) + color_offset_pal);
+        unsigned const pen = (dot + (VDP2_SPCAOS << 8)) & 0x7ff;
+        if (alpha_enabled == 2)
+          calculate = vdp2_palette_color_msb(pen);
+        color = m_palette->pen(pen + color_offset_pal);
       }
       bool const line = VDP2_SPLCEN;
       vdp2_compose_pixel(bitmap, x, y, color, calculate, vdp2_cc_blend_level(ccr),

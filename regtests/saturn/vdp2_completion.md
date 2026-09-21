@@ -1972,3 +1972,11 @@ CRAM using reset mode0. The clock-selection/sound-reset body is unchanged, and
 the callback does not erase VRAM/CRAM. No new saved fields. Four touched TUs syntax
 checked; ST-V required its shared include path and generated layout headers.
 No validation runs; see the handoff for primary/three-peer contracts and limits.
+
+Candidate IMPL-0141 corrects sprite SPCCCS3 eligibility: palette sprites use the
+selected CRAM color's MSB after SPCAOS/CRMD addressing, not framebuffer bit15.
+Direct RGB continues to qualify directly. A shared helper preserves the existing
+background SFCCMD3 behavior. Sega pp.205/207 and all three peers support this.
+Source inspection found old raw-pixel-bit expectations in test_sprite_scanout.py;
+the handoff reports them for the validator, with no fixture edits or test runs.
+Syntax/diff checked only; V2-C01/V2-C05 qualification remains open.

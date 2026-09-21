@@ -466,6 +466,7 @@ protected:
   unsigned vdp2_special_priority_mode() const;
   rgb_t vdp2_special_priority_pixel(rgb_t pixel, bool attribute);
   int m_vdp2_priority_pass = -1; // derived render pass, never hardware state
+  bool vdp2_palette_color_msb(unsigned pen);
   rgb_t vdp2_special_color_pixel(rgb_t color, unsigned raw, unsigned pen);
   rgb_t vdp2_dot_pixel(uint32_t address, int x, unsigned palette);
   rgb_t vdp2_pattern_pixel(uint32_t data, bool one_word, int x, int y);

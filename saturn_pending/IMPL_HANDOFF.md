@@ -10324,3 +10324,67 @@ not claimed and may yield further fixes when those conflicts are resolved.
   or save signature. Existing register/latch fields remain saved as before.
 - Limits: register-reset consistency only, not reset electrical timing, RAM
   power-on patterns or whole-system SYSRES completion. IO-02 inventory unchanged.
+
+## IMPL-0141 — sprite condition 3 uses the selected color's MSB
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0140 | V2-A03/SYS-01 | 0785d2e3 | UNVALIDATED — implementation | Device reset covers both VDP2 register owners |
+| IMPL-0141 | V2-C01/V2-C05 | this entry's commit | UNVALIDATED — implementation, syntax checked only | SPCCCS3 palette sprites qualify from CRAM color MSB, not framebuffer priority/shadow bits; RGB sprites qualify directly |
+
+- Branch/base: `arena/01a0b897-mame`, `0785d2e3`.
+- Production: saturn.cpp draw_sprites and new vdp2_palette_color_msb helper;
+  existing background special-calculation mode3 delegates its unchanged CRAM
+  bit extraction to that helper. Declaration in saturn.h.
+- Defect: draw_sprites tested `(pix & 0x8000)` for condition3, before resolving
+  the palette entry. In palette formats this is a priority or shadow/window bit
+  (and never set for8-bit sprites), not the selected color's calculation flag.
+  This both wrongly enabled and wrongly disabled color calculation.
+- Primary: ST-058-R2-060194, SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed pp.205/207/PDF223/225:
+  condition3 uses color-data MSB, and RGB sprite data always qualifies. CRAM
+  formats/address aliases are specified at pp.43–46/PDF61–64. SPCCEN remains
+  the master gate; the priority-comparison conditions are unchanged.
+- Required peers:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    `src/ss/vdp2_render.cpp:2116–2135,2171–2175,2315–2319`,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: condition3 mask is applied to
+    ColorCache's MSB after palette resolution; direct RGB qualifies directly.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    `rtl/Saturn/VDP2/VDP2.sv:3232–3243,3461–3483`,
+    blob91dcc5a4012b9ef93c43a7f0214796549bc31d20: CCM3 qualification uses
+    CC_FST from the selected CRAM bank, with a direct-RGB bypass.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    `libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp:2760–2763,3936–3941,5367–5383`,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85: resolved CRAM color is
+    stored in the sprite layer and MsbEqualsOne reads that color's MSB.
+- Contract: palette pen includes SPCAOS before checking the flag. CRMD0 aliases
+  the1K-color range, CRMD1 selects all2K entries, and CRMD2 uses the existing
+  physical bank remap through vdp2_cram_r. Check bit15 of RGB555 or bit31 of
+  RGB888 before RGB color offsets. Palette RGB cache alpha is not this flag.
+  Transparency and shadow recognition still run first; RGB and conditions0–2,
+  windows, ratios, second-image selection and shadow arithmetic are unchanged.
+- Provenance: inherited raw-pixel predicate inspected beside the correct
+  background SFCCMD3 physical-CRAM predicate. Sharing the latter avoids adding
+  another incompatible color-RAM mapper; no peer source is copied.
+- Observable/method, NOT executed: independently vary framebuffer bit15 and
+  the selected CRAM flag, with visible palette pixels and SPCCCS3. Include legal
+  sprite types0–F, SPCAOS wrapping, all three CRMD modes, RGB mixed-mode controls
+  and SPCCEN0. At nontrivial blend ratios, output must follow CRAM MSB regardless
+  of framebuffer bit15; direct RGB must calculate when SPCCEN1. Exact flag/RGB
+  comparisons, zero tolerance. Replacing the palette helper result with raw
+  pixel bit15 is the falsifier.
+- Existing fixture conflict found by source inspection, NOT a test result:
+  `regtests/saturn/test_sprite_scanout.py:236` expects condition3 from the
+  framebuffer `msb`; `:271` similarly uses `dot & 32768` in shadow/composition
+  expectations. Those assumptions disagree with this primary/three-peer
+  contract. The extracted harness also needs the helper and physical CRAM
+  dependency. Expectations and scaffolds were left untouched for the validator.
+  Other extracted background helpers may need to include the shared helper;
+  no pass/fail count or runtime break is asserted without a validator run.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No test, mutation, runtime, full build or protected evidence changes.
+- Save/state: no fields added; CRAM is already saved and inspected on each
+  qualifying palette lookup. No new cache or signature change.
+- Limits: no color-calculation rounding/analog-output or gameplay qualification
+  claim. Frozen gameplay fixes are not rewritten or reported newly accepted.
