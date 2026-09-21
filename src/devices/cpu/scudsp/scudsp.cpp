@@ -891,7 +891,9 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 
 void scudsp_cpu_device::op_end(uint32_t opcode)
 {
-	if(opcode & 0x08000000)
+	// ST-210 precaution 26: ENDI cannot generate another end interrupt
+	// while E is still set. A host PPAF read clears E and rearms the edge.
+	if ((opcode & 0x08000000) && !BIT(m_flags, EF))
 	{
 		// set program end irq flag
 		m_flags |= (1 << EF);

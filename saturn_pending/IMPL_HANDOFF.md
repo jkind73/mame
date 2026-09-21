@@ -11242,3 +11242,111 @@ work, not a claim that a hardware artifact blocks all progress.
   those combinations. Ordinary pipeline/LPS disagreements from0150 remain.
   The ES implementation missing at0149/0150 is now supplied as this candidate;
   no broader completion or native acceptance is claimed.
+
+
+## IMPL-0152 — ENDI requires a cleared E latch to signal another interrupt
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0152 | DSP-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | ENDI raises the source only on E0-to1; retained E1 suppresses a new end interrupt |
+
+- Branch `arena/01a0b897-mame`; base `f8eda49bda484256318df5744da4472546e6e757`.
+  Production `src/devices/cpu/scudsp/scudsp.cpp:892–906` (`op_end`).
+- Contract: ENDI with E0 sets E and asserts the existing source callback.
+  ENDI with E1 still stops execution but must not assert the source again.
+  Plain END never asserts that source and does not clear E. An ordinary
+  PPAF read clears E/rearms the edge through the existing path; debugger
+  reads do not. True reset also clears E. SCU status clearing or vector
+  acknowledgement alone does not rearm the DSP's E latch.
+- Primary: ST-210-110194, printed p.8/PDF12, precaution26, explicitly says
+  no DSP program-end interrupt occurs on ENDI when E is already1 and directs
+  software to clear E before starting. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `914f3fa160e42aa7ef0f8941c3844a2a5fd70ce8`. ST-097-R5 p.52/PDF68 gives
+  E's read-clear behavior; blob `ffa8932249634ebd98947dad123621cebe3f24fa`.
+- Three-peer cross-check:
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/scu/scu_dsp.cpp:631–640`, blob
+    `1cf68aee296e79254e9b2ebe44d4fd616b641cef`, explicitly guards its ENDI
+    callback with !programEnded. Direct support at the same source boundary.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SCU/DSP.sv:604–605,613–621`, blob
+    `3aa3859355005d4a57de850c813fe064e2cdb8d5`, drives IRQ from E, which
+    stays1 on repeated ENDI; `SCU.sv:2683–2684`, blob
+    `999825f64aa200673f4bdd590e81426ed3212ae4`, latches only its rising edge.
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    `src/ss/scu_dsp_misc.cpp:39–45`, blob
+    `3047ec25ed5d503cf053607563dbccb948348d50`, sets the held end signal;
+    `scu.inc:311–337,792–804`, blob
+    `8cc45219ca5ffc3e24c97779e01691129f3ea12c`, captures only a signal's
+    rising edge and clears the DSP signal on PPAF read. Different layering,
+    same no-retrigger contract.
+- Provenance: base unconditionally invokes out_irq_callback(1) on every
+  ENDI. Local `saturn_scu.cpp:1284–1289` treats each asserted callback as a
+  source event, without its own level-history latch. A repeated ENDI can
+  therefore set new IST after SCU acknowledgement even though E never fell.
+  Guard the DSP source rather than rewriting the frozen SCU acknowledgement
+  or shared interrupt paths. No new fields; E is already saved in m_flags.
+- Observable/units/tolerance: exact source-event count and IST_DSP_END bit,
+  zero event tolerance. Two ENDI executions with no intervening PPAF read
+  generate one source assertion total, even if software handles/clears the
+  SCU event in between. Read PPAF normally, then execute ENDI again: one new
+  assertion. A debugger peek does not rearm it. EX clears in every case.
+- Proposed validator method (not run): guest program ending in ENDI,
+  handle SCU delivery/clear status without reading PPAF, restart using
+  writes only, and observe that IST is not newly set. Repeat after an
+  ordinary PPAF read and after a side-effect-disabled debugger peek; include
+  plain END, reset and E1 same-revision replay controls. Do not accidentally
+  read PPAF to poll completion in the retained-E case, since that would
+  rearm it and erase the distinction. Keep IRQ acceptance separate from
+  the source assertion count.
+- Falsifier: repeated ENDI at E1 generates a fresh source assertion/status;
+  ordinary PPAF read cannot rearm it; plain END asserts or clears E;
+  suppression prevents execution stopping. Hardware observing a genuine
+  retrigger with E continuously1 would contradict ST-210 and reject this
+  contract rather than justify an acknowledgement hack.
+- Checks: prescribed scudsp.cpp TU syntax exits0; git diff --check exits0.
+  No validation/runtime/full build. No protected fixture/evidence changes.
+  Existing pipeline method harness stubs op_end, so it is not coverage of
+  this guard; no test result claimed. No save-layout change in0152;0150/0151
+  signature changes still apply. DSP-03 remains open.
+
+### Additional DSP limits identified after IMPL-0151
+
+No production wait-rule change was made for the following program-DMA issue:
+
+- A step can stop after DMA-to-program-RAM but before its following MVI-PC.
+  The inherited timer reaches WAIT/MOVE and its first write takes m_pc before
+  that MVI supplies the destination. A long stopped interval can therefore
+  write program RAM/complete before the intended serialization instruction.
+  This was found by source tracing, not by a run. IMPL-0151's proposed
+  stepped program-DMA scenario is an unresolved interaction, not an accepted
+  part of the step implementation or a claim of preserved destination setup
+  across arbitrary host stops.
+- A universal wait-for-MVI guard was considered, then rejected before any
+  code change: ST-097 p.89 supplies the immediate DMA/MVI-PC sequence, but
+  p.88 says DMA continues through END. Mednafen buffers external data in
+  scu.inc:1971–2008 and commits in DSP_FinishPRAMDMA:1851–1866; MVI-PC at
+  scu_dsp_mvi.cpp:79–87 is one trigger, while MVI-RA0/WA0:46–51 and END in
+  scu_dsp_misc.cpp:47–48 are other paths. MiSTer DSP.sv:624–627 writes via
+  live PC/DMA_EN without a universal MVI-ready flag, and Ymir RunDMA can
+  transfer while instruction execution is stopped (scu_dsp.cpp:88–98,
+  160–166,213–215); WriteImm in scu_dsp.hpp:279–284 updates its DMA PC.
+  These do not establish a common arbitrary-stall serialization contract.
+  An unconditional waiter could deadlock another end/serialization path.
+- BLOCKED(hardware ES and EP/EX-stop traces of DMA-to-PRG followed by
+  MVI-PC, MVI-RA0/WA0 or END, separating external read timing, program-RAM
+  commit destination, T0 and restart PC). A coherent buffered/granted DMA
+  model is remaining implementation work; delaying all external reads until
+  MVI would not be justified by a destination-only observation. Normal data
+  DMA, earlier program-loader acceptance and their published limits are not
+  revalidated or withdrawn by this source audit.
+- END PC wording: ST-097 printed p.88/PDF104 describes the stopped address
+  as following END. All three pinned fetch pipelines advance before END
+  (Mednafen misc/common prefetch, MiSTer PC333–335 plus END613–615, Ymir
+  End634/IncrementPC), which normally exposes END-address+2 as the fetch PC.
+  The old local +1 readback also produced +2 at an ordinary END. IMPL-0150
+  keeps that observable through an actual fetch pointer, but this wording
+  discrepancy is not hardware-qualified. BLOCKED(hardware PPAF reads after
+  END and ENDI at known addresses, including FF wrap and a prior branch).
+  Do not report ordinary END PC as primary/peer consensus.
