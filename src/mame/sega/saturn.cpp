@@ -452,6 +452,9 @@ void saturn_state::system_reset_w(int state) {
    * issued.*/
   m_scu->reset();
   vdp1_reset();
+  // SYSRES also resets the device-owned TVMD/EXTEN/VRSIZE controls.
+  // Clearing m_vdp2_regs alone cannot reset their mapped readback or CRTC.
+  m_vdp2->reset();
   memset(m_sound_ram, 0x00, 0x080000);
   memset(m_workram_h, 0x00, 0x100000);
   memset(m_workram_l, 0x00, 0x100000);

@@ -1958,3 +1958,9 @@ of retaining old pixels. This does not change the existing clearing policy or
 claim hardware zero-filled reset RAM. No new saved fields; syntax/diff checks
 only. Detailed primary/three-peer references and proposed falsifier are in the
 append-only handoff; V2-T03/V2-A05 remain open.
+
+Candidate IMPL-0139 routes SMPC SYSRES to the existing VDP2 device reset. The
+previous driver-array clear missed device-owned TVMD/EXTEN/VRSIZE and decoded
+CRTC controls. No clock-selection or sound-reset code changed. Sega SYSRES and
+VDP2 reset documentation plus Mednafen/MiSTer/Ymir routing are recorded in the
+handoff. Syntax/diff checks only; no new saved state or parent completion claim.

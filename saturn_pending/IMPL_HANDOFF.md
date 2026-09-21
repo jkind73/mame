@@ -10199,3 +10199,59 @@ not claimed and may yield further fixes when those conflicts are resolved.
   No regression, runtime, mutation, validator, media or full-build runs.
 - Limits: no reset-electrical sequencing, fetch-latch or game acceptance claim;
   parent qualification gates and hardware reset-memory policy remain open.
+
+## IMPL-0139 — route SYSRES to the VDP2 device reset
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0138 | V2-T03/V2-A05 | 1c8a5820 | UNVALIDATED — implementation | Reset memory-view coherence; no validator result |
+| IMPL-0139 | V2-A03/SYS-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | SYSRES resets device-owned VDP2 display/external controls as well as the driver register array |
+
+- Branch/base: `arena/01a0b897-mame`, `1c8a5820`.
+- File: `src/mame/sega/saturn.cpp`, system_reset_w; adds m_vdp2->reset beside
+  the existing SCU/VDP1 resets. No changes to clock selection, sound-reset logic,
+  SMPC command duration, DMA acknowledgement or CPU reset sequencing.
+- Defect: TVMD/EXTEN/VRSIZE are mapped by saturn_vdp2_device, not m_vdp2_regs.
+  SYSRES cleared only the latter, leaving decoded display mode, external-latch
+  selection and device readback at pre-reset values. Machine reset and clock
+  change already reached the device's reset handler; SYSRES did not.
+- Primary: SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73:
+  ST-169-R1-072694.pdf blob943930551f755c68431847d23dfb6a6fad60e0c6,
+  printed p.29/PDF39, SYSRES initializes all functions; ST-058-R2-060194.pdf
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, pp.16/19/PDF34/37,
+  TVMD and EXTEN clear on reset. The existing VDP2 reset implementation is
+  reused rather than adding a second independent set of decoded defaults.
+- Required peer cross-checks:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    `src/ss/smpc.cpp:1171–1175,684–691`, blobaf6cb315fe2126f923a5dabfc4af98c088463318:
+    SYSRES schedules SS_Reset(false); `src/ss/ss.cpp:774–799`,
+    blob3a33c42bf8b977fcff458e955cd62c7fe213d9e5: forwards to VDP2::Reset.
+    Deferred frame-boundary timing is not adopted here.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    `rtl/Saturn/Saturn.sv:895–902`, blob023d40e78dbda01a658b6a718922146c7b490800:
+    VDP2 RES_N is wired to SYSRES_N separately from global RST_N.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    `libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:662–667`,
+    blob8beb7463ce1f32aace615c0d2e268e5dd5ae4d52, calls SoftResetSystem;
+    `libs/ymir-core/src/ymir/sys/saturn.cpp:171–190,894–896`,
+    blob79e133d561e56919eb6abeeb98ec10445f8f8107, calls VDP.Reset(false);
+    `libs/ymir-core/src/ymir/hw/vdp/vdp.cpp:43–49`,
+    blobec15ff9be1d16f628141179407e32ecc5e58930f, resets VDP state/renderer.
+- Provenance: local smpc.cpp SYSRES pulse and saturn.cpp system_reset_w inspected
+  alongside existing machine/clock-change reset paths. Frozen clock/sound code
+  remains unchanged; this closes the omitted VDP2 consumer only.
+- Observable: after mapped SYSRES, device TVMD/EXTEN read zero, DISP is off,
+  external latch selection is off, and geometry uses reset device defaults.
+  Setting TVMD/EXTEN again must work normally. Register/flag comparisons exact;
+  no physical reset pulse duration or IRQ phase tolerance is asserted.
+- Suggested validator method, NOT executed: program nonzero TVMD/EXTEN/VRSIZE,
+  issue SMPC SYSRES, inspect device mapped readback/decoded state and the first
+  reprogrammed display. Contrast machine reset with SYSRES. Deleting the added
+  reset call is the falsifier. Follow with existing frozen gameplay controls in
+  validator-owned runs, not implementation-agent test execution.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No runtime, regression, mutation or full build. No fixture/evidence changes.
+- State/save: no new fields or signature change. Existing device_reset cancels/
+  rearms its sync timer and resets existing saved controls; no duplicated state.
+- Limits: broader SYSRES chip coverage and electrical reset/IRQ edge sequencing
+  remain separate work; this is not whole-system reset completion.
