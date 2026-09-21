@@ -112,7 +112,7 @@
   - Qualify signal-to-CPU latency and simultaneous source changes under both CPU engines.
 - [ ] **SCU-02 — Complete timer edge and clock qualification. [P/V/R]**
   - Timer 0 HBlank compare/order, Timer 1 start/reload/stop and exact clock ratio, mode bits and wrap behavior.
-  - Existing timer ordering/reload fixes are implemented; hardware timing and interaction with every display mode remain open.
+  - Existing timer ordering/reload fixes are implemented. IMPL-0148 additionally makes T1MD qualify expiry rather than HBlank loading (implementation candidate, syntax checked only); hardware timing and interaction with every display mode remain open.
 - [ ] **SCU-03 — Complete DMA legality and transfer rules. [P/R]**
   - Direct/indirect same-bus restrictions, region-crossing behavior, address additions, byte-lane/alignment cases and documented exceptional transfers.
   - Resolve source-noted additional rules and shifted-byte behavior instead of retaining unexplained transfer hacks.

@@ -1069,6 +1069,11 @@ void saturn_scu_device::t1_mode_w(offs_t offset, uint32_t data,
 }
 
 TIMER_CALLBACK_MEMBER(saturn_scu_device::timer1_irq_cb) {
+  // ST-097 pp.31-32/56: T1MD qualifies expiry on the timer-0 line;
+  // it does not gate the HBlank load. A count can cross into another line.
+  if (!m_tenb || (m_t1md && m_timer0_counter != m_t0c))
+    return;
+
   dma_start_factor_ack(DMA_EVENT_TIMER1);
 
   m_ist |= IST_TIMER_1;
@@ -1235,15 +1240,13 @@ void saturn_scu_device::hblank_in_w(int state) {
       m_ist |= IST_TIMER_0;
     }
 
-    // Timer 1 conditions
-    // - Mode is 0 (all scanlines)
-    // - Mode is 1 and timer 0 is hit
-    const bool timer1_hit = (timer0_hit || !m_t1md);
-    // ST-210, precaution 31: HBlank reloads timer 1 only while stopped.
+    // ST-097 pp.31-32 and ST-210 precaution 31: HBlank loads timer 1
+    // whenever it is stopped, in either T1MD mode. T1MD selects interrupt
+    // occurrence at expiry, not which line may start the countdown.
     // adjust(never) leaves an emu_timer enabled, so check its deadline too.
     // A running count may span several lines and must not be postponed by
-    // the next HBlank (Ymir UpdateHBlank / Mednafen SCU_SetHBVB agree).
-    if (timer1_hit && (!m_timer1->enabled() || m_timer1->expire().is_never())) {
+    // the next HBlank.
+    if (!m_timer1->enabled() || m_timer1->expire().is_never()) {
       // A count of 0 is specified to mean 512 (SCU Final Specifications:
       // Precautions, No. 31), which also makes the 9 bit mask applied to
       // m_t1s self consistent: a write of 512 masks down to 0 and has to

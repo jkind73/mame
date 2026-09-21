@@ -10810,3 +10810,90 @@ No production change was made for these inspected leads:
   mosaic/delay treatment. Any further implementation needs a coherent access
   schedule rather than changing only stride. Slot arbitration/delay remains
   open; the existing addressed-bank early-window gate is not a full arbiter.
+
+
+## IMPL-0148 — Timer 1 mode qualifies expiry, not HBlank loading
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0148 | SCU-02 | this entry's commit | UNVALIDATED — implementation, syntax checked only | A stopped enabled Timer 1 loads on HBlank in either mode; T1MD gates the expiry event on the current Timer 0 line |
+
+- Branch: `arena/01a0b897-mame`; base: `d9c20cb0a48472fbcd69f13d1fbe5fc9ed71939c`.
+  Production: `src/mame/sega/saturn_scu.cpp:1071–1080,1225–1258`.
+- Contract: with TENB enabled, every HBlank may load a stopped Timer 1,
+  irrespective of T1MD. A running count is not restarted. At expiry, mode0
+  produces the existing timer event; mode1 produces it only while Timer 0
+  equals T0C. An ineligible expiry leaves IST and the timer-start factor
+  untouched, and the stopped timer can reload on the next HBlank. This
+  retains the existing one-shot implementation, zero-to-512 conversion,
+  input-clock/8 timebase, register masks and timer-disable cancellation.
+- Primary: Sega ST-097-R5-072694, printed pp.31–32 / PDF47–48,
+  Figures2.13–2.14 (data set each line, same operation in both modes), and
+  printed pp.55–56 / PDF71–72, Figure3.19 and Tables3.6–3.7 (T1MD selects
+  interrupt occurrence, TENB turns operation on/off). ST-210-110194,
+  printed p.9 / PDF13, precaution31: reload when stopped and HBlank occurs;
+  counts longer than a line need not interrupt every line; zero means512.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blobs
+  `ffa8932249634ebd98947dad123621cebe3f24fa` (ST-097) and
+  `914f3fa160e42aa7ef0f8941c3844a2a5fd70ce8` (ST-210), fetched via GH API.
+- Pinned three-peer cross-check:
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/scu/scu.cpp:180–188,1159–1169`, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`: enabled HBlank loads an
+    unscheduled timer independently of mode; TickTimer1 qualifies the
+    event against the current Timer 0 comparison. Direct semantic support.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SCU/SCU.sv:2608–2645`, blob
+    `999825f64aa200673f4bdd590e81426ed3212ae4`: HBlank reload tests enable
+    and zero, not mode; mode qualifies the terminal-count event through a
+    per-line Timer 0 sync latch. Supports the split, not exact edge timing
+    or equivalence under mid-line T0C writes.
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    `src/ss/scu.inc:340–355,363–385`, blob
+    `8cc45219ca5ffc3e24c97779e01691129f3ea12c`: mode qualifies the zero
+    match, not the HBlank reload expression. Important disagreement:
+    its reload requires Timer1_Met, which already includes qualification;
+    after a suppressed zero it wraps the 9-bit countdown rather than
+    stopping/reloading like the local one-shot/Ymir/MiSTer. Not claimed
+    as three-peer agreement for suppressed-expiry recurrence.
+- Provenance: inherited base performs mode qualification only at HBlank
+  and emits every scheduled expiry unconditionally. Moving eligibility to
+  expiry fixes counts crossing from a nonselected line into the selected
+  line, and suppresses counts that leave the selected line before expiry.
+  No reference implementation copied. Local file history is available only
+  back to the recovered9fbe664f base; no earlier attribution inferred.
+- Observable/units/tolerance: exact load/deadline, timer event count and
+  IST_TIMER_1 bit; zero tolerance in timer ticks. Example with stable TENB1,
+  T1MD1, T1S0 (512ticks), VBlank-out reset then HBlanks at t=0/426/852:
+  T0C2 loads at t=0, retains deadline512 at t=426 and emits once at512 on
+  line2. T0C1 also loads at0 but suppresses the expiry at512 on line2.
+  The 426tick spacing illustrates ST-210's 320-dot line count; it does not
+  assert the driver's exact display-edge phase or sub-tick hardware timing.
+- Proposed validator method (not run): trace legal-port setup plus native
+  timer callbacks for the two crossing cases above, mode0 controls, short
+  counts in/out of the selected line, reload after a suppressed expiry,
+  compare0 across VBlank-out, disabled operation and active save/reload.
+  Separately count timer events and CPU delivery so IMS does not obscure
+  timer operation. Preserve stopped-only reload and unrelated HBlank/Timer0
+  sources. Use hardware capture to resolve the suppressed-expiry recurrence
+  disagreement and mid-line compare/mode-write latching.
+- Falsifier: absent t=0 load in mode1/T0C2; HBlank postpones a running
+  deadline; a mode1 expiry outside the indicated line sets new status or
+  emits a timer start factor; an in-line expiry is lost. A hardware trace
+  establishing reload gating rather than occurrence gating rejects the
+  corresponding contract, rather than being accommodated by a game hack.
+- Protected fixture conflict, static inspection only:
+  `regtests/saturn/test_timer0.py:92` asserts mode-qualified arm counts;
+  `regtests/saturn/test_timer1.py:108–124` explicitly preserves the old
+  T1MD load gating. Those expectations require validator review. Neither
+  fixture nor any evidence/expectation was edited or run.
+- Checks: prescribed `g++ -fsyntax-only` on saturn_scu.cpp exits0;
+  `git diff --check` exits0. No regression/runtime/full build. No new
+  fields or save-layout change. DMA acknowledgement implementation, IRQ
+  acknowledgement/masking, DSP clock and frozen game/sound fixes untouched;
+  only Timer1 event eligibility changes before the existing event path.
+- State/limits: candidate only; SCU-02 remains open. Exact terminal-clock
+  phase, mid-line T0C/T1MD changes, paused/disabled counter retention,
+  every display mode, event/grant arbitration and hardware qualification
+  remain outside this change. Mednafen's suppressed-zero recurrence is
+  explicitly not resolved by consensus.
