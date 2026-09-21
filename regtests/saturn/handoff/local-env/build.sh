@@ -14,6 +14,7 @@ usage() {
 usage: ./build.sh [-jN] [--clean] [--regen] [--verbose] [--dry-run]
 
   -jN        parallel jobs (default: nproc).  Also honoured as JOBS=N.
+             MINIMAL=1 skips TOOLS=1 for a faster, fixtures-only build.
   --clean    make clean first, then rebuild.
   --regen    REGENIE=1: re-run genie so the generated project files match the current
              makefile and source lists, keeping every object.  Try this first.
@@ -51,7 +52,10 @@ if [ ! -f "$ROOT/regtests/saturn/test_cd_lle.py" ]; then
   exit 2
 fi
 
-MAKE_ARGS=(-j"$JOBS")
+# Same configuration the CI proves (.github/workflows/ci-linux.yml "Build" step):
+# the full subtarget plus the tools.  MINIMAL=1 drops TOOLS for a faster link.
+MAKE_ARGS=(-j"$JOBS" SUBTARGET=mame)
+[ "${MINIMAL:-0}" = 1 ] || MAKE_ARGS+=(TOOLS=1)
 [ -n "$REGEN" ] && MAKE_ARGS=(REGENIE=1 "${MAKE_ARGS[@]}")
 [ -n "$VERBOSE" ] && MAKE_ARGS+=(VERBOSE=1)
 [ -n "${EXTRA_MAKE_ARGS:-}" ] && MAKE_ARGS+=($EXTRA_MAKE_ARGS)

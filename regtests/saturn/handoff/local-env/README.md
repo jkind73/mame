@@ -155,6 +155,19 @@ source error -- `make -j3` of this tree links clean in CI.  In order:
 ./build.sh --clean      # make clean, then rebuild
 ```
 
+The build now pins the configuration CI uses (`SUBTARGET=mame TOOLS=1`), because the
+archive path in a reported failure said `build/linux_gcc/bin/x64/Release/mame_mame/`
+while the default full build lands under `mame/` -- a leftover non-default project
+configuration is exactly how the object set and the archive membership come to
+disagree.  `MINIMAL=1 ./build.sh` drops `TOOLS=1` if you only want the emulator.
+
+The claim is narrow on purpose: CI links the full `mame` subtarget with **clang**, and
+the `mametiny` subtarget with gcc (`.github/workflows/ci-linux.yml`, matrix at
+lines 36-46, build at 60-67).  A gcc-13 full-`mame` link is not something CI covers,
+so if `--regen` and `--clean` both reproduce the identical undefined-reference list on
+a clean tree, that is a real toolchain finding and worth a report -- send the first 40
+lines of the build and `git rev-parse HEAD`.
+
 Also benign, on this fork specifically:
 
     fatal: No names found, cannot describe anything.
