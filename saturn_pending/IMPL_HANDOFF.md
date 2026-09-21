@@ -11438,3 +11438,72 @@ No production wait-rule change was made for the following program-DMA issue:
   powered-off RTC persistence, exact oscillator/VBlank service/SETTIME
   visibility, invalid calendar inputs and ST-V-specific battery behavior
   remain separate. Peer phase disagreements are explicit above.
+
+
+## IMPL-0154 — SETSMEM preserves the SETTIME flag
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0154 | SMPC-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | SETSMEM changes four backup bytes, not the STE flag recording SETTIME since cold reset |
+
+- Branch `arena/01a0b897-mame`; base `67c192fa8de1c1abe6068cc17411490462ffd2ae`.
+  Production `src/mame/sega/smpc.cpp:562–571`.
+- Contract: SETSMEM copies IREG0–3 into the four SMEM bytes and leaves the
+  existing STE latch unchanged. SETTIME continues to set STE. INTBACK
+  OREG0 bit7 reflects that latch, not whether software has merely written
+  backup settings. SETSMEM's completion, SF, OREG31 and command timing
+  remain unchanged, as do RTC contents and timer deadline.
+- Primary: ST-169-R1-072694, printed p.32/PDF42, INTBACK OREG0 STE says
+  0=not SETTIME since SMPC cold reset,1=SETTIME done; p.44/PDF54 says
+  SETSMEM sets four SMEM bytes, and p.46/PDF56 defines SETTIME. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`, fetched through GH API.
+- Pinned three-peer comparison:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp`,
+    blob `af6cb315fe2126f923a5dabfc4af98c088463318`:1524–1540 sets RTC.Valid
+    for SETTIME, but SETSMEM writes only SaveMem[0..3];1221 exposes that
+    validity in OREG0. Direct primary-compatible support.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv`, blob `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`:
+    778–791 sets STE in SETTIME, not SETSMEM;661 exposes it in OREG0.
+    Current LLE `rtl/Saturn/SMPC/SMPC.sv:740`, blob
+    `b8d86a09f5b07805dbf6fedc0349689cd5bbc85f`, explicitly forces STE set
+    on firmware ERAM reads; that bypass is not corroboration of command
+    semantics. No firmware bytes imported or executed.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:868–899`, blob
+    `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, disagrees: SETSMEM sets
+    m_STE, SETTIME does not in the inspected code. It is not reported as
+    agreement or evidence that Sega's explicit STE definition says otherwise.
+- Provenance: inherited SETSMEM wrote0xff to the fifth NVRAM byte, whose
+  bit7 is subsequently used as STE by resolve_intback. SETTIME already
+  explicitly sets that bit. Remove only the unrelated fifth-byte write;
+  keep the existing NVRAM storage/schema and four-byte command copy.
+- Observable/units/tolerance: exact STE bit and four returned SMEM bytes,
+  zero bit tolerance. From authored cold state with STE0, SETSMEM plus
+  status INTBACK returns the new four bytes at OREG12–15 and STE0. After
+  SETTIME, STE1 persists across subsequent SETSMEM. Neither operation may
+  accidentally change the other three status bits/fields or manufacture
+  an RTC increment beyond the time elapsed during commands.
+- Proposed validator method (not run): use fresh controlled backup state,
+  issue SETSMEM before any SETTIME and inspect status INTBACK; then SETTIME
+  and several distinct SETSMEM payloads. Include same-revision file replay
+  at STE0/1 and NVRAM save/restart, distinguishing the flag from host RTC
+  seeding. Preserve the normal SF/OREG31 handshake. Never use an old already
+  set STE image as proof that a new SETSMEM sets it.
+- Falsifier: cold SETSMEM raises STE, later SETSMEM clears a valid STE,
+  SETTIME no longer sets it, or any SMEM payload/command acknowledgement
+  changes. Hardware demonstrating that SETSMEM independently sets STE
+  despite the manual would reject this contract; pinned Ymir alone is not
+  such a capture.
+- Checks: prescribed smpc.cpp C++20 TU syntax exits0; git diff --check
+  exits0. No tests/runtime/full build. No new state/save signature/NVRAM
+  layout change. Existing m_smem is saved. Old NVRAM files may already
+  contain STE1 from the former SETSMEM behavior; the cause cannot be
+  reconstructed and this change does not rewrite historical files.
+- Protected fixtures: the inspected test_smpc_handshake/transport scripts
+  do not execute SETSMEM/SETTIME bodies; their status paths are not direct
+  coverage of this correction. No protected fixture/evidence edits or runs.
+  SMPC-03 remains open; IO-02 support inventory unchanged. Frozen sound/
+  video-clock and acknowledgement paths untouched. Powered-off RTC policy,
+  real battery-loss signaling and silicon command timing remain unqualified.

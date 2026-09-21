@@ -566,8 +566,8 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command) {
     for (int i = 0; i < 4; i++)
       m_smem[i] = m_ireg[i];
 
-    // clear the SETIME variable, simulate a cr2032 battery alive in the system
-    m_smem[4] = 0xff;
+    // ST-169 p.32: STE records SETTIME since cold reset. SETSMEM only
+    // replaces the four SMEM bytes; it must not mark the RTC as set.
     break;
   }
 
