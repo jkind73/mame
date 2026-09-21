@@ -291,13 +291,19 @@ void smpc_hle_device::status_flag_w(uint8_t data) {
 }
 
 uint8_t smpc_hle_device::pdr1_r() {
-  uint8_t res = (m_pdr1_read() & ~m_ddr1) | m_pdr1_readback;
+  // ST-169 pp.7-8: only current output pins read back the stored data.
+  // Preserve the existing bit7 behavior outside the seven physical pins.
+  uint8_t res = (m_pdr1_read() & ~m_ddr1) |
+                (m_pdr1_readback & (m_ddr1 | 0x80));
 
   return res;
 }
 
 uint8_t smpc_hle_device::pdr2_r() {
-  uint8_t res = (m_pdr2_read() & ~m_ddr2) | m_pdr2_readback;
+  // ST-169 pp.7-8: only current output pins read back the stored data.
+  // Preserve the existing bit7 behavior outside the seven physical pins.
+  uint8_t res = (m_pdr2_read() & ~m_ddr2) |
+                (m_pdr2_readback & (m_ddr2 | 0x80));
 
   return res;
 }

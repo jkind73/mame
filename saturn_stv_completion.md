@@ -172,6 +172,7 @@
 - [ ] **SMPC-04 — Complete peripheral protocol and event routing. [P/V]**
   - Multi-page transport and partial-report file save/load pass live on 234c7abc. Integrated VBlank timeout plus initialized/reset/save-registered H/V edge history after live negative reproduction; native 2781 timeout/edge-save positives pass. Physical slot addressing/FF-empty ports and VBlank-sampled RESB now pass the expanded 79f36021 live gate, including both tap types, empty root ports and real sampled-RESB save/load. Extended-size IDs, OPE and wire timing remain open.
   - Direct-port modes, peripheral identification, multitap discovery, packet lengths and handshake timing.
+  - IMPL-0157 masks stored PDR readback with the current DDR so released input pins no longer retain old output ones (syntax-only candidate). PDR preloading and DDR-driven output propagation remain open; no output callback or frozen sound-reset path changed.
   - Integrate peripheral-origin PAD/beam latch signals with SCU/VDP2; resolve exceptional mode/read responses and NetLink delegation.
 
 ## 7. Sound: 68EC000, SCSP and SCSP DSP

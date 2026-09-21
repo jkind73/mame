@@ -11665,3 +11665,84 @@ No production wait-rule change was made for the following program-DMA issue:
   task collisions, switch transitions between samples and physical chatter
   need hardware timing evidence. No change to frozen acknowledgement,
   SH-2 delay-slot IRQ, sound/reset/video-clock or game-specific fixes.
+
+
+## IMPL-0157 — use the current DDR for both halves of PDR readback
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0157 | SMPC-04 | this entry's commit | UNVALIDATED — implementation, syntax checked only | PDR input bits no longer OR in stale output values after an output-to-input DDR change |
+
+- Branch `arena/01a0b897-mame`; base `c555a8937b734d4c88bab61635cab8f43739ea1d`.
+  Production `src/mame/sega/smpc.cpp:293–309`, pdr1_r and pdr2_r only.
+- Contract: for each physical pin0–6, current DDR0 selects terminal input;
+  current DDR1 selects stored output readback. Previously the terminal half
+  was DDR-masked but the stored half was not: an old output1 remained visible
+  after the pin became input, even with a low input callback. Mask the stored
+  half with DDR as well. Deliberately preserve the existing separate bit7
+  behavior; this is not a floating/open-bus model change.
+- Primary: ST-169-R1-072694 printed pp.7–8/PDF17–18, Figure1.4/Table1.3,
+  DDR/PDR definitions: DDR selects input/output per bit; outputs read the
+  written value rather than terminals, inputs read terminals. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp`,
+    blob `af6cb315fe2126f923a5dabfc4af98c088463318`:253–255,823–830,
+    901–910 updates bus state with the current DataDir on DDR writes/reads.
+    `src/ss/input/gamepad.cpp:64–70`, blob
+    `2b62d0363b4f7b8578065aeff9c48364c0072c50`, masks returned input data
+    and driven data by smpc_out_asserted; no unconditional stale-output OR.
+    Supports direction-selected input readback, not every electrical collision.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/hps2pad.sv:442–458,507–523`, blob
+    `38b620026380254ca2684a3c277109c433413166`, masks PDR output with DDR
+    before composing peripheral input response. Top `Saturn.sv:1025–1036`,
+    blob `9a17db18d9f699c998a905315b472f39050238b8`, connects both ports
+    to that block. SMPC_HLE.sv:1322–1323 returns PDR inputs directly, blob
+    `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`. No stale output OR on read.
+    Lower pad-response bits have separate decoding; not an all-DDR oracle.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:443–458,534–572`, blob
+    `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, refreshes PDR via the
+    peripheral with current DDR. `peripheral/peripheral_impl_control_pad.cpp:
+    32–56` in the same directory, blob
+    `62049e33d52b2f827afe255579f0c968a4b03e4e`, derives returns for DDR40/60,
+    otherwise FF. Supports refreshing input rather than ORing stale data in
+    supported pad modes; does not independently establish arbitrary-DDR pins.
+- Provenance: local history/blame retains the unmasked stored-output OR at
+  the locally available9fbe664f ancestry boundary and throughout0153–0156.
+  Not attributed as a defect introduced by that boundary commit. This is a
+  direct register selection correction, not a port-protocol rewrite or peer
+  code import. Existing PDR/DDR saved fields suffice; no new state.
+- Observable/units/tolerance: exact per-pin read bit, zero tolerance. For
+  either port, let pin mask M=1<<n (n0..6): DDR=M; write PDR=M; DDR=0;
+  callback terminal bit n=0. The next PDR read must have bit n=0, not the
+  previously stored1. With current DDR=M, output1 remains1 even if the
+  callback is0; output0 remains0 even if that callback pin is1. Other input
+  bits continue following their callback and bit7 retains pre-change behavior.
+- Proposed validator method (not run): authored controllable pin endpoints
+  or native direct-port sequences for both ports; compare all seven input/
+  output selections and mixed masks, including a DDR change without another
+  PDR write. Observe callback invocation counts and output data to establish
+  they do not change on reads. Same-revision save/replay must preserve DDR/
+  stored data and return the newly selected input after an output-to-input
+  transition. Do not confuse register readback with unresolved line settling.
+- Falsifier: a released input reads stale1 despite terminal0, current outputs
+  follow terminal rather than stored data, bit7 changes, an output callback
+  is added/reordered, or save/load changes the selected bit.
+- Checks: prescribed C++20 smpc.cpp TU syntax exits0; git diff --check exits0.
+  No validation/runtime/full build. Static fixture search found no PDR reader
+  extraction in existing SMPC scripts; it does not establish coverage. No
+  protected fixtures/evidence/expectations changed. No additional save-layout
+  change beyond0156 and no state migration or native replay claim.
+- State/limits: candidate only; SMPC-04 and IO-02 remain open, supported/
+  unsupported device inventory unchanged. No write-path, DDR/IOSEL callback,
+  ST-V EEPROM/game-select, sound-reset, clock-change or IRQ changes.
+  PDR writes still discard data for input-configured pins; DDR writes still
+  do not propagate newly selected outputs. Primary p.75/PDF85 Figure3.22
+  specifies PDR-to-DDR-to-IOSEL setup; those separate deficiencies remain
+  open. Resolving drive propagation requires coherent direct-port behavior
+  and review of the frozen ST-V PDR2 sound-reset coupling, not a console-only
+  policy hack. Contention, pullups, IOSEL ownership and bit7 bus semantics
+  remain outside this read-selection correction.
