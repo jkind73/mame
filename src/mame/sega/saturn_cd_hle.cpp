@@ -1524,7 +1524,21 @@ void saturn_cd_hle_device::cmd_get_subcode_q_rw_channel() {
     xxxx xxxx [11] CRCC /
     */
 
-    msf_abs = cdrom_file::lba_to_msf_alt(cd_curfad - 150);
+    /*
+    The absolute Q address is measured from 00:00:00 at the start of the lead-in,
+    so the first sector of a disc (LBA 0) carries 00:02:00; the drivers that
+    report absolute CD time all add that lead-in themselves, because
+    lba_to_msf()/lba_to_msf_alt() (src/lib/util/cdrom.h:206,223) add nothing of
+    their own -- sony/psxcd.h:109-110 subtracts 150 going in and adds 150 coming
+    out for exactly this reason, and gdrom.cpp:683 pairs a biased FAD with
+    lba_to_msf_alt() for this same field.  cd_curfad is already that biased drive
+    FAD: it resets to 150 for LBA 0 and every LBA use of it subtracts the 150.
+    So the absolute field is lba_to_msf(cd_curfad) and only the track-relative
+    time needs the lead-in removed; subtracting it twice left the reported
+    absolute address two seconds behind the position the pickup is really at,
+    which is what a Red Book decoder reads off the Q channel.
+    */
+    msf_abs = cdrom_file::lba_to_msf_alt(cd_curfad);
     track = uint8_t(std::max(0, cd_track_at(cd_curfad)));
     msf_rel = cdrom_file::lba_to_msf_alt(cd_curfad - 150 -
                                          m_cdrom_image->get_track_start(track));

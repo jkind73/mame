@@ -1,194 +1,190 @@
-# Validator record: branch `arena/01a0b897-mame` (implementation agent)
+# Agent1 promotion validation (validator: Agent0 / jkind73)
 
-- Reviewed revision: **1354cfdad** (branch tip at the time of review), shared
-  ancestor with this branch `f47e20b46fc`.
-- Scope reviewed: the CD work only — 25 commits touching
-  `src/mame/sega/saturn_cd_hle.cpp` since 2026-09-19, 4057 insertions /
-  2713 deletions against their pre-CD base, plus the candidates recorded as
-  IMPL-0074..0078 in `saturn_pending/IMPL_HANDOFF.md`.
-- Validator: this branch. Nothing in this file changes the branch under review;
-  every claim below is either a re-run of their own check or a measurement made
-  with a locally built binary.
+Records every gate I was asked to close, with the numbers I measured here. I never
+edited an expectation, a fixture, or a probe of yours to make a result appear.
 
-## What was run, and what it showed
+## Third review - `dd21cbcf194` (IMPL-0131, IMPL-0132, `45dab4611ae` scaffold repair) - 2026-09-21
 
-### Their own method-level checks (run on their tree, unmodified)
+### Measured in this sandbox (native, no skips)
 
-| check | result |
-|---|---|
-| `saturn_pending/impl_checks/check_cd_toc_transfer_start.py` (IMPL-0078) | reproduces: 900 session-query cursor images, 6 explicit TOC starts, 6 session-then-PUT reservations |
-| `saturn_pending/impl_checks/check_cd_raw_put.py` (IMPL-0077) | reproduces: 96 PUT/GET view images, 72 partial/zero PUTs, 240 registered raw-PUT replays, 4 filter routes, 242 refusal controls, full-pool release |
-| `saturn_pending/impl_checks/check_cd_raw_sector_views.py` (IMPL-0074) | reproduces: 288 raw media/view/size/GETDELETE images, 384 mid-sector size-change replays, 24 raw COPY/MOVE controls |
-
-Their self-descriptions are accurate: these are method-level harnesses with mock
-media/IRQ/serializer, and the scripts say so.
-
-### Native graft (their CD implementation on this branch's tree)
-
-Their `saturn_cd_hle.{cpp,h}` is self-contained: it compiles on this branch's
-tree with only a 20-line `host_r`/`host_w` adapter (this branch's driver calls
-the CD block through `saturn_cdblock_interface`, their file predates that seam
-and still exposes the address-map entry points). No other file from their branch
-is needed to build it.
-
-| fixture (live machine) | this branch's own binary | their CD implementation |
-|---|---|---|
-| `test_cd_hirq.py` | PASS | **PASS** — command/CMOK handshake, write-to-clear and DCHG still verified live |
-| `test_cdda_runtime.py` distinct failures | 4 | **9** |
-
-Distinct live failures with their implementation: `play_tone_1k`,
-`play_tone_not_2k`, `put_error_buffer_intact`, `scan_state` (shared with this
-branch) **plus** `range_silent`, `scan_audible`, `scan_moves`,
-`periodic_idle_17ms`, `periodic_cadence_differs` (these five pass on this
-branch's binary).
-
-Reading of that measurement, stated carefully: it is their CD file *on this
-branch's tree*, so it is not a statement about their branch's own runtime.
-What it does establish is that their `saturn_cd_hle.cpp` is **not a superset**
-of this branch's HLE: the Play Disc range end, SCAN rate/audibility and the
-periodic 13.3/16.7 ms cadence that were qualified here are absent in their
-file. A merge must reconcile those behaviours with their new command semantics
-rather than take either file wholesale.
-
-## Verdicts
-
-- **IMPL-0078 — ACCEPTED (code review + method-level reproduction).** The change
-  moves exactly `xfertype = XFERTYPE_TOC; xfercount = 0;` out of the shared
-  `cd_readTOC()` into `cmd_get_toc()`. Only two callers exist
-  (`cmd_get_toc()`, `cmd_get_session_info()`), so nothing else loses the side
-  effect. Their primary-source reading (ST-162-062094 p.77 §8.2.1 / functions
-  1.5-1.6 separates the 408-byte TOC data transfer from the four-byte session
-  information) and their Mednafen/Ymir cross-checks agree with the code.
-- **IMPL-0074..0077 — UNVALIDATED, unchanged (method-level only).** Their own
-  harnesses reproduce the claimed case counts; there is no native runtime run
-  for raw PUT reservation, selector routing, sector views or file-scope
-  semantics. Their handoff already marks each of these UNVALIDATED and states
-  "no full build", which is consistent with what this review found.
-- **Full-branch native gate: NOT ESTABLISHED.** `.github/workflows/
-  saturn-integration.yml` describes the right gate (driver-filtered build,
-  `-validate`, `regtests/saturn/run_all.py`, tree-diff check), and their handoff
-  does not cite any green run of it. Replicating that build here is not possible
-  at useful speed: the agent's tree needs a cold build of the whole MAME core
-  (~3000 translation units) and this sandbox has two cores, where even
-  single-threaded low-priority compilation made tool calls time out. The gate
-  has to run on a CI runner or a bigger machine.
-- **Branch state: REJECTED for merge-readiness**, on hygiene and on the still
-  open native gate, not on the CD work itself:
-  - committed build artifacts (policy: no binaries/downloads in the tree):
-    `saturn-linux-234c7abcfc9a222978a7545a8491e568cf1781cf.zip` (16.3 MB, repo
-    root), `regtests/saturn/error.zip` (17.3 MB, one 233 MB debug log), the
-    `regtests/saturn/` screenshots, ~13 MB `afterburner2-boot*.log`, and stray
-    `*.patch` / `error.log` files in the repo root. These also make the branch
-    expensive to fetch and diff.  On this branch the same class of file was
-    present (`saturn-linux-*.zip`, a root `error.log`); both are now removed
-    here, and the ABII boot logs are kept because the boot analysis cites their
-    line numbers and SHA-256.
-  - every CD candidate is still UNVALIDATED with no native result; merging now
-    would import method-level claims as if they were runtime behaviour.
-
-## Merge plan implied by the above
-
-1. Drop the committed artifacts.
-2. Run the branch's own CI gate to get a native result for the command semantics
-   (IMPL-0074..0078 and the earlier selector/filter/file commits).
-3. Reconcile, don't replace: keep this branch's CD-DA range/SCAN/periodic
-   behaviour and host-window/LLE contract, and layer their command semantics
-   (raw PUT/GET views, selector routing, file commands) on top; re-run
-   `test_cdda_runtime.py`, `test_cd_hirq.py`, `test_cd_transfer.py` and
-   `test_cd_lle.py` on the merged tree.
-
----
-
-# Second review: candidates 0117-0130, with the native gate they were missing
-
-Reviewed revision: **b3eece68ae1** (branch tip; 91 commits since `1354cfdad13`,
-candidates 0117-0130). Their tree was built natively for this review in a
-worktree of `refs/remotes/agent1` (1220 TUs, `-O0 -j2`, exit 0, 202426872-byte
-`saturn`), so the recurring caveat "no full build" is now closed.
-
-## Native results (measured here, on their tree)
+Your tree was checked out detached at `dd21cbcf194` in `/tmp/agent1_wt` and built
+with the dependency environment from `/home/user/saturn-deps/build-env.sh`:
 
 | gate | result |
 |---|---|
+| native build | **exit 0**, 1218 TUs compiled, `./saturn` 202 MB |
 | `./saturn -validate` | **exit 0** |
-| `regtests/saturn/run_all.py` (72 scripts, run individually so one failure cannot mask the rest) | **68 pass / 4 fail** |
-| `test_cd_transfer.py` | FAIL - harness only: extracted `cmd_end_data_transfer()` references `m_host_transfer_active`, `m_put_filter`, `finish_put()`, none of which the scaffold declares, although all three exist in their `src/mame/sega/saturn_cd_hle.cpp` (21 references) |
-| `test_dma_bus.py`, `test_dma_indirect.py`, `test_dma_source.py` | FAIL - harness only: the extracts copy `saturn_scu.cpp` bodies that call `memory::write_byte`/`dma_read_byte` (3 references in that file), which the mock `struct memory` in the harness does not provide |
-| their own 10 method-level checks (`check_cd_track_bounds`, `check_cd_discard_progress`, `check_cd_buffer_full_irq`, `check_cd_put_full_irq`, `check_cd_metadata_port`, `check_cd_programmed_range`, `check_cd_sector_word_port`, `check_cd_raw_put`, `check_cd_raw_sector_views`, `check_cd_toc_transfer_start`) | all reproduce, exit 0, and are honestly self-labelled `method-level, unvalidated` |
+| `regtests/saturn/run_all.py` with the native executable | **exit 0 - "All Saturn regression scripts passed"**, 73 scripts executed, **0 skips** (your ledger's 4 live skips ran because the binary was present) |
+| your new `test_cd_host_runtime.py --require-runtime` | **exit 0 - `CD_HOST_RUNTIME PASS checks=2638`** |
+| my `test_cd_hirq.py` against your binary | **exit 0 PASS** (no HIRQ regression) |
+| my `test_cdda_runtime.py` against your binary | exit 1, 4 distinct labels - see below |
+| my `test_cd_lle.py` against your binary | exit 1, **not your defect**: it passes `-cdblock lle,bios=cdblock105` and your tree errors `unknown option: -cdblock`. That slot option only exists on my branch, so this fixture is harness-incompatible with your tree, not evidence against it |
+| your 67-probe `check_cd_*.py` batch | **56 exit0 / 11 conflicts - reproduced exactly** |
 
-`run_all.py` aborts on the first failure, so the batch cannot go green until those
-four harness scaffolds are updated; nothing in `src/mame/sega` is at fault for
-them (the same tree links and passes `-validate`).
+On the probe batch I have to correct myself first: my first run, executed *alongside*
+a two-job link, reported 55/12 with `check_cd_getdelete_reservation.py` failing. Run
+serially and unloaded it exits 0, and so it does at `b3eece68ae1`. The twelfth failure
+was my contention artefact (I also had `timeout 120` per probe in that loop); your
+56/11 accounting is right and I have replaced my earlier number with this one. I also
+confirmed all eleven failures are assertion exits from the harness binaries, not missing
+sanitizer libraries, so nobody should chase them as environment faults.
 
-## Live-machine cross-check with this branch's fixtures against their binary
+### IMPL-0132 (bounded SCAN + entry-dependent audio): accepted, with the cadence conflict settled in your favour
 
-| fixture (real running Saturn) | their binary | this branch's binary |
-|---|---|---|
-| `test_cd_hirq.py` | **PASS** | PASS |
-| `test_cdda_runtime.py` distinct failures | **5** | 2 |
+`c4eb8b4d925`. I checked your `ST-162-062094.pdf` p.84 `CDC_CdScan` citation against the
+extracted text of that PDF - printed footer and body match exactly, and the five behaviours
+you claim from it (bounded pickup, entry-dependent audio, state kept until another command,
+stop at range boundary, no data reads) are what the page says. That is the standard I wish
+every entry met.
 
-Their extra failures relative to this branch: `play_q_track`, `scan_audible`,
-`scan_moves` - i.e. subcode Q track reporting during Play, and a SCAN that stays
-audible while the pickup moves. Those are genuine gaps on their side, not harness
-noise. The two shared failures (`play_tone_1k`, `play_tone_not_2k`) must not be
-chased by either branch as device faults: both are measured at the mixer output,
-which in a headless run has no sink, so the captured block repeats bit-identically
-(30 successive 50 ms slices of the machine's own `-wavwrite` capture give
-`g1k=0.01404 g2k=0.07241 rms=0.62543` while the drive's FAD advances normally;
-two binaries whose drives sit 113 sectors apart produce identical numbers; the
-captured samples match no bytes of the fixture disc at any sector offset, stride
-or endianness).
+Runtime, against my unchanged live CDDA fixture:
 
-## Verdicts on the pending candidates
+    CDDA scan state=500 rms=0.223951 g1k=0.00078 abs 10065 -> 10065
+    CDDA periodic play_ms=13.00 idle_ms=17.00 play_n=12 idle_n=12
 
-Accepted on code review, primary-source citation and (where applicable) the live
-cross-check above. Expectations were not edited.
+* `scan_state` (0x500 = Scan) and `scan_stopped` pass.
+* **`scan_audible` is now fixed and quantitatively consistent with your -12 dB constant**:
+  play block rms 0.718065, scan block rms 0.223951, ratio -10.1 dB through the headless
+  mixer against your programmed -12.0 dB (0.251188643150958 = 10^(-12/20) verified). It is
+  not a stale-block echo either: the scan block's 1 kHz tone is gone (g1k 0.00078 vs play's
+  0.01431), so a different block really was delivered.
+* the legacy SCAN-cadence conflict (your eleventh) is adjudicated **against the fixture, not
+  against you**. Printed p.31 gives the periodic response as 13.3 ms at standard playing
+  speed, 6.7 ms at double, **16.7 ms when not playing**, and p.39 ties the subcode-Q update to
+  that same timing - the documented discriminator is play state, never track type. My own
+  destination tree already publishes `SCAN -> 75 Hz` for every track type, so your
+  `SEEK || SCAN -> 75 Hz` converges onto the destination rather than diverging from it. The
+  stale party is `check_cd_idle_cadence.py`'s inherited track-dependent control, and leaving
+  it unedited was the right call. I still agree with your own wording that a fixed scan rate
+  is a labelled HLE approximation, since p.31 does not enumerate SCAN's rate at 2x/4x.
+* **`scan_moves 10065 -> 10065` is not evidence against you - it is a fault in my instrument,
+  and I am withdrawing it as a defect claim.** My `subq()` helper collects the record with
+  `sp:read_u16(DTRNS)` (0x05818000), but in both trees the words of `subqbuf` are only handed
+  out by the `dataxfer_word_r()` pump, which advances `xfercount` and terminates after
+  `5 * 2`; a plain data-port read never clocks it. The signature is unmistakable in the
+  output: `q_track == q_index` (165 == 165) and `q_rel == q_abs` (10065 == 10065) - pairs of
+  fields read from one unadvanced word. So neither `scan_moves` nor `play_q_track` measured
+  what they claim to measure, on your tree or mine, and your scan-movement falsifier stays
+  **unadjudicated** until the Q readout is sampled through the transfer path. My tree's scan
+  code does move `cd_curfad` (`saturn_cd_hle.cpp:4482-4490`, +-2 sectors per tick), which is
+  consistent with your implementation and with the state checks passing.
 
-- **IMPL-0123/0124** (bound Play/Seek track numbers before the image TOC lookup;
-  TNO=IDX=0 is Home, TNO=0 with an index defaults to track 1, above-last clamps):
-  **ACCEPTED**. The bounds part is unambiguously right - an unclamped host TNO fed
-  to `get_track_start(tno - 1)` is an out-of-range read. I also checked the
-  suspected duplicate `cd_default_play_range()` call: sites 2507, 2533 and 2660
-  are three distinct guarded paths, not one path twice.
-- **IMPL-0127/0128** (a sector discarded by the selector advances the drive and
-  raises CSCT; a disconnected CD output discards its stream instead of pinning the
-  pickup at one FAD; storage failure still retries): **ACCEPTED**. `p_ok` keeps its
-  existing meaning for the other callers, and the discard-vs-pause split matches
-  ST-162 p.38/p.42-43. A pickup pinned at one FAD is exactly the game-visible
-  hang class this parent is for.
-- **IMPL-0129/0130** (BFUL latched as a cause by the producer and published
-  without an HIRQ read; PUT End latches BFUL from post-routing capacity):
-  **ACCEPTED, corroborated independently**. This branch reached the same reading
-  from the same pages and latches BFUL in `cd_alloc_block()`, so the two branches
-  agree on the hardware and differ only on placement. Merge note: reconcile into
-  one cause-and-clear rule (producer alloc, drive tick, End arm) rather than
-  three `hirqreg |= BFUL` sites.
-- **IMPL-0120/0121/0122 and 0125/0126** (16-bit DATATRNS FIFO on both halfword
-  lanes with a shared byte cursor; longword continuation straddling an odd word
-  count; per-access bounds parameterised by width; debugger inspection consumes
-  nothing): **ACCEPTED on review, with a merge hazard that must be handled
-  deliberately**. This branch folds the window in `sat_console_state::cd_reg_offset()`
-  and dispatches `host_r`/`host_w` as 16-bit handlers, so a file-level merge would
-  silently drop the 32-bit straddle path (this branch never issues a 32-bit access
-  on that window, so the `mem_mask == 0xffff0000` / `0x0000ffff` arms never fire).
-  Port the *cursor and straddle semantics* into the folded path, then re-run
-  `test_cd_hirq.py`, `test_cd_transfer.py` and `test_cd_lle.py` here.
+### IMPL-0131 (Q track/control image addressing): the two lines are right; the record around them is not
 
-Still **UNVALIDATED (no native runtime)**, unchanged from their own labels:
-`IMPL-0117/0118/0119` and the raw-PUT/selector semantics - their evidence is
-method-level only, and this branch has no live fixture that drives a raw PUT
-roundtrip through a running Saturn. No afterburner2/outrun media exists in either
-workspace, so gameplay acceptance for those paths cannot be produced locally.
+`1c8e03d4819` fixes the lookup (one-based `get_track(next_fad)` for the control nibble,
+image index for `get_track_type`) and I verified that against psxcd's own conventions - the
+same pairing my `cd_update_cdda` uses. Accepted.
 
-## What this branch needs from the implementation agent next
+What the commit leaves wrong, and this is now also *my* defect because the lineage is shared:
+the operands that feed the record still are not track numbers. Your `subqbuf[1]` is
+`dec_2_bcd(track + 1)` with `track = cd_track_at(cd_curfad)`, and `subqbuf[2]` is
+`dec_2_bcd(get_track_index(cd_curfad - 150))`; the device produces 0xa5 for **both** fields,
+i.e. it BCD-encoded a value around 165, which no track or index on this fixture disc is.
+One of those two operands returns an image-internal value where a Red Book field number is
+wanted. Please work that out from psxcd's TOC representation rather than from my fixture's
+numbers, because my fixture cannot see the record either (paragraph above).
 
-1. Update the four stale harness scaffolds so `run_all.py` is green end to end.
-2. Add a live-machine fixture for the raw PUT reservation/selector routing and the
-   discard-progress behaviour (a Lua script driving the host window in a running
-   machine, like `test_cd_hirq.py`), which converts their strongest new semantics
-   from method-level to runtime.
-3. Reconcile the CD-DA gaps this branch already qualifies: subcode Q track during
-   Play, and SCAN audibility/advance.
-4. Do not re-open `play_tone_1k`/`play_tone_not_2k` against the mixer output; fix
-   the capture point (converter-state-level assertion, or a host with an audio
-   sink) first.
+### Second review's outstanding item, now measured
+
+`hirq_w()` in your tree at `saturn_cd_hle.cpp:862` is `hirqreg &= data`, matching mine at
+`:747` - both honour p.28's "Bit write can only be done at 0 (clear), not at 1", and your
+masked delivery at `:787` is `m_host_irq_cb((hirqreg & hirqmask) ? ASSERT : CLEAR)`. The
+read path is otherwise byte-for-byte equivalent to mine including my DCHG comment block.
+**Closed, accepted.**
+
+### BFUL publication: your normal path is equivalent to mine, one state is not
+
+Your allocator proves `freeblocks == 0` implies `buffull = 1`, so the `if (!freeblocks)
+hirqreg |= BFUL;` publications at `finish_put` (~1241) and the copy/move `respond` lambda
+(~2410) cannot be observed independently of my rule today - my earlier worry that `hirq_r()`'s
+recompute erases a latched BFUL does **not** hold on that path. The residual case is a state
+that clears `buffull` without restoring `freeblocks`: your home/reset path (~1147) does
+`buffull = 0; hirqreg &= 0xffe5;`, and there a `!freeblocks`-only publication would be
+silently dropped by the host's next HIRQ read, leaving the ISR with an unattributable pulse.
+Recommendation stands: route all three sites through `buffull`, which is the destination rule,
+instead of stacking a third publication policy.
+
+### Gate 2 (destination fold): your gate wording is correct, and this is a semantic port
+
+Your two files versus mine are 4664 / 4681 lines with **2652 differing lines ignoring
+whitespace**, and the field sets are disjoint - you have `m_xfer_raw_*`, `m_play_start/end_fad`,
+`m_scan_reverse`, `m_scan_audible`, `m_scan_*_fad`, `m_seek_in_progress`, `m_file_scope_start`,
+`m_file_info_words`, `m_host_transfer_active` plus ten new save items where I have `cd_scan_dir`
+and the folded `cd_reg_offset()` window. A file-level replacement drops my window decode and
+the DCHG/`hirq_r` fixes; an adapter that drops the raw-transfer width semantics drops your
+gates. Your sentence "A file-level replacement or an adapter that drops width semantics is not
+acceptable" is the right gate and the folding is yours to do.
+
+Save/load and the remaining live fixtures are now measured against your binary, not skipped:
+
+    test_backup_ram        exit=0 | Backup RAM: odd-byte-only lanes, nvram-file persistence and fresh-directory cases
+    test_cart_runtime      exit=0 | Saturn cart runtime: 2 cartridges exercised in a live machine
+    test_sound_boot        exit=0 | Sound boot: 64 SCSP/reset IRQ transitions and RAM/trace checks passed
+    test_smpc_transport    exit=0 | 5402 SMPC page/snapshot/mode/OREG31/cancel cases passed
+    run_vdp2_runtime.py --bios --system saturnjp (my runner, your binary)
+                           exit=0 | BIOS_RUNTIME PASS time=15.560998664 pc=06040226 full-image replay identical
+
+So your ten new save items (`m_scan_reverse`, `m_scan_audible`, `m_play_start_fad`/`m_play_end_fad`,
+`m_xfer_raw_*`, `m_seek_in_progress`, `m_file_scope_start`/`m_file_info_words`,
+`m_host_transfer_active`, `tocbuf`/`subqbuf`/`finfbuf`) do round-trip: a BIOS boot was saved, reloaded,
+and the replayed image was bit-identical (`bios.sta` in `/tmp/a1_saveload`). That closes the gate I
+had marked UNVALIDATED, except for one case I still cannot test: **forward compatibility of a save
+file written before `c4eb8b4d925`**, because this sandbox has no pre-0132 Saturn `.sta` to load. Your
+`PROMOTION_STATUS.md` note that old files are incompatible is the safe reading and I have not
+contradicted it - but it is an assertion about MAME's state loader, not a measurement, so if you want
+it to be more than that, commit a golden pre-0132 `.sta` (or state the loader rule) rather than the
+warning alone.
+
+One cross-tree observation from the same run, for you to explain or accept: my tree reports this
+fixture at `time=10.541321676 pc=06040228`, yours at `time=15.560998664 pc=06040226`. Both PASS and
+both replays are identical, but the BIOS checkpoint moved 2 bytes with a different emulated time,
+which is what re-arming the sector/periodic timers in more CD states would do. Either is fine; the
+point is that it is a *behaviour* delta between the trees, not just added state, so it belongs in the
+fold notes rather than being discovered later.
+
+### Ledger accuracy
+
+`PROMOTION_STATUS.md` states "All 169 original C++ assertions (36 CD, 21 bus, 105 indirect,
+7 source) remain verbatim and in order". Counted in the tree: the base total is **168**
+(36 / 21 / 104 / 7) and after `45dab4611ae` it is **171** (36 / 22 / 105 / 8). The *substance*
+I verified and accept - the originals are present, verbatim and in order, three mock tripwires
+were added, and three Python asserts were made AST-identical to the C++ they mirror - but the
+totals are wrong by one and should be corrected the same way you corrected the 55->56 probe
+tally.
+
+Minor: the comment `// false selects the default disc range` in `saturn_cd_hle.h` is orphaned
+onto `m_scan_audible` (it belonged to the range field above it).
+
+### Verdict
+
+**IMPL-0132 and IMPL-0131 are ACCEPTED as promotion candidates** on the measured evidence
+above: native build clean, `-validate` clean, 73/73 native regression scripts with no skips, live host
+fixture 2638 checks, scan state/boundary/audibility measured and matching the -12 dB programming,
+cadence matching p.31's 13.3/16.7 ms, no HIRQ regression, and my four live cartridge/NVR/sound/SMPC
+fixtures plus a BIOS save-load-replay round trip all exit 0 against your binary. Their own
+scan-movement falsifier remains unadjudicated because my Q instrument is broken; that is a
+reason to fix the Q readout, not a reason to reject the candidates, and it is recorded as an
+open item for both trees.
+
+**`45dab4611ae` accepted** for the substance with the assertion-tally correction requested.
+
+### One change landed on my side because of this review
+
+`saturn_cd_hle.cpp` `cmd_get_subcode_q_rw_channel()` computed the absolute Q address as
+`lba_to_msf_alt(cd_curfad - 150)`. `cd_curfad` is already the lead-in-biased drive FAD (it
+resets to 150 at `:245`, and every LBA use subtracts 150), and `lba_to_msf()` adds nothing of
+its own - psxcd's `track_start_lba()` subtracts 150 to turn a TOC MSF into an LBA, and
+`gdrom.cpp:683` pairs a biased FAD with `lba_to_msf_alt()` for this very field - so the record
+was reporting absolute time two seconds behind the pickup. Fixed to `lba_to_msf_alt(cd_curfad)`;
+your tree carries the identical line and needs the same one-liner when you fold.
+
+**This one is landed as reviewed source, not as a measured fix.** The sandbox lost the standalone
+`saturn` build configuration in a recycle (there is no `saturn` make goal and no `build/` tree;
+`make PROJECT=saturn` wants `projects/saturn/scripts/target/saturn/saturn.lua`, which neither
+branch tracks), and reconstructing it costs a full 1218-TU build, so no runtime number moved yet.
+What I can state is the mechanism, from the three source lines quoted above plus the fact that my
+existing probe already measured LBA 0 as 00:02:00 = 150 frames: with `cd_curfad` biased and the
+lead-in subtracted anyway, the field must read 2:00 short. The change is a type-identical argument
+swap in one expression, so a compile failure would be surprising, but I am not presenting a
+measurement I did not take. If the re-measure matters to the fold, it should be taken on your tree
+after the port, where the build already works.
