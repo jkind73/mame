@@ -6316,6 +6316,13 @@ uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
   return found == 3;
 }
 
+// ST-058 p.43: RGB555 becomes RGB888 by appending three zero bits.
+// Do not use pal5bit's bit replication: these values feed VDP2 arithmetic,
+// not a host-side full-range brightness conversion (31 maps to 248, not 255).
+static constexpr uint8_t vdp2_expand_color5(unsigned value) {
+  return (value & 31) << 3;
+}
+
 /* The colour calculation ratio register (CCRSx/CCRNA/CCRNB/CCRR) holds a 5-bit
    value whose top image : second image weights are (31 - ratio) : (ratio + 1)
    out of 32, which maps exactly onto alpha_blend_r32()'s 256 level blend. */
@@ -6700,9 +6707,9 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
             for (int x = sx; x < ex; x++) {
               int data = (source[(x_index >> 16) * 2] << 8) |
                          source[(x_index >> 16) * 2 + 1];
-              int b = pal5bit((data & 0x7c00) >> 10);
-              int g = pal5bit((data & 0x03e0) >> 5);
-              int r = pal5bit(data & 0x001f);
+              int b = vdp2_expand_color5((data & 0x7c00) >> 10);
+              int g = vdp2_expand_color5((data & 0x03e0) >> 5);
+              int r = vdp2_expand_color5(data & 0x001f);
               if (current_tilemap.fade_control & 1)
                 vdp2_compute_color_offset(&r, &g, &b,
                                           current_tilemap.fade_control & 2);
@@ -6726,9 +6733,9 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
             for (int x = sx; x < ex; x++) {
               int data = (source[(x_index >> 16) * 2] << 8) |
                          source[(x_index >> 16) * 2 + 1];
-              int b = pal5bit((data & 0x7c00) >> 10);
-              int g = pal5bit((data & 0x03e0) >> 5);
-              int r = pal5bit(data & 0x001f);
+              int b = vdp2_expand_color5((data & 0x7c00) >> 10);
+              int g = vdp2_expand_color5((data & 0x03e0) >> 5);
+              int r = vdp2_expand_color5(data & 0x001f);
               if (current_tilemap.fade_control & 1)
                 vdp2_compute_color_offset(&r, &g, &b,
                                           current_tilemap.fade_control & 2);
@@ -6752,9 +6759,9 @@ void saturn_state::vdp2_drawgfxzoom_rgb555(
             for (int x = sx; x < ex; x++) {
               int data = (source[(x_index >> 16) * 2] << 8) |
                          source[(x_index >> 16) * 2 + 1];
-              int b = pal5bit((data & 0x7c00) >> 10);
-              int g = pal5bit((data & 0x03e0) >> 5);
-              int r = pal5bit(data & 0x001f);
+              int b = vdp2_expand_color5((data & 0x7c00) >> 10);
+              int g = vdp2_expand_color5((data & 0x03e0) >> 5);
+              int r = vdp2_expand_color5(data & 0x001f);
               if (current_tilemap.fade_control & 1)
                 vdp2_compute_color_offset(&r, &g, &b,
                                           current_tilemap.fade_control & 2);
@@ -7056,9 +7063,9 @@ void saturn_state::vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp,
                           source[(x_index >> 16) * 2 + 1];
           if (vdp2_window_process(x, y) &&
               ((data & 0x8000) || (transparency & STV_TRANSPARENCY_NONE))) {
-            int b = pal5bit((data & 0x7c00) >> 10);
-            int g = pal5bit((data & 0x03e0) >> 5);
-            int r = pal5bit(data & 0x001f);
+            int b = vdp2_expand_color5((data & 0x7c00) >> 10);
+            int g = vdp2_expand_color5((data & 0x03e0) >> 5);
+            int r = vdp2_expand_color5(data & 0x001f);
             if (current_tilemap.fade_control & 1)
               vdp2_compute_color_offset(&r, &g, &b,
                                         current_tilemap.fade_control & 2);
@@ -7555,9 +7562,9 @@ void saturn_state::draw_rgb15_bitmap(bitmap_rgb32 &bitmap,
 
       if ((dot_data & 0x8000) ||
           (current_tilemap.transparency & STV_TRANSPARENCY_NONE)) {
-        b = pal5bit((dot_data & 0x7c00) >> 10);
-        g = pal5bit((dot_data & 0x03e0) >> 5);
-        r = pal5bit((dot_data & 0x001f) >> 0);
+        b = vdp2_expand_color5((dot_data & 0x7c00) >> 10);
+        g = vdp2_expand_color5((dot_data & 0x03e0) >> 5);
+        r = vdp2_expand_color5((dot_data & 0x001f) >> 0);
 
         if (current_tilemap.fade_control & 1)
           vdp2_compute_color_offset(&r, &g, &b,
@@ -9205,7 +9212,7 @@ rgb_t saturn_state::vdp2_dot_pixel(uint32_t address, int x, unsigned palette) {
   if (!covered && !(current_tilemap.transparency & STV_TRANSPARENCY_NONE))
     return rgb_t::transparent();
   if (depth == 3)
-    return vdp2_special_color_pixel(rgb_t(pal5bit(raw), pal5bit(raw >> 5), pal5bit(raw >> 10)), raw, 0);
+    return vdp2_special_color_pixel(rgb_t(vdp2_expand_color5(raw), vdp2_expand_color5(raw >> 5), vdp2_expand_color5(raw >> 10)), raw, 0);
   if (depth == 4)
     return vdp2_special_color_pixel(rgb_t(raw & 255, (raw >> 8) & 255, (raw >> 16) & 255), raw, 0);
   if (depth == 1) palette &= 0x700;
@@ -10789,9 +10796,9 @@ void saturn_state::vdp2_draw_RBG0(bitmap_rgb32 &bitmap,
 rgb_t saturn_state::vdp2_back_screen_color(uint8_t const *gfxdata,
                                            uint32_t base_offs) {
   uint16_t const dot = (gfxdata[base_offs + 0] << 8) | gfxdata[base_offs + 1];
-  int b = pal5bit((dot & 0x7c00) >> 10);
-  int g = pal5bit((dot & 0x03e0) >> 5);
-  int r = pal5bit(dot & 0x001f);
+  int b = vdp2_expand_color5((dot & 0x7c00) >> 10);
+  int g = vdp2_expand_color5((dot & 0x03e0) >> 5);
+  int r = vdp2_expand_color5(dot & 0x001f);
   if (VDP2_BKCOEN && (!m_vdp2->get_disp() || (!(VDP2_CCCR & 0x5f) && !(VDP2_SDCTL & 0x3f))))
     vdp2_compute_color_offset(&r, &g, &b, VDP2_BKCOSL);
 
@@ -10976,19 +10983,19 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
     b = ((m_vdp2_cram[offset] & 0x00007c00) >> 10);
     g = ((m_vdp2_cram[offset] & 0x000003e0) >> 5);
     r = ((m_vdp2_cram[offset] & 0x0000001f) >> 0);
-    m_palette->set_pen_color((offset * 2) + 1, pal5bit(r), pal5bit(g),
-                             pal5bit(b));
+    m_palette->set_pen_color((offset * 2) + 1, vdp2_expand_color5(r), vdp2_expand_color5(g),
+                             vdp2_expand_color5(b));
     if (cmode0)
-      m_palette->set_pen_color(((offset * 2) + 1) ^ 0x400, pal5bit(r),
-                               pal5bit(g), pal5bit(b));
+      m_palette->set_pen_color(((offset * 2) + 1) ^ 0x400, vdp2_expand_color5(r),
+                               vdp2_expand_color5(g), vdp2_expand_color5(b));
 
     b = ((m_vdp2_cram[offset] & 0x7c000000) >> 26);
     g = ((m_vdp2_cram[offset] & 0x03e00000) >> 21);
     r = ((m_vdp2_cram[offset] & 0x001f0000) >> 16);
-    m_palette->set_pen_color(offset * 2, pal5bit(r), pal5bit(g), pal5bit(b));
+    m_palette->set_pen_color(offset * 2, vdp2_expand_color5(r), vdp2_expand_color5(g), vdp2_expand_color5(b));
     if (cmode0)
-      m_palette->set_pen_color((offset * 2) ^ 0x400, pal5bit(r), pal5bit(g),
-                               pal5bit(b));
+      m_palette->set_pen_color((offset * 2) ^ 0x400, vdp2_expand_color5(r), vdp2_expand_color5(g),
+                               vdp2_expand_color5(b));
   } break;
   }
 }
@@ -11019,16 +11026,16 @@ void saturn_state::refresh_palette_data() {
       b = ((m_vdp2_cram[c_i] & 0x00007c00) >> 10);
       g = ((m_vdp2_cram[c_i] & 0x000003e0) >> 5);
       r = ((m_vdp2_cram[c_i] & 0x0000001f) >> 0);
-      m_palette->set_pen_color((c_i * 2) + 1, pal5bit(r), pal5bit(g),
-                               pal5bit(b));
-      m_palette->set_pen_color(((c_i * 2) + 1) ^ 0x400, pal5bit(r), pal5bit(g),
-                               pal5bit(b));
+      m_palette->set_pen_color((c_i * 2) + 1, vdp2_expand_color5(r), vdp2_expand_color5(g),
+                               vdp2_expand_color5(b));
+      m_palette->set_pen_color(((c_i * 2) + 1) ^ 0x400, vdp2_expand_color5(r), vdp2_expand_color5(g),
+                               vdp2_expand_color5(b));
       b = ((m_vdp2_cram[c_i] & 0x7c000000) >> 26);
       g = ((m_vdp2_cram[c_i] & 0x03e00000) >> 21);
       r = ((m_vdp2_cram[c_i] & 0x001f0000) >> 16);
-      m_palette->set_pen_color(c_i * 2, pal5bit(r), pal5bit(g), pal5bit(b));
-      m_palette->set_pen_color((c_i * 2) ^ 0x400, pal5bit(r), pal5bit(g),
-                               pal5bit(b));
+      m_palette->set_pen_color(c_i * 2, vdp2_expand_color5(r), vdp2_expand_color5(g), vdp2_expand_color5(b));
+      m_palette->set_pen_color((c_i * 2) ^ 0x400, vdp2_expand_color5(r), vdp2_expand_color5(g),
+                               vdp2_expand_color5(b));
     }
   } break;
   case 1: {
@@ -11037,12 +11044,12 @@ void saturn_state::refresh_palette_data() {
       b = ((m_vdp2_cram[c_i] & 0x00007c00) >> 10);
       g = ((m_vdp2_cram[c_i] & 0x000003e0) >> 5);
       r = ((m_vdp2_cram[c_i] & 0x0000001f) >> 0);
-      m_palette->set_pen_color((c_i * 2) + 1, pal5bit(r), pal5bit(g),
-                               pal5bit(b));
+      m_palette->set_pen_color((c_i * 2) + 1, vdp2_expand_color5(r), vdp2_expand_color5(g),
+                               vdp2_expand_color5(b));
       b = ((m_vdp2_cram[c_i] & 0x7c000000) >> 26);
       g = ((m_vdp2_cram[c_i] & 0x03e00000) >> 21);
       r = ((m_vdp2_cram[c_i] & 0x001f0000) >> 16);
-      m_palette->set_pen_color(c_i * 2, pal5bit(r), pal5bit(g), pal5bit(b));
+      m_palette->set_pen_color(c_i * 2, vdp2_expand_color5(r), vdp2_expand_color5(g), vdp2_expand_color5(b));
     }
   } break;
   }
@@ -11710,9 +11717,9 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
       bool const self_shadow = !direct && !sprite_window && (pix & sprite_shadow) && (pix & 0x7fff);
       rgb_t color;
       if (direct) {
-        b = pal5bit((pix >> 10) & 31);
-        g = pal5bit((pix >> 5) & 31);
-        r = pal5bit(pix & 31);
+        b = vdp2_expand_color5((pix >> 10) & 31);
+        g = vdp2_expand_color5((pix >> 5) & 31);
+        r = vdp2_expand_color5(pix & 31);
         if (color_offset_pal)
           vdp2_compute_color_offset(&r, &g, &b, VDP2_SPCOSL);
         color = rgb_t(r, g, b);

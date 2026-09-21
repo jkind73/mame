@@ -10388,3 +10388,66 @@ not claimed and may yield further fixes when those conflicts are resolved.
   qualifying palette lookup. No new cache or signature change.
 - Limits: no color-calculation rounding/analog-output or gameplay qualification
   claim. Frozen gameplay fixes are not rewritten or reported newly accepted.
+
+## IMPL-0142 — VDP2 RGB555 conversion appends zero bits
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0141 | V2-C01/V2-C05 | 13dc82ef | UNVALIDATED — implementation | Palette sprite condition3 uses selected CRAM MSB |
+| IMPL-0142 | V2-A05/V2-C05 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Each VDP2 RGB555 channel becomes (channel & 31) << 3 before calculation, offset and shadow |
+
+- Branch/base: `arena/01a0b897-mame`, `13dc82ef`.
+- Production: src/mame/sega/saturn.cpp, new vdp2_expand_color5 helper and all
+  existing RGB555 conversion sites in the VDP2 half: palette writes/rebuilds,
+  direct-color character/bitmap paths, shared point sampler, back screen and
+  VDP1 sprite scanout into the VDP2 compositor. VDP1 framebuffer storage,
+  Gouraud/color arithmetic, other devices and MAME's global pal5bit are unchanged.
+- Defect: generic pal5bit expands by bit replication `(v << 3) | (v >> 2)`;
+  VDP2 instead appends three zero bits. The old conversion injected1–7 extra
+  units into many channels before blending, offsets and shadow processing.
+  This was not merely a final display brightness choice.
+- Primary: ST-058-R2-060194, SDK0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73,
+  blob64ba1bac76427b122bf4c10a557d1a3cec29c3a1, printed p.43/PDF61:
+  output is RGB8 and RGB5 data gains zero in the lowest three bits. The helper
+  masks a channel to5 bits, since packed direct-color callers supply a shifted
+  word rather than a separately masked channel.
+- Required peers:
+  - Mednafen f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc,
+    src/ss/vdp2_render.cpp:511–520,1487–1490,2171–2175,2774,
+    blob2be23f806d87299198ef6375f2dcdafcaed7ceec: ColorCache and direct RGB
+    conversion use F8 channel masks/zero-filled low bits for palette, sprites
+    and back color. No peer source copied.
+  - MiSTer a95b085038ace57fa621558d60a7adc7a3c53f78,
+    rtl/Saturn/VDP2/VDP2_pkg.sv:2380–2382,
+    blob467989289f89a0fec5e444f6628eee95ed6ce0f8: Color555To888 concatenates
+    each5-bit field with3'b000; VDP2.sv:2230,3463–3464 uses it for back/CRAM.
+  - Ymir6d779960127ced72087a418c1daefc637d0aaa80,
+    libs/ymir-core/include/ymir/hw/vdp/vdp_common_defs.hpp:49–55,
+    blob5ad1c7c725c2c07e8fff5f6448172de714649bc9: ConvertRGB555to888 shifts
+    each channel left3; renderer/vdp_renderer_sw.cpp:874,2609,2737,5334,
+    blobf3b1fb88785bf995e72a6deca3f32ffd7da18c85, uses it for palette cache,
+    back screen, direct sprite and direct background data.
+- Provenance: reviewed every pal5bit use in saturn.cpp; all were in VDP2
+  conversion paths, not VDP1's16-bit drawing pipeline. Both retained legacy
+  decoders and current scanout now use the same conversion, including postload
+  palette rebuild. RGB888 paths do not receive the conversion.
+- Observable/method, NOT executed: uncalculated channel values0,1,4,16,31 map
+  to0,8,32,128,248 respectively. Exercise equal RGB555 colors through CRMD0/1,
+  direct cells/bitmaps, sprites and back screen, then enable representative
+  ratios, additive saturation, offsets and shadows to ensure conversion occurs
+  before those operations. RGB888 must remain unchanged. Exact digital channel
+  values, zero tolerance; restoring bit replication is the falsifier. This is
+  not analog DAC, monitor calibration or screenshot/gamma qualification.
+- Existing fixture conflicts found by source inspection only: sprite scanout's
+  local pal5bit at test_sprite_scanout.py:71 and direct-RGB expectations at157/
+  237 use full-range replication. Extracted helpers also need the new static
+  conversion helper. Other image fixtures with matching replicated assumptions
+  need validator review. No expectations, scaffold or captured images changed;
+  no test run or pass/fail total is asserted.
+- Checks: prescribed saturn.cpp TU syntax exits0; git diff --check exits0.
+  No regression, mutation, runtime or full build execution.
+- State/save: no saved state added, no signature change; derived palette/cache
+  rebuilds use the new conversion. Digital output intentionally changes by up
+  to7 channel units before calculation where the old expansion was incorrect.
+- Limits: no whole-color-pipeline or frozen gameplay requalification claimed.
+  Existing geometry/timing/sound fixes and parent statuses remain unchanged.

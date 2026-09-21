@@ -1980,3 +1980,10 @@ background SFCCMD3 behavior. Sega pp.205/207 and all three peers support this.
 Source inspection found old raw-pixel-bit expectations in test_sprite_scanout.py;
 the handoff reports them for the validator, with no fixture edits or test runs.
 Syntax/diff checked only; V2-C01/V2-C05 qualification remains open.
+
+Candidate IMPL-0142 replaces VDP2 RGB555 bit replication with the documented
+three-zero-bit expansion, consistently across palette, direct-color, sprite and
+back-screen sources. Channel31 now enters VDP2 arithmetic as248, not255; RGB888
+and VDP1 drawing/storage are unchanged. Sega p.43 and all three peers agree.
+The handoff identifies stale full-range fixture assumptions without editing or
+running them. Syntax/diff checks only; no saved fields or gameplay acceptance.
