@@ -113,6 +113,7 @@ protected:
     uint16_t vblank_erase_x = 0, vblank_erase_y = 0;
     uint16_t vblank_erase_words_per_line = 0;
     uint8_t vblank_erase_step = 1;
+    uint8_t vblank_erase_row_setup = 0;
     std::unique_ptr<uint16_t *[]> framebuffer_draw_lines;
     std::unique_ptr<uint8_t[]> gfx_decode;
     uint16_t lopr = 0;

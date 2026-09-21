@@ -791,6 +791,7 @@ void saturn_state::vdp1_begin_vblank_erase() {
   v.vblank_erase_budget = vdp1_vblank_erase_capacity();
   v.vblank_erase_x = v.vblank_erase_left;
   v.vblank_erase_y = v.vblank_erase_top;
+  v.vblank_erase_row_setup = 8;
   v.vblank_erase_words_per_line = vdp1_vblank_erase_line_capacity();
   // Interlaced screen coordinates have two output rows per physical raster;
   // exclusive 31-kHz/HDTV output has one, regardless of LSMD.
@@ -808,6 +809,18 @@ void saturn_state::vdp1_advance_vblank_erase(uint32_t words) {
   }
   unsigned remaining = std::min(words, v.vblank_erase_budget);
   while (remaining && v.vblank_erase_y <= v.vblank_erase_bottom) {
+    // ST-013 p.49: (X3-X1+1)*(Y3-Y1+1)*8 budget units, where X1/X3
+    // are register units. The written width is (X3-X1)*8 words;
+    // the remaining eight units are row setup, not framebuffer writes.
+    // Keep a partially paid setup across raster callbacks and save/load.
+    if (v.vblank_erase_row_setup) {
+      const unsigned setup = std::min<unsigned>(remaining, v.vblank_erase_row_setup);
+      remaining -= setup;
+      v.vblank_erase_budget -= setup;
+      v.vblank_erase_row_setup -= setup;
+      if (!remaining)
+        break;
+    }
     const unsigned address = ((v.vblank_erase_y * v.vblank_erase_stride) +
         (v.vblank_erase_x & (v.vblank_erase_stride - 1))) & 0x1ffff;
     v.framebuffer[v.vblank_erase_bank][address] = v.vblank_erase_data;
@@ -816,6 +829,7 @@ void saturn_state::vdp1_advance_vblank_erase(uint32_t words) {
     if (++v.vblank_erase_x == v.vblank_erase_right) {
       v.vblank_erase_x = v.vblank_erase_left;
       ++v.vblank_erase_y;
+      v.vblank_erase_row_setup = 8;
     }
   }
   if (!v.vblank_erase_budget || v.vblank_erase_y > v.vblank_erase_bottom)
@@ -884,6 +898,7 @@ void saturn_state::vdp1_cancel_erase() {
   m_vdp1_display_erase.pending = false;
   m_vdp1_legacy.vblank_erase_active = false;
   m_vdp1_legacy.vblank_erase_pending = false;
+  m_vdp1_legacy.vblank_erase_row_setup = 0;
 }
 
 // Daisenryaku Strong Style (daisenss) uses erase/write.
@@ -3413,6 +3428,7 @@ int saturn_state::vdp1_start() {
   save_item(NAME(m_vdp1_legacy.vblank_erase_y));
   save_item(NAME(m_vdp1_legacy.vblank_erase_words_per_line));
   save_item(NAME(m_vdp1_legacy.vblank_erase_step));
+  save_item(NAME(m_vdp1_legacy.vblank_erase_row_setup));
 
   save_item(NAME(m_vdp1_legacy.draw_eos));
   save_item(NAME(m_vdp1_legacy.lopr));

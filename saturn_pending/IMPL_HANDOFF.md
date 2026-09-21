@@ -9760,3 +9760,68 @@ changes, expected-value edits, validator-asset changes or full build in this
 status update. `PROMOTION_STATUS.md` now leads with the current accepted status,
 not stale pending-native gates. Completion-report addition is attributed
 review evidence only; milestone IDs/checklists unchanged.
+
+
+## 2026-09-21 — implementation-first VDP1 audit, checkpoint 1
+
+The user directs implementation, not another validation campaign: VDP1 first,
+then VDP2, SCU, SMPC, DMA, SH2 Master, SH2 Slave. No regression/runtime tests
+were run for this candidate. Existing independent CD acceptance above is not
+reopened and does not confer acceptance on the following VDP1 change.
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0133 | V1-02/V1-06 | this entry's commit | UNVALIDATED — implementation, TU syntax checked | VBlank erase charges eight additional budget units per row, including partially consumed setup across callbacks/save states |
+
+### IMPL-0133 — VBlank erase row budget
+
+- Branch: `arena/01a0b897-mame`; base `b40450be839fced7c26ec254a7d0bc2516fa2fcd`.
+- Production: `src/mame/sega/saturn.cpp:780–838` begin/advance erase,
+  `:897–902` cancellation, `:3431` save registration;
+  `src/mame/sega/saturn.h:116` residual row-setup state.
+- Defect: each row previously consumed only its written width. For legal,
+  nonempty windows this erased too much when VBlank capacity was exhausted.
+- Primary: `jkind73/saturnsdk@0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`,
+  `ST-013-R3-061694.pdf`, blob `59c0f0d269048d16097a2c155db170d201e6ecc2`,
+  printed pp.47–50 (PDF62–65), especially p.49:
+  `(X3-X1+1)*(Y3-Y1+1)*8` erase requirement. X registers count groups of
+  eight stored words; their exclusive difference is the written width.
+  The extra group consumes budget without filling another eight words.
+  This implements the manual's capacity accounting, not a measured bus phase.
+- Pinned peer comparison (read-only source inspection; no code imported):
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/vdp1.cpp`,
+    blob `7b61a1b7aea69d3f8b40892ee745a8f97185a613`, lines933–961:
+    `count -= 8` at each row start, then eight-word writes/cost. Supports
+    the additional row charge. Its final-group cutoff is not identical to
+    our existing word-granular cursor; no silicon agreement is claimed.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/vdp/renderer/vdp_renderer_sw.cpp`,
+    blob `f3b1fb88785bf995e72a6deca3f32ffd7da18c85`, lines922–966:
+    charges one cycle per word and lacks a separate row charge. Disagrees.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/VDP1/VDP1.sv`, blob `eccd9d2261988de4d80963a979a8220ab95b9b75`,
+    lines1766–1787: clock-gated X/Y traversal and erase-hit gating, no
+    equivalent explicit eight-unit row counter here. This HDL is not
+    corroboration of an exact eight-clock setup phase.
+- Observable / tolerance for validator: for a legal 16-bit erase window
+  with X registers0/1 and Y0/1, completion consumes32 budget units, not16;
+  only eight words on each of the two rows are filled. First eight units
+  write nothing; the next eight fill row0; next eight write nothing;
+  final eight fill row1. Zero tolerance for this model-level accounting.
+  Replacing setup with zero is a falsifier of the corrected formula.
+- Suggested independent method (not executed): exercise the production
+  begin/advance/finish paths with equivalent whole and split grants, split
+  during setup (e.g.3+5), and real save/load in both setup and writing.
+  At capacity exhaustion, untouched trailing framebuffer words must remain
+  unchanged. For actual VBlank output, compare the nominal capacity formula
+  separately from exact bus-slot/final-group timing.
+- Checks executed: specified `g++ -fsyntax-only -std=c++20` invocation on
+  `saturn.cpp`, exit0. No full build, runtime/probe/regression execution,
+  fixture expectation edits or protected validator-asset changes.
+- Save layout: adds saved `m_vdp1_legacy.vblank_erase_row_setup` (uint8).
+  Older save signatures will differ; no old-save compatibility or live
+  save-manager replay is claimed. Existing erase data/coordinates/bank
+  remain latched as before; cancellation resets the added residual state.
+- Limitations: within-raster grants, CPU/draw arbitration, exact first/last
+  write timing and invalid/reversed erase windows remain separate work.
+  Candidate and parent milestones are not accepted/complete by this entry.
