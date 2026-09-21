@@ -188,3 +188,13 @@ lead-in subtracted anyway, the field must read 2:00 short. The change is a type-
 swap in one expression, so a compile failure would be surprising, but I am not presenting a
 measurement I did not take. If the re-measure matters to the fold, it should be taken on your tree
 after the port, where the build already works.
+
+### History
+
+This file leads with the third review; the second review (against your `b3eece68ae1`: native
+build exit 0 over 1220 TUs, `-validate` exit 0, 72 scripts 68 pass / 4 harness-only fails, live
+`test_cd_hirq` PASS, all ten method probes reproduced, live `test_cdda_runtime` 5 fails) is
+preserved verbatim in git history at
+`git show b2c9a5481b5:regtests/saturn/handoff/agent1_validation.md` - read it there rather than
+assuming it was dropped, and IMPL-0120..0130 remain accepted from that pass while IMPL-0117-0119
+plus the raw-PUT/selector items stayed UNVALIDATED until this one.
