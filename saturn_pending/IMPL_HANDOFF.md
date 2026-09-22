@@ -13271,3 +13271,82 @@ no worktree file or published history was overwritten. Research cache rebuilt.
   NMIE selection and native/frozen-game regressions remain open. This does not
   solve the recorded vector10 DMA-address-error blocker. No IO-02 expansion;
   agent1_validation.md still absent locally, prior attributed acceptance intact.
+
+
+## IMPL-0173 — SH7604 TIER fixed-bit register image
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0173 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | TIER reads bit0 as1 and bits6–4 as0 while retaining ICIE/OCIAE/OCIBE/OVIE |
+
+- Branch `arena/01a0b897-mame`; base
+  `fc78f6ae3784e77fe3b536c0e0be6f9e4b479a0c`. Source:
+  src/devices/cpu/sh/sh7604.cpp:1591–1606, tier_r/tier_w only.
+- Contract/implementation: return `(m_tier & 0x8e) | 1`; store that same
+  canonical image on writes. Previously both handlers passed every bit
+  through. The four actual enable bits are unmodified. Reset already sets01.
+  Existing timer resync/scheduling and IRQ recalculation calls are unchanged;
+  no priority/acknowledgement/delay-slot or legacy read-callback edits.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4 section11.2.4,
+  printed299–300/PDF315–316: TIER bits6–4 always read0, bit0 always reads1;
+  bits7/3/2/1 control the four interrupt requests. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`, cached from gh api.
+  The same section requires software to write0 to bits6–4 and1 to bit0.
+  Do not mistake violating that instruction for a supported silicon stimulus.
+- Three pinned peer cross-checks:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:1518–1524,1990–1992, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`: raw write storage,
+    read OR1. Agrees on bit0; retains the other reserved bits.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/FRT.sv:210,231, blob
+    `5998fa70b8146b2791b6c26f983de0b173420393`: write mask and OR1
+    on read. Crucially SH7604_pkg.sv:253–264, blob
+    `3c2220d46fb623925b15a5e23d96a73378de6042`, defines WMASK=FE,
+    RMASK=FF, NOT8E/8F. Thus MiSTer also retains bits6–4. The initial
+    verbal inference from the mask names was corrected after inspecting
+    their definitions; no all-peer zero-mask agreement is claimed.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/include/ymir/hw/sh2/sh2_frt.hpp:118–136, blob
+    `22868cc7792ede743d834dca5624c6cb5102f04e`: forces bit0 in reads,
+    preserves bits6–4 as unused, and selects enables with8E. MiSTer/Ymir
+    files were retrieved through gh api this turn.
+  The primary fixed-read contract is followed for bits6–4 despite all three
+  peers retaining them. No peer timing or unidentified hardware trace imported.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  sh7604.cpp:886–897, blob `79409df16f3f26a60a12012e53692fe69025ea35`,
+  has the same unmasked handlers. Current branch/fork history and previous
+  FRT reset/phase changes inspected; not attributed to the shallow local
+  history boundary. Existing IRQ ownership repair0172 is retained.
+- Observable/units/tolerance: exact 8-bit register image, zero tolerance.
+  Documented legal values01/03/05/09/81/8F round-trip unchanged; all16
+  combinations of the four enables do likewise. Reset/module-stop reset
+  reads01. Each enable's effect on its already-latched FTCSR source is
+  unchanged, as are FRC elapsed-clock phase and compare schedules.
+- Proposed validator method, NOT run: native byte accesses on both CPUs and
+  interpreter/DRC for the legal values above; observe FTCSR/request state and
+  existing FRT timing controls. To discriminate this source defect, an external
+  software-only raw-state/all256-byte sweep can assert `(value & 8E) | 1`,
+  including raw00 ->01 and rawFF ->8F. These noncanonical images are defensive
+  emulation checks, NOT claims of measured silicon behavior after prohibited
+  reserved-bit writes. Legal guest controls alone do not distinguish old/new.
+- Falsifier: a legal enable is lost, the fixed read image is wrong, a write
+  changes flags/counter phase, or interrupt selection differs for unchanged
+  enable bits. Attributable hardware/errata specifying reserved-bit behavior
+  would require revisiting the bits6–4 policy rather than hiding peer dissent.
+- Checks/state/limits: prescribed C++20 sh7604.cpp syntax exits0 and
+  git diff --check exits0. No tests, probes, native runs, sanitizer or full
+  build. No fields/save layout changes; m_tier remains saved at line135.
+  Existing old noncanonical state is masked on tier_r, not normalized by a
+  postload callback. Legacy FTCSR callback payload construction is untouched.
+  Read-only fixture scan found tier_r/tier_w consumers in FRT stop/phase/
+  FTCSR extraction scripts; none edited or executed. CPU-03 remains open,
+  IO-02 unchanged, and agent1_validation.md still absent locally. Prior
+  attributed acceptance is not withdrawn.
+
+Audit notes at0173: signed32 DIVU minimum/-1 and BSC refresh first-edge/
+equality timing are already blocked as0036/0043; this turn found no new primary
+erratum or attributable silicon evidence to resolve them. No speculative
+change made to either. SCI live MPBT sampling also remains outside this patch;
+its in-flight latch point is not established by the reviewed manual wording.

@@ -1590,13 +1590,14 @@ void sh7604_device::sci_rx_complete(uint8_t data, bool parity_error, bool framin
 
 uint8_t sh7604_device::tier_r()
 {
-	return m_tier;
+	// Section 11.2.4: bits 6-4 read zero and bit 0 reads one.
+	return (m_tier & 0x8e) | 0x01;
 }
 
 void sh7604_device::tier_w(uint8_t data)
 {
 	sh2_timer_resync();
-	m_tier = data;
+	m_tier = (data & 0x8e) | 0x01;
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
