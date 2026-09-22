@@ -13510,3 +13510,93 @@ session branch and mixed-reset after zero worktree-versus-fetched blob
 mismatches. No files overwritten. Reference downloads now live in ignored
 saturn_pending/reference_cache/sh2 to avoid repeatedly losing scratch sources;
 no manual, peer source, cache or tool installation is staged or committed.
+
+
+## IMPL-0176 — DRC illegal-instruction vector fetch follows stack writes
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0176 | CPU-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Ordinary illegal-instruction DRC fallback stores SR and fault PC before fetching vector4 |
+
+- Branch `arena/01a0b897-mame`; base
+  `8f115979f3add23af4679dfca1d619e055a2313d`. Source:
+  src/devices/cpu/sh/sh.cpp:2498–2522, fallback emitted by
+  generate_sequence_instruction. No frontend/decode or interpreter edits.
+- Defect/contract: cfunc_unimplemented fetched VBR+10 before either stack
+  write. The interpreter (sh2.cpp:268–282) already stacks SR then fault PC,
+  then reads vector4. Moving the callback after the writes fixes this DRC
+  ordering mismatch. The first store now sources current SR directly, rather
+  than irqsr formerly populated by that callback. Keep the existing evec-to-
+  target preservation, exception transfer, masks and cycle accounting.
+  Even ordinary mapped memory observes RWW versus WWR; overlapping a vector
+  entry with the exception stack can also change the fetched handler address.
+- Primary: SH7604 ADE-602-085C Rev.4 section4.5.3/4.5.4 printed74–75/
+  PDF90–91 explicitly sequences SR stack, PC stack, then vector fetch and
+  states the ordinary illegal saved PC is the undefined instruction address.
+  Table4.3 printed67/PDF83 gives general illegal vector4/VBR+10; section4.1.2
+  printed66/PDF82 preserves SR.I for instruction exceptions; Table4.11
+  printed76/PDF92 shows the final stack. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`, gh api source in ignored cache.
+- Three pinned peers, fetched through gh api this turn:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095_ops.inc:1846–1856, blob
+    `de0a8a67631fbda0ad4e41a82fe0e0aa32e7c8a2`, supplies the faulting
+    PC to Exception. src/ss/sh7095.inc:3344–3362, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`, writes SR and PC
+    before reading the vector entry.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/core/SH_pkg.sv:289–333, blob
+    `f26d7c52b30febf557675dca3441abdb3b9f438e`: illegal exception
+    states1/2 push SR/PC, state3 reads the vector, state5 loads PC.
+    SH_core.sv:288–304,397–400, blob
+    `d842b866d0765872ca8a63d3d7d7c77a490c6003`, selects vector4 or6.
+    HDL pipeline and slot handling are not imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:2174–2191,2391, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`: Illegal dispatch
+    enters the common exception routine, writing SR then PC before vector read.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  sh.cpp:2490–2516,2533–2539, blob
+  `51710c5b3a268fae18464df7de0e557026367fb1`, has the same early
+  callback/vector fetch. Retain0174 cycle ownership,0175 descriptors and the
+  earlier fork changes; frozen delay-slot IRQ, priority, acknowledgement and
+  exception-input code are untouched. The shared fallback order changes for
+  other SH-family users too; their exception formats/timing are not qualified.
+- Observable/units/tolerance: exact mapped-access sequence and register/word
+  images, zero tolerance: W32(SP-4,oldSR), W32(SP-8,faultPC), then
+  R32(VBR+10). Final SP=oldSP-8, saved PC is the illegal instruction address,
+  SR.I unchanged, handler target is the vector value after those writes.
+  Disjoint RAM vector/stack controls retain existing final state.
+- Proposed validator method (NOT run): native ordinary undefined opcode2003
+  on both SH7604 CPUs and interpreter/DRC with aligned writable RAM stack,
+  disjoint RAM vector table and masked/inactive competing IRQ/NMI sources.
+  This opcode takes the existing generator fallback (the frontend labels it
+  a NOP placeholder), not the invalid_opcode fatal guard. Record memory taps
+  for stack/vector only; old DRC orders RWW, corrected DRC/interpreter WWR.
+  Handler can record a marker and advance the saved PC by2 before returning.
+  For a controlled overlap discriminator use VBR=06001000, SP=06001018,
+  faultPC=06002000, initial vector4=06003000. The second push replaces
+  vector4 with06002000; the new fetch sees06002000, not06003000. Stop after
+  the first exception dispatch, before recursively re-executing the fault.
+  Do not treat overlapping stack/vector as an infinite native program to run.
+- Falsifier: vector read precedes either push, saved SR/PC or final SP differs,
+  ordinary disjoint results change, or overlap fetch uses the stale value.
+  Neither fault-entry cycle counts nor arbitrary callback-induced concurrent
+  exceptions are claimed by this source-order repair.
+- Checks/state/limits: prescribed C++20 sh.cpp syntax exits0, diff --check
+  exits0. No tests/probes/runtime/sanitizer/full build. No new fields or save
+  format change, protected assets untouched, CPU-01 open and IO-02 unchanged.
+  Vector6/saved branch-target handling for illegal slots remains incomplete;
+  this patch does not extend the already-existing fallback's supported scope.
+  Address-error generation, bus fault/retry handling, generic fatal guard,
+  interrupt-disabled instruction sampling and debugger exception-hook parity
+  also remain outside the patch. Native/frozen-game regressions are validator-
+  owned; local agent1_validation.md remains absent, prior acceptance retained.
+
+Audit correction: the initial lead that frontend-rejected SH-2 opcodes currently
+hit the host fatal guard was not established. Further source inspection found
+the reserved-opcode NOP placeholders used by current SH-2 decode, which reach
+the existing generator fallback instead. The tentative guard bypass was fully
+removed before this commit; no host-fatal-elimination claim or result survives.
+This candidate addresses the independently established vector-read ordering.

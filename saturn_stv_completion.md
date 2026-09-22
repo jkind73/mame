@@ -73,6 +73,7 @@
   - IMPL-0171 widens MULU.W operands before multiplication, avoiding signed-int promotion overflow for large unsigned word products (syntax-only candidate). The existing DRC unsigned operation, MACH/SR and timing are unchanged.
   - IMPL-0174 removes duplicate DRC cycle charges for MAC.L/MAC.W: the frontend retains its three-cycle baseline and the DRC helper no longer adds the interpreter's two extra cycles (syntax-only candidate). Arithmetic and interpreter accounting are unchanged; pipeline contention and bus waits remain unqualified.
   - IMPL-0175 completes MAC.L/MAC.W frontend dependencies: accumulator/S inputs, address postincrements and memory-read classification (syntax-only candidate). This corrects liveness descriptions and diagnostic output, not a claimed native arithmetic failure; IMPL-0174 accounting is retained.
+  - IMPL-0176 moves the DRC ordinary illegal-instruction vector fetch after the SR/PC stack writes, matching the interpreter and documented ordering (syntax-only candidate). Fault timing, slot-illegal exceptions and competing-source priority remain open.
   - Check instruction/cycle accounting, including the source's approximate division timing and busy-loop shortcuts.
 - [ ] **CPU-02 — Complete SH7604 cache and bus-controller behavior. [P/V/R]**
   - Cache tags/data, replacement, purge, cache-through accesses, fetch/data distinctions and DMA visibility.

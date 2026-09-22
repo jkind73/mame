@@ -2500,17 +2500,20 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 			// take the illegal instruction exception immediately
 			UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);                            // mov     [pc],desc->pc
 			UML_MOV(block, mem(&m_sh2_state->arg0), desc->opptr);                  // mov     [arg0],opcode
-			UML_CALLC(block, cfunc_unimplemented, this);                             // callc   cfunc_unimplemented
 
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
-			UML_MOV(block, I1, mem(&m_sh2_state->irqsr));           // mov     r1, irqsr
+			UML_MOV(block, I1, mem(&m_sh2_state->sr));              // mov     r1, sr
 			UML_CALLH(block, *m_write32);                           // call    write32
 
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
 			UML_MOV(block, I1, desc->pc);                           // mov     r1, desc->pc
 			UML_CALLH(block, *m_write32);                           // call    write32
+
+			// Fetch the exception vector after stacking SR and PC, as the
+			// interpreter does. The stack writes may overlap the vector table.
+			UML_CALLC(block, cfunc_unimplemented, this);
 
 			// evec is clobbered by the interrupt check inside generate_update_cycles
 			UML_MOV(block, mem(&m_sh2_state->target), mem(&m_sh2_state->evec));  // mov target, evec
