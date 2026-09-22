@@ -47,6 +47,7 @@ protected:
 
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void execute_set_input(int irqline, int state) override;
 
 	virtual void sh2_exception(const char *message, int irqline) override;
 

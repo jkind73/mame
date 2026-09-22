@@ -12863,3 +12863,127 @@ from its predicate, but neither flag currently has its required native producer
 in this device. A seeded-flag guard alone must not be advertised as functional
 NMI/address-error stopping. Inspect native NMI recognition/edge semantics and
 DMA error delivery while preserving the frozen CPU delay-slot IRQ path.
+
+
+## IMPL-0169 — connect recognized NMI events to SH-2 DMA stopping
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0169 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Recognized NMI assertions latch NMIF, stop unfinished DMA and inhibit restart; already-moved final payload retains completion bookkeeping |
+
+- Branch `arena/01a0b897-mame`; base
+  `814c67bd0791ec7807a6bb9397b4bd5f807ac7e9`. Production:
+  src/devices/cpu/sh/sh7604.cpp:418–431,936–1016 and sh7604.h:50.
+  Shared by master/slave and both DMAC channels. No sh2.cpp change.
+- Contract: new execute_set_input override recognizes exactly the assertion
+  transition the inherited input handler recognizes (NMI, non-CLEAR, different
+  from saved m_nmi_line_state). Set DMAOR.NMIF before invoking the existing
+  handler and recheck both channels. Latch even with DMA disabled/idle. Delegate
+  every input exactly once to sh2_device::execute_set_input; repeated same-level
+  input and release do not create a new NMIF event. No new edge-selection,
+  exception-delivery, priority, delay-slot or interrupt-acknowledgement policy.
+- Enable predicate now requires DME/DE1 and NMIF/AE/TE0. Previously only DME/DE
+  and an idle-channel TE check were used, and NMIF had no producer. Both running
+  and endpoint-stalled positive-count channels cancel their queued work without
+  fabricating TE/IRQ;0166 progress survives and0168 releases only their DMA hold.
+  AE is included in the documented predicate, but this does NOT implement AE
+  generation/address-error delivery. Such flags cannot legally be software-set.
+- Final-service rule: if count has already reached0, do not cancel the existing
+  completion callback. All payload is already committed; allow that callback
+  to retire it normally without extra reads/writes. This applies to NMI/error
+  gating and DE/DME stops during the existing payload-to-completion interval.
+  Reset remains distinct and still explicitly cancels callbacks. Completion
+  deadlines, callback body, TE/IRQ assertion sequence and acknowledgement
+  handlers themselves are unchanged. Which stops retain that callback is an
+  intentional behavior change, not a claim that completion behavior is identical.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4 section9.2.7 printed
+  pp.243–244/PDF259–260: NMIF inhibits transfers, latches on NMI even while DMAC
+  is not operating, and is cleared by reading1 then writing0. Section9.3.1
+  pp.245–246/PDF261–262 gives the five-bit DE/DME/TE/NMIF/AE condition.
+  Section9.3.8 pp.283–284/PDF299–300 specifies stopping both channels on NMIF,
+  retaining the preceding transfer's progress, and normal completion when that
+  transfer was final (also for DME0). Section5.2.1 p.82/PDF98 and5.3.8
+  p.93/PDF109 define edge-selected NMI; this patch does not finish that separate
+  CPU feature. SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`, fetched anew via gh api this turn.
+- Three-peer cross-check (all retrieved by pinned blob this turn):
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:511–513,2956–2976, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`, recognizes the selected
+    NMI edge, sets DMAOR02 and recalculates running state; the running predicate
+    uses the same five control/status bits. It has an idle-latch TODO comment;
+    primary p.244 explicitly resolves idle latching. Its standby exception and
+    NMIE-aware physical edge handling are not imported into the frozen CPU path.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/DMAC.sv:83–84,429, blob
+    `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7`, gates channel availability
+    with TE/NMIF/AE and sets NMIF from !NMI_N. That code is level-sensitive;
+    this change follows the CPU-recognized event instead of adopting a new
+    repeated-low relatch rule. No claim of matching mid-bus-cycle stop timing.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:525–529,1783–1785, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`, marks NMI edge detection
+    as a hack and explicitly omits NMIF/AE gating because neither is generated.
+    This is a peer gap, not evidence against the explicit primary contract.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  src/devices/cpu/sh/sh7604.cpp, blob
+  `79409df16f3f26a60a12012e53692fe69025ea35`, has no DMAC NMI input override
+  or NMIF producer and has the same DME/DE-only outer gate. Local814c67bd
+  lifecycle fix retained, with source differences inspected. No external code
+  imported. Base CPU input recognition at sh2.cpp:365–399 is unchanged.
+- Hardware-method scope: reset-default NMIE0, ordinary non-standby operation,
+  properly aligned and supported DMA memory transfers. In this existing CPU
+  implementation ASSERT_LINE is the recognized NMI event; m_nmie does not yet
+  reroute rising-edge recognition. This candidate intentionally shares that
+  existing CPU event rather than giving DMAC and CPU inconsistent events.
+  NMIE1 support and whole-chip standby/wakeup remain open. Do not advertise
+  this as complete pin-level NMI behavior or as a delay-slot IRQ fix.
+- Observable/units/tolerance: exact DMAOR/status/register values and payload
+  write sequence, zero tolerance. With DMAOR1 and a positive-count transfer,
+  a new NMI assertion makes DMAOR3, stops further DMA payload after the last
+  atomic service, and preserves current SAR/DAR/TCR without setting new TE.
+  With DMAOR0 and idle channels, NMI makes DMAOR2. Attempting DME/DE enable
+  while preserving NMIF1 performs no transfers. Same-level repeated assertion
+  after software clears NMIF does not set it again; release/reassert does.
+  Already-written final payload still produces its one normal completion via
+  the existing callback, with no extra data write. Compare both channels.
+- Proposed validator method (not run): native authored NMI vector/handler and
+  stack outside DMA buffers; AR1,TA0,NMIE0, aligned disjoint Work RAM. Inject
+  NMI through the actual device input API while idle, before first service,
+  after partial progress, in a pre-service endpoint stall and after final payload
+  but before completion. Cover both channels/CPUs and interpreter/DRC. Observe
+  NMIF via longword DMAOR reads; stop DE, perform the documented read1/write0
+  flag-clear sequence, then re-enable to resume from retained progress. Keep
+  existing acknowledgement expectations. Do not write1 to manufacture flags.
+  Include NMI release/reassert and non-NMI input controls; compare input delivery
+  against baseline, allowing the intended DMA suspension/progress differences.
+  For pending completion, NMI/DE0/DME0 must not erase already-completed work.
+  Check real same-version save/load with NMIF1 and a previously partial transfer.
+- Falsifier: a first recognized idle NMI fails to latch NMIF, positive-count
+  payload continues while NMIF remains set, a cancelled partial transfer creates
+  a new DMA-end event, final payload is duplicated/lost, release alone creates
+  NMIF, or delegation changes CPU exception/IRQ/delay-slot delivery. A proper
+  post-clear/re-enable sequence must not reload the original count/addresses.
+- State/checks: no new fields or save-layout change. DMAOR is already saved by
+  sh7604.cpp and m_nmi_line_state by sh2.cpp:74; timers/live progress/private DMA
+  suspension use0166/0168 registrations. Older semantic states cannot acquire
+  an NMIF event that already happened before loading; no retroactive repair.
+  Prescribed C++20 sh7604.cpp syntax exits0 (includes changed header); git diff
+  --check exits0. No tests/runtime/full build and no validator/fixture/evidence
+  edits. Existing extraction adapters still need the previously disclosed0168
+  dependencies; they do not qualify this new native input path. Local
+  agent1_validation.md remains absent; prior attributed acceptance unchanged.
+- Limits: candidate only; CPU-03 remains open. Same-timestamp ordering, stop
+  inside a word/block service, cache-aware execution, external request routing,
+  AE generation and exact final-transfer/late-TE-write timing remain unqualified.
+  This retires completed payload at the inherited later callback, not at its
+  physical last-write edge. DMAOR/CHCR read-before-clear qualification is not
+  changed; the proposed guest method uses the documented sequence. Frozen IRQ
+  acknowledgement, delay-slot, sound/reset/video-clock and game routines remain
+  untouched; no SCU change or IO-02 expansion. Native replay belongs to validator.
+
+Workspace provenance: restored files again matched the latest published814c67bd
+but local HEAD/index pointed to the old base. Fetched the fixed session branch,
+compared every apparent difference against its published blob, and used a mixed
+reset only after finding no mismatches. No worktree files or remote history were
+overwritten. Research cache was restored through gh-api blob retrieval.

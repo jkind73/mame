@@ -415,6 +415,22 @@ void sh7604_device::sh7604_map(address_map &map)
 }
 
 
+void sh7604_device::execute_set_input(int irqline, int state)
+{
+	// Attach the DMAC side effect to the same NMI assertion recognized by
+	// the base CPU. Do not change its exception/IRQ or delay-slot handling.
+	if (irqline == INPUT_LINE_NMI && state != CLEAR_LINE && state != m_nmi_line_state)
+	{
+		// Section 9.2.7: NMIF also latches when no DMA channel is running.
+		m_dmaor |= 0x02;
+		sh2_dmac_check(0);
+		sh2_dmac_check(1);
+	}
+
+	sh2_device::execute_set_input(irqline, state);
+}
+
+
 void sh7604_device::sh2_exception(const char *message, int irqline)
 {
 	int vector;
@@ -919,9 +935,10 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_dma_current_active_callback)
 
 void sh7604_device::sh2_dmac_check(int dmach)
 {
-	if (m_dmac[dmach].chcr & m_dmaor & 1)
+	// Section 9.3.1: DE/DME set, TE/NMIF/AE clear.
+	if ((m_dmaor & 0x07) == 0x01 && (m_dmac[dmach].chcr & 0x03) == 0x01)
 	{
-		if (!m_dma_timer_active[dmach] && !(m_dmac[dmach].chcr & 2))
+		if (!m_dma_timer_active[dmach])
 		{
 			m_active_dma_incd[dmach] = (m_dmac[dmach].chcr >> 14) & 3;
 			m_active_dma_incs[dmach] = (m_dmac[dmach].chcr >> 12) & 3;
@@ -971,7 +988,10 @@ void sh7604_device::sh2_dmac_check(int dmach)
 	}
 	else
 	{
-		if (m_dma_timer_active[dmach])
+		// Section 9.3.8: a final transfer still completes normally. If all
+		// payload has already moved, retain its existing completion callback
+		// rather than cancelling TE/IRQ bookkeeping after the last write.
+		if (m_dma_timer_active[dmach] && m_active_dma_count[dmach] != 0)
 		{
 			LOG("SH2: DMA %d cancelled in-flight\n", dmach);
 			//m_dma_complete_timer[dmach]->adjust(attotime::never);
