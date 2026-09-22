@@ -12294,3 +12294,103 @@ Workspace recovery note: this turn began with the worktree restored over local
 all127 apparent extra/deleted paths against its blobs (no content mismatches),
 then restored the local branch/index to that same published tip with a mixed
 reset. No worktree file was overwritten and no published history rewritten.
+
+
+## IMPL-0164 — bound CD-to-C-bus destination heads and tails
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0164 | SCU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | CD-to-Work-RAM DMA writes the requested destination interval without rounding its head down or overrun at the tail |
+
+- Branch `arena/01a0b897-mame`; base `636d63bcfd84e68241d05c565f6e69c865e50418`.
+  Production src/mame/sega/saturn_scu.cpp, dma_transfer_direct_cd_cbus_write
+  and transfer-table comment only. No CD device or acknowledgement code edits.
+- Contract: when the destination is not longword-aligned or fewer than4
+  bytes remain, use the existing bounded C-bus byte/halfword helper instead
+  of writing a rounded-down longword. Otherwise retain one4-byte C-bus write
+  per service. Assemble its data with two explicitly sequenced buffered
+  halfword reads, so a previous partial write cannot drop/reorder unread
+  bytes. Count and destination advance by the bytes actually written.
+- Defect/provenance: inherited CD/C-bus helper unconditionally aligns the
+  destination down and writes4 bytes, even at a short tail. It bypasses the
+  source buffer, so simply calling the partial helper and then resuming raw
+  FIFO longword reads would lose unread bytes. Existing saved read_buffer,
+  read_address, read_offset and read_buffer_valid already provide the needed
+  continuity. No new state; direct activation already invalidates that buffer.
+  Retain FIFO read_dword access, not a new CD host-port interpretation.
+- Primary: ST-097-R5 printed p.16/PDF32, Figure2.1 explicitly allows
+  non-longword-boundary heads/tails and shows a destination beginning at6
+  rather than rounded-down4, ending at55 rather than57. P.18/PDF34 defines
+  transfer length in bytes. ST-210 printed p.6/PDF10 No.16 permits fixed
+  source only in CS2; No.18 requires DxWA010 (+4) for Work RAM-H; No.19
+  also requires that value for C-bus WUP. Use those legal settings below.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`; ST-097 blob
+  `ffa8932249634ebd98947dad123621cebe3f24fa`; ST-210 blob
+  `914f3fa160e42aa7ef0f8941c3844a2a5fd70ce8`.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, src/ss/scu.inc:
+    1550–1572,1581–1605,1611–1622, blob
+    `8cc45219ca5ffc3e24c97779e01691129f3ea12c`, retains buffered source
+    bytes, selects1/2/4-byte writes and decrements payload by sizeof(T).
+    C-bus writes use the selected width in WorkRAMH, not unconditional32-bit
+    overwrite. This supports footprint/buffering, not exact bus timing.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/scu/scu.cpp:791–880, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`, performs byte/halfword
+    realignment, full longwords and bounded halfword/byte tails for non-B-bus
+    destinations, using buffered read8/read16/read32. No destination round-down
+    data loss. Its stall/phase mechanism differs from this HLE service model.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/Saturn/SCU/SCU.sv:763–780,1580–1590, blob
+    `999825f64aa200673f4bdd590e81426ed3212ae4`, bounds C-bus byte consumption
+    by address offset and remaining count and uses byte-enabled C-bus writes
+    from its buffer. It can combine partial lanes into one bus beat; this
+    change does not claim matching beat count or cycle timing.
+- Observable/units/tolerance: exact destination bytes and live payload count,
+  zero byte tolerance. Source FIFO11223344,55667788, destination06000002,
+  count4: destination02..05 becomes11,22,33,44; bytes00..01 and06 onward
+  remain unchanged. Old code writes00..03 instead. Destination06000000,
+  count6: only00..05 change, not06..07. For count8, all four destination
+  alignments consume the same8 payload bytes without skipped data at the
+  head-to-bulk transition. Whole aligned multiples of4 retain a four-byte
+  bulk callback with one longword FIFO read and one longword RAM write.
+- Proposed validator method (not run): native authored CD Put/Get payload or
+  controlled CS2 FIFO, fixed05818000 source, RUP0, C-bus DxWA010 and WUP0/1.
+  Cover destination residues0–3, counts1–9/16, memory guards and mixed
+  head/bulk/tail transitions; compare payload and updated DxW, never use
+  prohibited DxC reads as a hardware oracle. Save/replay with a partially
+  consumed source buffer and change backing data after that save to expose
+  rereads/lost buffered bytes. Keep CD transfer ownership until End Data
+  Transfer. Include aligned bulk and unchanged CD/B-bus controls.
+- Source-side limit: reads still prefetch longwords. For a non-multiple-of4
+  count, FIFO consumption in this implementation may exceed destination
+  payload by the unread part of the final buffered word. Exact physical
+  source byte strobes/CD transfer-word accounting at such a tail are not
+  established by this destination fix. Observe them separately; do not claim
+  that a6-byte destination necessarily performs exactly6 source-byte strobes.
+- Falsifier: any destination guard overwritten, reordered/skipped FIFO bytes,
+  live_count exceeding live_size, resumed writes discarding saved buffer data,
+  or aligned legal bulk losing the existing four-byte service behavior.
+- Checks: prescribed C++20 saturn_scu.cpp syntax exits0; git diff --check
+  exits0. No tests/runtime/full build. Existing test_dma_indirect.py extracts
+  the changed helper but already declares its buffer/helper dependencies; its
+  write_dword endpoint asserts false and explicitly excludes CD mode, so no
+  coverage is inferred. No protected fixture/expectation/evidence changed.
+- State/limits: candidate only; SCU-03 remains open. Buffer fields are already
+  initialized/reset/save-registered for all three levels; no save-layout change.
+  Same-revision replay is proposed, not run; old states with already clobbered
+  destination bytes cannot be repaired. The former extra write for C-bus
+  dst_add8 is removed: that encoding is prohibited by ST-210 No.18, not a
+  supported C-bus double-write contract. Existing fixed-step C-bus handling
+  otherwise remains. Unaligned services can require more ticks; exact timing,
+  byte-lane bus beats, DRDY/backpressure, source strobes, continued bus-boundary
+  transfers and disputed B-bus placement remain open. Frozen acknowledgement,
+  SH-2 delay-slot IRQ, sound/reset/video-clock/game paths and IO-02 inventory
+  are untouched. agent1_validation.md remains absent in this checkout.
+
+This turn's restored workspace again contained the published tree over the old
+local base. Fetched636d63bcfd8, confirmed every apparent extra/deleted path matched
+its published blob, then aligned the local branch/index with a mixed reset; no
+worktree file or published history was overwritten. An SH-2 CHCR partial-write
+merge concern was not changed: the manual requires longword CHCR access, so that
+is not yet a demonstrated defect in a legal programming sequence.

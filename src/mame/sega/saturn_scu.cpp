@@ -867,8 +867,8 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       attotime::from_ticks(1 + extra_penalty, m_dma_clock_ref));
 }
 
-// CD transfers needs to be in dword unit for now (need the xfertype32 branch)
-// we will also need a proper DRDY later on ...
+// CD services retain longword FIFO reads; C-bus destination heads/tails
+// use the source buffer to split writes. DRDY/backpressure remains TODO.
 const saturn_scu_device::dma_transfer_func
     saturn_scu_device::dma_transfer_table[4] = {
         &saturn_scu_device::dma_transfer_direct_default,
@@ -979,15 +979,20 @@ void saturn_scu_device::dma_transfer_direct_cd(dma_channel_t &ch) {
 }
 
 void saturn_scu_device::dma_transfer_direct_cd_cbus_write(dma_channel_t &ch) {
-  const u32 src_address = ch.live_src & 0x07ff'fffc;
-  const u32 dst_address = ch.live_dst & 0x07ff'fffc;
+  // ST-097 p.16: a C-bus head/tail need not lie on a longword boundary.
+  // Keep the four-byte bulk service, but do not round its destination down
+  // or overwrite bytes beyond the requested end. The shared source buffer
+  // retains unused FIFO bytes between partial writes and across state loads.
+  if ((ch.live_dst & 3) || (ch.live_size - ch.live_count) < 4) {
+    dma_transfer_direct_cbus_write(ch);
+    return;
+  }
 
-  m_hostspace->write_dword(dst_address, m_hostspace->read_dword(src_address));
-  if (ch.dst_add == 8)
-    m_hostspace->write_dword(dst_address + 4,
-                             m_hostspace->read_dword(src_address));
-
-  ch.live_src += ch.src_add;
+  // Sequence the reads explicitly: a head may leave the source buffer at
+  // any byte offset, so this longword can span two source-buffer fills.
+  u32 data = u32(dma_read_word(ch)) << 16;
+  data |= dma_read_word(ch);
+  m_hostspace->write_dword(ch.live_dst & 0x07ff'fffc, data);
   ch.live_dst += 4;
   ch.live_count += 4;
 }
