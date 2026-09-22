@@ -11804,3 +11804,114 @@ No production wait-rule change was made for the following program-DMA issue:
 - State/limits: candidate only; SMPC-01 stays open. No new state or save-layout
   change. Undocumented upper SF bits, CDON/CDOFF behavior, IO-02 inventory,
   frozen DMA acknowledgement, clock/sound reset and delay-slot IRQ unchanged.
+
+
+## IMPL-0159 — decode extended-size and unknown-tap peripheral reports
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0159 | SMPC-04 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Frame zero-nibble extended reports with mode-limited length/data; F0–FF tap IDs carry no payload |
+
+- Branch `arena/01a0b897-mame`; base `342ff47f73588a4b70992b4dc27a876f2eee85c5`.
+  Production smpc.cpp:902–938 and smpc.h:117–121; controller interface
+  ctrl.h:37–40,89 and ctrl.cpp:94–96; multitap.cpp:59–62 and segatap.cpp:58–61
+  plus their declarations. All controller paths are under src/devices/bus/
+  sat_ctrl; SMPC is under src/mame/sega.
+- Contract: for a reported connector, types0–E and size nibble1–F retain
+  short report framing. A zero size nibble keeps the original ID then adds
+  an extension-length byte, followed by that many payload bytes. In15-byte
+  mode, clamp the reported length and payload to15; in255-byte mode, return
+  the supplied16–255-byte payload. F0–FE are unknown tap IDs whose low nibble
+  is a Mega Drive peripheral ID, not a payload length. FF remains an empty
+  tap. All type-F connector IDs therefore contribute the ID alone.
+- Implementation: add read_ext_size(index), separate from payload sampling,
+  to the controller interface and forward physical slot indices through both
+  tap adapters. An extended-report provider must override it with its payload
+  length; its read_ctrl_slot offsets remain0..length-1. Existing short-ID
+  providers are not queried and need no changes. Snapshot once before paging,
+  retaining the accepted no-resampling and slot-index rules. Mode3 still
+  skips the port without even querying connection status.
+  Expand the already save-registered snapshot array from512 to7712 bytes:
+  two ports * (one status +15 connectors * (ID +length +255 payload)).
+  Existing16-bit size/position fields cover this bound. No new mutable fields.
+  Remove stale comment claiming skipped empty slots still lose later pads.
+- Primary: ST-169-R1-072694 printed pp.65–66/PDF75–76, Figure3.12 and P1MD/
+  P2MD definitions; pp.70–73/PDF80–83, Table3.8/3.9 and Figures3.16–3.20.
+  Figure3.17 explicitly retains a zero-nibble ID and inserts0F before the
+  truncated15-byte body; Figure3.18 supplies10–FF lengths. Figure3.20 was
+  also inspected as a rendered page: typeF is in bits7–4, MD PID0–E in
+  bits3–0. This resolves the misleading extraction order of that diagram.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`.
+- Three-peer cross-check (no false consensus on the new long-report path):
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp`,
+    blob `af6cb315fe2126f923a5dabfc4af98c088463318`:1453–1455 treats all
+    type-F IDs as zero data, supporting the unknown-tap correction. Its
+    line1348 explicitly leaves255-byte mode TODO and the low-nibble count
+    cannot supply an extended body. Not an extended-framing oracle.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv:1211–1226`, blob
+    `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`, accepts a finite set of
+    short IDs and uses the low nibble; multitap is explicitly TODO. The LLE
+    external-register wrapper cannot establish firmware packet policy; no
+    firmware acquired/executed. Neither is claimed to corroborate long IDs.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/include/ymir/hw/smpc/peripheral/peripheral_port.hpp:
+    111–127`, blob `51c9153eb66aaac9000a72668d9943c10ef0e66e`, explicitly
+    leaves multitap/long reports TODO and falls back to empty status for
+    excessive length. `libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:771–778`,
+    blob `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, snapshots through that
+    interface. Snapshot organization is a cross-check, not long-ID support.
+- Provenance: inherited/accepted read_saturn_ports supports physical slots,
+  FF-empty IDs and byte-page snapshots but explicitly defers extension sizes.
+  It reads low-nibble bytes for every non-FF ID, incorrectly treating unknown
+  F1–FE as data-bearing. Locally available controller history ends at9fbe664f;
+  no claim that that ancestry boundary introduced these deficiencies.
+- Observable/units/tolerance: exact report bytes/byte counts, zero tolerance.
+  A direct ID20 provider of32 payload bytes yields F1,20,20,payload[0..31]
+  in255-byte mode; in15-byte mode F1,20,0F,payload[0..14]. With the other
+  port omitted, these reports are35 bytes (two pages) and18 bytes (one page).
+  A255-byte provider yields258 bytes including status, split across nine
+  pages; the extension value isFF, distinct from an FF connector ID.
+  A three-slot authored tap with IDs F3,FF,02 and body AA,BB yields status,
+  F3,FF,02,AA,BB; no payload/length query for either type-F entry. A root
+  unknown status A0 still has zero connectors and yields A0 alone.
+- Proposed validator method (not run): provide authored native endpoint(s)
+  with16/31/32/33/255-byte bodies and mixed short/extended/unknown/empty
+  physical slots. Exercise15-byte and255-byte modes, independent port modes,
+  omitted ports, page boundaries inside ID/extension/body, status-first and
+  peripheral-only INTBACK, input mutation after page1 and active same-revision
+  save/restore across the boundary. Observe every extension/offset and query
+  count; payload offset0 must not be consumed as an extension byte. Retain
+  old pad/tap/relative-input controls, BREAK and VBlank timeout behavior.
+  The7712-byte maximum is a storage bound, not a promise to deliver that
+  whole hypothetical configuration before VBlank with current timing.
+- Falsifier: interpreting F3 as three payload bytes, dropping FF/unknown
+  physical slots, omitting/shifting the extension byte, reporting the original
+  long size while returning only15, sampling outside a declared body, buffer
+  overflow, polling an omitted port, resampling continuation pages, or changed
+  existing short-pad framing/timeout/OREG31 behavior.
+- Checks: prescribed C++20 syntax exits0 for smpc.cpp, all12 sat_ctrl .cpp
+  files and sat_console.cpp. Additional stv.cpp dependency syntax first
+  required src/mame/shared for rax.h, then the existing generated-layout
+  include directory /tmp/vdp-audit/layout; with those include paths it exits0.
+  No generated layout changed/committed. git diff --check exits0. No runtime,
+  validator suite or full build; protected fixtures/evidence untouched.
+- Fixture/save impact: protected test_smpc_transport.py's extracted port stub
+  lacks read_ext_size and hardcodes512-byte snapshot/copy storage. The
+  validator must adapt its interface and provide long/unknown report cases;
+  this change does not silently alter those expectations. Existing native
+  multitap fixture explicitly excludes extended IDs. Widening the registered
+  array changes save signatures, so older-revision saves are incompatible.
+  Same-revision native long-report/save qualification has not been run.
+- State/limits: candidate only; SMPC-04 not closed. No registered endpoint
+  currently emits an extended payload. All existing accessory choices and
+  IO-02 supported/not-supported inventory remain unchanged: joypad, racing,
+  analog, mission, lightgun, trackball, keyboard, MD3/MD6, mouse, multitap and
+  SegaTap remain the listed slots; tap subslots still allow joypad only. This
+  adds transport/API capability, not a modem/NetLink/serial/link or new physical
+  accessory implementation. The gun's A0 is a root status, not an extended
+  connector report. Reserved mode2, malformed extension sizes, actual wire
+  handshakes/draining, collection timing/OPE and accessory-specific reports
+  are not qualified. Frozen DMA/IRQ-delay-slot/sound/video-clock/game paths
+  are untouched; existing timeout/paging methods themselves are unchanged.

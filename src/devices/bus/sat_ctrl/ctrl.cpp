@@ -91,6 +91,10 @@ uint8_t saturn_control_port_device::read_id(int idx) {
   return m_device ? m_device->read_id(idx) : 0xff;
 }
 
+uint8_t saturn_control_port_device::read_ext_size(unsigned index) {
+  return m_device ? m_device->read_ext_size(index) : 0;
+}
+
 uint8_t saturn_control_port_device::read_ctrl(uint8_t offset) {
   uint8_t data = 0;
   if (m_device)

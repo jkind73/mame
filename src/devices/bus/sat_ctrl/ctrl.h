@@ -34,6 +34,10 @@ public:
   }
   virtual uint8_t read_status() { return 0xf0; }
   virtual uint8_t read_id(int idx) { return 0xff; }
+  // Extended IDs (type 0-E, size nibble 0) supply a separate payload length
+  // of 16-255 bytes. Payload offsets still start at zero in read_ctrl_slot.
+  // Short IDs and disconnected/unknown slots do not use this query.
+  virtual uint8_t read_ext_size(unsigned index) { return 0; }
 
   // SMPC parallel I/O access in SH-2 direct mode. Devices that speak their
   // own line protocol (cfr. the Virtua Gun) answer here and return true,
@@ -82,6 +86,7 @@ public:
   uint8_t read_ctrl_slot(unsigned index, uint8_t offset);
   uint8_t read_status();
   uint8_t read_id(int idx);
+  uint8_t read_ext_size(unsigned index);
   bool read_pdr(uint8_t ddr, uint8_t data, uint8_t &res);
 
   // external latch signal, driven by light guns towards the VDP2

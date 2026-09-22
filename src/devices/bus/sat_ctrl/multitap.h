@@ -35,6 +35,7 @@ protected:
 	virtual uint8_t read_ctrl_slot(unsigned index, uint8_t offset) override;
 	virtual uint8_t read_status() override { return 0x16; }
 	virtual uint8_t read_id(int idx) override;
+	virtual uint8_t read_ext_size(unsigned index) override;
 
 private:
 	required_device_array<saturn_control_port_device, 6> m_subctrl_port;

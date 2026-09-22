@@ -891,40 +891,20 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_rtc_increment) {
  *******************************************/
 
 /*
-    [0] port status:
-        0x04 Sega-tap
-        0x16 Multi-tap
-        0x2x clock serial peripheral
-        0xf0 peripheral isn't connected
-        0xf1 peripheral is connected
-    [1] Peripheral ID (note: lowest four bits determines the size of the input
- packet) 0x02 digital pad 0x25 (tested by Game Basic?) 0x34 keyboard
-
- Lower 4 bits of the port status tell the number of controllers to check for the
- port Lower 4 bits of the peripheral ID tell the number of registers used by
- each controller For multitap / segatap, we have implemented the following
- logic: SMPC reads in sequence
- - status for port 1
- - ID first controller, followed by the number of reads needed by the plugged
- controller
- - ID second controller, followed by the number of reads needed by the plugged
- controller
- - and so on... until the 4th (for SegaTap) or 6th (for Multitap) controller is
- read
- TODO: how does the multitap check if a controller is connected? does it ask for
- the controller status of each subport? how does this work exactly? currently,
- there is a small problem in some specific controller config which seems to lose
- track of one controller. E.g. if I put multitap in port2 with inserted joy1,
- joy2 and joy4 it does not see joy4 controller, but if I put joy1, joy2, joy4
- and joy5 it sees all four of them. The same happens if I skip controllers with
- id = 0xff... how did a real unit behave in this case?
+    Port status contains the multitap ID and physical connector count:
+      04 = SegaTap, 16 = six-player multitap, F0 = empty, F1 = direct device.
+    Each connector contributes an ID followed by its payload. For types 0-E,
+    a nonzero low nibble is the payload length; zero selects an extra length
+    byte. Type F represents an unknown or empty tap and has no payload.
+    Keep physical slot indices even when earlier slots have no data.
 */
 
 void smpc_hle_device::read_saturn_ports() {
   m_peripheral_size = m_peripheral_pos = 0;
   for (unsigned port = 0; port < 2; ++port) {
+    unsigned const mode = (m_pmode >> (port * 2)) & 3;
     // 0-byte mode must not query the port, including its connection status.
-    if (((m_pmode >> (port * 2)) & 3) == 3)
+    if (mode == 3)
       continue;
     auto &ctrl = port ? m_ctrl2 : m_ctrl1;
     uint8_t const status = ctrl ? ctrl->read_status() : 0xf0;
@@ -932,16 +912,29 @@ void smpc_hle_device::read_saturn_ports() {
     for (unsigned i = 0; i < (status & 0xf); ++i) {
       uint8_t const id = ctrl->read_id(i);
       m_peripheral_data[m_peripheral_size++] = id;
-      // FF is an unconnected tap, not a 15-byte peripheral (ST-169 p.73).
-      unsigned const size = id == 0xff ? 0 : (id & 0xf);
+      // ST-169 p.73: FF is unconnected; F0-FE are unknown taps whose
+      // low nibble is an MD peripheral ID, not a payload length.
+      if ((id & 0xf0) == 0xf0)
+        continue;
+
+      unsigned size = id & 0xf;
+      if (!size) {
+        // ST-169 pp.70-73, figs.3.17-3.18: extended reports retain
+        // their zero size nibble and insert a separate length byte.
+        // 15-byte mode truncates both the length and returned payload.
+        size = ctrl->read_ext_size(i);
+        if (mode == 0)
+          size = std::min<unsigned>(size, 15);
+        m_peripheral_data[m_peripheral_size++] = size;
+      }
       for (unsigned j = 0; j < size; ++j)
         m_peripheral_data[m_peripheral_size++] = ctrl->read_ctrl_slot(i, j);
     }
   }
   // Snapshot once: continuation must not reread relative-motion devices or
   // replace later bytes with input from a different polling instant.
-  // Extended-size peripheral IDs need a controller-interface extension;
-  // all currently registered devices use the <=15-byte format handled here.
+  // The length query is separate from payload reads so the extension byte
+  // cannot consume a relative-motion sample or shift the payload offsets.
 }
 
 /* Official documentation says that the "RESET/TAS opcodes aren't supported",

@@ -54,3 +54,8 @@ uint8_t saturn_segatap_device::read_ctrl_slot(unsigned index, uint8_t offset)
 {
 	return index < m_subctrl_port.size() ? m_subctrl_port[index]->read_ctrl_slot(0, offset) : 0xff;
 }
+
+uint8_t saturn_segatap_device::read_ext_size(unsigned index)
+{
+	return index < m_subctrl_port.size() ? m_subctrl_port[index]->read_ext_size(0) : 0;
+}

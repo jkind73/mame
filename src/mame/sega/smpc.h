@@ -114,9 +114,9 @@ private:
   uint8_t m_ireg[7];
   uint8_t m_intback_buf[3];
   uint8_t m_oreg[32];
-  // Existing controller interface: two ports, at most 15 devices per port,
-  // each with an ID and up to 15 data bytes (482 bytes including statuses).
-  uint8_t m_peripheral_data[512]{};
+  // Two ports, each with a status byte and at most 15 peripheral reports.
+  // Each report can contain an ID, extended length and 255 payload bytes.
+  uint8_t m_peripheral_data[2 * (1 + 15 * (2 + 255))]{};
   uint16_t m_peripheral_size = 0;
   uint16_t m_peripheral_pos = 0;
   uint8_t m_rtc_data[7];
