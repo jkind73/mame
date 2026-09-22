@@ -13350,3 +13350,96 @@ equality timing are already blocked as0036/0043; this turn found no new primary
 erratum or attributable silicon evidence to resolve them. No speculative
 change made to either. SCI live MPBT sampling also remains outside this patch;
 its in-flight latch point is not established by the reviewed manual wording.
+
+
+## IMPL-0174 — charge SH MAC instruction baseline once in the DRC
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0174 | CPU-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | MAC.L/MAC.W DRC helpers omit the interpreter-only extra two cycles already covered by the frontend's three-cycle cost |
+
+- Branch `arena/01a0b897-mame`; base
+  `900c3427557b204c1c51eb038bd6f55bd2ce4d08`. Source:
+  src/devices/cpu/sh/sh.cpp:867–982,2553–2578 and sh.h:245–246.
+- Defect: sh_fe.cpp:622–630,776–787 sets desc.cycles=3 for each MAC.
+  generate_sequence_instruction (sh.cpp:2449 after this change) accumulates
+  that cost; sh2.cpp:663–671 subsequently subtracts it from icount. The DRC
+  callbacks also called shared MAC_L/MAC_W, which unconditionally deducted2.
+  Hence the baseline was charged as3+2, while the interpreter paid1 in its
+  execute loop plus2 in the helper. This is source-level accounting analysis,
+  not a measured native timing result.
+- Implementation: add count_extra_cycles, defaulting true, to the two helper
+  signatures; guard only their final icount deduction. DRC func_MAC_L and
+  func_MAC_W explicitly pass false because their descriptor owns the complete
+  cost. All existing interpreter calls retain the default true. Do not reset
+  or overwrite icount: any memory-handler cycle adjustments must survive.
+  Arithmetic, signed magnitudes, saturation, reads, postincrements, SR and
+  frontend cycle values are unchanged. No IRQ sampling/acknowledgement,
+  branch, delay-slot generation, DMA, driver or game-specific edits.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4 Table2.13 printed36/
+  PDF52 gives MAC.L3/(2–4) and word MAC3/(2); note on printed37/PDF53 says
+  normal minimum cycles, parentheses denote contention with surrounding
+  instructions. Retain the existing normal3 baseline, not an unconditional
+  assertion that every real MAC completes in3. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`, retrieved via gh api this turn.
+- Three pinned peer cross-checks, retrieved via gh api:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095_ops.inc:835–864,872–902, blob
+    `de0a8a67631fbda0ad4e41a82fe0e0aa32e7c8a2`: memory-read phases
+    plus one explicit timestamp increment. It labels both MAC pipelines
+    incompletely implemented. Not an oracle for universal constant latency.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/MULT.sv:94–125,167–168, blob
+    `49ef051e345dd6d035c9a02e2fe0b2e0c64f909b`: operand loads arm
+    separate MAC.L/MAC.W internal MM_CYC countdowns and expose CBUS_BUSY.
+    These are multiplier readiness/interlock counts, not additive replacements
+    for MAME's complete instruction descriptor; no HDL cycle counts imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:4072–4136, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`: accumulates both
+    AccessCycles terms and WritebackCycles, then returns cycles+1 once.
+    Its explicit TODO questions that final1. No all-peer cycle-exact agreement
+    claimed; the independent models reinforce keeping bus/pipeline work open.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  sh.cpp:930,976,2550,2563, blob
+  `51710c5b3a268fae18464df7de0e557026367fb1`, and
+  sh_fe.cpp:629,786, blob `35ba19e3912ca2017ba6814c12edef841213546e`,
+  contain the same helper/descriptor duplicate. Fork sh.cpp history inspected
+  through6486605d/0d4daf7a and afce770c/a5cc550d. Frozen afce770c delay-slot
+  interrupt work is untouched. SH3/4 frontends also fall back to these MAC
+  descriptors; their shared DRC callbacks receive this accounting fix, but
+  their native timing is not qualified here.
+- Observable/units/tolerance: baseline core cycles, exact integer count.
+  With other charges held equal, N executed MAC instructions cost2N fewer
+  cycles in DRC, no change in interpreter. Each retains baseline3. Architectural
+  MACH:MACL, SR, operand address progression and memory access sequence must
+  be bit-for-bit identical. Bus-added cycle debits must not be discarded.
+- Proposed validator method (not run): native interpreter/DRC on master and
+  slave, aligned ordinary RAM operands, independent isolated MAC instructions
+  separated by NOPs to avoid treating contention timing as known. Account for
+  all setup/NOP/exit costs equally. A16-MAC body differs by32 baseline cycles
+  from pre0174 DRC; compare both MAC widths, S=0/1, aliased operand registers,
+  saturation boundaries and slices ending near the block boundary. A DRC
+  helper-level check alone is insufficient: include frontend cycle deduction.
+  Separately use a controlled memory handler with added cycle debits to ensure
+  false suppresses only the fixed2, not access costs. New-save replay and
+  unrelated instruction/interrupt/game regressions remain validator-owned.
+- Falsifier: helper extras remain charged in DRC, disappear in interpreter,
+  memory wait charges are erased, final registers/accesses change, or block
+  boundaries lose/duplicate cycles. Silicon contention disagreement does not
+  justify reinstating an unconditional duplicate debit; it needs a separate
+  pipeline implementation with measured/documented dependency cases.
+- Checks/state/limits: prescribed C++20 syntax on sh.cpp and on sh4.cpp as a
+  shared-header consumer exits0; git diff --check exits0. No tests, runtime,
+  sanitizer, full build or fixture edits. No new fields/save-layout change.
+  CPU-01 remains open; IO-02 unchanged. agent1_validation.md is absent locally,
+  not a withdrawal of prior attributed acceptance. All shared-family native
+  timing, bus grants, multiply interlocks and frozen-game regressions remain
+  external qualification work.
+
+Workspace metadata restoration at0174: local HEAD/index had reverted to
+82152a8b while files held900c3427. Fetched the fixed session branch and compared
+all apparent modified/deleted/untracked paths against fetched blob identities;
+zero mismatches. Mixed reset restored branch/index only, with no file overwrite
+or published history rewrite. Primary/peer scratch sources were re-fetched.

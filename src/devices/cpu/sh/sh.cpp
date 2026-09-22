@@ -864,7 +864,7 @@ void sh_common_execution::LDSMPR(uint32_t m)
 }
 
 /*  MAC.L   @Rm+,@Rn+ */
-void sh_common_execution::MAC_L(uint32_t m, uint32_t n)
+void sh_common_execution::MAC_L(uint32_t m, uint32_t n, bool count_extra_cycles)
 {
 	uint32_t tempn = read_long(m_sh2_state->r[n]);
 	m_sh2_state->r[n] += 4;
@@ -931,11 +931,12 @@ void sh_common_execution::MAC_L(uint32_t m, uint32_t n)
 		m_sh2_state->mach = res2;
 		m_sh2_state->macl = res0;
 	}
-	m_sh2_state->icount -= 2;
+	if (count_extra_cycles)
+		m_sh2_state->icount -= 2;
 }
 
 /*  MAC.W   @Rm+,@Rn+ */
-void sh_common_execution::MAC_W(uint32_t m, uint32_t n)
+void sh_common_execution::MAC_W(uint32_t m, uint32_t n, bool count_extra_cycles)
 {
 	int32_t tempn = (int32_t)(int16_t)read_word(m_sh2_state->r[n]);
 	m_sh2_state->r[n] += 2;
@@ -977,7 +978,8 @@ void sh_common_execution::MAC_W(uint32_t m, uint32_t n)
 		if (templ > m_sh2_state->macl)
 			m_sh2_state->mach += 1;
 	}
-	m_sh2_state->icount -= 2;
+	if (count_extra_cycles)
+		m_sh2_state->icount -= 2;
 }
 
 /*  MOV     Rm,Rn */
@@ -2557,7 +2559,8 @@ void sh_common_execution::func_MAC_W()
 	uint32_t n = REG_N;
 	uint32_t m = REG_M;
 
-	MAC_W(m, n);
+	// The DRC descriptor already accounts for the full instruction cost.
+	MAC_W(m, n, false);
 }
 
 
@@ -2570,7 +2573,8 @@ void sh_common_execution::func_MAC_L()
 	uint32_t n = REG_N;
 	uint32_t m = REG_M;
 
-	MAC_L(m, n);
+	// The DRC descriptor already accounts for the full instruction cost.
+	MAC_L(m, n, false);
 }
 
 

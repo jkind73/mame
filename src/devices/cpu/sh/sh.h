@@ -242,8 +242,8 @@ protected:
 	void LDSMMACH(uint32_t m);
 	void LDSMMACL(uint32_t m);
 	void LDSMPR(uint32_t m);
-	void MAC_L(uint32_t m, uint32_t n);
-	void MAC_W(uint32_t m, uint32_t n);
+	void MAC_L(uint32_t m, uint32_t n, bool count_extra_cycles = true);
+	void MAC_W(uint32_t m, uint32_t n, bool count_extra_cycles = true);
 	void MOV(uint32_t m, uint32_t n);
 	void MOVBS(uint32_t m, uint32_t n);
 	void MOVWS(uint32_t m, uint32_t n);
