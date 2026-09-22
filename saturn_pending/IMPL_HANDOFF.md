@@ -13169,3 +13169,105 @@ Restored workspace again matched published0d4daf7a over the old local index.
 Fetched only the fixed session branch, compared apparent differences by blob
 hash and aligned the index/branch with a mixed reset after zero mismatches;
 no worktree file or published history was overwritten. Research cache rebuilt.
+
+
+## IMPL-0172 — connect SH7604 on-chip requests to the interpreter poll latch
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0172 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | On-chip IRQ recalculation sets the inherited SH-2 poll latch instead of an unconsumed shadow field |
+
+- Branch `arena/01a0b897-mame`; base
+  `6486605d5a96097118b060869db920517723aff8`. Source changes:
+  src/devices/cpu/sh/sh7604.h:54 and sh7604.cpp:38,151–155. CPU-01 also
+  needs interpreter/DRC integration coverage; neither parent is closed.
+- Defect/contract: SH7604 declared its own m_test_irq, hiding the protected
+  sh2_device member. sh2_recalc_irq (current sh7604.cpp:2334–2420) set only
+  the derived copy; sh2_device::execute_run (sh2.cpp:321–325) read/cleared
+  only the base copy. Therefore a peripheral event alone did not request the
+  interpreter check, even with a valid selected vector/level. An unrelated
+  external IRQ/SR write could hide the disconnect by requesting a base check.
+- Implementation: remove the derived declaration, constructor initializer and
+  redundant save registration. The unchanged producer assignment now resolves
+  to the same inherited latch as the existing consumer. The base reset already
+  clears that latch (sh2.cpp:101), and base device_start saves it at index0
+  (sh2.cpp:72). The SH7604 selected-vector field remains separate and saved at
+  index1, as its virtual exception handler still uses it.
+- Frozen boundaries: no edit to execute_run, check_pending_irq, exception
+  entry, DRC generation, delay-slot instructions, IRQ selection/acknowledgement
+  bodies, DMA completion, NMI input or driver callbacks. Specifically the
+  existing `m_test_irq && !m_delay` gate is retained, not replaced or bypassed.
+  This intentionally changes which producer reaches that gate, not its sampling
+  rule. The DRC already consults internal_irq_level at sh2.cpp:631–635 without
+  this flag; no claim that its prior behavior suffered the same disconnection.
+- Primary: SH7604 ADE-602-085C Rev.4 section5.2.4 printed85/PDF101 identifies
+  on-chip sources and priority assignment; section5.4.1 printed97/PDF113,
+  Fig5.5 printed98/PDF114 describes source request to INTC, priority versus
+  SR.I, CPU request and vector dispatch. These do not require another external
+  interrupt or an SR rewrite to notice an eligible peripheral event. Section5.5
+  printed100/PDF116 gives hardware response timing, NOT implemented or qualified
+  by this flag-ownership fix. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`.
+- Three pinned peer cross-checks (via gh api; no foreign code imported):
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:3084–3095,3123–3129, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`: selects an enabled FRT
+    vector/priority and sets the CPU PEX_INT request when it exceeds SR.I.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/INTC.sv:154–176, blob
+    `3018e750e3ff0c10b1bad5e7ca3f12ba67461301`: on-chip requests enter
+    priority/mask arbitration and produce INT_REQ. SH7604.sv:249,570–608,
+    blob `07713ee3168a7419e992514f413126739c546ed3`, wires peripheral
+    inputs to INTC and its request to CPU (standby gating retained there).
+    No HDL pipeline/standby timing imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:2063–2068,2198–2208,
+    blob `9746b438b8a71de63ff65cd2d4325bc582a5114b`, raises FRT events
+    and dispatches pending INTC state in the interpreter. Its
+    libs/ymir-core/include/ymir/hw/sh2/sh2.hpp:908–955, blob
+    `64cbc8f417911f80167b1812767459cd88628e5b`, directly connects the
+    selected request to m_intrFlags.pending, with mask/delay gating.
+    Its other peripheral TODOs are not treated as complete hardware coverage.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  sh7604.cpp:36,1539–1541, blob
+  `79409df16f3f26a60a12012e53692fe69025ea35`, retains the derived
+  initialization and producer assignment. Inspected fork path history through
+  fa44f923 and earlier on-chip reset/DIVU changes. This does not revert those
+  or afce770c's frozen delay-slot work. IMPL-0166 saved the shadow poll field
+  as well as the selected vector; saving it did not fix its disconnected owner.
+- Observable/units/tolerance: exact handler vector, entry count, SR.I and
+  instruction ordering; zero tolerance on those discrete observations. An
+  isolated enabled FRT request above SR.I must reach its selected handler
+  without an unrelated external IRQ or SR rewrite. An equal/lower-priority
+  request remains masked. Existing no-entry-between-branch-and-slot behavior
+  must remain; no exact hardware cycle-latency claim.
+- Proposed validator method (NOT run): on each SH7604, interpreter and DRC,
+  set a RAM vector table and an isolated FRT compare event with priority above
+  SR.I. Finish register/SR setup before the event and execute plain NOPs while
+  external IRQ/NMI sources are inactive. Handler records its marker/count and
+  clears the FRT flag using the documented protocol; avoid a second compare.
+  Compare with base6486605d, which can leave the interpreter event unnoticed
+  until another poll trigger. Repeat masked/equal-level, source-disabled,
+  reset, and delayed-branch boundary controls. Other on-chip sources are
+  follow-up integration controls, not permission to alter DMA acknowledgements.
+  Save/reload while the actual base poll latch and selected vector are pending,
+  including a deferred-slot cut, and compare uninterrupted continuation.
+- Falsifier: an eligible isolated peripheral event still needs an external/SR
+  trigger, a masked request enters, a wrong vector is used, entry occurs between
+  a branch and its delay slot, or new-format replay loses/duplicates the event.
+- Save compatibility: **pre0172 SH7604 saves are incompatible**. Removing the
+  index1 m_test_irq entry changes save_manager::signature (save.cpp:502–519).
+  The live poll latch remains saved once at index0, and the SH7604 vector remains
+  saved at index1. No postload arbitration, request consumption or restart is
+  introduced. No new fields. Supersedes0166's two-shadow-latch save inventory;
+  its active DMAC fields and selected-vector retention remain unchanged.
+- Checks/state/limits: prescribed C++20 sh7604.cpp syntax exits0, diff --check
+  exits0. No tests/runtime/sanitizer/full build, no protected fixture/evidence
+  changes. Read-only impl_checks scan found no literal m_test_irq references;
+  validator still owns fixture adaptation and real two-class integration (a
+  single-class extraction cannot demonstrate this name-hiding defect).
+  Candidate only; broader interrupt retrigger/arbitration/timing, AE delivery,
+  NMIE selection and native/frozen-game regressions remain open. This does not
+  solve the recorded vector10 DMA-address-error blocker. No IO-02 expansion;
+  agent1_validation.md still absent locally, prior attributed acceptance intact.

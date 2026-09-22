@@ -51,7 +51,7 @@ protected:
 
 	virtual void sh2_exception(const char *message, int irqline) override;
 
-	uint32_t m_test_irq;
+	// IRQ polling uses the inherited sh2_device::m_test_irq latch.
 	int m_internal_irq_vector;
 
 private:
