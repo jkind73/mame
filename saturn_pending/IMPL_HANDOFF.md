@@ -12987,3 +12987,120 @@ but local HEAD/index pointed to the old base. Fetched the fixed session branch,
 compared every apparent difference against its published blob, and used a mixed
 reset only after finding no mismatches. No worktree files or remote history were
 overwritten. Research cache was restored through gh-api blob retrieval.
+
+
+### SH-2 DMA address-error audit — implementation boundary after0169
+
+- Primary SH7604 ADE-602-085C sections4.1.1–3 pp.65–67/PDF81–83,
+  Table4.3 identifies DMA address-error vector10, priority above NMI, and
+  states that address errors do not change SR.I. Sections4.3 and4.4.2
+  pp.71–72,75–76/PDF87–88,91–92 require instruction/slot-aware acceptance;
+  section9.3.8 p.283 retains the final source/destination transfer before stopping.
+- MAME's sh2_exception_internal (sh2.cpp:463–503) is an IRQ-oriented helper
+  that changes SR.I. In DRC it only stores evec/irqsr, while ordinary entry
+  handling overwrites evec unless an appropriate pending source exists. It is
+  not a ready vector10 dispatch API. Setting AE and calling this helper as an
+  IRQ, or hijacking pending_nmi, would implement the wrong exception contract.
+- Mednafen sh7095.inc:575–610 uses a distinct PEX_DMAADDR after the faulting
+  pair and updates progress. MiSTer's pinned DMAC contains AE gating but no
+  AE producer; Ymir sh2.cpp:1783–1785 explicitly omits AE because it is never
+  generated. No peer consensus supplies a drop-in MAME exception-delivery path.
+- **BLOCKED(reviewed interpreter/DRC vector10 pending-exception integration
+  that preserves SR.I, saved-PC/slot boundaries and priority over NMI without
+  rewriting the frozen IRQ/delay-slot sampling paths).** Do not promote a
+  seeded-AE gate as complete native address-error support. No AE source change
+  made in this checkpoint; CPU-03 remains open. All cited peers are pinned in
+  0169 and below; primary blob4c1697421398cef77c7b52defda94ef5fead7372.
+- Other audit limit: section14.2.1 p.387 and14.5 p.393 prohibit switching an
+  operating module to standby. Do not substitute an active MSTP4 pause test
+  for a lawful DMAC stop method. Proceeding to shared SH-2 arithmetic does
+  not mark DMA timing/request routing/address errors complete.
+
+## IMPL-0170 — defined unsigned magnitudes for signed SH multiply
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0170 | CPU-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | DMULS.L and MAC.L form32-bit magnitudes without signed INT32_MIN negation overflow |
+
+- Branch `arena/01a0b897-mame`; base
+  `fa44f923873710497ce33b7a3636a6f6543e63b2`. Production file
+  src/devices/cpu/sh/sh.cpp:651–667,867–888, DMULS and MAC_L helpers only.
+  Shared master/slave SH-2 implementation; other SH-family consumers also use
+  these helpers. No driver, SH7604 peripheral or IRQ path edits this turn.
+- Contract: hold operand bit patterns as uint32_t, capture the original product
+  sign from bit31, and use unsigned0-minus-operand for negative magnitudes.
+  80000000 therefore remains a valid unsigned magnitude2147483648 instead of
+  invoking undefined signed32-bit negation. Existing unsigned partial products,
+  carries, two's-complement result conversion, accumulation/saturation, operand
+  memory-read order, postincrements and cycle accounting are unchanged.
+- Defect: the old int32_t temporaries performed0-temp when temp was negative.
+  For INT32_MIN that mathematical result is outside int32_t, hence C++ signed
+  overflow/undefined behavior. This is a language-level correctness fix, not
+  a measured game failure or a claim that every old compiled binary returns
+  the wrong result. Hardware operand80000000 is valid for signed32-bit multiply.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4 Table2.13, printed
+  pp.35–36/PDF51–52, specifies signed32x32 to64-bit MACH:MACL for DMULS.L
+  and the signed longword MAC operation. No minimum-value exception is listed.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. This establishes the arithmetic
+  contract; host signed-overflow avoidance is the C++ implementation obligation.
+  No new saturation/timing interpretation is inferred from that summary table.
+- Three pinned peer cross-checks:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095_ops.inc:835–862,908–921, blob
+    `de0a8a67631fbda0ad4e41a82fe0e0aa32e7c8a2`, widens a signed32-bit
+    operand to int64 before multiplication for both instructions, so the
+    minimum operand requires no signed32-bit absolute value. MAC uses the
+    existing full-width sum and product-sign saturation decision.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/MULT.sv:33–35,75–86,97–106,131–134,152–164, blob
+    `49ef051e345dd6d035c9a02e2fe0b2e0c64f909b`, forms a sign-extended
+    multiply result and uses its64 low bits for DMUL/MAC. This supports the
+    full operand range; HDL multiplier cycles are not imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:4108–4131,4176–4183, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`, explicitly sign-extends
+    both32-bit operands to sint64 before multiplication. Its pipeline/cache
+    accounting remains a distinct implementation, not a timing oracle here.
+- Engine reach: DMULS interpreter uses the changed C++ helper; its DRC path
+  at sh.cpp:3048–3053 uses UML_MULS and is unchanged. MAC.L DRC calls the
+  shared helper through func_MAC_L/cfunc_MAC_L (around2562–2572,3732–3744),
+  so both engines receive the magnitude correction. No DRC code-generation,
+  register-spill, memory-order or exception-sampling change.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  src/devices/cpu/sh/sh.cpp:651–661,865–879, blob
+  `51710c5b3a268fae18464df7de0e557026367fb1`, has the same signed negations.
+  Fetched that pinned source and reviewed fork path history with gh api:
+  afce770cc47c3fce8a16e0a43593412a5d3cdc3c is the frozen branch-delay IRQ
+  fix; a5cc550d0a2cf7218cbd94c1a0780f7a713f8d8e is the earlier SH-family
+  update. Neither is reverted. All patch hunks are inside the two arithmetic
+  helpers. No peer code copied; the unsigned partial-product algorithm remains.
+- Observable/units/tolerance: exact64-bit MACH:MACL and unchanged SR, zero-bit
+  tolerance. DMULS.L operand pairs80000000/00000001,80000000/FFFFFFFF and
+  80000000/80000000 yield FFFFFFFF80000000,0000000080000000 and
+  4000000000000000 respectively. Swap operand positions as controls. MAC.L
+  with S0 and a zero accumulator has the same products; with accumulator
+  00000000FFFFFFFF and operands80000000/1 it yields000000007FFFFFFF.
+  Existing S1 saturation and ordinary positive/negative operands are regression
+  controls, not newly qualified behavior from this patch.
+- Proposed validator method (not run): authored instruction programs on both
+  CPUs, interpreter/DRC, explicit source/destination register images and aligned
+  memory operands. Cover minimum value in either/both inputs,0,1,-1,7FFFFFFF,
+  carry across MACL into MACH, S0/S1 and repeated MACs. Preserve separate MAC
+  postincrement/aliased-register controls and SR bits. An external UBSan build
+  can distinguish the old C++ defect even if its native numerical output happens
+  to match on a particular compiler; no UBSan/probe/test run was performed here.
+  Do not require an old release binary to visibly fail as proof of undefined
+  behavior, and do not infer full instruction or timing acceptance from syntax.
+- Falsifier: any arithmetic/control result differs from the documented signed
+  product plus existing accumulation policy, a minimum operand still takes a
+  signed negation path, MAC read order/postincrement changes, or an IRQ/delay-slot
+  routine changes. Native interpreter/DRC equivalence remains validator-owned.
+- Checks/state: prescribed C++20 sh.cpp syntax exits0; git diff --check exits0.
+  No tests/runtime/full build; no protected fixtures/expectations/evidence edits.
+  Candidate only, CPU-01 stays open. No device fields added/renamed or save-format
+  change. Prior save-version limits remain. Native shared-family regressions,
+  saturation corners and exact cycles remain unqualified. Frozen DMA ack,
+  delay-slot IRQ, sound/reset/video-clock/game routines and IO-02 inventory
+  untouched. agent1_validation.md is still absent locally; earlier attributed
+  acceptance of other work is not retracted.

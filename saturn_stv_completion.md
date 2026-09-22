@@ -69,6 +69,7 @@
 - [ ] **CPU-01 — Qualify SH-2 execution and DRC/interpreter equivalence. [P/V]**
   - Delay slots, exceptions, interrupt sampling/return, sleep/wake and self-modifying code under DMA and dual-CPU activity.
   - Preserve the implemented delayed-slot interrupt correction; broaden qualification rather than assuming all historical DRC faults remain.
+  - IMPL-0170 removes signed host overflow when DMULS.L/MAC.L form the magnitude of 80000000 (syntax-only candidate). Arithmetic, accumulation/saturation and timing are otherwise retained; this is not native interpreter/DRC qualification.
   - Check instruction/cycle accounting, including the source's approximate division timing and busy-loop shortcuts.
 - [ ] **CPU-02 — Complete SH7604 cache and bus-controller behavior. [P/V/R]**
   - Cache tags/data, replacement, purge, cache-through accesses, fetch/data distinctions and DMA visibility.

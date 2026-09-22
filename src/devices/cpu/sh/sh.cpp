@@ -650,14 +650,16 @@ void sh_common_execution::DIV1(uint32_t m, uint32_t n)
 /*  DMULS.L Rm,Rn */
 void sh_common_execution::DMULS(uint32_t m, uint32_t n)
 {
-	int32_t tempn = (int32_t)m_sh2_state->r[n];
-	int32_t tempm = (int32_t)m_sh2_state->r[m];
+	uint32_t tempn = m_sh2_state->r[n];
+	uint32_t tempm = m_sh2_state->r[m];
 	bool fnlml = (bool)BIT(tempn ^ tempm, 31);
 
-	if (tempn < 0)
-		tempn = 0 - tempn;
-	if (tempm < 0)
-		tempm = 0 - tempm;
+	// Form magnitudes modulo 2^32: abs(INT32_MIN) is not representable
+	// as int32_t, but its unsigned magnitude is a valid multiply operand.
+	if (BIT(tempn, 31))
+		tempn = 0U - tempn;
+	if (BIT(tempm, 31))
+		tempm = 0U - tempm;
 
 	uint32_t rn_l = (uint32_t)tempn & 0x0000ffff;
 	uint32_t rn_h = (uint32_t)tempn >> 16;
@@ -864,18 +866,20 @@ void sh_common_execution::LDSMPR(uint32_t m)
 /*  MAC.L   @Rm+,@Rn+ */
 void sh_common_execution::MAC_L(uint32_t m, uint32_t n)
 {
-	int32_t tempn = (int32_t)read_long(m_sh2_state->r[n]);
+	uint32_t tempn = read_long(m_sh2_state->r[n]);
 	m_sh2_state->r[n] += 4;
 
-	int32_t tempm = (int32_t)read_long(m_sh2_state->r[m]);
+	uint32_t tempm = read_long(m_sh2_state->r[m]);
 	m_sh2_state->r[m] += 4;
 
 	bool fnlml = BIT(tempn ^ tempm, 31);
 
-	if (tempn < 0)
-		tempn = 0 - tempn;
-	if (tempm < 0)
-		tempm = 0 - tempm;
+	// Form magnitudes modulo 2^32: abs(INT32_MIN) is not representable
+	// as int32_t, but its unsigned magnitude is a valid multiply operand.
+	if (BIT(tempn, 31))
+		tempn = 0U - tempn;
+	if (BIT(tempm, 31))
+		tempm = 0U - tempm;
 
 	uint32_t rn_l = (uint32_t)tempn & 0x0000ffff;
 	uint32_t rn_h = (uint32_t)tempn >> 16;
