@@ -12734,3 +12734,132 @@ the pinned peers before changing16-byte transfer behavior.
   acknowledgement, delay-slot IRQ, sound/reset/video-clock/game routine edits.
   SCU DMA and IO-02 inventory unchanged. This resolves0165/0166's deferred
   sixteen-byte payload implementation, not their broader qualification limits.
+
+
+## IMPL-0168 — isolate SH-2 burst-DMAC suspension ownership
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0168 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | A private DMAC suspension reason survives unrelated HALT releases and is retired only after the last active burst channel stops |
+
+- Branch `arena/01a0b897-mame`; base
+  `03c5dcc04f2ca3ef52614fed3b0bce694d425032`. Files:
+  src/devices/cpu/sh/sh7604.cpp (constructor/save/reset, completion suspension,
+  sh2_dmac_check and new sh2_dmac_update_suspend:986–997), sh7604.h:306–316,337.
+  Both CPUs/channels use the shared implementation; no driver condition added.
+- Defect: DMAC and INPUT_LINE_HALT both used SUSPEND_REASON_HALT. A completing
+  burst could release an external halt or a second still-active burst; an
+  external HALT clear could release an active burst; clearing DE/DME cancelled
+  the timer without releasing the DMAC-imposed CPU suspension. These are
+  ownership/lifecycle errors in the existing coarse model, not evidence that
+  halting all CPU execution is a cycle-accurate representation of burst DMA.
+- Contract: private SUSPEND_REASON_DMAC=00010000, outside the current framework
+  reasons0001–0040. Aggregate both active channel flags and cached CHCR.TB;
+  set/clear only this private reason when the aggregate changes. Call after
+  start/cancel checks, after completion marks the channel inactive, and after
+  reset clears both channels. Pending completion and endpoint-stalled channels
+  still count as active, preserving the existing model's hold duration there.
+  Do not modify external HALT or other reasons; make no repeated suspend/resume
+  call if the private reason already matches the aggregate.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4, section9.2.4 p.240/PDF256
+  defines TB0=cycle-steal,TB1=burst (the old name/comment said the reverse).
+  P.241/PDF257 permits stopping a channel by clearing DE. Section9.2.7
+  p.244/PDF260 and9.3.8 pp.283–284/PDF299–300 describe stopping by DME0 and
+  normal versus aborted completion. Section9.3.4 pp.255–256/PDF271–272,
+  Figures9.10/9.11 distinguishes per-unit bus release from burst ownership.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, manual blob
+  `4c1697421398cef77c7b52defda94ef5fead7372` (previous gh-api retrieval).
+  External HALT here means the MAME execution-interface input, not an added
+  physical SH7604 pin or a hardware-derived suspension-bit encoding.
+- Framework/source contract: src/emu/diexec.cpp:130–154 sets/clears only the
+  supplied reason mask;732–741 maps INPUT_LINE_HALT to the HALT bit only.
+  diexec.h:24–31 defines the current standard reasons and all-reasons mask.
+  Saturn's independent SMPC/SCU halt aggregation is in saturn.cpp:480–501;
+  it remains untouched. Its release must not undo the CPU's separate DMAC
+  hold, nor may a DMAC release clear that aggregation's asserted input.
+- Three pinned peers:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:511–532, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`, determines burst activity
+    from runnable channel state and uses a distinct PEX_PSEUDO_DMABURST.
+    Both channels participate; it does not unconditionally release all CPU
+    holds when one channel finishes. Its priority-aware predicate differs
+    from MAME's retained any-active-burst approximation, particularly for
+    mixed-mode channels. No claim of equivalent arbitration.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/DMAC.sv:83–84,151–168,209–222,262–279,377–379, blob
+    `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7`, separates channel eligibility,
+    selected DMA bus ownership and DBUS_LOCK with TB-qualified release.
+    This corroborates ownership separation, not our private scheduler bit,
+    whole-CPU suspension or exact release timing.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1783–1797,1923–1934, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`, explicitly leaves timing/
+    instruction suspension as TODO and runs entire transfers in AdvanceDMA.
+    It is not an independent suspension oracle; its game-specific loop is
+    not imported. The official bus-mode contract and MAME ownership defect
+    motivate this bounded fix, not a purported three-peer timing consensus.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  src/devices/cpu/sh/sh7604.cpp:725–728,798–814, blob
+  `79409df16f3f26a60a12012e53692fe69025ea35`, has the same shared-HALT
+  start/completion operations and cancellation without resume. Local0165–0167
+  history/diffs inspected; payload/progress/save fixes retained. No changes to
+  bus accesses, counts, deadlines, TE/IRQ assertion or acknowledgement code;
+  only suspension handling within completion changes, before existing IRQ work.
+- Save contract: rename existing cached m_active_dma_steal array to
+  m_active_dma_burst (it always held CHCR bit4), updating constructor/reset,
+  all users and save registration in this change. No new mutable fields.
+  The execution interface already saves current/next suspension masks at
+  diexec.cpp:391–394; no load-time IRQ refresh, transfer restart or timer
+  rearming added. **Save signature changes again; pre0168 saves are incompatible.**
+  save.cpp:502–519 includes entry names in its signature. This also prevents
+  silently accepting older active-burst saves whose HALT bit cannot be
+  distinguished from an independent external hold. No speculative migration.
+- Observable/units/tolerance: exact reason bits/booleans, zero tolerance.
+  With E=external HALT and B=any active cached-TB1 channel, the relevant mask
+  is (E?0001:0)|(B?10000:0). Finishing/cancelling one of two active bursts
+  retains B; stopping the last clears B but not E. E clearing while B remains
+  must not resume CPU execution. TB0-only work does not assert B. Cancelling
+  retains0166 progress, cancels its timer and does not synthesize TE/IRQ.
+  Completion uses exactly the existing callback/TE/IRQ path and releases
+  the DMAC reason only after its active flag is cleared.
+- Proposed validator method (not run): native instrumented device, legal
+  AR1/TA0, aligned bounded Work-RAM buffers, TB0/TB1 and both channels/CPUs.
+  Program both DE bits with DME0 then enable DME to exercise two unequal-length
+  bursts. Observe reason masks after first/last completion, DE0 cancellation,
+  DME0 cancellation, and reset; cross with independently asserted/released
+  INPUT_LINE_HALT and ensure neither owner releases the other. Compare normal
+  IRQ transcripts without changing acknowledgement expectations. Use mapped
+  control writes in a native harness for mid-burst cancellation; a guest loop
+  cannot execute while this coarse model suspends the whole CPU. Cached CPU
+  execution during real burst DMA is separate work, not an oracle here.
+  Save/mutate/load before/after cancellation and completion, with mixed holds;
+  verify same-version continuation preserves the two independent reasons and
+  does not retrigger transfers. No hardware claim for the private bit number.
+- Falsifier: any DMAC transition clears external HALT, external HALT release
+  clears DMAC suspension, CPU resumes after only the first of two bursts stops,
+  an idle/cancelled sole burst leaves the private reason stuck, or a hold
+  transition changes TE/IRQ acknowledgements or data movement. Native save
+  signature/reason replay must be checked independently of syntax.
+- Checks: prescribed C++20 sh7604.cpp syntax exits0 (includes changed header);
+  git diff --check exits0. No tests/runtime/full build. No fixture/expectation/
+  evidence edits. Static fixture impact: check_sh7604_module_stop.py and
+  check_sh7604_frt_stop.py contain old cached-field stub names; reset-based
+  consumers now also need the suspension helper/reason/suspended() interface.
+  check_sh7604_dmac_reset.py extracts start/completion and needs those updated
+  dependencies. Validator owns adapters; no claim that these scripts run as-is.
+  Local agent1_validation.md remains absent; earlier attributed acceptance stands.
+- State/limits: candidate only; CPU-03 stays open. Coarse any-active-burst
+  suspension, including endpoint stalls, is retained rather than presented as
+  real channel priority, DREQ/bus grants, cache-hit execution, bus-phase waits
+  or exact stop/completion timing. The existing extra completion callback and
+  final-transfer cancellation race remain unqualified. No frozen DMA IRQ ack,
+  delay-slot IRQ, sound/reset/video-clock/game routine edits; no driver hack.
+  SCU DMA and IO-02 inventory unchanged. Shared SH7604 non-Saturn regressions
+  and native same-version save replay remain the validator's responsibility.
+
+Enable-condition audit lead retained: sh2_dmac_check still omits DMAOR.NMIF/AE
+from its predicate, but neither flag currently has its required native producer
+in this device. A seeded-flag guard alone must not be advertised as functional
+NMI/address-error stopping. Inspect native NMI recognition/edge semantics and
+DMA error delivery while preserving the frozen CPU delay-slot IRQ path.

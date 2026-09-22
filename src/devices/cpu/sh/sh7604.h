@@ -303,6 +303,8 @@ private:
 
 	emu_timer *m_timer;
 	emu_timer *m_wdtimer;
+	// Device-owned suspension must not alias the external HALT input.
+	static constexpr uint32_t SUSPEND_REASON_DMAC = 0x00010000;
 	emu_timer *m_dma_current_active_timer[2];
 	int m_dma_timer_active[2];
 	uint8_t m_dma_irq[2];
@@ -310,7 +312,7 @@ private:
 	int m_active_dma_incs[2];
 	int m_active_dma_incd[2];
 	int m_active_dma_size[2];
-	int m_active_dma_steal[2];
+	int m_active_dma_burst[2];
 	uint32_t m_active_dma_src[2];
 	uint32_t m_active_dma_dst[2];
 	uint32_t m_active_dma_count[2];
@@ -332,6 +334,7 @@ private:
 	void sh2_wdt_activate();
 	void sh2_do_dma(int dmach);
 	void sh2_dmac_check(int dma);
+	void sh2_dmac_update_suspend();
 	void sh2_recalc_irq();
 };
 

@@ -78,6 +78,7 @@
   - IMPL-0165 corrects byte/word/longword DMAC decrement modes to access the current source/destination before updating the address, shared by master/slave (syntax-only candidate). Sixteen-byte mode is addressed separately by IMPL-0167.
   - IMPL-0166 publishes SAR/DAR/TCR progress after each completed DMAC service and registers the missing live channel/selected-IRQ state for saves (syntax-only candidate). This changes save compatibility; native in-flight replay, exact register-update timing and completion/IRQ timing remain unqualified.
   - IMPL-0167 buffers all four source reads before 16-byte-mode writes, applies the destination mode per longword and preserves partial final blocks (syntax-only candidate). Endpoint rejection now waits for notification instead of aborting the emulator. Ymir differs on tails/destination modes; bus-phase timing, mid-block waits and native qualification remain open.
+  - IMPL-0168 separates burst-DMAC suspension from external HALT and releases it only when no active burst channel remains, including cancellation (syntax-only candidate). The corrected saved burst-mode name changes save compatibility again. This retains coarse CPU suspension, not cache-aware bus grants or cycle-accurate arbitration.
   - Audit documented unimplemented external-clock and output behavior, approximate timings and incomplete reset wiring.
   - Exercise simultaneous interrupt sources and DMA/peripheral events on both CPUs, not just instruction tests.
 - [ ] **CPU-04 — Provide safe deferred/restartable memory transactions. [M/P]**

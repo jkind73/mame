@@ -63,7 +63,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	std::fill(std::begin(m_active_dma_incs), std::end(m_active_dma_incs), 0);
 	std::fill(std::begin(m_active_dma_incd), std::end(m_active_dma_incd), 0);
 	std::fill(std::begin(m_active_dma_size), std::end(m_active_dma_size), 0);
-	std::fill(std::begin(m_active_dma_steal), std::end(m_active_dma_steal), 0);
+	std::fill(std::begin(m_active_dma_burst), std::end(m_active_dma_burst), 0);
 	std::fill(std::begin(m_active_dma_src), std::end(m_active_dma_src), 0);
 	std::fill(std::begin(m_active_dma_dst), std::end(m_active_dma_dst), 0);
 	std::fill(std::begin(m_active_dma_count), std::end(m_active_dma_count), 0);
@@ -213,7 +213,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_active_dma_incs));
 	save_item(NAME(m_active_dma_incd));
 	save_item(NAME(m_active_dma_size));
-	save_item(NAME(m_active_dma_steal));
+	save_item(NAME(m_active_dma_burst));
 	save_item(NAME(m_active_dma_src));
 	save_item(NAME(m_active_dma_dst));
 	save_item(NAME(m_active_dma_count));
@@ -277,11 +277,12 @@ void sh7604_device::device_reset()
 		m_active_dma_incs[i] = 0;
 		m_active_dma_incd[i] = 0;
 		m_active_dma_size[i] = 0;
-		m_active_dma_steal[i] = 0;
+		m_active_dma_burst[i] = 0;
 		m_active_dma_src[i] = 0;
 		m_active_dma_dst[i] = 0;
 		m_active_dma_count[i] = 0;
 	}
+	sh2_dmac_update_suspend();
 
 	// DVCR is initialized by power-on/manual reset, not module standby
 	// (section 10.2.3). Dividend/divisor registers have undefined reset values.
@@ -899,18 +900,11 @@ void sh7604_device::sh2_do_dma(int dmach)
 	}
 	else // the dma is complete
 	{
-		// int dma = param & 1;
-
-		// fever soccer uses cycle-stealing mode, resume the CPU now DMA has finished
-		if (m_active_dma_steal[dmach])
-		{
-			resume(SUSPEND_REASON_HALT);
-		}
-
 		LOG("SH2: DMA %d complete\n", dmach);
 		m_dmac[dmach].tcr = 0;
 		m_dmac[dmach].chcr |= 2;
 		m_dma_timer_active[dmach] = 0;
+		sh2_dmac_update_suspend();
 		m_dma_irq[dmach] |= 1;
 		sh2_recalc_irq();
 
@@ -932,7 +926,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
 			m_active_dma_incd[dmach] = (m_dmac[dmach].chcr >> 14) & 3;
 			m_active_dma_incs[dmach] = (m_dmac[dmach].chcr >> 12) & 3;
 			m_active_dma_size[dmach] = (m_dmac[dmach].chcr >> 10) & 3;
-			m_active_dma_steal[dmach] = (m_dmac[dmach].chcr & 0x10);
+			m_active_dma_burst[dmach] = (m_dmac[dmach].chcr & 0x10);
 
 			if (m_active_dma_incd[dmach] == 3 || m_active_dma_incs[dmach] == 3)
 			{
@@ -972,15 +966,6 @@ void sh7604_device::sh2_dmac_check(int dmach)
 				break;
 			}
 
-			// start DMA timer
-
-			// fever soccer uses cycle-stealing mode, requiring the CPU to be halted
-			if (m_active_dma_steal[dmach])
-			{
-				//printf("cycle stealing DMA\n");
-				suspend(SUSPEND_REASON_HALT, 1);
-			}
-
 			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
 		}
 	}
@@ -995,6 +980,20 @@ void sh7604_device::sh2_dmac_check(int dmach)
 			m_dma_timer_active[dmach] = 0;
 		}
 	}
+	sh2_dmac_update_suspend();
+}
+
+void sh7604_device::sh2_dmac_update_suspend()
+{
+	// CHCR.TB=1 is burst mode (section 9.2.4). Retain the coarse CPU
+	// suspension model, but release only the DMAC's own reason and only
+	// after the last active burst channel has completed or been cancelled.
+	bool const burst_active = (m_dma_timer_active[0] && m_active_dma_burst[0])
+		|| (m_dma_timer_active[1] && m_active_dma_burst[1]);
+	if (burst_active && !suspended(SUSPEND_REASON_DMAC))
+		suspend(SUSPEND_REASON_DMAC, true);
+	else if (!burst_active && suspended(SUSPEND_REASON_DMAC))
+		resume(SUSPEND_REASON_DMAC);
 }
 
 /*
