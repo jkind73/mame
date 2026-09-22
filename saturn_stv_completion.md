@@ -116,9 +116,10 @@
 - [ ] **SCU-03 — Complete DMA legality and transfer rules. [P/R]**
   - Direct/indirect same-bus restrictions, region-crossing behavior, address additions, byte-lane/alignment cases and documented exceptional transfers.
   - Resolve source-noted additional rules and shifted-byte behavior instead of retaining unexplained transfer hacks.
+  - IMPL-0163 counts CD-source/B-bus DMA progress by bytes actually moved rather than destination stride, fixing zero-stride noncompletion and large-stride underconsumption for whole service batches (syntax-only candidate). Existing placement quirks and partial tails remain open.
   - Retain existing count/address masks, indirect-chain fixes and implemented channel arbitration.
-  - IMPL-0161 keeps programmed DxC separate from the decoded live byte count, so zero-as-maximum and the existing VDP1 limit do not rewrite count-register readback (syntax-only candidate).
-  - IMPL-0162 applies the documented 27-bit width when DMA publishes updated DxR/DxW, including the indirect descriptor cursor (syntax-only candidate; whole-transfer bus-boundary behavior remains open).
+  - IMPL-0161 keeps programmed DxC separate from the decoded live byte count for subsequent activations (syntax-only candidate). ST-210 No.15 supersedes the earlier readback premise: DxC reads are not guaranteed and are not a hardware acceptance criterion.
+  - IMPL-0162 applies the documented 27-bit width when DMA publishes updated DxR/DxW, including the indirect descriptor cursor (syntax-only candidate; whole-transfer bus-boundary behavior remains open). Its original terminal indirect-table example is withdrawn because it violates ST-210 No.25 alignment.
 - [ ] **SCU-04 — Complete DMA timing and device flow control. [M/P/V]**
   - Device wait-state penalties, burst/cycle-steal behavior, priorities, preemption/stop, held external triggers and completion latency.
   - Qualify all three levels together with CPU traffic, VDP grant loss, sound streaming and CD transfers.

@@ -564,9 +564,9 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
     return;
   }
 
-  // ST-097 p.42: DxC is the programmed 20-bit/12-bit count, not the
-  // expanded live byte total. Zero encodes the maximum without changing
-  // register readback or the count used by a subsequent activation.
+  // Keep the programmed 20-bit/12-bit count separate from the expanded
+  // live byte total, so each activation decodes zero as the maximum again.
+  // ST-210 No.15 supersedes ST-097 p.42: DxC readback is not guaranteed.
   uint32_t transfer_size = m_dma[level].size;
   if (transfer_size == 0)
     transfer_size = (level == 0) ? 0x00100000 : 0x1000;
@@ -972,7 +972,10 @@ void saturn_scu_device::dma_transfer_direct_cd(dma_channel_t &ch) {
 
   ch.live_src += ch.src_add;
   ch.live_dst += dst_add;
-  ch.live_count += dst_add;
+  // Count bytes actually read/written, not the distance to the next write.
+  // A fixed destination must still finish; gaps from larger strides do not
+  // consume source bytes. The existing +4 case performs two longword writes.
+  ch.live_count += (dst_add == 8) ? 8 : 4;
 }
 
 void saturn_scu_device::dma_transfer_direct_cd_cbus_write(dma_channel_t &ch) {

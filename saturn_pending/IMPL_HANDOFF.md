@@ -12163,3 +12163,134 @@ No production wait-rule change was made for the following program-DMA issue:
   bus limits, B-bus stride quirks, DMA timing or region-crossing workarounds.
   No frozen IRQ acknowledgement, delay-slot IRQ, sound/reset/video-clock,
   SCSP/game-specific path or IO-02 inventory changed.
+
+
+### DMA audit correction — final errata supersedes parts of IMPL-0161/0162 methods
+
+This append supersedes the earlier **hardware observable/method** claims below;
+those prior entries are kept verbatim for provenance. No validation was run.
+
+- ST-210-110194 printed p.6/PDF10, No.15 explicitly makes DxC write-only and
+  says read values are not guaranteed. IMPL-0161's mapped count reads are
+  therefore implementation diagnostics, not a documented hardware contract.
+  Its programmed/live separation remains a candidate, corroborated by peers;
+  the primary does not guarantee that a CPU observes retained zero in DxC.
+  Correct the source comment/main report accordingly, without guessing a new
+  undefined read value or changing the existing mapped read handler.
+- No.16 on the same page requires source increment4 outside A-bus CS2;
+  No.17 requires that increment when RUP is enabled. The proposed fixed
+  B-bus source controls in0161/0162 are withdrawn as legal-hardware methods.
+  Use incrementing mapped B-bus RAM and C-bus destinations with the documented
+  DxWA010 encoding, and RUP/WUP settings permitted by No.17–19. For maximum
+  counts, use sufficient mapped RAM/mirrors or an authored lawful endpoint,
+  not a prohibited fixed B-bus source. Judge bytes and activation behavior,
+  not DxC reads. No.14 also makes forced-stop writes prohibited; they remain
+  emulator diagnostics only, not hardware qualification.
+- ST-210 printed p.8/PDF12 No.25 requires table bases aligned to a power-of-two
+  block containing the table, minimum32 bytes. IMPL-0162's one-entry table at
+  07FFFFF4 is not a legal table. Withdraw that proposed native hardware case.
+  The indirect publication mask follows register width/Mednafen/MiSTer but
+  its carry case is only an internal robustness check without a lawful
+  hardware sequence. A legal table based at07FFFFE0, one final descriptor,
+  leaves cursor07FFFFEC, not a carry. Direct final destination carry can
+  still be observed with count4 to07FFFFFC using the legal increments above.
+- ST-210 printed p.7/PDF11 No.24 explicitly says indirect DMA does not assert
+  the DMA-illegal interrupt. Do not copy Ymir's indirect illegal-IRQ policy
+  into MAME. No illegal-transfer handler or acknowledgement code changed.
+- Primary pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, ST-210 blob
+  `914f3fa160e42aa7ef0f8941c3844a2a5fd70ce8`. No parent closed or validator
+  acceptance withdrawn/invented:0161/0162 were syntax-only candidates.
+
+
+## IMPL-0163 — count CD-source DMA payload, not destination stride
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0163 | SCU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | CD-source/B-bus DMA advances its byte count by actual longword writes, including when destination stride is zero |
+
+- Branch `arena/01a0b897-mame`; base `115a753cd9de96460a3b6d7ab70c132f51b36ebd`.
+  Production src/mame/sega/saturn_scu.cpp, dma_transfer_direct_cd count update;
+  trigger_dma_direct comment corrected for the final errata as recorded above.
+- Contract: address stride is not transferred byte count. In the existing CD
+  B-bus service, one longword source read/write advances count4. Its existing
+  programmed+4 special case performs two reads/writes and advances count8.
+  Destination motion remains exactly as before. Fixed destination0 must still
+  make progress; larger gaps must not cause completion before the requested
+  whole service batches have been read. This bounded correction does not
+  establish the correctness of the existing destination placement algorithm.
+- Defect: live_count previously increased by dst_add<<1. At dst_add0 it
+  remained0 indefinitely despite repeated FIFO reads. At dst_add8/16/32/64/
+  128 it consumed one longword but credited16/32/64/128/256 bytes. The usual
+  +2 path and existing double-read +4 path already credited actual bytes and
+  remain unchanged. No bus accesses, strides, service sizes or timer delays
+  inside a service callback are modified.
+- Primary: ST-097-R5 printed p.18/PDF34 defines transfer byte number as data
+  transferred; p.43/PDF59 Table3.3 separates destination addition from that
+  number; p.44/PDF60 Figures3.6–3.8 describe32-bit SCU data split into16-bit
+  B-bus accesses with a separately selected address increment. ST-210 printed
+  p.6/PDF10 No.16 allows fixed reads from A-bus CS2, No.18 permits all B-bus
+  write additions, and No.19 restricts WUP use to+2 on B-bus. Qualification
+  proposals below use WUP0 and RUP0, not prohibited combinations.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`; ST-097 blob
+  `ffa8932249634ebd98947dad123621cebe3f24fa`; ST-210 blob above.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, src/ss/scu.inc,
+    blob `8cc45219ca5ffc3e24c97779e01691129f3ea12c`:1581–1605 subtracts
+    sizeof(T) from CurByteCount on a write, independent of the write-address
+    delta applied at1619.1550–1572 refills the source buffer independently
+    of destination addition, including ReadAdd0. No CD stride-as-count rule.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/scu/scu.cpp, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`:946–970 consumes two
+    halfwords and decrements currXferCount by4 independent of destination
+    increment. Its B-bus layout/alignment quirks differ and are NOT copied.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/Saturn/SCU/SCU.sv:763–794, blob
+    `999825f64aa200673f4bdd590e81426ed3212ae4`, derives DMA_WTN_DEC from
+    transfer width/alignment/tail, not DMA_WADD;2277–2310 separately computes
+    address additions. Supports payload-based counting, not this HLE's
+    special two-longword service or complete destination placement.
+- Provenance: inherited direct-CD helper selects the fixed05818000 source,
+  doubles dst_add for address movement and incorrectly reuses that distance
+  as data progress. Existing native CD data port accepts read_dword and
+  advances its FIFO through dataxfer_long_r; those handlers and all CD command/
+  HIRQ/ownership logic remain untouched. No new hack or peer code import.
+- Observable/units/tolerance: exact source FIFO bytes consumed and live_count,
+  zero tolerance, for whole service batches. With count8, fixed05818000 source,
+  WUP/RUP0 and aligned B-bus destination, additions0,2,8,16,32,64,128 perform
+  two4-byte services before the existing completion phase. Addition4 performs
+  the existing one8-byte service. In every case eight bytes are consumed;
+  large address gaps are not counted as data and fixed destinations finish.
+  One service's existing memory addresses remain unchanged, not declared
+  hardware-correct for every stride. No DxC readback criterion is used.
+- Proposed validator method (not run): authored CD Put/Get payload with known
+  longwords (or controlled CS2 FIFO endpoint), legal no-update direct DMA to
+  B-bus RAM, all eight increments and counts8/16 plus +2 controls. Observe
+  FIFO transfer-word accounting, actual read/write service counts and eventual
+  completion; use a bounded wait for the old zero-stride noncompletion control.
+  Preserve CD transfer ownership until End Data Transfer. Same-revision active
+  save/replay should retain progress. Check normal +2 CD/B-bus and unchanged
+  CD/C-bus controls without adopting old arbitrary-stride layouts as goldens.
+- Falsifier: zero stride cannot complete, count8 consumes only4 bytes with
+  a large stride, count tracks address holes, or +2/+4 service behavior,
+  callbacks, CD ownership/IRQ semantics change beyond the corrected progress.
+- Checks: prescribed C++20 saturn_scu.cpp syntax exits0; git diff --check
+  exits0. No tests/runtime/full build. Existing indirect fixture explicitly
+  excludes CD mode (write_dword asserts false); bus fixture uses non-CD
+  sources. No protected expectations, fixture code or evidence changed.
+- State/limits: candidate only; SCU-03 stays open. No new fields/schema.
+  Old states with already inflated progress are not repaired; cross-version
+  active-CD replay is not qualified. B-bus halfword placement, alignment,
+  non-service-multiple tails and the existing +4 double-longword special case
+  remain open. CD/C-bus helper, DRDY/backpressure and transfer pacing are
+  unchanged. A full B-bus layout rewrite is BLOCKED(hardware aligned/unaligned
+  FIFO-to-B-bus write traces for all increments, reconciled with peer quirks);
+  this is not a claim that the whole CD DMA path now matches silicon. Frozen
+  acknowledgement/IRQ-delay-slot/sound/video-clock/game fixes and IO-02
+  inventory are untouched.
+
+Workspace recovery note: this turn began with the worktree restored over local
+82152a8b history. Fetched the already-published115a753c tip with depth1; checked
+all127 apparent extra/deleted paths against its blobs (no content mismatches),
+then restored the local branch/index to that same published tip with a mixed
+reset. No worktree file was overwritten and no published history rewritten.
