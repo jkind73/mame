@@ -118,6 +118,7 @@
   - Resolve source-noted additional rules and shifted-byte behavior instead of retaining unexplained transfer hacks.
   - Retain existing count/address masks, indirect-chain fixes and implemented channel arbitration.
   - IMPL-0161 keeps programmed DxC separate from the decoded live byte count, so zero-as-maximum and the existing VDP1 limit do not rewrite count-register readback (syntax-only candidate).
+  - IMPL-0162 applies the documented 27-bit width when DMA publishes updated DxR/DxW, including the indirect descriptor cursor (syntax-only candidate; whole-transfer bus-boundary behavior remains open).
 - [ ] **SCU-04 — Complete DMA timing and device flow control. [M/P/V]**
   - Device wait-state penalties, burst/cycle-steal behavior, priorities, preemption/stop, held external triggers and completion latency.
   - Qualify all three levels together with CPU traffic, VDP grant loss, sound streaming and CD transfers.

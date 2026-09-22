@@ -790,8 +790,9 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
       // - stv:finlarch/smleague (where it sure checks the DMA status)
       dma_hog_bus(level);
 
+      // DxW is 27 bits even when the descriptor cursor carries out.
       if (m_dma[level].wup)
-        m_dma[level].dst = m_dma[level].index;
+        m_dma[level].dst = m_dma[level].index & 0x07ff'ffff;
 
       if (m_dma[level].live_count >= m_dma[level].live_size) {
         LOGMASKED(LOG_DMA_END, "DMA%d indirect ended at %08x %08x\n", level,
@@ -826,11 +827,13 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb) {
          liability the comment above describes. */
       dma_hog_bus(level);
 
+      // ST-097 p.41: hardware address updates have the same 27-bit
+      // register width as CPU writes, including the final cursor carry.
       if (m_dma[level].rup)
-        m_dma[level].src = m_dma[level].live_src;
+        m_dma[level].src = m_dma[level].live_src & 0x07ff'ffff;
 
       if (m_dma[level].wup)
-        m_dma[level].dst = m_dma[level].live_dst;
+        m_dma[level].dst = m_dma[level].live_dst & 0x07ff'ffff;
 
       if (m_dma[level].live_count >= m_dma[level].live_size) {
         LOGMASKED(LOG_DMA_END,

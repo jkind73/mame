@@ -12091,3 +12091,75 @@ No production wait-rule change was made for the following program-DMA issue:
   penalties, channel selection, legality, indirect descriptors and frozen
   acknowledgement/IRQ delivery code are untouched. No sound/game fixes or
   IO-02 inventory changes. Requested agent1_validation.md remains absent.
+
+
+## IMPL-0162 — constrain DMA-published addresses to register width
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0162 | SCU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | RUP/WUP publish only address bits26–0, including indirect WUP |
+
+- Branch `arena/01a0b897-mame`; base `aad6e4712c887c04bdbad6a5dc3b497f5d0513aa`.
+  Production src/mame/sega/saturn_scu.cpp:793–795,830–836 in dma_tick_cb.
+- Contract: values copied from live source/destination or the indirect-table
+  cursor into DxR/DxW are masked to27 bits, just as CPU register writes
+  already are. A carry above bit26 cannot become an extra stored/readable
+  address bit. RUP/WUP guards and direct-only RUP remain unchanged.
+- Primary: ST-097-R5 printed p.41/PDF57, Figures3.1/3.2 define DxR26–0 and
+  DxW26–0; p.46/PDF62 describes RUP/WUP-controlled updates. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `ffa8932249634ebd98947dad123621cebe3f24fa`. This implements register
+  width, not a new interpretation of bus-boundary transfers.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, src/ss/scu.inc:
+    1649–1660, blob `8cc45219ca5ffc3e24c97779e01691129f3ea12c`, masks
+    final direct source/destination and indirect table pointer updates with
+    07FFFFFF. Its nearby TODO leaves broader boundary behavior unresolved.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/Saturn/SCU/SCU.sv:403,2277–2317, blob
+    `999825f64aa200673f4bdd590e81426ed3212ae4`, computes RA_NEW/WA_NEW/
+    IA_NEW in27-bit values and zero-extends them into DR/DW. Supports width;
+    its read/write add conditions and update phase differ from this model.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/scu/scu.cpp:1039–1052,1180–1189, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`, copies computed source,
+    destination or indirect cursor into host registers without this final
+    mask; readback returns those fields. Disagreement is recorded, not called
+    all-peer consensus. The primary width plus Mednafen/HDL supports the fix.
+- Provenance: inherited host write handlers already mask addresses, and
+  ordinary source progression also masks live_src; publication did not.
+  live_dst/index can carry out on the final transfer/descriptor even when
+  every actual memory access was within a legal mapped region. Apply the
+  mask at register publication only; do not alter cursors, host memory access
+  addresses, channel state transitions, update timing or acknowledgement code.
+- Observable/units/tolerance: exact mapped address readback, zero tolerance.
+  Direct B-bus RAM source to C-bus07FFFFFC, count4, WUP1: four bytes land
+  at07FFFFFC–07FFFFFF and updated DxW is00000000, not08000000. WUP0
+  preserves07FFFFFC. A final indirect descriptor at07FFFFF4 occupies the
+  last three mapped longwords; after its payload completes, WUP1 publishes
+  the next-descriptor cursor as00000000. No descriptor at the wrapped
+  address is fetched when the final flag is set. Nonboundary controls retain
+  their existing update values; direct RUP also cannot publish upper bits.
+- Proposed validator method (not run): native programs on all levels with
+  last-byte/halfword/longword C-bus endpoints, update enabled/disabled and
+  ordinary mirror controls; final indirect descriptor at the above address,
+  with a legal different-bus payload and explicit final flag. Inspect bytes,
+  DxR/DxW, DSTA and IRQ/ack traces; same-revision replay around the final
+  transfer and descriptor publication. Do not infer continued transfer across
+  a bus boundary from this terminal-cursor case, or write active registers.
+- Falsifier: bit27+ visible in an updated address, WUP0/RUP0 unexpectedly
+  rewriting registers, changed payload/cursor progression, a spurious next
+  descriptor fetch, or changed completion/acknowledgement sequence.
+- Checks: prescribed C++20 saturn_scu.cpp syntax exits0; git diff --check
+  exits0. No tests/runtime/full build. Existing DMA register fixture only
+  covers CPU writes; indirect fixture uses an interior07000800 table, not
+  the terminal carry. No new dependencies/stub fields introduced by these
+  masks; prior acceptance is not boundary coverage. Protected fixtures and
+  evidence are untouched. agent1_validation.md remains absent locally.
+- State/limits: candidate only; SCU-03 stays open. No new fields or save-layout
+  changes. Previously saved invalid host-register upper bits are not globally
+  migrated; subsequent publication uses the new mask. Existing live cursors
+  remain intact, so this does not fix continued descriptor/data fetches across
+  bus limits, B-bus stride quirks, DMA timing or region-crossing workarounds.
+  No frozen IRQ acknowledgement, delay-slot IRQ, sound/reset/video-clock,
+  SCSP/game-specific path or IO-02 inventory changed.
