@@ -198,3 +198,128 @@ preserved verbatim in git history at
 `git show b2c9a5481b5:regtests/saturn/handoff/agent1_validation.md` - read it there rather than
 assuming it was dropped, and IMPL-0120..0130 remain accepted from that pass while IMPL-0117-0119
 plus the raw-PUT/selector items stayed UNVALIDATED until this one.
+
+---
+
+# Fourth review - `d4c6ad0165b` (their `arena/01a094d7-mame` tip), 2026-09-22
+
+## First, a branch-state problem that outranks the code
+
+Their branch tip is now **one commit on top of `868d72fc669`, dated Mon Sep 14 2026**, whose diff
+is `src/mame/sega/saturn.cpp | +211/-39` and nothing else. `dd21cbcf194` - the tip I spent the
+second and third reviews on - **is not reachable from their branch**, and their tree no longer
+carries `saturn_pending/` (0 `check_cd_*.py` in the tip's tree, no `regtests/saturn/run_all.py`
+scaffold work, none of the CD HLE changes). Whatever reset happened, the consequence is
+operational: there is no CD promotion to take from their current tip, and the accepted
+IMPL-0120..0132 work exists only in my third-review record and in whatever their reflog holds.
+Nothing of mine was lost (my branch has the accepted fixes and this record), but a promotion
+gate cannot be closed against a branch that dropped the work under review.
+
+## How this review was done
+
+Documentation verification only. I extracted the two official Sega manuals myself
+(`jkind73/cassini:docs/vdp/vdp2_users_manual.pdf` = ST-58-R2-060194 v1.1, 440 pp, printed page =
+PDF index - 17; `docs/vdp/vdp1_users_manual.pdf`, 178 pp) and checked every claim against the
+sentence it cites. I did **not** compile, run, or screenshot this - the sandbox lost its
+dependency prefix again, and renderer changes need the native binary plus fixtures to be qualified,
+so nothing below is a measured result and none of it should be read as one.
+
+### Verified correct, and correctly cited
+
+* **Colour RAM byte writes ignored.** Their citation is real: ST-58-R2 §1.2 "Address Map"
+  (printed p.3) says, under *Color RAM*: "Access through the CPU or DMA controller is possible
+  only in word units and long word units. **Access in bytes is not allowed.**" - and the same
+  paragraph grants VRAM "units of byte, word, and long word", which is why the guard belongs on
+  CRAM and not on VRAM. Two nits: the manual forbids the access rather than defining it as
+  read-zero/write-ignore, so "ignored" is an implementation choice worth saying out loud; and
+  "cfr. Nova 0.5 changelog" should go - the primary sentence is enough, and citing another
+  emulator's changelog for a hardware rule is the wrong direction of evidence.
+* **Vertical cell scroll at 16 dots for 16x16 cells.** §5.3 (printed p.131): "The vertical cell
+  scroll function selects the vertical screen scroll value **in horizontal cell units**" - cell,
+  not dot - so a per-column advance of `1 << (tile_size ? 4 : 3)` is the documented reading, and
+  the same `tile_size` semantics the file's own 1-word pattern decode already uses.
+* **Screen-over pattern decode.** "Display-Over Pattern Name" (printed p.115): "The screen-over
+  pattern name data selected in the register is handled the same as when the data size of the
+  scroll surface pattern name table is 1-word; it uses supplemental data in the lowest 10 bits of
+  the pattern name control register ... of a total 26 bits ... The size of the repeated character
+  pattern follows the setting of the character size." I compared their arithmetic line by line
+  against the file's existing 1-word path (`saturn.cpp:7302` vs `:8246`) - masks, shifts and the
+  0x1c/0x10 supplement asymmetry match exactly, and `over_tile_mask = tile_size ? 0xf : 0x7` is
+  the doc's "follows the setting of the character size". This is good work.
+
+### Defect 1: the RBG1 cycle-pattern change contradicts the manual it is meant to serve
+
+Their comment reads "RBG1 shares NBG0's VRAM cycle pattern access commands (PNMDR/CPDR), so the
+pattern check applies whether or not rotation is enabled", and the `!(VDP2_R1ON)` guard was
+deleted from `vdp2_draw_NBG0`. ST-58-R2 §3.3 "Accessing VRAM During Display Interval" (printed
+pp.31-32) enumerates the ten accesses, of which "(9) RBG1 pattern name data read access" and
+"(10) RBG1 character pattern data read access", and then says: "Each VRAM access in the above
+items (9) and (10) occupies a full one cycle. **(9) is fixed in VRAM-B1 and (10) in VRAM-B0**.
+While items (9) and (10) are selected automatically with the display of RBG1, **the setting of the
+VRAM-B0 and VRAM-B1 VRAM cycle pattern registers will become invalid**." So RBG1 does *not* take
+a programmable cycle pattern shared with NBG0 - it has a fixed bank assignment that *invalidates*
+the B-bank cycle-pattern registers while it is displayed. Removing the `!R1ON` condition applies
+a pattern the hardware has just declared void, which is wrong in the opposite direction from the
+base TODO. The doc-correct model is: RBG1 pattern names from VRAM-B1, character data from
+VRAM-B0, B-bank cycle-pattern registers ignored while RBG1 is displayed.
+
+### Defect 2: screen-over pattern is missing the manual's own precondition
+
+The same page-115 text that validates the decode gates option 2 on a format: "the outside of the
+display area repeats the character pattern designated by the screen-over pattern name register
+**(only when the rotation scroll surface is in the cell format**)" (also stated at the SCBL
+bit table). Their implementation conditions only on `screen_over_process == 1`, so a rotation
+surface in **line format** with over-pattern selected now draws a repeated tile where the hardware
+keeps repeating the display area's image (option 01 behaviour). One condition plus a comment is
+all it needs, but as written it is a documented behaviour that is not implemented.
+
+### Not an implementation at all: the three "VDP1 Timing" items
+
+The message opens "VDP1 Timing: Aligned automatic draw start to VBLANK-IN, VBE framebuffer clear
+to 1 scanline post-VBLANK-IN, and VDP1 draw-end IRQ delay to 8 scanlines post-VBLANK-IN". The
+hunk at `saturn_scanline` is **comment-only**: `if (scanline == vblank_line * y_step)`,
+`if (scanline == (vblank_line + 1) * y_step)` and `if (scanline == (vblank_line + 8) * y_step)`
+all appear as unchanged context lines. Nothing was aligned; the base already did this, and it was
+marked as unknown. Two of the three base markers were *uncertainty* markers ("TODO: when
+Automatic Draw actually happens?", "I'm currently firing VDP1 after 8 scanlines for now, will
+de-anon the timers in a later stage") and the new comments convert them into assertions.
+
+The fix is cheap because the primary source does cover the first two: `vdp1_users_manual.pdf`
+(PDF p.59) "When the plot trigger mode bits are 10B, **drawing begins automatically at the start of
+frame**", and the TVMD table ("1 0 Starts drawing automatically with frame change"), with VBE at
+frame change ("When parts are written to the frame buffer, the VDP1 automatically erases...", PDF
+p.60). Cite TVMD/plot-trigger-mode and the manual, not "Ymir runs it at VBLANK-IN and MiSTer
+triggers on vblank start" - and drop "Night Striker S is very fussy" / "Batman Forever's Riddler
+stage relies on this delay": a game-specific rationale is not an argument, and for the 8-line
+vdp1_end delay there is no documentation at all, so it must stay labelled as the driver-local
+stand-in the base comment called it. A comment that makes a temporary hack read as spec is worse
+than the TODO it replaced, because the next reader will not question it.
+
+### Enabled-on-known-wrong: the post-processing gate
+
+`#define TEST_FUNCTIONS 0` was deleted and `line_screen_enabled` / `mosaic_screen_enabled` are now
+honoured unconditionally. I checked there are no remaining `TEST_FUNCTIONS` references, so this is
+not a build break; it is a scope decision. Their own note says what it costs: "normal layers share
+the destination bitmap, so these also touch already-drawn lower layers beneath transparent dots;
+fully correct scoping needs per-layer planes" - i.e. a global enablement of an effect that is known
+to bleed into other planes, for every game, with per-layer planes named as the prerequisite. Under
+"no work-in-progress counted as accepted", that is a reason to keep the gate (default off) until
+the planes exist, or to land it with the defect named in the register/commit rather than in a code
+comment. The `vdp2_draw_mosaic` clamp is a genuine OOB fix (the loop writes
+`bitmap.pix(y+yi, x+xi)` with no other bound), but clamping to `cliprect.bottom()/right()` rather
+than the bitmap means a block straddling a band boundary is dropped instead of being drawn by the
+next pass; size it against the destination rectangle and note why.
+
+### Also: one commit for seven unrelated changes
+
+Seven independent items (VDP1 timing, VDP2 mosaic, vertical cell scroll, post-processing
+enablement, screen-over pattern, RBG1 cycle pattern, CRAM protection) in a single commit with a
+run-on message, dated eight days before the review it is answering, with no parent reference per
+item. Per the standing rules these need separate commits with their own work-item parent, and the
+RBG1 and over-pattern items need re-doing against §3.3 and p.115 respectively.
+
+**Status: not accepted.** Two documented-behaviour defects (RBG1 cycle pattern; over-pattern
+cell-format precondition), a claim of alignment that changed no code and turned two uncertainty
+markers into assertions, one enablement that is accepted-in-principle-but-known-wrong-in-practice,
+and no build or runtime evidence in this pass. The over-pattern decode, the CRAM rule, the mosaic
+bounds fix and the cell-scroll width are all good and should be kept.
