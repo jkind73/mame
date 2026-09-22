@@ -117,6 +117,7 @@
   - Direct/indirect same-bus restrictions, region-crossing behavior, address additions, byte-lane/alignment cases and documented exceptional transfers.
   - Resolve source-noted additional rules and shifted-byte behavior instead of retaining unexplained transfer hacks.
   - Retain existing count/address masks, indirect-chain fixes and implemented channel arbitration.
+  - IMPL-0161 keeps programmed DxC separate from the decoded live byte count, so zero-as-maximum and the existing VDP1 limit do not rewrite count-register readback (syntax-only candidate).
 - [ ] **SCU-04 — Complete DMA timing and device flow control. [M/P/V]**
   - Device wait-state penalties, burst/cycle-steal behavior, priorities, preemption/stop, held external triggers and completion latency.
   - Qualify all three levels together with CPU traffic, VDP grant loss, sound streaming and CD transfers.

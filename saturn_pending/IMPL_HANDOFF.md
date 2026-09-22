@@ -12018,3 +12018,76 @@ No production wait-rule change was made for the following program-DMA issue:
   policy was retained, not broadened to interpret that issue window. IO-02
   accessory inventory unchanged. No frozen DMA acknowledgement, SH-2 delay
   slot IRQ, sound/reset/video-clock or game-specific path edited.
+
+
+## IMPL-0161 — preserve programmed DMA counts at direct activation
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0161 | SCU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Decode zero-as-maximum into live_size without overwriting programmed DxC |
+
+- Branch `arena/01a0b897-mame`; base `3e30bc8b2148ac2b15b07a0291f30f596d519e4a`.
+  Production src/mame/sega/saturn_scu.cpp:567–579,602, trigger_dma_direct.
+- Contract: DxC remains the programmed20-bit (level0) or12-bit (levels1/2)
+  value. Starting with0 still decodes to1MiB or4KiB for the live transfer,
+  but does not write that unrepresentable expanded value back into DxC.
+  Preserve the existing VDP1 boundary workaround on live transfer_size only;
+  it must not replace the guest's count either. A later activation decodes
+  the programmed value anew rather than inheriting a previous clipped count.
+- Primary: ST-097-R5, printed p.42/PDF58, Figures3.3/3.4, documents DxC
+  widths and1MiB/4KiB limits; pp.18–20 describe programmed parameters versus
+  transfer execution. SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`,
+  blob `ffa8932249634ebd98947dad123621cebe3f24fa`. Zero encoding and
+  programmed/live separation additionally cross-checked below.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, src/ss/scu.inc,
+    blob `8cc45219ca5ffc3e24c97779e01691129f3ea12c`:1515 passes a decoded
+    zero count into StartDMATransfer;1385 assigns CurByteCount, preserving
+    StartByteCount. Line580 masks the programmed field on host writes.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/scu/scu.cpp, blob
+    `215a7b3c63a4e6748b1507f6d2f64c5a2a648f5c`:627–635 returns1MiB/4KiB
+    from AdjustZeroSizeXferCount;1114 assigns only currXferCount;1191–1194
+    reads the separate xferCount field. Direct support for this separation.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/Saturn/SCU/SCU.sv, blob `999825f64aa200673f4bdd590e81426ed3212ae4`:
+    1816–1822,1836–1842,1856–1862 loads live counters from DC without
+    replacing DC;3014,3017,3020 masks DC on read. This supports register/
+    counter separation; its20-bit internal counters and level-specific
+    zero-length behavior are not claimed as a complete independent oracle.
+- Provenance: inherited trigger_dma_direct expands/clips m_dma[level].size
+  in place; dma_map reads that same field. Existing separate saved live_size
+  already provides the appropriate execution storage. Local history reaches
+  this implementation at the9fbe664f ancestry boundary, not an identified
+  original introduction. No new state, register handler or transfer loop.
+- Observable/units/tolerance: exact count-register value and byte total,
+  zero tolerance. A legal direct setup with DxC0 reads0 before activation,
+  during WAIT/MOVE, after completion and after a stop; live_size remains
+  0x100000 for level0 or0x1000 for1/2 outside the existing VDP1 workaround.
+  Nonzero counts retain their programmed values. For the retained VDP1
+  workaround, a level0 count0x90000 at05C00000 still has live_size0x80000
+  but DxC remains0x90000; this is not qualification of that workaround.
+- Proposed validator method (not run): native mapped count reads around
+  direct activation on each level, with zero/1/max-nonzero controls. A fixed
+  B-bus RAM source to C-bus destination avoids the VDP1 clipping path for
+  maximum-count coverage. Check guards, byte total, completion and forced
+  stop; repeat without rewriting count and with a different destination.
+  Same-revision mid-transfer save/replay must preserve programmed0 alongside
+  the expanded live count. Observe acknowledgement/IRQ sequences as controls,
+  not as modified behavior. Do not write prohibited active DMA registers.
+- Falsifier: activation changes DxC, zero transfers no data, level1/2 zero
+  expands to1MiB, actual first-transfer limit changes, or a subsequent setup
+  inherits a previous live/clipped count rather than its programmed value.
+- Checks: prescribed C++20 saturn_scu.cpp TU syntax exits0; git diff --check
+  exits0. No tests/runtime/full build. Static inspection: test_dma_regs.py
+  stubs trigger endpoints, so its register coverage does not exercise this
+  activation defect; test_dma_bus.py exercises trigger with count4, not0 or
+  clipped counts. No protected fixtures/evidence/expectations edited or run.
+- State/limits: candidate only; SCU-03 remains open. Programmed/live fields
+  were already saved; no save-layout change. No migration of old states whose
+  programmed count was already overwritten; their intended original count
+  cannot be recovered generally. Existing VDP1 clipping remains an unresolved
+  workaround, not a hardware-correct region-crossing model. Transfer bytes,
+  penalties, channel selection, legality, indirect descriptors and frozen
+  acknowledgement/IRQ delivery code are untouched. No sound/game fixes or
+  IO-02 inventory changes. Requested agent1_validation.md remains absent.

@@ -564,16 +564,19 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
     return;
   }
 
-  /* max size */
-  if (m_dma[level].size == 0) {
-    m_dma[level].size = (level == 0) ? 0x00100000 : 0x1000;
-  }
+  // ST-097 p.42: DxC is the programmed 20-bit/12-bit count, not the
+  // expanded live byte total. Zero encodes the maximum without changing
+  // register readback or the count used by a subsequent activation.
+  uint32_t transfer_size = m_dma[level].size;
+  if (transfer_size == 0)
+    transfer_size = (level == 0) ? 0x00100000 : 0x1000;
 
+  // Keep the existing VDP1 boundary workaround confined to this transfer.
   // gunblaze: during startup tries to do a max sized DMA transfer to VDP1 that
   // would eventually hit fb/regs
   if ((m_dma[level].dst & 0x07f0'0000) == 0x05c0'0000 &&
-      m_dma[level].size >= 0x80000)
-    m_dma[level].size = 0x80000 - (m_dma[level].dst & 0x7fffe);
+      transfer_size >= 0x80000)
+    transfer_size = 0x80000 - (m_dma[level].dst & 0x7fffe);
 
   m_dma[level].mode = DMA_MODE_RESET;
 
@@ -596,7 +599,7 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level) {
 
   m_dma[level].live_src = m_dma[level].src;
   m_dma[level].live_dst = m_dma[level].dst;
-  m_dma[level].live_size = m_dma[level].size;
+  m_dma[level].live_size = transfer_size;
   m_dma[level].live_count = 0;
   m_dma[level].read_buffer_valid = false;
   m_dma[level].done = false;
