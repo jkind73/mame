@@ -149,6 +149,11 @@ void sh7604_device::device_start()
 	save_item(NAME(m_frt_clock_input));
 
 	// INTC
+	// These SH7604 latches shadow the SH2 base members saved at index 0.
+	// Restore the selected vector without re-running IRQ arbitration, which
+	// consumes pending DMAC requests in the existing implementation.
+	save_item(NAME(m_test_irq), 1);
+	save_item(NAME(m_internal_irq_vector), 1);
 	save_item(NAME(m_irq_level.frc));
 	save_item(NAME(m_irq_level.sci));
 	save_item(NAME(m_irq_level.divu));
@@ -201,6 +206,17 @@ void sh7604_device::device_start()
 	save_item(STRUCT_MEMBER(m_dmac, dar));
 	save_item(STRUCT_MEMBER(m_dmac, tcr));
 	save_item(STRUCT_MEMBER(m_dmac, chcr));
+	// The permanent timers save their own deadlines, but the channel state
+	// used by their callbacks must accompany the visible register image.
+	save_item(NAME(m_dma_timer_active));
+	save_item(NAME(m_dma_irq));
+	save_item(NAME(m_active_dma_incs));
+	save_item(NAME(m_active_dma_incd));
+	save_item(NAME(m_active_dma_size));
+	save_item(NAME(m_active_dma_steal));
+	save_item(NAME(m_active_dma_src));
+	save_item(NAME(m_active_dma_dst));
+	save_item(NAME(m_active_dma_count));
 
 	// misc
 	save_item(NAME(m_sbycr));
@@ -695,6 +711,9 @@ void sh7604_device::sh2_do_dma(int dmach)
 {
 	if (m_active_dma_count[dmach] > 0)
 	{
+		uint32_t const previous_src = m_active_dma_src[dmach];
+		uint32_t const previous_dst = m_active_dma_dst[dmach];
+
 		// SH7604 manual section 9.3.1, figure 9.2: transfer at SAR/DAR,
 		// then update the addresses. Byte/word/longword decrement modes
 		// are not the SH-2 instruction set's pre-decrement addressing.
@@ -881,6 +900,14 @@ void sh7604_device::sh2_do_dma(int dmach)
 			break;
 		}
 		}
+
+		// Sections 9.2.1-3: SAR/DAR report the next addresses and TCR the
+		// remaining units. Publish only after a successful service (stalls
+		// return above). Apply deltas so the bus-address mask does not erase
+		// the upper bits of the full-width SAR/DAR registers.
+		m_dmac[dmach].sar += m_active_dma_src[dmach] - previous_src;
+		m_dmac[dmach].dar += m_active_dma_dst[dmach] - previous_dst;
+		m_dmac[dmach].tcr = m_active_dma_count[dmach] & 0x00ffffff;
 	}
 	else // the dma is complete
 	{

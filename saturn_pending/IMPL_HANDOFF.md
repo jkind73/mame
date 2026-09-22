@@ -12484,3 +12484,131 @@ is not yet a demonstrated defect in a legal programming sequence.
   no claim of three-peer agreement for that mode. SCU B-bus quirks and source
   tail strobes retain their previously recorded blockers; this checkpoint moves
   the DMA audit into the shared master/slave SH-2 DMAC, not a closure of SCU DMA.
+
+
+## IMPL-0166 — publish and save SH-2 DMAC progress
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0166 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Successful DMAC services publish next SAR/DAR and remaining TCR; saves include live execution state and the selected interrupt latches |
+
+- Branch `arena/01a0b897-mame`; base
+  `911b028fcafe735e8af87a25ac28d5b61bcc4c28`. Production file
+  src/devices/cpu/sh/sh7604.cpp:151–157,206–219,710–910. Shared by both
+  master/slave CPUs and both DMAC channels; no driver-specific condition.
+- Contract: snapshot live source/destination at callback entry, and after a
+  successful service add their deltas to the visible32-bit SAR/DAR. This
+  preserves register bits that the existing live bus-address mask removes.
+  Publish the remaining count masked to24 bits, including FFFFFF after the
+  first byte/word/longword service of a zero-encoded maximum-count transfer.
+  FIFO stalls return before publication. Fixed addresses do not advance;
+  increment/decrement modes retain their existing live cursor updates.
+- Defect: private cursors/count changed, but SAR/DAR never advanced and TCR
+  stayed at its initial value until the later completion callback cleared it.
+  Disabled/restarted transfers therefore reloaded stale progress. Getters and
+  software register-write handlers remain unchanged; publication also retains
+  the progress when the existing enable controls stop a transfer.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4 sections9.2.1–3,
+  printed pp.235–236/PDF251–252 explicitly specify next source/destination
+  addresses during DMA and remaining count,32-bit SAR/DAR and24-bit TCR;
+  zero encodes16,777,216 units. Section9.3.1 Figure9.2 p.246/PDF262 orders
+  transfer before address/count update; section9.3.8 pp.283–284/PDF299–300
+  describes final updates and stopping. Section9.5 p.285/PDF301 requires
+  longword accesses to these registers. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, manual blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`. Save serialization is an emulator
+  persistence requirement, not an additional hardware feature from this manual.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:541–611,653–655 publishes all three progress registers
+    after transfer;3663–3676 saves DMA timestamps and channel registers/status.
+    Blob `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/DMAC.sv:225–228,258–260,285–292 updates SAR/DAR/TCR on
+    accepted bus operations;444–450 reads those current registers with TCR
+    upper bits zero. Blob `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7`.
+    Source and destination update on separate bus phases, unlike this atomic
+    service model. This is a progress contract comparison, not a claim of
+    equivalent bus timing or a MiSTer save-state oracle.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1225–1232,1888–1900 exposes the
+    current addresses/count and updates them after a transfer, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`. Its
+    libs/ymir-core/include/ymir/hw/sh2/sh2_dmac.hpp:202–215 serializes/restores
+    those live channel fields, blob `d3704fe2e00f4a992eb6713e84d57e5074c40367`.
+    Neither peer's16-byte layout or completion implementation is imported.
+- Provenance: pinned upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  src/devices/cpu/sh/sh7604.cpp:159–164,732,763–765, blob
+  `79409df16f3f26a60a12012e53692fe69025ea35`, saves only programmed DMAC
+  controls/registers and clears TCR at completion without SAR/DAR publication.
+  Recent fork path history reviewed for0165 (DIVU,SBYCR,CHCR mask,DMAC reset)
+  and local0165 diff inspected; none provides these missing progress updates
+  or save registrations. No reset, memory-access or transfer-timing rewrite.
+- Save contract/layout: add registrations for m_dma_timer_active,m_dma_irq,
+  m_active_dma_incs/incd/size/steal/src/dst/count (nine two-channel arrays).
+  The SH7604 m_test_irq and m_internal_irq_vector shadow the separately saved
+  SH2 base fields; save these derived latches at index1, preserving the base
+  index0 registrations. This retains the already-selected vector without
+  calling sh2_recalc_irq, which consumes DMA source requests in existing code.
+  All fields already exist and are constructor-initialized; no new live fields.
+  **Save signature/layout changes: older save files are incompatible.**
+- Framework integration: src/emu/schedule.cpp:95–97,228–233 already registers
+  permanent timer deadlines/enables/parameters. src/emu/diexec.cpp:391–394
+  saves CPU suspension/eat-cycle state. src/devices/cpu/sh/sh.cpp:60 saves the
+  selected IRQ level; sh2.cpp:72–75 saves the base latches. Do not save raw
+  timer pointers, re-arm timers, call sh2_dmac_check or recalculate IRQs on load.
+  Those actions would overwrite restored progress/deadlines or consume requests.
+- Exact observable/units/tolerance: aligned incrementing longword transfer,
+  SAR06001000,DAR06002000,TCR3, exposes +4/+4/TCR2 after the first successful
+  service, +8/+8/TCR1 after the second, +C/+C/TCR0 after the third. A denied
+  FIFO service changes none of these. A decrementing transfer reduces the
+  selected address by its width, fixed mode leaves it unchanged. Counts are
+  transfer units (four longword units per existing16-byte service), not bytes.
+  Compare exact32-bit register images and destination bytes, zero tolerance.
+- Proposed validator method (not run): legal auto-request dual-address DMA,
+  aligned disjoint Work RAM, SM/DM0–2, widths1/2/4, both channels and CPUs.
+  Observe progress at service boundaries in an instrumented native build;
+  for stable guest readback stop a longer TB0 transfer using SH-2 DMAOR.DME0,
+  then read SAR/DAR/TCR in longword units and restart using the preserved
+  progress. This is SH-2 DMAOR, not the prohibited SCU forced-quit register.
+  Do not require three separate guest reads during running DMA to form an
+  atomic snapshot. Include completed-transfer readback and ordinary TE polling.
+  Zero-count expansion can be checked after one service, without running the
+  whole16Mi-unit transfer. Upper-address-bit preservation may be inspected as
+  a register-width diagnostic; this does not qualify arbitrary bus aliases.
+- Proposed save method (not run): native save/mutate/load during queued,
+  partially transferred, endpoint-stalled, zero-live-count/pending-completion
+  and already-completed states. Poison live count/cursors/modes/stall state,
+  selected vector, requests and deadlines after the save; compare continued
+  writes and register progression with an uninterrupted same-version run.
+  Include both IRQ-enabled and disabled cases, same timing of external events,
+  and exactly the existing number/order of completion source assertions.
+  Field-copy fixtures cannot qualify native registration or scheduler replay.
+- Falsifier: progress stays at initial values, fixed addresses move, any upper
+  register bits disappear due solely to the live-address mask, a denied service
+  changes count, restore rereads/skips payload or starts a fresh transfer, or
+  load itself re-arbitrates/reasserts/consumes an interrupt. Native duplicate
+  registration of base/derived latch names would also reject integration.
+- Checks: prescribed C++20 sh7604.cpp syntax exits0; git diff --check exits0.
+  No tests/runtime/full build. Existing check_sh7604_dmac_reset.py was read
+  only: it extracts the changed method and already supplies the referenced
+  registers/live arrays; its object-copy replay does not exercise save_item.
+  No protected fixture/expectation/validator asset edits. Local
+  agent1_validation.md remains absent; prior attributed acceptance unaffected.
+- State/limits: candidate only; CPU-03 remains open. This supersedes0165's
+  missing-registration/stale-readback notes as implementation gaps, not as
+  validation acceptance. The existing extra completion callback is retained:
+  live_count can reach0 before the later callback sets TE and requests an IRQ.
+  That interval and separate read/write bus phases are not cycle-qualified.
+  Sixteen-byte destination layout, partial16-byte counts, request routing,
+  arbitration, NMI/address-error stopping, active register reprogramming and
+  continued bus-boundary behavior remain open. No claim that serialization
+  fixes those execution defects or the base/derived IRQ dispatch relationship.
+  Frozen acknowledgement/IRQ-delay-slot/sound/reset/video-clock/game routines,
+  SCU DMA and IO-02 inventory are untouched. Native replay remains for validator.
+
+Next DMA audit lead: section9.3.8 p.283/Figure9.52 explicitly describes the
+16-byte mode reading four source longwords but writing only the remaining
+TCR units when fewer than4 remain. The inherited activation rounds that count
+down. Reconcile this detailed flow with section9.2.3's count-unit wording and
+the pinned peers before changing16-byte transfer behavior.
