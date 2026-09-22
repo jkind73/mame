@@ -13600,3 +13600,92 @@ the reserved-opcode NOP placeholders used by current SH-2 decode, which reach
 the existing generator fallback instead. The tentative guard bypass was fully
 removed before this commit; no host-fatal-elimination claim or result survives.
 This candidate addresses the independently established vector-read ordering.
+
+
+## IMPL-0177 — charge pending DRC cycles before TRAPA dispatch
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0177 | CPU-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | DRC TRAPA charges its eight-cycle baseline and pending prefix before dispatch, preserving the handler PC across a budget exit |
+
+- Branch `arena/01a0b897-mame`; base
+  `1fdfa5730cb8ed18f2a7cbf1664b98cfceaaf880`. Production change:
+  src/devices/cpu/sh/sh.cpp:3405–3413 in generate_group_12_TRAPA only.
+- Defect: sh_fe.cpp:462–471 already assigns TRAPA cycles8 and terminates
+  its sequence. generate_sequence_instruction accumulates that cost, but the
+  TRAPA generator previously emitted an unconditional HASHJMP before any
+  generate_update_cycles. The generic end-of-sequence debit in code_compile_block
+  was emitted after this jump and never executed on that path. Pending prefix
+  instructions could lose their costs too. This is source control-flow analysis,
+  not a native measurement. The interpreter already deducts7 plus its loop's1.
+- Implementation: after the existing vector read, preserve I0 in the already-
+  saved target field; invoke generate_update_cycles with that handler PC before
+  HASHJMP. The common out-of-cycles handler stores the supplied PC and flushes
+  fast GPRs, so resumption starts at the trap handler, not the trapped instruction
+  or its fallthrough. Use the existing accounting routine, not a literal eight
+  debit that would lose prefix cycles or ignore block accounting state.
+  Stack SR/PC writes, vector calculation/read, saved PC=TRAPA address+2 and
+  interpreter behavior are unchanged. No new IRQ-check request is forced;
+  existing conditional checks/accounting machinery is reused without edits.
+- Primary: SH7604 ADE-602-085C Rev.4 Table2.17 printed41/PDF57 lists TRAPA
+  eight execution states and notes these are minimums, with contention able to
+  increase them. Section4.5.2 printed74/PDF90 specifies SR/next-PC stacking
+  followed by vector-table dispatch without a delay slot. Keep baseline8,
+  not a claim that arbitrary memory systems always complete a trap in8.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`; pinned gh api cache inspected.
+- Three pinned peer cross-checks (existing gh api cache, not newly fetched):
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095_ops.inc:1828–1838, blob
+    `de0a8a67631fbda0ad4e41a82fe0e0aa32e7c8a2`, enters Exception
+    before branching. src/ss/sh7095.inc:3344–3360, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`, advances timestamps
+    around stack writes/vector fetch; trap processing is not a free redirect.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/core/SH_pkg.sv:1179–1230, blob
+    `f26d7c52b30febf557675dca3441abdb3b9f438e`: TRAPA has a staged
+    stack/vector/PC sequence and rejects a delay-slot TRAPA. Its internal
+    pipeline-state count is not used as a substitute for MAME's total cycles.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:4563–4581, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`: returns the two
+    stack access costs plus vector access cost plus5, preserving elapsed work
+    on handler dispatch. These models are not claimed cycle-identical under
+    bus/cache contention; the minimum8 comes from the primary and current model.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  sh.cpp:3374–3393, blob `51710c5b3a268fae18464df7de0e557026367fb1`,
+  has the same premature jump. Fork sh.cpp path history fetched via gh api
+  through1fdfa573,9dbbc0e3,6486605d,0d4daf7a,afce770c,a5cc550d.
+  Prior MAC accounting/illegal-vector ordering fixes and frozen afce770c
+  delay-slot IRQ work are retained. SH3/4 override this generator in
+  sh4.cpp:4815–4825 and are not changed; shared SH1 users remain unqualified.
+- Observable/units/tolerance: exact baseline cycles and resume PC, zero
+  tolerance. With no additional access charges, P pending one-cycle NOPs
+  followed by a trap must debit P+8 before handler execution. Four NOPs then
+  TRAPA debit12, not0. Prefix costs already flushed must not be charged twice.
+  Stack remains W32(SP-4,SR), W32(SP-8,trapPC+2), R32(VBR+imm*4), and
+  completed-trap budget exit must retain SP-8 and resume at the fetched vector.
+- Proposed validator method (NOT run): interpreter/DRC on master/slave with
+  aligned ordinary RAM vector/stack/handler, no added memory waits and inactive
+  competing interrupts. Compare standalone traps and NOP prefixes in one
+  translated sequence, keeping setup/handler costs separate. Repeat with cold
+  and warm handler code and budgets expiring on trap completion. Resume to a
+  marker handler that uses RTE to return normally; observe exactly one stack
+  frame/handler entry, correct return PC and unchanged SR. Include a prefix
+  memory instruction that already flushes cycles and controlled additional
+  memory-access debits. Inspect real generated execution, not just the C++
+  generator or descriptor in isolation. Save/replay at the budget exit is an
+  external integration control, not a claimed result here.
+- Falsifier: trap or prefix cycles remain uncharged/double-charged, handler PC
+  is clobbered, resume repeats a trap, stack/vector accesses change, or access
+  debits disappear. Existing IRQ priority/sampling and out-of-cycles conventions
+  are not redesigned. TRAPA-in-delay-slot/vector6 correctness remains open;
+  that prohibited instruction placement is not a normal-trap timing control.
+- Checks/state/limits: prescribed C++20 sh.cpp syntax exits0; diff --check
+  exits0. No tests/probes/runtime/sanitizer/full build. No device fields or
+  save-layout changes: target is already registered in sh.cpp:59. No protected
+  fixture/evidence, frozen acknowledgement/IRQ, sound/video or game-code edits.
+  CPU-01 remains open and IO-02 unchanged. Native timing/contention and frozen-
+  game regressions remain validator-owned; local agent1_validation.md is absent,
+  not a withdrawal of prior attributed acceptance. Ignored reference cache is
+  not staged or committed.

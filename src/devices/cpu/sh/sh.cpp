@@ -3405,7 +3405,11 @@ bool sh_common_execution::generate_group_12_TRAPA(drcuml_block &block, compiler_
 
 	UML_MOV(block, I0, mem(&m_sh2_state->ea));              // mov r0, ea
 	UML_CALLH(block, *m_read32);                 // read32
-	UML_HASHJMP(block, 0, I0, *m_nocode);        // jmp (r0)
+	// Charge the pending block cycles before leaving it, including TRAPA's
+	// eight-cycle baseline. Preserve the handler PC across the update/exit.
+	UML_MOV(block, mem(&m_sh2_state->target), I0);
+	generate_update_cycles(block, compiler, uml::mem(&m_sh2_state->target), true);
+	UML_HASHJMP(block, 0, mem(&m_sh2_state->target), *m_nocode);
 
 	return true;
 }
