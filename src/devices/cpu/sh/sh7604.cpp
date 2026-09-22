@@ -846,57 +846,45 @@ void sh7604_device::sh2_do_dma(int dmach)
 
 		case 3:
 		{
-			// shouldn't this really be 4 calls here instead?
-
-			uint32_t tempsrc = m_active_dma_src[dmach];
-
-			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst -= 16;
+			uint32_t const tempsrc = m_active_dma_src[dmach];
 
 			if (!m_dma_fifo_data_available_cb.isnull())
 			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
+				int available = m_dma_fifo_data_available_cb(tempsrc, m_active_dma_dst[dmach], 0, m_active_dma_size[dmach]);
 
 				if (!available)
 				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					fatalerror("SH2 dma_callback_fifo_data_available == 0 in unsupported mode\n");
+					m_dma_timer_active[dmach] = 2; // retry the whole block when notified
+					return;
 				}
 			}
 
-			//schedule next DMA callback
+			// Retain the existing block-service deadline, not bus-cycle timing.
 			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
 
-			uint32_t dmadata = m_program->read_dword(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst, dmadata);
+			// Figures 9.43 and 9.52: all four reads precede the writes, even
+			// when TCR leaves fewer than four destination longwords to write.
+			uint32_t buffer[4];
+			for (unsigned i = 0; i < 4; ++i)
+				buffer[i] = m_program->read_dword(tempsrc + 4 * i);
+			m_active_dma_src[dmach] += 16; // independent of SM (section 9.2.4)
 
-			dmadata = m_program->read_dword(tempsrc + 4);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst + 4, dmadata);
+			for (unsigned i = 0; i < 4 && m_active_dma_count[dmach]; ++i)
+			{
+				uint32_t const tempdst = m_active_dma_dst[dmach];
+				uint32_t dmadata = buffer[i];
+				if (!m_dma_kludge_cb.isnull())
+					dmadata = m_dma_kludge_cb(tempsrc + 4 * i, tempdst, dmadata, m_active_dma_size[dmach]);
+				m_program->write_dword(tempdst, dmadata);
 
-			dmadata = m_program->read_dword(tempsrc + 8);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst + 8, dmadata);
-
-			dmadata = m_program->read_dword(tempsrc + 12);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst + 12, dmadata);
-
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach] -= 16;
-
-			m_active_dma_src[dmach] += 16;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach] += 16;
-
-			m_active_dma_count[dmach] -= 4;
+				// DM applies to each longword write: a full block advances by
+				// 0/+16/-16, while a short final block advances only as written.
+				if (m_active_dma_incd[dmach] == 1)
+					m_active_dma_dst[dmach] += 4;
+				else if (m_active_dma_incd[dmach] == 2)
+					m_active_dma_dst[dmach] -= 4;
+				--m_active_dma_count[dmach];
+			}
 			break;
 		}
 		}
@@ -979,7 +967,8 @@ void sh7604_device::sh2_dmac_check(int dmach)
 			case 3:
 				m_active_dma_src[dmach] &= ~3;
 				m_active_dma_dst[dmach] &= ~3;
-				m_active_dma_count[dmach] &= ~3;
+				// Section 9.3.8 permits a final block with only 1-3 writes.
+				// Do not discard the low TCR bits at activation.
 				break;
 			}
 

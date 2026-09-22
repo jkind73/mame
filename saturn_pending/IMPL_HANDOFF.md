@@ -12612,3 +12612,125 @@ Next DMA audit lead: section9.3.8 p.283/Figure9.52 explicitly describes the
 TCR units when fewer than4 remain. The inherited activation rounds that count
 down. Reconcile this detailed flow with section9.2.3's count-unit wording and
 the pinned peers before changing16-byte transfer behavior.
+
+
+## IMPL-0167 — SH-2 sixteen-byte DMAC sequencing and short tails
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0167 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | TS3 reads a full source block before bounded destination writes, with DM applied per longword and no lost TCR tail |
+
+- Branch `arena/01a0b897-mame`; base
+  `dcdfb049be7e6e55d76311ceab65d20086f23fc5`. Production:
+  src/devices/cpu/sh/sh7604.cpp:847–889,967–972, sh2_do_dma case3 and
+  sh2_dmac_check count handling. Both DMAC channels/master/slave share the fix.
+- Contract: prefetch S,S+4,S+8,S+12 into a local four-longword buffer before
+  any destination write. Source advances by16 regardless of legal SM0–2.
+  Write min(4,remaining TCR) words, starting at current DAR; after each write
+  apply destination step0/+4/-4 and decrement count by1. Activation no longer
+  rounds TCR down to a multiple of4. IMPL-0166 then publishes actual cursor
+  movement and remaining count. Zero-count maximum expansion is unchanged.
+- Defects: the old code interleaved reads/writes (corrupting overlapping copies),
+  used increasing destination offsets even for fixed/decrement modes, started
+  decrementing blocks16 bytes below DAR, and discarded counts1–3 or the tail
+  of larger counts. The correction does not change TS0/1/2 bus accesses.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4:
+  - Section9.2.1 p.235/PDF251 requires a16-byte-aligned source for TS3;
+    sections9.2.2–3 p.236/PDF252 define next DAR and TCR units. Four TCR units
+    describe a full16-byte block; this unit conversion is not a license to
+    discard a final partial block described explicitly in section9.3.8.
+  - Section9.2.4 p.238/PDF254: DM fixed/increment/decrement gives net0/+16/-16
+    for a full block; SM always advances16, and TS3 is four longword transfers
+    in dual-address mode. Applying DM to each longword write is supported by
+    the ordinary destination-address semantics and independently by Mednafen
+    and MiSTer; it is not inferred from a supposed three-peer consensus.
+  - Section9.3.4 p.254/PDF270 explains buffered dual-address transfer.
+    Figure9.43 p.275/PDF291 shows all four reads before the four writes.
+    Section9.3.8 p.283/PDF299, Figure9.52 explicitly shows TCR2 producing
+    four source accesses and only two destination accesses. Rendered and
+    inspected both figures, not only extracted text. No DACK timing imported.
+  - SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, manual blob
+    `4c1697421398cef77c7b52defda94ef5fead7372`, previously obtained with gh api.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:613–640, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`: buffers four reads, advances
+    source16, then writes at dar, applies longword-mode delta and decrements
+    TCR after each write, stopping immediately at0. Agrees on payload layout.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/DMAC.sv:68–78,225–235,258–260,285–300,363, blob
+    `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7`: TS3 address step4 per bus
+    operation, source forced to increment, read phase completes before write
+    phase, destination honors DM per write, TCR0 terminates the writes. Its
+    RD_BUF supplies the data. Actual bus phases/waits differ from this HLE.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1871–1900, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`: also buffers all reads first,
+    but always writes four increasing destination addresses and treats a short
+    count as misaligned after writing. Its generic source-mode update also
+    differs from the manual's TS3 forced increment. These differences are
+    recorded, not copied; primary Figures9.43/9.52 and Mednafen/MiSTer govern.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  src/devices/cpu/sh/sh7604.cpp:664–717,788–792, blob
+  `79409df16f3f26a60a12012e53692fe69025ea35`, contains the same interleaving,
+  destination layout, fatal endpoint rejection and count truncation. Local
+  0165/0166 history inspected; they deliberately left this transfer mode alone.
+  Original implementation written against the contract; no peer code imported.
+- Endpoint/callback handling: existing availability callback still runs once
+  before the whole block. A denied block now sets the existing stalled state
+  and returns with no memory access/progress instead of fatalerror. Existing
+  sh2_notify_dma_data_available supplies the retry. This is interface-level
+  consistency with TS0/1/2, not newly implemented DREQ/DACK pin timing.
+  The data callback now receives each actual source and destination address,
+  size3 unchanged; it is invoked only for words written. Repository bindings
+  inspected: CPS3 dma_callback at src/mame/capcom/cps3.cpp:2383–2425 uses the
+  source address for data transformation; mega32x.cpp:1509–1523 supplies the
+  availability callback. Neither Saturn/ST-V binds either SH7604 callback.
+  No callback provider/game code changed; shared-device CPS3/32X regression
+  qualification remains external, not inferred from this Saturn audit.
+- Observable/units/tolerance (all longwords, exact addresses/data, zero tolerance):
+  - S06001000, D06002040, source words A/B/C/D, TCR2, DM increment: four
+    source reads followed by writes A at D and B at D+4; SAR=S+16,DAR=D+8,
+    TCR0. Guard at D+8 unchanged. Old implementation performs no payload.
+  - TCR4, DM fixed: four writes to D, final value D from the source block;
+    neighbors unchanged, DAR unchanged. Distinguish the value label D from
+    the destination address D when instrumenting; use distinct numeric words.
+  - TCR4, DM decrement: writes at D,D-4,D-8,D-12, then DAR=D-16, not a
+    pre-subtracted block written upward. Source still advances16.
+  - TCR6, DM increment: eight source reads across two blocks, six writes,
+    final SAR=S+32,DAR=D+24,TCR0. No rounding to four writes.
+  - Overlap control: S16-byte aligned,D=S+4,TCR4,increment. Original source
+    A/B/C/D must appear at D..D+12, not A/A/A/A from interleaved rereads.
+- Proposed validator method (not run): authored Work-RAM buffers and guards,
+  AR1,TA0,TS3, legal SM/DM0–2; source16-byte aligned and destination longword
+  aligned. Cover counts1–9 plus full-block controls, both channels and CPUs,
+  interpreter/DRC; observe bus read/write order where memory alone cannot
+  show the unused tail-prefetch reads. Read final SAR/DAR/TCR after ordinary
+  TE completion. Include overlap and non-overlap cases and zero-encoded count
+  after one service without running all16Mi units. At the interface level,
+  deny availability before a block, notify and retry; expect no pre-notify
+  memory access or count movement. Callback address transcripts must match
+  the corresponding payload word. Native save cuts are only before/after
+  blocks or in the pre-block stall, not inside the atomic local buffer.
+- Falsifier: any write before all four reads, lost tail units, more than TCR
+  writes, wrong first/decrement/fixed address, source mode suppressing the
+  forced increment, counter underflow, guard corruption, or state mutation/
+  emulator termination on a denied block. A legal hardware bus trace showing
+  different intra-block DM application would reject that layout interpretation.
+- Checks: prescribed C++20 sh7604.cpp syntax exits0; git diff --check exits0.
+  No tests/runtime/full build. No protected fixture, expectation or evidence
+  edits. Existing reset extraction's count4 increment control retains four
+  reads/four writes; no coverage or successful run is inferred. Local
+  agent1_validation.md is still absent; previous attributed acceptance stands.
+- State/limits: candidate only; CPU-03 stays open. The buffer is callback-local,
+  not a new persistent field. All cross-callback progress/stall/mode state uses
+  the registrations added in0166. No additional save-layout change; pre0166
+  saves remain incompatible. Same-version native replay is not qualified.
+  The two-cycle block service and separate completion callback are retained;
+  no new bus timing, arbitration, mid-block waits/interruptibility, DREQ routing,
+  address-error handling or illegal/alignment/boundary behavior is claimed.
+  Registers publish after the atomic block, not individual hardware bus edges.
+  Single-address TS3 and reserved modes are not supported contracts. No frozen
+  acknowledgement, delay-slot IRQ, sound/reset/video-clock/game routine edits.
+  SCU DMA and IO-02 inventory unchanged. This resolves0165/0166's deferred
+  sixteen-byte payload implementation, not their broader qualification limits.
