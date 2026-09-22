@@ -11915,3 +11915,106 @@ No production wait-rule change was made for the following program-DMA issue:
   handshakes/draining, collection timing/OPE and accessory-specific reports
   are not qualified. Frozen DMA/IRQ-delay-slot/sound/video-clock/game paths
   are untouched; existing timeout/paging methods themselves are unchanged.
+
+
+## IMPL-0160 — defer initial peripheral collection until VBlank-OUT
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0160 | SMPC-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Initial console peripheral collection requested during blanking waits for VBlank-OUT; later snapshot pages do not wait another frame |
+
+- Branch `arena/01a0b897-mame`; base `ab3f139f53d4b3bebb80eb79654e418e16b4cab1`.
+  Production src/mame/sega/smpc.cpp save/reset, ireg_w, command_register_w,
+  vblank_in/out; smpc.h public edge handler and saved wait/phase fields;
+  saturn.cpp:302 feeds the falling VINT edge to SMPC before existing SCU and
+  slave VBlank-OUT notifications. No VDP timing source or IRQ policy changed.
+- Contract: while console VBlank is active, a peripheral-only INTBACK does
+  not arm its collection timer or release command busy. A first CONTINUE
+  after a status report also waits without clearing SF or sampling inputs.
+  On the actual VBlank-OUT edge, arm the appropriate existing timer once:
+  initial command708us (8+700), first CONTINUE700us. These are retained HLE
+  delays, not newly hardware-qualified durations. Commands already issued
+  outside blanking, status-only/status-first responses and later peripheral
+  pages retain their existing scheduling. Do not defer each continuation
+  to a new frame or reread a snapshot. Both OPE encodings obey the blanking
+  gate; this does not implement the later optimized start-time calculation.
+- Implementation: saved/reset m_in_vblank tracks the existing actual VINT
+  source, not screen visible-area heuristics. Saved/reset m_intback_wait
+  distinguishes initial command versus first peripheral CONTINUE; this keeps
+  command/continuation timers separate. VBlank-OUT consumes that reason.
+  BREAK and the existing VBlank-IN timeout clear it so an edge cannot revive
+  canceled collection. Machine reset clears both fields. The ST-V/no-controller
+  early returns and its legacy scheduling remain unchanged. Correct the old
+  top TODO that incorrectly placed peripheral collection inside VBlank.
+- Primary: ST-169-R1-072694 printed p.56/PDF66 says nonoptimized collection
+  starts at VBlank-OUT; optimized collection first measures an unoptimized
+  pass starting there, then moves later toward VBlank-IN. Pp.55–57/PDF65–67
+  describe the1ms margin and inclusion of CONTINUE wait time. Printed p.50/
+  PDF60 defines termination on timeout/BREAK. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `943930551f755c68431847d23dfb6a6fad60e0c6`.
+- Three-peer cross-check:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`, `src/ss/smpc.cpp:
+    1299–1334`, blob `af6cb315fe2126f923a5dabfc4af98c088463318`, waits for
+    optional status CONTINUE, then JR_WAIT(!vb) before optional optimization
+    and collection. Direct support for the initial blanking gate; its wire
+    clock and optimization machinery is not replaced by the retained700us.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    `rtl/Saturn/SMPC_HLE.sv:341–367,386–389`, blob
+    `0fdfb3dcc2f3babb7609fbb283ee8e7c75ee8dd6`, tracks VBlank transitions,
+    clears optimization availability during blanking and gates JOY_START on
+    IRQV_N outside blanking. Its optimization delay and firmware/task phase
+    differ; no exact latency consensus claimed. LLE remains firmware-driven;
+    no firmware fetched/executed to infer additional guarantees.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    `libs/ymir-core/src/ymir/hw/smpc/smpc.cpp:373–382,717–760`, blob
+    `8beb7463ce1f32aace615c0d2e268e5dd5ae4d52`, schedules nonoptimized
+    CONTINUE after1000 scheduler units and explicitly TODOs execution after
+    VBlank-OUT; optimized reads have a separate external trigger. This is a
+    peer limitation/disagreement, not corroboration of a precise start edge.
+- Provenance: inherited command/CONTINUE timers run regardless of blanking;
+  saturn_state only notified SMPC on VBlank-IN. This adds the missing other
+  edge without importing a peer's different collection or timeout algorithm.
+  Existing accepted timeout/RESB/NMI logic remains in its original order after
+  latching blanking. No timer, SF, OREG or interrupt action happens merely
+  because VBlank-OUT occurs when there is no deferred request.
+- Observable/units/tolerance: zero peripheral queries/reports before OUT
+  for requests issued after IN while blanking. With OUT=t, deferred initial
+  command stays busy/SF1 until its callback at t+708us; first CONTINUE has
+  no peripheral page until t+700us. These exact deadlines describe this HLE
+  candidate only. Next-page CONTINUE schedules700us from its own issue time,
+  not from the next OUT. Status-first still emits its status response without
+  waiting OUT, and SF for a deferred peripheral request is not prematurely
+  cleared. Hardware timing tolerance is unqualified; no cycle-perfect claim.
+- Proposed validator method (not run): native OPE1 and OPE0 requests during
+  VBlank on NTSC/PAL, peripheral-only/status-first controls and independent
+  port omissions. Change input between the previous708us deadline and OUT
+  to distinguish old early snapshot from deferred sampling. Observe actual
+  VINT/OUT, SF, command busy, query/IRQ counts and all report pages. Include
+  requests in active display, repeated edge levels, status-only/idle, ST-V,
+  CONTINUE after page1, BREAK/reset before OUT and VBlank-IN timeout while
+  collection is incomplete. Same-revision save/load in both deferred reasons
+  and after arming must not lose or duplicate service. Preserve independently
+  checked RESB-first-sample and three-sample NMI behavior.
+- Falsifier: input query/page during blanking, deferred request never started
+  at OUT, lost command busy/SF, a later page waits a full frame, duplicate
+  arming on repeated edges, or BREAK/reset/timeout followed by ghost service.
+  Unrelated command completion, SCU/slave edge order and no-controller ST-V
+  behavior changing also falsify this bounded contract.
+- Checks: prescribed C++20 syntax on smpc.cpp, saturn.cpp and sat_console.cpp
+  exits0; git diff --check exits0. No tests/runtime/full build. Requested
+  agent1_validation.md is still absent locally; no acceptance inferred.
+- Fixture/save impact (inspection only): extracted handshake/transport reset/
+  IREG stubs need the new enum/fields; timeout/RESB stubs need phase/wait state,
+  and the timeout host stub needs vblank_out. Existing native polling deadlines
+  calibrated to immediate700us collection may require validator revision,
+  especially PAL VBlank exceeding a4ms wait. These fixtures are not silently
+  changed here; no protected expectations/evidence touched. Both new fields
+  are saved in this change; older save signatures are incompatible.
+- State/limits: candidate only; SMPC-01/04 remain open. OPE adaptive timing
+  (including learned CONTINUE waits), per-device serial handshakes, exact
+  command/status task latencies, same-timestamp event ordering and the manual's
+  pre-IN300us issue window remain unqualified. The existing VBlank-IN timeout
+  policy was retained, not broadened to interpret that issue window. IO-02
+  accessory inventory unchanged. No frozen DMA acknowledgement, SH-2 delay
+  slot IRQ, sound/reset/video-clock or game-specific path edited.

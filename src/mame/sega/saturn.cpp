@@ -299,6 +299,7 @@ void saturn_state::vint_callback(int state) {
       m_scu->vblank_in_w(1);
       m_slave->set_input_line(0x6, ASSERT_LINE);
     } else {
+      m_smpc_hle->vblank_out();
       m_scu->vblank_out_w(1);
       m_slave->set_input_line(0x4, ASSERT_LINE);
     }

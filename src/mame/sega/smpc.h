@@ -30,6 +30,7 @@ public:
   void m68k_reset_trigger();
 
   void vblank_in();
+  void vblank_out();
 
   auto reset_button_in_handler() { return m_reset_button_read.bind(); }
 
@@ -165,6 +166,11 @@ private:
   void sf_ack(bool cd_enable);
   void sf_set();
   int DectoBCD(int num);
+  // Which initial peripheral request is waiting for VBlank-OUT. Later
+  // report pages resume on CONTINUE without waiting for another frame.
+  enum : uint8_t { INTBACK_WAIT_NONE, INTBACK_WAIT_COMMAND, INTBACK_WAIT_CONTINUE };
+  uint8_t m_intback_wait = INTBACK_WAIT_NONE;
+  bool m_in_vblank = false;
   int m_intback_stage;
   int m_pmode;
   uint8_t m_region_code;

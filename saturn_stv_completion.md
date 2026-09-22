@@ -162,6 +162,7 @@
 - [ ] **SMPC-01 — Complete command timing and handshake behavior. [P/V]**
   - Busy/SF/IREG/OREG sequencing, INTBACK continuation/break, VBlank-only phases and interrupt timing.
   - IMPL-0158 makes CPU writes to SF set-only, retaining SMPC-owned completion/reset clearing (syntax-only implementation candidate).
+  - IMPL-0160 defers console peripheral-only INTBACK and first peripheral CONTINUE issued during blanking until the VBlank-OUT edge. Existing collection delays remain approximate; OPE learning and wire timing are still open (syntax-only candidate).
   - Replace approximate command delays where hardware evidence establishes the correct behavior.
 - [ ] **SMPC-02 — Complete system-control integration. [P/V/R]**
   - Master/slave/sound reset and start/stop, clock changes, reset-button/NMI behavior and region/status reporting.

@@ -9,8 +9,7 @@ compatible), labeled with a Sega custom 315-5744 (binary decap available)
 
 TODO:
 - timings;
-- fix intback issue with inputs (according to the docs, it should fall in
-between VBLANK-IN and OUT, for obvious reasons);
+- peripheral collection time optimization (OPE) and per-device wire timing;
 - clean-ups;
 - Does ST-V even has a battery backed NVRAM?
 
@@ -140,6 +139,8 @@ void smpc_hle_device::device_start() {
   save_item(NAME(m_peripheral_size));
   save_item(NAME(m_peripheral_pos));
   save_item(NAME(m_intback_stage));
+  save_item(NAME(m_intback_wait));
+  save_item(NAME(m_in_vblank));
   save_item(NAME(m_pmode));
   save_item(NAME(m_rtc_data));
   save_item(NAME(m_smem));
@@ -210,6 +211,8 @@ void smpc_hle_device::device_reset() {
   // long before the first INTBACK sets it, and m_pmode is echoed back into SR
   // once an INTBACK completes
   m_intback_stage = 0;
+  m_intback_wait = INTBACK_WAIT_NONE;
+  m_in_vblank = false;
   m_peripheral_size = m_peripheral_pos = 0;
   m_pmode = 0;
 
@@ -249,6 +252,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
       if (data & 0x40) {
         LOGMASKED(LOG_PAD_CMD, "SMPC: BREAK request\n");
         m_intback_timer->reset();
+        m_intback_wait = INTBACK_WAIT_NONE;
         sr_ack();
         sf_ack(false);
         m_intback_stage = 0;
@@ -256,8 +260,16 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
       } else if ((previous ^ data) & 0x80) {
         LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
 
-        m_intback_timer->adjust(
-            attotime::from_usec(700)); // TODO: is timing correct?
+        // ST-169 p.56: the first peripheral collection waits until
+        // VBlank-OUT. Continuation of an existing snapshot does not.
+        if (m_has_ctrl_ports && m_intback_stage == 1 && m_in_vblank) {
+          m_intback_wait = INTBACK_WAIT_CONTINUE;
+          m_intback_timer->reset();
+        } else {
+          m_intback_wait = INTBACK_WAIT_NONE;
+          m_intback_timer->adjust(
+              attotime::from_usec(700)); // TODO: per-device wire timing
+        }
 
         // TODO: following looks wrong here
         m_oreg[31] = 0x10;
@@ -443,7 +455,16 @@ void smpc_hle_device::command_register_w(uint8_t data) {
 
     // TODO: check against ireg2, must be 0xf0
 
-    m_cmd_timer->adjust(attotime::from_usec(timing));
+    m_intback_wait = INTBACK_WAIT_NONE;
+    if (m_has_ctrl_ports && m_in_vblank && !m_intback_buf[0] &&
+        (m_intback_buf[1] & 8)) {
+      // Status reports may complete during blanking, peripheral collection
+      // may not. Keep the command busy until the VBlank-OUT service begins.
+      m_intback_wait = INTBACK_WAIT_COMMAND;
+      m_cmd_timer->reset();
+    } else {
+      m_cmd_timer->adjust(attotime::from_usec(timing));
+    }
     break;
   }
   default:
@@ -620,6 +641,8 @@ void smpc_hle_device::vblank_in() {
   if (!m_has_ctrl_ports)
     return;
 
+  m_in_vblank = true;
+
   // Sample the hardwired switch every VBlank-IN, including idle/RESDISA.
   // Read the physical port rather than relying on a change callback, so a
   // button held across machine reset is sampled again on the next edge.
@@ -649,6 +672,7 @@ void smpc_hle_device::vblank_in() {
     m_command_in_progress = false;
   }
   m_intback_timer->reset();
+  m_intback_wait = INTBACK_WAIT_NONE;
   m_intback_stage = 0;
   m_peripheral_size = m_peripheral_pos = 0;
   // No new report or interrupt. Clear PDL/NPE, retain the last report's
@@ -656,6 +680,25 @@ void smpc_hle_device::vblank_in() {
   m_sr &= ~0x60;
   if (!m_command_in_progress)
     sf_ack(false);
+}
+
+void smpc_hle_device::vblank_out() {
+  if (!m_has_ctrl_ports)
+    return;
+
+  m_in_vblank = false;
+  // Reuse the existing command/CONTINUE delays, but start them after the
+  // collection gate opens. OPE learning and wire-time measurement remain
+  // unimplemented; neither can permit collection during vertical blanking.
+  switch (m_intback_wait) {
+  case INTBACK_WAIT_COMMAND:
+    m_cmd_timer->adjust(attotime::from_usec(8 + 700));
+    break;
+  case INTBACK_WAIT_CONTINUE:
+    m_intback_timer->adjust(attotime::from_usec(700));
+    break;
+  }
+  m_intback_wait = INTBACK_WAIT_NONE;
 }
 
 void smpc_hle_device::resolve_intback() {
