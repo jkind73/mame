@@ -13104,3 +13104,68 @@ overwritten. Research cache was restored through gh-api blob retrieval.
   delay-slot IRQ, sound/reset/video-clock/game routines and IO-02 inventory
   untouched. agent1_validation.md is still absent locally; earlier attributed
   acceptance of other work is not retracted.
+
+
+## IMPL-0171 — preserve unsigned MULU.W arithmetic through host promotion
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0171 | CPU-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | MULU.W zero-extends each low16-bit operand to uint32_t before multiplication |
+
+- Branch `arena/01a0b897-mame`; base
+  `0d4daf7a562f072e75273a5b8252dac437787314`. Production
+  src/devices/cpu/sh/sh.cpp:1270–1276, MULU helper only.
+- Contract/defect: uint16_t operands promote to signed int on the supported
+  32-bit-int hosts. Their maximum product FFFE0001 is not representable in
+  int32_t; assignment to unsigned MACL occurs too late to avoid that overflow.
+  Explicitly widen both truncated operands to uint32_t before multiplying.
+  Preserve low16-bit selection, MACL-only output, MACH/SR and all timing.
+  This is a C++ definedness fix, not a measured old-binary/game failure.
+- Primary: SH7604 Hardware Manual ADE-602-085C Rev.4 Table2.13 printed
+  p.36/PDF52 specifies MULU.W as unsigned16x16 to32 bits, with T unchanged.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`, freshly retrieved via gh api.
+- Three pinned peers, retrieved through gh api this turn:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095_ops.inc:984–991, blob
+    `de0a8a67631fbda0ad4e41a82fe0e0aa32e7c8a2`: explicitly converts each
+    low uint16 operand to uint32 before multiplying into MACL.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/MULT.sv:33,85–93,127–130, blob
+    `49ef051e345dd6d035c9a02e2fe0b2e0c64f909b`: unsigned word operands
+    are zero-extended into multiplier inputs, then low32 bits go to MACL.
+    No HDL timing imported.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:4164–4171, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`: casts through uint16
+    to uint32 before multiplying, preserving the full unsigned product.
+- Provenance/engine reach: upstream MAME
+  `398bba74ed7997d29c2316316da230f6d85fda0d`, sh.cpp:1266–1269,
+  blob `51710c5b3a268fae18464df7de0e557026367fb1`, has the same narrow
+  expression. Local0170 and prior fork path history recorded there inspected;
+  frozen afce770c delay-slot correction is untouched. DRC at current
+  sh.cpp:2980–2985 already masks both operands to FFFF and uses UML_MULU;
+  this change fixes the shared interpreter helper, not DRC generation.
+- Observable/units/tolerance: exact MACL bits, zero tolerance. FFFF*FFFF gives
+  FFFE0001; FFFF*8001 gives80007FFF;8000*8000 gives40000000. Upper operand
+  halves are ignored (1234FFFF and ABCDFFFF still give FFFE0001), original
+  GPRs/MACH/SR remain unchanged. Include m==n and ordinary0/1 controls.
+- Proposed validator method (not run): native instruction programs on both
+  CPUs, interpreter/DRC, seeded MACH/SR, high-half variations and products
+  below/above INT_MAX. Compare exact architectural state. External UBSan can
+  discriminate old signed promotion even where an optimized release binary
+  happens to emit the correct machine multiply. No requirement that every old
+  binary numerically fails, and no runtime/compiler-sanitizer results claimed.
+- Falsifier: high halves affect the result, signed extension enters a low-word
+  operand, the maximum product differs, or GPR/MACH/SR/timing changes.
+- Checks/state/limits: prescribed C++20 sh.cpp syntax exits0; git diff --check
+  exits0. No tests, runtime, sanitizer or full build. No device fields or save
+  layout changes; CPU-01 stays open. No protected fixture/evidence edits,
+  frozen IRQ/acknowledgement/sound/video/game changes or IO-02 expansion.
+  Local agent1_validation.md remains absent; prior attributed acceptance stands.
+  Shared-family regressions and native equivalence remain validator-owned.
+
+Restored workspace again matched published0d4daf7a over the old local index.
+Fetched only the fixed session branch, compared apparent differences by blob
+hash and aligned the index/branch with a mixed reset after zero mismatches;
+no worktree file or published history was overwritten. Research cache rebuilt.

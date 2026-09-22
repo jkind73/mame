@@ -1269,7 +1269,9 @@ void sh_common_execution::MULS(uint32_t m, uint32_t n)
 /*  MULU    Rm,Rn */
 void sh_common_execution::MULU(uint32_t m, uint32_t n)
 {
-	m_sh2_state->macl = (uint16_t)m_sh2_state->r[n] * (uint16_t)m_sh2_state->r[m];
+	// Widen before multiplication: uint16_t operands otherwise promote to
+	// signed int, which cannot represent the full unsigned 16x16 product.
+	m_sh2_state->macl = uint32_t(uint16_t(m_sh2_state->r[n])) * uint32_t(uint16_t(m_sh2_state->r[m]));
 }
 
 /*  NEG     Rm,Rn */
