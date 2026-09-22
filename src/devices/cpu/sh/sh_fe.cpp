@@ -625,7 +625,12 @@ bool sh_common_execution::frontend::describe_group_0(opcode_desc &desc, const op
 	case 0x3f: // MAC_L(Rm, Rn);
 		desc.set_r_used(REG_M);
 		desc.set_r_used(REG_N);
+		desc.set_mac_used();
+		desc.set_sr_used(); // S selects saturation
+		desc.set_r_modified(REG_M);
+		desc.set_r_modified(REG_N);
 		desc.set_mac_modified();
+		desc.set_reads_memory();
 		desc.cycles = 3;
 		return true;
 
@@ -780,9 +785,11 @@ bool sh_common_execution::frontend::describe_group_4(opcode_desc &desc, const op
 		desc.set_r_used(REG_M);
 		desc.set_r_used(REG_N);
 		desc.set_mac_used();
+		desc.set_sr_used(); // S selects saturation
 		desc.set_r_modified(REG_M);
 		desc.set_r_modified(REG_N);
 		desc.set_mac_modified();
+		desc.set_reads_memory();
 		desc.cycles = 3;
 		return true;
 

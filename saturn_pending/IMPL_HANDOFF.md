@@ -13443,3 +13443,70 @@ Workspace metadata restoration at0174: local HEAD/index had reverted to
 all apparent modified/deleted/untracked paths against fetched blob identities;
 zero mismatches. Mixed reset restored branch/index only, with no file overwrite
 or published history rewrite. Primary/peer scratch sources were re-fetched.
+
+
+## IMPL-0175 — describe MAC inputs, postincrements and memory reads
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0175 | CPU-01 | this entry's commit | UNVALIDATED — implementation, syntax checked only | DRC MAC descriptors include accumulator/S inputs, both postincremented GPRs and memory reads |
+
+- Branch `arena/01a0b897-mame`; base
+  `9dbbc0e3759e91294d18408a287cd58050ed90ea`. Changed
+  src/devices/cpu/sh/sh_fe.cpp:622–635,781–795 only.
+- Defect/contract: MAC.L omitted its accumulator input and both modified
+  address registers. Both MAC widths omitted SR.S input and memory reads.
+  Add those dependencies without declaring SR modified or memory written.
+  MAC.W already described its accumulator and GPR effects; preserve them.
+  Both retain cycles=3 and the0174 single-owner charging rule. Shared helpers,
+  generated operations, register mapping and IRQ paths are not edited.
+- Primary: SH7604 ADE-602-085C Rev.4 section2.1.2 Fig2.2 printed16/PDF32
+  assigns S to MAC; Table2.8 printed22/PDF38 defines postincrement by operand
+  width; Table2.13 printed36/PDF52 specifies memory-operand multiply/accumulate.
+  SDK pin `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, blob
+  `4c1697421398cef77c7b52defda94ef5fead7372`, fetched via gh api this turn.
+- Three pinned peers, also retrieved via gh api:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095_ops.inc:835–902, blob
+    `de0a8a67631fbda0ad4e41a82fe0e0aa32e7c8a2`: reads two memory
+    operands, increments both addresses, uses old MAC and GetS(). Its read
+    order differs from MAME/Ymir; this metadata patch does not choose an order.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/MULT.sv:33–35,94–116,136–163, blob
+    `49ef051e345dd6d035c9a02e2fe0b2e0c64f909b`: loads both bus
+    operands, adds the old accumulator and latches MAC_S. This module alone
+    does not establish CPU register-postincrement sequencing or timing.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:4072–4136, blob
+    `9746b438b8a71de63ff65cd2d4325bc582a5114b`: both memory reads,
+    GPR increments, old MAC input and SR.S selection are explicit.
+- Provenance/impact: upstream MAME
+  `398bba74ed7997d29c2316316da230f6d85fda0d`, sh_fe.cpp:622–630,
+  776–787, blob `35ba19e3912ca2017ba6814c12edef841213546e`, retains
+  the incomplete descriptors. Generic drcfe.ipp:347–369 computes regreq
+  backwards from regin/regout. Current SH generation does not consume regreq
+  for dead-result elimination; reads_memory is presently diagnostic here.
+  This corrects the frontend contract/liveness/logs, NOT a demonstrated
+  native miscomputation or a claim that current code drops the GPR updates.
+- Observable/units/tolerance: exact descriptor sets, zero tolerance. Both MACs
+  read {Rm,Rn,MACH,MACL,SR}, may modify {Rm,Rn,MACH,MACL}, read memory,
+  do not write memory or SR, and retain cycles3. For m==n the set contains
+  that GPR once (the helper still performs both increments). The register
+  sets are conservative for runtime S choices, not a conditional SSA model.
+- Proposed validator method (not run): decode all register pairs and inspect
+  input/output masks, read/write flags and cycle fields; inspect backwards
+  liveness for LDS-to-MAC-to-STS and postincrement consumers. Compare arithmetic,
+  addresses and cycle totals natively as unchanged controls. Falsifier: missing
+  required input/output, invented SR/memory write, changed cycle cost or changed
+  generated/runtime behavior. Descriptor correctness alone is not native proof.
+- Checks/limits: prescribed C++20 sh_fe.cpp syntax exits0; diff --check exits0.
+  No tests/probes/runtime/full build or protected fixture edits. No fields/save
+  layout change; CPU-01 remains open and IO-02 unchanged. Shared-family
+  descriptors benefit, but runtime qualification remains validator-owned.
+  Local agent1_validation.md is absent; prior attributed acceptance stands.
+
+Metadata again matched published9dbbc0e3 over stale82152a8b; fetched only the
+session branch and mixed-reset after zero worktree-versus-fetched blob
+mismatches. No files overwritten. Reference downloads now live in ignored
+saturn_pending/reference_cache/sh2 to avoid repeatedly losing scratch sources;
+no manual, peer source, cache or tool installation is staged or committed.
