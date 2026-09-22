@@ -12394,3 +12394,93 @@ its published blob, then aligned the local branch/index with a mixed reset; no
 worktree file or published history was overwritten. An SH-2 CHCR partial-write
 merge concern was not changed: the manual requires longword CHCR access, so that
 is not yet a demonstrated defect in a legal programming sequence.
+
+
+## IMPL-0165 — SH-2 DMAC decrement addresses after the transfer
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0165 | CPU-03 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Byte/word/longword DMAC accesses current SAR/DAR before decrementing its live address |
+
+- Branch `arena/01a0b897-mame`; base `7e0ef6eb`; production file
+  src/devices/cpu/sh/sh7604.cpp:694–827, sh2_do_dma cases0–2 only.
+  Shared SH7604 device handles both Saturn/ST-V master and slave CPUs.
+- Contract: a decrementing byte/word/longword channel transfers at its current
+  live source/destination address, then subtracts1/2/4 for the next transfer.
+  Remove the extra subtraction from temporary bus addresses. Existing live
+  address updates, payload count decrement, timer scheduling and completion
+  phase remain unchanged. Fixed/incrementing addresses are unchanged.
+  FIFO-availability and data callbacks receive the same corrected address as
+  the actual bus operation; a stall still returns before address/count updates.
+- Primary: Hitachi SH7604 Hardware Manual ADE-602-085C Rev.4, sections9.2.1–2,
+  printed pp.235–236/PDF251–252 define SAR/DAR as source/destination and the
+  next addresses during DMA. Section9.2.4 p.238/PDF254 defines the signed
+  address increments by transfer width. Section9.3.1 pp.245–246/PDF261–262,
+  Figure9.2 orders Transfer before TCR/SAR/DAR update. This is not the CPU
+  MOV pre-decrement addressing mode. SDK pin
+  `0fab2c30d6d1aff1a4836352e00a7fc5cd4c7f73`, manual blob
+  `4c1697421398cef77c7b52defda94ef5fead7372` (fetched through gh api).
+- Three pinned peer cross-checks:
+  - Mednafen `f0ee9d595db68ad5247ba5ac6a8367fdced9c3fc`,
+    src/ss/sh7095.inc:541–611, blob
+    `bf337f4466c69607a7d43a7bd6a75a4bc7ed3ed8`: read/write sar/dar,
+    then apply ainc0/1/2 (including -1/-2/-4), then decrement tcr.
+  - MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+    rtl/SH/SH7604/DMAC.sv:225–228,258–260,367–372, blob
+    `94dbebc90f68f342a6d3f31cd63bad7ffe8e3cf7`: bus address comes from
+    SAR/DAR; accepted read/write cycles subsequently update those registers
+    with nonblocking increments/decrements. No pre-decrement bus address.
+  - Ymir `6d779960127ced72087a418c1daefc637d0aaa80`,
+    libs/ymir-core/src/ymir/hw/sh2/sh2.cpp:1810–1835,1845–1869,1888–1890,
+    blob `9746b438b8a71de63ff65cd2d4325bc582a5114b`: accesses current
+    srcAddress/dstAddress, then applies signed srcInc/dstInc.
+- Provenance: upstream MAME `398bba74ed7997d29c2316316da230f6d85fda0d`,
+  src/devices/cpu/sh/sh7604.cpp:533–628, blob
+  `79409df16f3f26a60a12012e53692fe69025ea35`, has the same pre-subtracted
+  temporary addresses. Reviewed fork's latest six path commits via gh api:
+  afc75c2e/2ddf2ba6/f0296ade DIVU results, f6b5d3d1 SBYCR,63d1bf91 CHCR
+  read mask,2f6a6e11 DMAC reset; this is an inherited transfer-address defect,
+  not a reason to revert those changes. No peer implementation code imported.
+- Exact observable/units/tolerance: for a legal auto-request, dual-address,
+  longword transfer with count1, SAR06001008, DAR06002008 and both modes
+  decrementing, copy the longword at06001008 to06002008, not the word at
+ 06001004 to06002004. Live cursors afterwards are06001004/06002004. With
+  count3, accesses are08,04,00 rather than04,00,FFC. Apply the same first-address
+  rule at widths1 and2; compare exact address/data sequences and guarded RAM
+  bytes, zero tolerance. Do not use the currently stale SAR/DAR read handlers
+  as a proxy for these private live cursors; register publication is separate
+  remaining work, explicitly not fixed by this candidate.
+- Proposed validator method (not run): legally aligned, disjoint Work RAM
+  buffers with distinct values and guards; auto-request (AR1), dual-address
+  (TA0), legal SM/DM0–2, sizes byte/word/longword, counts1/2/3. Cover source-only
+  decrement, destination-only decrement and both, with fixed/increment controls.
+  Run on both channels and both CPUs, interpreter/DRC. Observe guest memory
+  after ordinary completion without changing acknowledgement expectations.
+  Instrument a FIFO stall before a transfer to check that the retried callback
+  address is unchanged and the first successful transfer uses that same address.
+  Do not program registers during an active transfer or claim hardware behavior
+  for reserved modes or misaligned word/longword addresses.
+- Falsifier: the first access is still one unit below the programmed address,
+  a following decrement skips/repeats a unit, a denied FIFO check changes live
+  state, or fixed/incrementing controls change. Matching hardware traces showing
+  a pre-decrement first access for a lawful configuration would reject this fix.
+- Checks: prescribed C++20 sh7604.cpp syntax exits0; git diff --check exits0.
+  No tests/runtime/full build; no fixture expectations or validator assets edited.
+  regtests/saturn/handoff/agent1_validation.md remains absent locally; earlier
+  attributed acceptance of other candidates is unaffected.
+- State/limits: implementation candidate; CPU-03 and SCU-03 remain open. No
+  new fields or save-layout change. No completion/TE/IRQ acknowledgement,
+  delay-slot IRQ, sound/reset/video-clock or frozen game-path edits. Old active
+  states can already contain incorrectly copied data and are not repaired.
+  Existing live DMAC arrays lack save registrations in sh7604.cpp; in-flight
+  save/load is a separate known gap, not qualified by this stateless correction.
+  Request routing, arbitration, error handling, register progress readback,
+  exact timing and decrementing bus-boundary crossings remain open.
+- Sixteen-byte transfers deliberately unchanged: Mednafen sh7095.inc:613–640
+  buffers four source longwords and applies destination mode to each longword;
+  MiSTer updates on each accepted write. Ymir sh2.cpp:1871–1890 instead writes
+  four increasing destination addresses and applies one block increment after
+  them. Resolve the manual's detailed16-byte bus flow before choosing a fix;
+  no claim of three-peer agreement for that mode. SCU B-bus quirks and source
+  tail strobes retain their previously recorded blockers; this checkpoint moves
+  the DMA audit into the shared master/slave SH-2 DMAC, not a closure of SCU DMA.

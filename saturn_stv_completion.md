@@ -75,6 +75,7 @@
   - Audit the current on-chip/bus-device integration and register access widths; do not equate cache storage with full cache timing.
 - [ ] **CPU-03 — Complete and qualify on-chip peripherals. [P/V]**
   - FRT external clock/input capture/output compare, watchdog/reset, SCI serial operation, interrupt controller and SH-2 DMA.
+  - IMPL-0165 corrects byte/word/longword DMAC decrement modes to access the current source/destination before updating the address, shared by master/slave (syntax-only candidate). The 16-byte mode, register progress readback and in-flight DMAC save coverage remain open.
   - Audit documented unimplemented external-clock and output behavior, approximate timings and incomplete reset wiring.
   - Exercise simultaneous interrupt sources and DMA/peripheral events on both CPUs, not just instruction tests.
 - [ ] **CPU-04 — Provide safe deferred/restartable memory transactions. [M/P]**

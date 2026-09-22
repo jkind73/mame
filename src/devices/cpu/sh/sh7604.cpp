@@ -695,7 +695,9 @@ void sh7604_device::sh2_do_dma(int dmach)
 {
 	if (m_active_dma_count[dmach] > 0)
 	{
-		// process current DMA
+		// SH7604 manual section 9.3.1, figure 9.2: transfer at SAR/DAR,
+		// then update the addresses. Byte/word/longword decrement modes
+		// are not the SH-2 instruction set's pre-decrement addressing.
 		switch (m_active_dma_size[dmach])
 		{
 		case 0:
@@ -705,12 +707,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 			// time (we need to know where we're reading / writing to/from)
 
 			uint32_t tempsrc = m_active_dma_src[dmach];
-			if (m_active_dma_incs[dmach] == 2)
-				tempsrc--;
 
 			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst--;
 
 			if (!m_dma_fifo_data_available_cb.isnull())
 			{
@@ -749,12 +747,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 		case 1:
 		{
 			uint32_t tempsrc = m_active_dma_src[dmach];
-			if (m_active_dma_incs[dmach] == 2)
-				tempsrc -= 2;
 
 			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst -= 2;
 
 			if (!m_dma_fifo_data_available_cb.isnull())
 			{
@@ -794,12 +788,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 		case 2:
 		{
 			uint32_t tempsrc = m_active_dma_src[dmach];
-			if (m_active_dma_incs[dmach] == 2)
-				tempsrc -= 4;
 
 			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst -= 4;
 
 			if (!m_dma_fifo_data_available_cb.isnull())
 			{
