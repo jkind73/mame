@@ -13689,3 +13689,41 @@ This candidate addresses the independently established vector-read ordering.
   game regressions remain validator-owned; local agent1_validation.md is absent,
   not a withdrawal of prior attributed acceptance. Ignored reference cache is
   not staged or committed.
+
+## IMPL-0178 — deterministic reserved VDP1 colour-mode fetch
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0178 | VDP1 | this entry's commit | UNVALIDATED — implementation, syntax checked only | Reserved VDP1 colour modes return the deterministic VRAM word-0 fetch instead of host-random pixels |
+
+- Branch `arena/01a0b897-mame`; base `446d8cb1`. Production change:
+  `src/mame/sega/saturn.cpp:2028–2038`, the fallback for reserved CMDPMOD
+  colour modes.
+- Defect: the fallback used `machine().rand()` for a rendered pixel. That
+  violates deterministic emulation and makes screenshots, replays, save-state
+  continuation and peer comparison depend on host RNG state. The neighboring
+  invalid modes 6/7 already use the VDP1 word-0 bus read; the fallback now
+  follows that same deterministic invalid-mode behavior, with END disabled by
+  `endcode=-1` and no fabricated transparent pen.
+- Contract/evidence: ST-013 VDP1 command colour-mode table, pp.86–88,
+  distinguishes prohibited colour modes from normal indexed/RGB modes and
+  specifies the command's VRAM/pattern fetch path. The local implementation's
+  immediately preceding modes 6/7 document the word-0 fetch, corroborated by
+  the pinned Mednafen and MiSTer invalid-mode paths already recorded in the
+  VDP1 completion handoff. This change does not claim the undefined mode's
+  pixel value is silicon-qualified; it removes only host nondeterminism and
+  uses the existing peer-aligned fallback.
+- Observable/units/tolerance: identical VRAM word 0 and command state must
+  produce identical 16-bit source pixels across runs, hosts and save/load;
+  zero tolerance for host-random variation. No geometry, normal-mode
+  transparency, framebuffer or timing behavior changes.
+- Proposed falsifier (validator-owned, not run): render a reserved mode 6/7
+  command and the generic fallback with fixed VRAM word 0 across repeated
+  executions and save-state reload; compare source pixel, framebuffer and
+  command completion. A result depending on machine RNG, or differing from
+  the existing invalid-mode fetch under the same state, falsifies this
+  candidate.
+- Scope/limits: no new fields or save-layout change; no tests, probes or full
+  build run. The exact hardware behavior of prohibited colour modes remains
+  unqualified. VDP1 arbitration, transfer-over semantics, reversed/empty
+  erase windows and command timing remain open. Validator owns acceptance.

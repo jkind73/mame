@@ -2021,11 +2021,13 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
       endcode = -1;
       break;
     default: // other settings illegal
-      pix = machine().rand();
-      raw = pix & 0xff; // just mimic old driver behavior
-      // mode = 0;
+      // Reserved modes are still a VRAM fetch on the VDP1 bus.  Do not use
+      // host randomness here: it makes the result nondeterministic and does
+      // not match the documented invalid-mode read behavior used above.
+      raw = pix =
+          m_vdp1_legacy.gfx_decode[1] | (m_vdp1_legacy.gfx_decode[0] << 8);
       transpen = 0;
-      endcode = 0xff;
+      endcode = -1;
       popmessage("Illegal Sprite Mode %02x", current_sprite.CMDPMOD & 0x0038);
     }
 
