@@ -875,7 +875,8 @@ void stv_state::init_thunt() {
   //  attotime::from_usec(1);
 }
 
-void stv_state::init_sandor() {
+void stv_state::init_sandr()
+{
   m_maincpu->sh2drc_add_pcflush(0x602a0f8);
   m_maincpu->sh2drc_add_pcflush(0x6013fbe);
   m_slave->sh2drc_add_pcflush(0x602abcc);
@@ -2506,7 +2507,7 @@ SHA1(20994ae7ee177ddaf3a430b010c7620dca000fb4) ) - Saturn EU BIOS
       13, "stv1061.bin", 0x000000, 0x080000,                                   \
       CRC(728dbca3) SHA1(0ed2030177f0aa8285645c395ae9ad9f568ab1d6))            \
                                                                                \
-  ROM_REGION32_BE(0x3000000, "abus", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "abus", ROMREGION_ERASEFF )
 
     ROM_START(stvbios)
 STV_BIOS
@@ -2515,56 +2516,6 @@ ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to multi cart mode
 ROM_LOAD("stvbios.nv", 0x0000, 0x0080,
          CRC(15432ae2) SHA1(7d9364d546f3d3f839ec36be148076f8d26a65a6))
 ROM_END
-
-/*
-
-there appears to only be one main cartridge layout, just some having different
-positions populated if you use the ic named in the test mode you have the
-following
-
-some of the rom names were using something else and have been renamed to match
-test mode, old extension left in comments
-
-( add 0x2000000 for real memory map location )
-
-0x0000000 - 0x01fffff IC13 Header can be read from here .. IC13 roms are loaded
-on ODD bytes only 0x0200000 - 0x03fffff IC7  Header can also be read from here.
-If No IC7 is present it seems to mirror IC13, but loaded normally (mausuke)
-0x0400000 - 0x07fffff IC2
-0x0800000 - 0x0bfffff IC3
-0x0c00000 - 0x0ffffff IC4
-0x1000000 - 0x13fffff IC5
-0x1400000 - 0x17fffff IC6
-0x1800000 - 0x1bfffff IC1
-0x1c00000 - 0x1ffffff IC8
-0x2000000 - 0x23fffff IC9
-0x2400000 - 0x27fffff IC10
-0x2800000 - 0x2bfffff IC11
-0x2c00000 - 0x2ffffff IC12
-
-*/
-
-/*
-country codes:
-J = Japan
-U = United States
-E = Europe
-T = Taiwan
-B = Brazil
-K = Korea
-A = PAL Asia
-L = Latin America
-date codes:
-(Original is yyyy/mm/dd,changed to reflect Capcom's one (yy/mm/dd))
-Version codes:
-V = Version(obviously ;)
-(number before the dot) = game status (0=Sample,1=Master,2=Upgrade)
-(number after the dot) = game version/release
-There is also another internal code (called the "Product Number"),but AFAIK it's
-only used by introdon in ST-V ("SG0000000"),and according to the manual it's
-even wrong! (SG is used by Sega titles,and this is a Sunsoft game)It's likely to
-be a left-over...
-*/
 
 void stv_state::init_sanjeon() {
   uint8_t *src = memregion("cart")->base();
@@ -2584,7 +2535,7 @@ void stv_state::init_sanjeon() {
 ROM_START(astrass)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASEFF) /* SH2 code */
 ROM_LOAD16_BYTE("epr20825.13", 0x0000001, 0x0100000,
                 CRC(94a9ad8f) SHA1(861311c14cfa9f560752aa5b023c147a539cf135))
 ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
@@ -2632,10 +2583,8 @@ ROM_END
 ROM_START(bakubaku)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr17969.13", 0x0000001, 0x0100000,
-                CRC(bee327e5) SHA1(1d226db72d6ef68fd294f60659df7f882b25def6))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr17969.13",               0x0000001, 0x0100000, CRC(bee327e5) SHA1(1d226db72d6ef68fd294f60659df7f882b25def6) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 
 ROM_LOAD16_WORD_SWAP("mpr17970.2", 0x0400000, 0x0400000,
@@ -2657,10 +2606,8 @@ ROM_END
 ROM_START(colmns97)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr19553.13", 0x000001, 0x100000,
-                CRC(d4fb6a5e) SHA1(bd3cfb4f451b6c9612e42af5ddcbffa14f057329))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr19553.13",    0x000001, 0x100000, CRC(d4fb6a5e) SHA1(bd3cfb4f451b6c9612e42af5ddcbffa14f057329) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr19554.2", 0x400000, 0x400000,
                      CRC(5a3ebcac)
@@ -2675,111 +2622,49 @@ ROM_END
 ROM_START(cotton2)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr20122.7", 0x0200000, 0x0200000,
-                     CRC(d616f78a)
-                         SHA1(8039dcdfdafb8327a19a1da46a67c0b3f7eee53a)) // good
-ROM_LOAD16_WORD_SWAP("mpr20117.2", 0x0400000, 0x0400000,
-                     CRC(893656ea)
-                         SHA1(11e3160083ba018fbd588f07061a4e55c1efbebb)) // good
-ROM_LOAD16_WORD_SWAP("mpr20118.3", 0x0800000, 0x0400000,
-                     CRC(1b6a1d4c)
-                         SHA1(6b234d6b2d24df7f6d400a56698c0af2f78ce0e7)) // good
-ROM_LOAD16_WORD_SWAP("mpr20119.4", 0x0c00000, 0x0400000,
-                     CRC(5a76e72b)
-                         SHA1(0a058627ddf78a0bcdaba328a58712419f24e33b)) // good
-ROM_LOAD16_WORD_SWAP("mpr20120.5", 0x1000000, 0x0400000,
-                     CRC(7113dd7b)
-                         SHA1(f86add67c4e1349a9b9ebcd0145a30b1667df811)) // good
-ROM_LOAD16_WORD_SWAP("mpr20121.6", 0x1400000, 0x0400000,
-                     CRC(8c8fd521)
-                         SHA1(c715681330b5ed37a8506ac58ee2143baa721206)) // good
-ROM_LOAD16_WORD_SWAP("mpr20116.1", 0x1800000, 0x0400000,
-                     CRC(d30b0175)
-                         SHA1(2da5c3c02d68b8324948a8cdc93946d97fccdd8f)) // good
-ROM_LOAD16_WORD_SWAP("mpr20123.8", 0x1c00000, 0x0400000,
-                     CRC(35f1b89f)
-                         SHA1(1d6007c380f817def734fc3030d4fe56df4a15be)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr20122.7",    0x0200000, 0x0200000, CRC(d616f78a) SHA1(8039dcdfdafb8327a19a1da46a67c0b3f7eee53a) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20117.2",    0x0400000, 0x0400000, CRC(893656ea) SHA1(11e3160083ba018fbd588f07061a4e55c1efbebb) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20118.3",    0x0800000, 0x0400000, CRC(1b6a1d4c) SHA1(6b234d6b2d24df7f6d400a56698c0af2f78ce0e7) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20119.4",    0x0c00000, 0x0400000, CRC(5a76e72b) SHA1(0a058627ddf78a0bcdaba328a58712419f24e33b) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20120.5",    0x1000000, 0x0400000, CRC(7113dd7b) SHA1(f86add67c4e1349a9b9ebcd0145a30b1667df811) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20121.6",    0x1400000, 0x0400000, CRC(8c8fd521) SHA1(c715681330b5ed37a8506ac58ee2143baa721206) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20116.1",    0x1800000, 0x0400000, CRC(d30b0175) SHA1(2da5c3c02d68b8324948a8cdc93946d97fccdd8f) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20123.8",    0x1c00000, 0x0400000, CRC(35f1b89f) SHA1(1d6007c380f817def734fc3030d4fe56df4a15be) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(cottonbm)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr21075.7", 0x0200000, 0x0200000,
-                     CRC(200b58ba)
-                         SHA1(6daad6d70a3a41172e8d9402af775c03e191232d)) // good
-ROM_LOAD16_WORD_SWAP("mpr21070.2", 0x0400000, 0x0400000,
-                     CRC(56c0bf1d)
-                         SHA1(c2b564ce536c637bb723ed96683b27596e87ebe7)) // good
-ROM_LOAD16_WORD_SWAP("mpr21071.3", 0x0800000, 0x0400000,
-                     CRC(2bb18df2)
-                         SHA1(e900adb94ad3f48be00a4ce33e915147dc6a8737)) // good
-ROM_LOAD16_WORD_SWAP("mpr21072.4", 0x0c00000, 0x0400000,
-                     CRC(7c7cb977)
-                         SHA1(376dfb8014050605b00b6545520bd544768f5828)) // good
-ROM_LOAD16_WORD_SWAP("mpr21073.5", 0x1000000, 0x0400000,
-                     CRC(f2e5a5b7)
-                         SHA1(9258d508ef6f6529efc4ad172fd29e69877a99eb)) // good
-ROM_LOAD16_WORD_SWAP("mpr21074.6", 0x1400000, 0x0400000,
-                     CRC(6a7e7a7b)
-                         SHA1(a0b1e7a85e623b59886b28797281df1d65b8a5aa)) // good
-ROM_LOAD16_WORD_SWAP("mpr21069.1", 0x1800000, 0x0400000,
-                     CRC(6a28e3c5)
-                         SHA1(60454b71db49b872e0cb89fae2259fed601588bd)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr21075.7",    0x0200000, 0x0200000, CRC(200b58ba) SHA1(6daad6d70a3a41172e8d9402af775c03e191232d) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21070.2",    0x0400000, 0x0400000, CRC(56c0bf1d) SHA1(c2b564ce536c637bb723ed96683b27596e87ebe7) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21071.3",    0x0800000, 0x0400000, CRC(2bb18df2) SHA1(e900adb94ad3f48be00a4ce33e915147dc6a8737) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21072.4",    0x0c00000, 0x0400000, CRC(7c7cb977) SHA1(376dfb8014050605b00b6545520bd544768f5828) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21073.5",    0x1000000, 0x0400000, CRC(f2e5a5b7) SHA1(9258d508ef6f6529efc4ad172fd29e69877a99eb) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21074.6",    0x1400000, 0x0400000, CRC(6a7e7a7b) SHA1(a0b1e7a85e623b59886b28797281df1d65b8a5aa) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21069.1",    0x1800000, 0x0400000, CRC(6a28e3c5) SHA1(60454b71db49b872e0cb89fae2259fed601588bd) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(decathlt)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18967a.13", 0x0000001, 0x0100000,
-                CRC(ac59c186) SHA1(7d4924d1e4c1b9257b58a690de988b3f6486e86f))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
-ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
-ROM_LOAD16_WORD_SWAP(
-    "mpr18968.2", 0x0400000, 0x0400000,
-    CRC(11a891de)
-        SHA1(1a4fa8d7e07e1d8fdc8122ef8a5b93723c007cda)) // good (was .1)
-ROM_LOAD16_WORD_SWAP(
-    "mpr18969.3", 0x0800000, 0x0400000,
-    CRC(199cc47d)
-        SHA1(d78f7c6be7e9b43e208244c5c8722245f4c653e1)) // good (was .2)
-ROM_LOAD16_WORD_SWAP(
-    "mpr18970.4", 0x0c00000, 0x0400000,
-    CRC(8b7a509e)
-        SHA1(8f4d36a858231764ed09b26a1141d1f055eee092)) // good (was .3)
-ROM_LOAD16_WORD_SWAP(
-    "mpr18971.5", 0x1000000, 0x0400000,
-    CRC(c87c443b)
-        SHA1(f2fedb35c80e5c4855c7aebff88186397f4d51bc)) // good (was .4)
-ROM_LOAD16_WORD_SWAP(
-    "mpr18972.6", 0x1400000, 0x0400000,
-    CRC(45c64fca)
-        SHA1(ae2f678b9885426ce99b615b7f62a451f9ef83f9)) // good (was .5)
-
-#if 0
-	// these are VDP2RAM dumps from the JPN Saturn version running in UME, saved from the debugger
-	ROM_REGION32_BE( 0x3000000, "fake0", ROMREGION_ERASE00 )
-	ROM_LOAD( "dec",    0x0000000, 0x80000,  CRC(5c8c4353) SHA1(18f317c8f0beac4ff3c9e56639b8e990e31f53ff) ) // on title screen
-	ROM_REGION( 0x3000000, "fake1", ROMREGION_ERASE00 )
-	ROM_LOAD( "dec2",    0x0000000, 0x80000, CRC(d1e08bc9) SHA1(3c5867de81a380bfc181d57214b86ce891b05f06) ) // on select char screen
-#endif
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18967a.13",               0x0000001, 0x0100000, CRC(ac59c186) SHA1(7d4924d1e4c1b9257b58a690de988b3f6486e86f) )
+	ROM_RELOAD_PLAIN ( 0x0200000, 0x0100000 )
+	ROM_RELOAD_PLAIN ( 0x0300000, 0x0100000 )
+	ROM_LOAD16_WORD_SWAP( "mpr18968.2",    0x0400000, 0x0400000, CRC(11a891de) SHA1(1a4fa8d7e07e1d8fdc8122ef8a5b93723c007cda) ) // good (was .1)
+	ROM_LOAD16_WORD_SWAP( "mpr18969.3",    0x0800000, 0x0400000, CRC(199cc47d) SHA1(d78f7c6be7e9b43e208244c5c8722245f4c653e1) ) // good (was .2)
+	ROM_LOAD16_WORD_SWAP( "mpr18970.4",    0x0c00000, 0x0400000, CRC(8b7a509e) SHA1(8f4d36a858231764ed09b26a1141d1f055eee092) ) // good (was .3)
+	ROM_LOAD16_WORD_SWAP( "mpr18971.5",    0x1000000, 0x0400000, CRC(c87c443b) SHA1(f2fedb35c80e5c4855c7aebff88186397f4d51bc) ) // good (was .4)
+	ROM_LOAD16_WORD_SWAP( "mpr18972.6",    0x1400000, 0x0400000, CRC(45c64fca) SHA1(ae2f678b9885426ce99b615b7f62a451f9ef83f9) ) // good (was .5)
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(decathlto)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18967.13", 0x0000001, 0x0100000,
-                CRC(c0446674) SHA1(4917089d95613c9d2a936ed9fe3ebd22f461aa4f))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18967.13",               0x0000001, 0x0100000, CRC(c0446674) SHA1(4917089d95613c9d2a936ed9fe3ebd22f461aa4f) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP(
     "mpr18968.2", 0x0400000, 0x0400000,
@@ -2809,10 +2694,8 @@ ROM_START(diehard) /* must use USA, Europe or Taiwan BIOS */
 STV_BIOS
 ROM_DEFAULT_BIOS("us")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr19119.13", 0x0000001, 0x0100000,
-                CRC(de5c4f7c) SHA1(35f670a15e9c86edbe2fe718470f5a75b5b096ac))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr19119.13",               0x0000001, 0x0100000, CRC(de5c4f7c) SHA1(35f670a15e9c86edbe2fe718470f5a75b5b096ac) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr19115.2", 0x0400000, 0x0400000,
                      CRC(6fe06a30)
@@ -2833,10 +2716,8 @@ ROM_END
 ROM_START(dnmtdeka)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr19114.13", 0x0000001, 0x0100000,
-                CRC(1fd22a5f) SHA1(c3d9653b12354a73a3e15f23a2ab7992ffb83e46))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr19114.13",               0x0000001, 0x0100000, CRC(1fd22a5f) SHA1(c3d9653b12354a73a3e15f23a2ab7992ffb83e46) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr19115.2", 0x0400000, 0x0400000,
                      CRC(6fe06a30)
@@ -2857,10 +2738,8 @@ ROM_END
 ROM_START(ejihon)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18137.13", 0x0000001, 0x0080000,
-                CRC(151aa9bc) SHA1(0959c60f31634816825acb57413838dcddb17d31))
-ROM_RELOAD(0x100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18137.13",               0x0000001, 0x0080000, CRC(151aa9bc) SHA1(0959c60f31634816825acb57413838dcddb17d31) )ROM_RELOAD(0x100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr18138.2", 0x0400000, 0x0400000,
@@ -2885,40 +2764,15 @@ ROM_END
 ROM_START(elandore)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP(
-    "mpr21307.7", 0x0200000, 0x0200000,
-    CRC(966ad472)
-        SHA1(d6db41d1c40d08eb6bce8a8a2f491e7533daf670)) // good (was .11s)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21301.2", 0x0400000, 0x0400000,
-    CRC(1a23b0a0)
-        SHA1(f9dbc7ba96dadfb00e5827622b557080449acd83)) // good (was .12)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21302.3", 0x0800000, 0x0400000,
-    CRC(1c91ca33)
-        SHA1(ae11209088e3bf8fc4a92dca850d7303ce949b29)) // good (was .13)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21303.4", 0x0c00000, 0x0400000,
-    CRC(07b2350e)
-        SHA1(f32f63fd8bec4e667f61da203d63be9a27798dfe)) // good (was .14)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21304.5", 0x1000000, 0x0400000,
-    CRC(cfea52ae)
-        SHA1(4b6d27e0b2a95300ee9e07ebcdc4953d77c4efbe)) // good (was .15)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21305.6", 0x1400000, 0x0400000,
-    CRC(46cfc2a2)
-        SHA1(8ca26bf8fa5ced040e815c125c13dd06d599e189)) // good (was .16)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21306.1", 0x1800000, 0x0400000,
-    CRC(87a5929c)
-        SHA1(b259341d7b0e1fa98959bf52d23db5c308a8efdd)) // good (was .17)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21308.8", 0x1c00000, 0x0400000,
-    CRC(336ec1a4)
-        SHA1(20d1fce050cf6132d284b91853a4dd5626372ef0)) // good (was .18s)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr21307.7",    0x0200000, 0x0200000, CRC(966ad472) SHA1(d6db41d1c40d08eb6bce8a8a2f491e7533daf670) ) // good (was .11s)
+	ROM_LOAD16_WORD_SWAP( "mpr21301.2",    0x0400000, 0x0400000, CRC(1a23b0a0) SHA1(f9dbc7ba96dadfb00e5827622b557080449acd83) ) // good (was .12)
+	ROM_LOAD16_WORD_SWAP( "mpr21302.3",    0x0800000, 0x0400000, CRC(1c91ca33) SHA1(ae11209088e3bf8fc4a92dca850d7303ce949b29) ) // good (was .13)
+	ROM_LOAD16_WORD_SWAP( "mpr21303.4",    0x0c00000, 0x0400000, CRC(07b2350e) SHA1(f32f63fd8bec4e667f61da203d63be9a27798dfe) ) // good (was .14)
+	ROM_LOAD16_WORD_SWAP( "mpr21304.5",    0x1000000, 0x0400000, CRC(cfea52ae) SHA1(4b6d27e0b2a95300ee9e07ebcdc4953d77c4efbe) ) // good (was .15)
+	ROM_LOAD16_WORD_SWAP( "mpr21305.6",    0x1400000, 0x0400000, CRC(46cfc2a2) SHA1(8ca26bf8fa5ced040e815c125c13dd06d599e189) ) // good (was .16)
+	ROM_LOAD16_WORD_SWAP( "mpr21306.1",    0x1800000, 0x0400000, CRC(87a5929c) SHA1(b259341d7b0e1fa98959bf52d23db5c308a8efdd) ) // good (was .17)
+	ROM_LOAD16_WORD_SWAP( "mpr21308.8",    0x1c00000, 0x0400000, CRC(336ec1a4) SHA1(20d1fce050cf6132d284b91853a4dd5626372ef0) ) // good (was .18s)
 // 610-0374-126   1998     317-5043-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "05226d41")
 ROM_REGION16_BE(0x80, "eeprom",
@@ -2928,36 +2782,14 @@ ROM_END
 ROM_START(ffrevng10)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP(
-    "opr21872.7", 0x0200000, 0x0200000,
-    CRC(32d36fee)
-        SHA1(441c4254ef2e9301e1006d69462a850ce339314b)) // good (was .11s)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21873.2", 0x0400000, 0x0400000,
-    CRC(dac5bd98)
-        SHA1(6102035ce9eb2f83d7d9b20f989a151f45087c67)) // good (was .12)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21874.3", 0x0800000, 0x0400000,
-    CRC(0a7be2f1)
-        SHA1(e2d13f36e54d1e2cb9d584db829c04a6ff65108c)) // good (was .13)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21875.4", 0x0c00000, 0x0400000,
-    CRC(ccb75029)
-        SHA1(9611a08a2ad0e0e82137ded6205440a948a339a4)) // good (was .14)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21876.5", 0x1000000, 0x0400000,
-    CRC(bb92a7fc)
-        SHA1(d9e0fab1104a46adeb0a0cfc0d070d4c63a28d55)) // good (was .15)
-ROM_LOAD16_WORD_SWAP(
-    "mpr21877.6", 0x1400000, 0x0400000,
-    CRC(c22a4a75)
-        SHA1(3276bc0628e71b432f21ba9a4f5ff7ccc8769cd9)) // good (was .16)
-ROM_LOAD16_WORD_SWAP(
-    "opr21878.1", 0x1800000, 0x0200000,
-    CRC(2ea4a64d)
-        SHA1(928a973dce5eba0a1628d61ba56a530de990a946)) // good (was .17)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "opr21872.7",   0x0200000, 0x0200000, CRC(32d36fee) SHA1(441c4254ef2e9301e1006d69462a850ce339314b) ) // good (was .11s)
+	ROM_LOAD16_WORD_SWAP( "mpr21873.2",   0x0400000, 0x0400000, CRC(dac5bd98) SHA1(6102035ce9eb2f83d7d9b20f989a151f45087c67) ) // good (was .12)
+	ROM_LOAD16_WORD_SWAP( "mpr21874.3",   0x0800000, 0x0400000, CRC(0a7be2f1) SHA1(e2d13f36e54d1e2cb9d584db829c04a6ff65108c) ) // good (was .13)
+	ROM_LOAD16_WORD_SWAP( "mpr21875.4",   0x0c00000, 0x0400000, CRC(ccb75029) SHA1(9611a08a2ad0e0e82137ded6205440a948a339a4) ) // good (was .14)
+	ROM_LOAD16_WORD_SWAP( "mpr21876.5",   0x1000000, 0x0400000, CRC(bb92a7fc) SHA1(d9e0fab1104a46adeb0a0cfc0d070d4c63a28d55) ) // good (was .15)
+	ROM_LOAD16_WORD_SWAP( "mpr21877.6",   0x1400000, 0x0400000, CRC(c22a4a75) SHA1(3276bc0628e71b432f21ba9a4f5ff7ccc8769cd9) ) // good (was .16)
+	ROM_LOAD16_WORD_SWAP( "opr21878.1",   0x1800000, 0x0200000, CRC(2ea4a64d) SHA1(928a973dce5eba0a1628d61ba56a530de990a946) ) // good (was .17)
 // 610-0374-128   1998     317-5049-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "0524ac01")
 ROM_REGION16_BE(0x80, "eeprom",
@@ -2967,10 +2799,8 @@ ROM_END
 ROM_START(ffreveng)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("ffr110.ic35", 0x0000001, 0x0100000,
-                CRC(3ffea541) SHA1(715b070b1d574a99aeb12086de380b0b3aaa25a1))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE(      "ffr110.ic35",  0x0000001, 0x0100000, CRC(3ffea541) SHA1(715b070b1d574a99aeb12086de380b0b3aaa25a1) )
 // actual source ROM board have 21x 16Mbit FlashROMs instead
 ROM_LOAD16_WORD_SWAP(
     "opr21872.7", 0x0200000, 0x0200000,
@@ -3011,14 +2841,8 @@ ROM_END
 ROM_START(fhboxers)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE(
-    "fr18541a.13", 0x0000001, 0x0100000,
-    CRC(8c61a17c) SHA1(
-        a8aef27b53482923a506f7daa4b7a38653b4d8a4)) //(header is read from here,
-                                                   //not ic7 even if both are
-                                                   //populated on this board)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fr18541a.13",               0x0000001, 0x0100000, CRC(8c61a17c) SHA1(a8aef27b53482923a506f7daa4b7a38653b4d8a4) ) //(header is read from here, not ic7 even if both are populated on this board)
 ROM_LOAD16_WORD_SWAP("mpr18538.7", 0x0200000, 0x0200000,
                      CRC(7b5230c5)
                          SHA1(70cebc3281580b43adf42c37318e12159c28a13d)) // good
@@ -3056,14 +2880,8 @@ ROM_END
 ROM_START(findlove)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE(
-    "epr20424.13", 0x0000001, 0x0100000,
-    CRC(4e61fa46) SHA1(
-        e34624d98cbdf2dd04d997167d3c4decd2f208f7)) //(header is read from here,
-                                                   //not ic7 even if both are
-                                                   //populated on this board)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr20424.13",               0x0000001, 0x0100000, CRC(4e61fa46) SHA1(e34624d98cbdf2dd04d997167d3c4decd2f208f7) ) //(header is read from here, not ic7 even if both are populated on this board)
 ROM_LOAD16_WORD_SWAP("mpr20431.7", 0x0200000, 0x0200000,
                      CRC(ea656ced)
                          SHA1(b2d6286081bd46a89d1284a2757b87d0bca1bbde)) // good
@@ -3109,10 +2927,8 @@ ROM_END
 ROM_START(finlarch)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("finlarch.13", 0x0000001, 0x0100000,
-                CRC(4505fa9e) SHA1(96c6399146cf9c8f1d27a8fb6a265f937258004a))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "finlarch.13",               0x0000001, 0x0100000, CRC(4505fa9e) SHA1(96c6399146cf9c8f1d27a8fb6a265f937258004a) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr18257.2", 0x0400000, 0x0400000,
                      CRC(137fdf55)
@@ -3137,10 +2953,8 @@ ROM_END
 ROM_START(gaxeduel)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr17766.13", 0x0000001, 0x0080000,
-                CRC(a83fcd62) SHA1(4ce77ebaa0e93c6553ad8f7fb87cbdc32433402b))
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr17766.13",               0x0000001, 0x0080000, CRC(a83fcd62) SHA1(4ce77ebaa0e93c6553ad8f7fb87cbdc32433402b) )ROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr17768.2", 0x0400000, 0x0400000,
@@ -3168,115 +2982,53 @@ ROM_END
 ROM_START(grdforce)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr20844.7", 0x0200000, 0x0200000,
-                     CRC(283e7587)
-                         SHA1(477fabc27cfe149ad17757e31f10665dcf8c0860)) // good
-ROM_LOAD16_WORD_SWAP("mpr20839.2", 0x0400000, 0x0400000,
-                     CRC(facd4dd8)
-                         SHA1(2582894c98b31ab719f1865d4623dad6736dc877)) // good
-ROM_LOAD16_WORD_SWAP("mpr20840.3", 0x0800000, 0x0400000,
-                     CRC(fe0158e6)
-                         SHA1(73460effe69fb8f16dd952271542b7803471a599)) // good
-ROM_LOAD16_WORD_SWAP("mpr20841.4", 0x0c00000, 0x0400000,
-                     CRC(d87ac873)
-                         SHA1(35b8fa3862e09dca530e9597f983f5a22919cf08)) // good
-ROM_LOAD16_WORD_SWAP("mpr20842.5", 0x1000000, 0x0400000,
-                     CRC(baebc506)
-                         SHA1(f5f59f9263956d0c49c729729cf6db31dc861d3b)) // good
-ROM_LOAD16_WORD_SWAP("mpr20843.6", 0x1400000, 0x0400000,
-                     CRC(263e49cc)
-                         SHA1(67979861ca2784b3ce39d87e7994e6e7351b40e5)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr20844.7",    0x0200000, 0x0200000, CRC(283e7587) SHA1(477fabc27cfe149ad17757e31f10665dcf8c0860) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20839.2",    0x0400000, 0x0400000, CRC(facd4dd8) SHA1(2582894c98b31ab719f1865d4623dad6736dc877) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20840.3",    0x0800000, 0x0400000, CRC(fe0158e6) SHA1(73460effe69fb8f16dd952271542b7803471a599) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20841.4",    0x0c00000, 0x0400000, CRC(d87ac873) SHA1(35b8fa3862e09dca530e9597f983f5a22919cf08) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20842.5",    0x1000000, 0x0400000, CRC(baebc506) SHA1(f5f59f9263956d0c49c729729cf6db31dc861d3b) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20843.6",    0x1400000, 0x0400000, CRC(263e49cc) SHA1(67979861ca2784b3ce39d87e7994e6e7351b40e5) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(groovef)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr19820.7", 0x0200000, 0x0100000,
-                     CRC(e93c4513)
-                         SHA1(f9636529224880c49bd2cc5572bd5bf41dbf911a)) // good
-ROM_LOAD16_WORD_SWAP("mpr19815.2", 0x0400000, 0x0400000,
-                     CRC(1b9b14e6)
-                         SHA1(b1828c520cb108e2927a23273ebd2939dca52304)) // good
-ROM_LOAD16_WORD_SWAP("mpr19816.3", 0x0800000, 0x0400000,
-                     CRC(83f5731c)
-                         SHA1(2f645737f945c59a1a2fabf3b21a761be9e8c8a6)) // good
-ROM_LOAD16_WORD_SWAP("mpr19817.4", 0x0c00000, 0x0400000,
-                     CRC(525bd6c7)
-                         SHA1(2db2501177fb0b44d0fad2054eddf356c4ea08f2)) // good
-ROM_LOAD16_WORD_SWAP("mpr19818.5", 0x1000000, 0x0400000,
-                     CRC(66723ba8)
-                         SHA1(0a8379e46a8f8cab11befeadd9abdf59dba68e27)) // good
-ROM_LOAD16_WORD_SWAP("mpr19819.6", 0x1400000, 0x0400000,
-                     CRC(ee8c55f4)
-                         SHA1(f6d86b2c2ab43ec5baefb8ccc25e11af4d82712d)) // good
-ROM_LOAD16_WORD_SWAP("mpr19814.1", 0x1800000, 0x0400000,
-                     CRC(8f20e9f7)
-                         SHA1(30ff5ad0427208e7265cb996e870c4dc0fbbf7d2)) // good
-ROM_LOAD16_WORD_SWAP("mpr19821.8", 0x1c00000, 0x0400000,
-                     CRC(f69a76e6)
-                         SHA1(b7e41f34d8b787bf1b4d587e5d8bddb241c043a8)) // good
-ROM_LOAD16_WORD_SWAP("mpr19822.9", 0x2000000, 0x0200000,
-                     CRC(5e8c4b5f)
-                         SHA1(1d146fbe3d0bfa68993135ba94ef18081ab65d31)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr19820.7",    0x0200000, 0x0100000, CRC(e93c4513) SHA1(f9636529224880c49bd2cc5572bd5bf41dbf911a) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19815.2",    0x0400000, 0x0400000, CRC(1b9b14e6) SHA1(b1828c520cb108e2927a23273ebd2939dca52304) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19816.3",    0x0800000, 0x0400000, CRC(83f5731c) SHA1(2f645737f945c59a1a2fabf3b21a761be9e8c8a6) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19817.4",    0x0c00000, 0x0400000, CRC(525bd6c7) SHA1(2db2501177fb0b44d0fad2054eddf356c4ea08f2) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19818.5",    0x1000000, 0x0400000, CRC(66723ba8) SHA1(0a8379e46a8f8cab11befeadd9abdf59dba68e27) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19819.6",    0x1400000, 0x0400000, CRC(ee8c55f4) SHA1(f6d86b2c2ab43ec5baefb8ccc25e11af4d82712d) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19814.1",    0x1800000, 0x0400000, CRC(8f20e9f7) SHA1(30ff5ad0427208e7265cb996e870c4dc0fbbf7d2) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19821.8",    0x1c00000, 0x0400000, CRC(f69a76e6) SHA1(b7e41f34d8b787bf1b4d587e5d8bddb241c043a8) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19822.9",    0x2000000, 0x0200000, CRC(5e8c4b5f) SHA1(1d146fbe3d0bfa68993135ba94ef18081ab65d31) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(hanagumi)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr20143.7", 0x0200000, 0x0100000,
-                     CRC(7bfc38d0)
-                         SHA1(66f223e7ff2b5456a6f4185b7ab36f9cd833351a)) // good
-ROM_LOAD16_WORD_SWAP("mpr20138.2", 0x0400000, 0x0400000,
-                     CRC(fdcf1046)
-                         SHA1(cbb1f03879833c17feffdd6f5a4fbff06e1059a2)) // good
-ROM_LOAD16_WORD_SWAP("mpr20139.3", 0x0800000, 0x0400000,
-                     CRC(7f0140e5)
-                         SHA1(f2f7de7620d66a596d552e1af491a0592ebc4e51)) // good
-ROM_LOAD16_WORD_SWAP("mpr20140.4", 0x0c00000, 0x0400000,
-                     CRC(2fa03852)
-                         SHA1(798ce008f6fc24a00f85298188c8d0d01933640d)) // good
-ROM_LOAD16_WORD_SWAP("mpr20141.5", 0x1000000, 0x0400000,
-                     CRC(45d6d21b)
-                         SHA1(fe0f0b2195b74e79b8efb6a7c0b7bedca7194c48)) // good
-ROM_LOAD16_WORD_SWAP("mpr20142.6", 0x1400000, 0x0400000,
-                     CRC(e38561ec)
-                         SHA1(c04c400be033bc74a7bb2a60f6ae00853a2220d4)) // good
-ROM_LOAD16_WORD_SWAP("mpr20137.1", 0x1800000, 0x0400000,
-                     CRC(181d2688)
-                         SHA1(950059f89eda30d8a5bce145421f507e226b8b3e)) // good
-ROM_LOAD16_WORD_SWAP("mpr20144.8", 0x1c00000, 0x0400000,
-                     CRC(235b43f6)
-                         SHA1(e35d9bf15ac805513ab3edeca4f264647a2dc0b0)) // good
-ROM_LOAD16_WORD_SWAP("mpr20145.9", 0x2000000, 0x0400000,
-                     CRC(aeaac7a1)
-                         SHA1(5c75ecce49a5c53dbb0b07e75f3a76e6db9976d0)) // good
-ROM_LOAD16_WORD_SWAP("mpr20146.10", 0x2400000, 0x0400000,
-                     CRC(39bab9a2)
-                         SHA1(077132e6a03afd181ee9ca9ca4f7c9cbf418e57e)) // good
-ROM_LOAD16_WORD_SWAP("mpr20147.11", 0x2800000, 0x0400000,
-                     CRC(294ab997)
-                         SHA1(aeba269ae7d056f07edecf96bc138231c66c3637)) // good
-ROM_LOAD16_WORD_SWAP("mpr20148.12", 0x2c00000, 0x0400000,
-                     CRC(5337ccb0)
-                         SHA1(a998bb116eb10c4044410f065c5ddeb845f9dab5)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr20143.7",    0x0200000, 0x0100000, CRC(7bfc38d0) SHA1(66f223e7ff2b5456a6f4185b7ab36f9cd833351a) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20138.2",    0x0400000, 0x0400000, CRC(fdcf1046) SHA1(cbb1f03879833c17feffdd6f5a4fbff06e1059a2) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20139.3",    0x0800000, 0x0400000, CRC(7f0140e5) SHA1(f2f7de7620d66a596d552e1af491a0592ebc4e51) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20140.4",    0x0c00000, 0x0400000, CRC(2fa03852) SHA1(798ce008f6fc24a00f85298188c8d0d01933640d) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20141.5",    0x1000000, 0x0400000, CRC(45d6d21b) SHA1(fe0f0b2195b74e79b8efb6a7c0b7bedca7194c48) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20142.6",    0x1400000, 0x0400000, CRC(e38561ec) SHA1(c04c400be033bc74a7bb2a60f6ae00853a2220d4) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20137.1",    0x1800000, 0x0400000, CRC(181d2688) SHA1(950059f89eda30d8a5bce145421f507e226b8b3e) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20144.8",    0x1c00000, 0x0400000, CRC(235b43f6) SHA1(e35d9bf15ac805513ab3edeca4f264647a2dc0b0) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20145.9",    0x2000000, 0x0400000, CRC(aeaac7a1) SHA1(5c75ecce49a5c53dbb0b07e75f3a76e6db9976d0) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20146.10",   0x2400000, 0x0400000, CRC(39bab9a2) SHA1(077132e6a03afd181ee9ca9ca4f7c9cbf418e57e) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20147.11",   0x2800000, 0x0400000, CRC(294ab997) SHA1(aeba269ae7d056f07edecf96bc138231c66c3637) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20148.12",   0x2c00000, 0x0400000, CRC(5337ccb0) SHA1(a998bb116eb10c4044410f065c5ddeb845f9dab5) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(introdon)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18937.13", 0x0000001, 0x0080000,
-                CRC(1f40d766) SHA1(35d9751c1b23cfbf448f2a9e9cf3b121929368ae))
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18937.13",               0x0000001, 0x0080000, CRC(1f40d766) SHA1(35d9751c1b23cfbf448f2a9e9cf3b121929368ae) )ROM_RELOAD(0x0100001, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr18944.7", 0x0200000, 0x0100000,
                      CRC(f7f75ce5)
                          SHA1(0787ece9f89cc1847889adbf08ba5d3ccbc405de)) // good
@@ -3307,11 +3059,8 @@ ROM_END
 ROM_START(kiwames)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18737.13", 0x0000001, 0x0080000,
-                CRC(cfad6c49)
-                    SHA1(fc69980a351ed13307706db506c79c774eabeb66)) // bad
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18737.13",               0x0000001, 0x0080000, CRC(cfad6c49) SHA1(fc69980a351ed13307706db506c79c774eabeb66) ) // goodROM_RELOAD(0x0100001, 0x0080000)
 
 ROM_LOAD16_WORD_SWAP("mpr18738.2", 0x0400000, 0x0400000,
                      CRC(4b3c175a)
@@ -3331,11 +3080,8 @@ ROM_END
 ROM_START(maruchan)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr20416.13", 0x0000001, 0x0100000,
-                CRC(8bf0176d)
-                    SHA1(5bd468e2ffed042ee84e2ceb8712ff5883a1d824)) // bad
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF ) /* SH2 code */
+	ROM_LOAD16_BYTE( "epr20416.13",               0x0000001, 0x0100000, CRC(8bf0176d) SHA1(5bd468e2ffed042ee84e2ceb8712ff5883a1d824) ) // goodROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr20417.2", 0x0400000, 0x0400000,
                      CRC(636c2a08)
@@ -3369,32 +3115,15 @@ ROM_END
 ROM_START(myfairld)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr21000.7", 0x0200000, 0x0200000,
-                     CRC(2581c560)
-                         SHA1(5fb64f0e09583d50dfea7ad613d45aad30b677a5)) // good
-ROM_LOAD16_WORD_SWAP("mpr20995.2", 0x0400000, 0x0400000,
-                     CRC(1bb73f24)
-                         SHA1(8773654810de760c5dffbb561f43e259b074a61b)) // good
-ROM_LOAD16_WORD_SWAP("mpr20996.3", 0x0800000, 0x0400000,
-                     CRC(993c3859)
-                         SHA1(93f95e3e080a08961784482607919c1ab3eeb5e5)) // good
-ROM_LOAD16_WORD_SWAP("mpr20997.4", 0x0c00000, 0x0400000,
-                     CRC(f0bf64a4)
-                         SHA1(f51431f1a736bbc498fa0baa1f8570f89984d9f9)) // good
-ROM_LOAD16_WORD_SWAP("mpr20998.5", 0x1000000, 0x0400000,
-                     CRC(d3b19786)
-                         SHA1(1933e57272cd68cc323922fa93a9af97dcef8450)) // good
-ROM_LOAD16_WORD_SWAP("mpr20999.6", 0x1400000, 0x0400000,
-                     CRC(82e31f25)
-                         SHA1(0cf74af14abb6ede21d19bc22041214232751594)) // good
-ROM_LOAD16_WORD_SWAP("mpr20994.1", 0x1800000, 0x0400000,
-                     CRC(a69243a0)
-                         SHA1(e5a1b6ec62bdd5b015ed6cf48f5a6aabaf4bd837)) // good
-ROM_LOAD16_WORD_SWAP("mpr21001.8", 0x1c00000, 0x0400000,
-                     CRC(95fbe549)
-                         SHA1(8cfb48f353b2849600373d66f293f103bca700df)) // good
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr21000.7",    0x0200000, 0x0200000, CRC(2581c560) SHA1(5fb64f0e09583d50dfea7ad613d45aad30b677a5) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20995.2",    0x0400000, 0x0400000, CRC(1bb73f24) SHA1(8773654810de760c5dffbb561f43e259b074a61b) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20996.3",    0x0800000, 0x0400000, CRC(993c3859) SHA1(93f95e3e080a08961784482607919c1ab3eeb5e5) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20997.4",    0x0c00000, 0x0400000, CRC(f0bf64a4) SHA1(f51431f1a736bbc498fa0baa1f8570f89984d9f9) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20998.5",    0x1000000, 0x0400000, CRC(d3b19786) SHA1(1933e57272cd68cc323922fa93a9af97dcef8450) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20999.6",    0x1400000, 0x0400000, CRC(82e31f25) SHA1(0cf74af14abb6ede21d19bc22041214232751594) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20994.1",    0x1800000, 0x0400000, CRC(a69243a0) SHA1(e5a1b6ec62bdd5b015ed6cf48f5a6aabaf4bd837) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr21001.8",    0x1c00000, 0x0400000, CRC(95fbe549) SHA1(8cfb48f353b2849600373d66f293f103bca700df) ) // good
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("myfairld.nv", 0x0000, 0x0080,
          CRC(c7cf3a5a) SHA1(5365f38047821305658f94395f03cf2c49c87576))
@@ -3403,34 +3132,19 @@ ROM_END
 ROM_START(othellos)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr20967.7", 0x0200000, 0x0200000,
-                     CRC(efc05b97)
-                         SHA1(a533366c3aaba90dcac8f3654db9ad902efca258)) // good
-ROM_LOAD16_WORD_SWAP("mpr20963.2", 0x0400000, 0x0400000,
-                     CRC(2cc4f141)
-                         SHA1(8bd1998aff8615b34d119fab3637a08ed6e8e1e4)) // good
-ROM_LOAD16_WORD_SWAP("mpr20964.3", 0x0800000, 0x0400000,
-                     CRC(5f5cda94)
-                         SHA1(616be219a2512e80c875eddf05137c23aedf6f65)) // good
-ROM_LOAD16_WORD_SWAP("mpr20965.4", 0x0c00000, 0x0400000,
-                     CRC(37044f3e)
-                         SHA1(cbc071554cfd8bb12a337c04b169de6c6309c3ab)) // good
-ROM_LOAD16_WORD_SWAP("mpr20966.5", 0x1000000, 0x0400000,
-                     CRC(b94b83de)
-                         SHA1(ba1b3135d0ad057f0786f94c9d06b5e347bedea8)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr20967.7",    0x0200000, 0x0200000, CRC(efc05b97) SHA1(a533366c3aaba90dcac8f3654db9ad902efca258) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20963.2",    0x0400000, 0x0400000, CRC(2cc4f141) SHA1(8bd1998aff8615b34d119fab3637a08ed6e8e1e4) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20964.3",    0x0800000, 0x0400000, CRC(5f5cda94) SHA1(616be219a2512e80c875eddf05137c23aedf6f65) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20965.4",    0x0c00000, 0x0400000, CRC(37044f3e) SHA1(cbc071554cfd8bb12a337c04b169de6c6309c3ab) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr20966.5",    0x1000000, 0x0400000, CRC(b94b83de) SHA1(ba1b3135d0ad057f0786f94c9d06b5e347bedea8) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(pblbeach)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18852.13", 0x0000001, 0x0080000,
-                CRC(d12414ec)
-                    SHA1(0f42ec9e41983781b6892622b00398a102072aa7)) // bad
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18852.13",               0x0000001, 0x0080000, CRC(d12414ec) SHA1(0f42ec9e41983781b6892622b00398a102072aa7) ) // goodROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr18853.2", 0x0400000, 0x0400000,
@@ -3452,34 +3166,19 @@ ROM_END
 ROM_START(prikura)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr19337.7", 0x0200000, 0x0200000,
-                     CRC(76f69ff3)
-                         SHA1(5af2e1eb3288d70c2a1c71d0b6370125d65c7757)) // good
-ROM_LOAD16_WORD_SWAP("mpr19333.2", 0x0400000, 0x0400000,
-                     CRC(eb57a6a6)
-                         SHA1(cdacaa7a2fb1a343195e2ac5fd02eabf27f89ccd)) // good
-ROM_LOAD16_WORD_SWAP("mpr19334.3", 0x0800000, 0x0400000,
-                     CRC(c9979981)
-                         SHA1(be491a4ac118d5025d6a6f2d9267a6d52f21d2b6)) // good
-ROM_LOAD16_WORD_SWAP("mpr19335.4", 0x0c00000, 0x0400000,
-                     CRC(9e000140)
-                         SHA1(9b7dc3dc7f9dc048d2fcbc2b44ae79a631ceb381)) // good
-ROM_LOAD16_WORD_SWAP("mpr19336.5", 0x1000000, 0x0400000,
-                     CRC(2363fa4b)
-                         SHA1(f45e53352520be4ea313eeab87bcab83f479d5a8)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr19337.7",    0x0200000, 0x0200000, CRC(76f69ff3) SHA1(5af2e1eb3288d70c2a1c71d0b6370125d65c7757) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19333.2",    0x0400000, 0x0400000, CRC(eb57a6a6) SHA1(cdacaa7a2fb1a343195e2ac5fd02eabf27f89ccd) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19334.3",    0x0800000, 0x0400000, CRC(c9979981) SHA1(be491a4ac118d5025d6a6f2d9267a6d52f21d2b6) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19335.4",    0x0c00000, 0x0400000, CRC(9e000140) SHA1(9b7dc3dc7f9dc048d2fcbc2b44ae79a631ceb381) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19336.5",    0x1000000, 0x0400000, CRC(2363fa4b) SHA1(f45e53352520be4ea313eeab87bcab83f479d5a8) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(puyosun)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr19531.13", 0x0000001, 0x0080000,
-                CRC(ac81024f)
-                    SHA1(b22c7c1798fade7ae992ff83b138dd23e6292d3f)) // bad
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr19531.13",               0x0000001, 0x0080000, CRC(ac81024f) SHA1(b22c7c1798fade7ae992ff83b138dd23e6292d3f) ) // goodROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr19533.2", 0x0400000, 0x0400000,
@@ -3513,41 +3212,23 @@ ROM_END
 ROM_START(rsgun)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP(
-    "mpr20958.7", 0x0200000, 0x0200000,
-    CRC(cbe5a449)
-        SHA1(b4744ab71ccbadda1921ba43dd1148e57c0f84c5)) // good (was .11s)
-ROM_LOAD16_WORD_SWAP(
-    "mpr20959.2", 0x0400000, 0x0400000,
-    CRC(a953330b)
-        SHA1(965274a7297cb88e281fcbdd3ec5025c6463cc7b)) // good (was .12)
-ROM_LOAD16_WORD_SWAP(
-    "mpr20960.3", 0x0800000, 0x0400000,
-    CRC(b5ab9053)
-        SHA1(87c5d077eb1219c35fa65b4e11d5b62e826f5236)) // good (was .13)
-ROM_LOAD16_WORD_SWAP(
-    "mpr20961.4", 0x0c00000, 0x0400000,
-    CRC(0e06295c)
-        SHA1(0ec2842622f3e9dc5689abd58aeddc7e5603b97a)) // good (was .14)
-ROM_LOAD16_WORD_SWAP(
-    "mpr20962.5", 0x1000000, 0x0400000,
-    CRC(f1e6c7fc)
-        SHA1(0ba0972f1bc7c56f4e0589d3e363523cea988bb0)) // good (was .15)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr20958.7",   0x0200000, 0x0200000, CRC(cbe5a449) SHA1(b4744ab71ccbadda1921ba43dd1148e57c0f84c5) ) // good (was .11s)
+	ROM_LOAD16_WORD_SWAP( "mpr20959.2",   0x0400000, 0x0400000, CRC(a953330b) SHA1(965274a7297cb88e281fcbdd3ec5025c6463cc7b) ) // good (was .12)
+	ROM_LOAD16_WORD_SWAP( "mpr20960.3",   0x0800000, 0x0400000, CRC(b5ab9053) SHA1(87c5d077eb1219c35fa65b4e11d5b62e826f5236) ) // good (was .13)
+	ROM_LOAD16_WORD_SWAP( "mpr20961.4",   0x0c00000, 0x0400000, CRC(0e06295c) SHA1(0ec2842622f3e9dc5689abd58aeddc7e5603b97a) ) // good (was .14)
+	ROM_LOAD16_WORD_SWAP( "mpr20962.5",   0x1000000, 0x0400000, CRC(f1e6c7fc) SHA1(0ba0972f1bc7c56f4e0589d3e363523cea988bb0) ) // good (was .15)
 // 610-0374-96   1998     317-5041-COM   ST-V
 ROM_PARAMETER(":315_5881:key", "05272d01")
 ROM_REGION16_BE(0x80, "eeprom",
                 ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
 ROM_END
 
-ROM_START(sandor)
+ROM_START( sandr )
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("sando-r.13", 0x0000001, 0x0100000,
-                CRC(fe63a239) SHA1(01502d4494f968443581cd2c74f25967d41f775e))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF ) /* SH2 code */
+	ROM_LOAD16_BYTE( "sando-r.13",               0x0000001, 0x0100000, CRC(fe63a239) SHA1(01502d4494f968443581cd2c74f25967d41f775e) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr18635.8", 0x1c00000, 0x0400000,
                      CRC(441e1368)
@@ -3588,12 +3269,9 @@ are populated) and also some logic ICs.
 ROM_START(thunt)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("th-ic7_2.stv", 0x0200000, 0x0080000,
-                CRC(c4e993de) SHA1(7aa433bc2623cb19a09d4ef4c8233a2d29901020))
-ROM_LOAD16_BYTE("th-ic7_1.stv", 0x0200001, 0x0080000,
-                CRC(1355cc18) SHA1(a9b731228a807b2b01f933fe0f7dcdbadaf89b7e))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "th-ic7_2.stv",    0x0200000, 0x0080000, CRC(c4e993de) SHA1(7aa433bc2623cb19a09d4ef4c8233a2d29901020) )
+	ROM_LOAD16_BYTE( "th-ic7_1.stv",    0x0200001, 0x0080000, CRC(1355cc18) SHA1(a9b731228a807b2b01f933fe0f7dcdbadaf89b7e) )
 ROM_LOAD16_WORD_SWAP("th-e-2.ic2", 0x0400000, 0x0400000,
                      CRC(47315694)
                          SHA1(4a7cc195b98dbca146f5efe3b5b35be0f13b2f4a))
@@ -3613,12 +3291,9 @@ ROM_END
 ROM_START(thuntk)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("2.ic13_2", 0x0200000, 0x0080000,
-                CRC(6cae2926) SHA1(e8d5745b4228de24672da5017cb3dab58344f59f))
-ROM_LOAD16_BYTE("1.ic13_1", 0x0200001, 0x0080000,
-                CRC(460727c8) SHA1(da7171b65734264e10692e3408ac93beb374c65e))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "2.ic13_2",    0x0200000, 0x0080000, CRC(6cae2926) SHA1(e8d5745b4228de24672da5017cb3dab58344f59f) )
+	ROM_LOAD16_BYTE( "1.ic13_1",    0x0200001, 0x0080000, CRC(460727c8) SHA1(da7171b65734264e10692e3408ac93beb374c65e) )
 ROM_LOAD("bom210-10.ic2", 0x1c00000, 0x0400000,
          CRC(f59d0827) SHA1(2bed4b2c78e9b4e9332f576e1b264a6343f4cfff))
 ROM_RELOAD(0x0400000, 0x0400000)
@@ -3638,10 +3313,8 @@ ROM_END
 ROM_START(sanjeon)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("ic11", 0x0000001, 0x0200000,
-                CRC(9abae8d4) SHA1(ddbe4c8fff8fa59d63e278e95f245145d2da8aeb))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "ic11",               0x0000001, 0x0200000, CRC(9abae8d4) SHA1(ddbe4c8fff8fa59d63e278e95f245145d2da8aeb) )
 ROM_LOAD("ic13", 0x0400000, 0x0200000,
          CRC(f72c1d13)
              SHA1(a2b168d187034024b83fbbe2f5eec78816285da9)) // ic2 good
@@ -3682,10 +3355,8 @@ ROM_END
 ROM_START(sasissu)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr20542.13", 0x0000001, 0x0100000,
-                CRC(0e632db5) SHA1(9bc52794892eec22d381387d13a0388042e30714))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr20542.13",               0x0000001, 0x0100000, CRC(0e632db5) SHA1(9bc52794892eec22d381387d13a0388042e30714) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr20544.2", 0x0400000, 0x0400000,
                      CRC(661fff5e)
@@ -3713,10 +3384,8 @@ ROM_END
 ROM_START(seabass)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("seabassf.13", 0x0000001, 0x0100000,
-                CRC(6d7c39cc) SHA1(d9d1663134420b75c65ee07d7d547254785f2f83))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "seabassf.13",               0x0000001, 0x0100000, CRC(6d7c39cc) SHA1(d9d1663134420b75c65ee07d7d547254785f2f83) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr20551.2", 0x0400000, 0x0400000,
                      CRC(9a0c6dd8)
@@ -3751,31 +3420,18 @@ ROM_END
 ROM_START(shanhigw)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr18341.7", 0x0200000, 0x0200000,
-                     CRC(cc5e8646)
-                         SHA1(a733616c118140ff3887d30d595533f9a1beae06)) // good
-ROM_LOAD16_WORD_SWAP("mpr18340.2", 0x0400000, 0x0200000,
-                     CRC(8db23212)
-                         SHA1(85d604a5c6ab97188716dbcd77d365af12a238fe)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr18341.7",    0x0200000, 0x0200000, CRC(cc5e8646) SHA1(a733616c118140ff3887d30d595533f9a1beae06) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr18340.2",    0x0400000, 0x0200000, CRC(8db23212) SHA1(85d604a5c6ab97188716dbcd77d365af12a238fe) ) // good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(shienryu)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr19631.7", 0x0200000, 0x0200000,
-                     CRC(3a4b1abc)
-                         SHA1(3b14b7fdebd4817da32ea374c15a38c695ffeff1)) // good
-ROM_LOAD16_WORD_SWAP("mpr19632.2", 0x0400000, 0x0400000,
-                     CRC(985fae46)
-                         SHA1(f953bde91805b97b60d2ab9270f9d2933e064d95)) // good
-ROM_LOAD16_WORD_SWAP("mpr19633.3", 0x0800000, 0x0400000,
-                     CRC(e2f0b037)
-                         SHA1(97861d09e10ce5d2b10bf5559574b3f489e28077)) // good
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr19631.7",    0x0200000, 0x0200000, CRC(3a4b1abc) SHA1(3b14b7fdebd4817da32ea374c15a38c695ffeff1) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19632.2",    0x0400000, 0x0400000, CRC(985fae46) SHA1(f953bde91805b97b60d2ab9270f9d2933e064d95) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19633.3",    0x0800000, 0x0400000, CRC(e2f0b037) SHA1(97861d09e10ce5d2b10bf5559574b3f489e28077) ) // good
 ROM_REGION16_BE(0x80, "eeprom", 0)
 ROM_LOAD("eeprom-shienryu.bin", 0x0000, 0x0080,
          CRC(98db6925) SHA1(e78545e8f62d19f8e00197c62ff0e56f6c85e355))
@@ -3785,10 +3441,8 @@ ROM_START(smleague) /* only runs with the USA bios */
 STV_BIOS
 ROM_DEFAULT_BIOS("us")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18777.13", 0x0000001, 0x0080000,
-                CRC(8d180866) SHA1(d47ebabab6e06400312d39f68cd818852e496b96))
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18777.13",               0x0000001, 0x0080000, CRC(8d180866) SHA1(d47ebabab6e06400312d39f68cd818852e496b96) )ROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr18778.8", 0x1c00000, 0x0400000,
@@ -3813,10 +3467,8 @@ ROM_END
 ROM_START(sokyugrt)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr19188.13", 0x0000001, 0x0100000,
-                CRC(45a27e32) SHA1(96e1bab8bdadf7071afac2a0a6dd8fd8989f12a6))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr19188.13",               0x0000001, 0x0100000, CRC(45a27e32) SHA1(96e1bab8bdadf7071afac2a0a6dd8fd8989f12a6) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr19189.2", 0x0400000, 0x0400000,
                      CRC(0b202a3e)
@@ -3838,10 +3490,8 @@ ROM_END
 ROM_START(sss)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr21488.13", 0x0000001, 0x0080000,
-                CRC(71c9def1) SHA1(a544a0b4046307172d2c1bf426ed24845f87d894))
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr21488.13",               0x0000001, 0x0080000, CRC(71c9def1) SHA1(a544a0b4046307172d2c1bf426ed24845f87d894) )ROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP(
@@ -3876,10 +3526,8 @@ ROM_END
 ROM_START(suikoenb)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr17834.13", 0x0000001, 0x0100000,
-                CRC(746ef686) SHA1(e31c317991a687662a8a2a45aed411001e5f1941))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr17834.13",               0x0000001, 0x0100000, CRC(746ef686) SHA1(e31c317991a687662a8a2a45aed411001e5f1941) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr17836.2", 0x0400000, 0x0400000,
                      CRC(55e9642d)
@@ -3912,11 +3560,8 @@ ROM_END
 ROM_START(twcup98)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr20819.24", 0x0000001, 0x0100000,
-                CRC(d930dfc8) SHA1(
-                    f66cc955181720661a0334fe67fa5750ddf9758b)) // tested as IC13
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr20819.24",    0x0000001, 0x0100000, CRC(d930dfc8) SHA1(f66cc955181720661a0334fe67fa5750ddf9758b) ) // tested as IC13ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP(
     "mpr20821.12", 0x0400000, 0x0400000,
@@ -3944,11 +3589,8 @@ ROM_END
 ROM_START(twsoc98)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr-20820.ic24", 0x0000001, 0x0100000,
-                CRC(b10451f9) SHA1(
-                    180b5071eaa5d6e9903da3fe4845ee2b6a93ef22)) // tested as IC13
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr-20820.ic24",    0x0000001, 0x0100000, CRC(b10451f9) SHA1(180b5071eaa5d6e9903da3fe4845ee2b6a93ef22) ) // tested as IC13ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP(
     "mpr20821.12", 0x0400000, 0x0400000,
@@ -3976,10 +3618,8 @@ ROM_END
 ROM_START(vfkids)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr18914.13", 0x0000001, 0x0100000,
-                CRC(cd35730a) SHA1(645b52b449766beb740ab8f99957f8f431351ceb))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr18914.13",               0x0000001, 0x0100000, CRC(cd35730a) SHA1(645b52b449766beb740ab8f99957f8f431351ceb) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr18916.4", 0x0c00000, 0x0400000,
                      CRC(4aae3ddb)
@@ -4015,11 +3655,8 @@ ROM_END
 ROM_START(vfremix)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr17944.13", 0x0000001, 0x0080000,
-                CRC(3304c175)
-                    SHA1(6d847efad73d361cac4d7fcb452ccf89efa13e24)) // 27C040
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr17944.13",               0x0000001, 0x0080000, CRC(3304c175) SHA1(6d847efad73d361cac4d7fcb452ccf89efa13e24) ) // 27C040ROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 ROM_LOAD16_WORD_SWAP("mpr17946.2", 0x0400000, 0x0400000,
@@ -4048,32 +3685,15 @@ ROM_END
 ROM_START(vmahjong)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr19620.7", 0x0200000, 0x0200000,
-                     CRC(c98de7e5)
-                         SHA1(5346f884793bcb080aa01967e91b54ced4a9802f)) // good
-ROM_LOAD16_WORD_SWAP("mpr19615.2", 0x0400000, 0x0400000,
-                     CRC(c62896da)
-                         SHA1(52a5b10ca8af31295d2d700349eca038c418b522)) // good
-ROM_LOAD16_WORD_SWAP("mpr19616.3", 0x0800000, 0x0400000,
-                     CRC(f62207c7)
-                         SHA1(87e60183365c6f7e62c7a0667f88df0c7f5457fd)) // good
-ROM_LOAD16_WORD_SWAP("mpr19617.4", 0x0c00000, 0x0400000,
-                     CRC(ab667e19)
-                         SHA1(2608a567888fe052753d0679d9a831d7706dbc86)) // good
-ROM_LOAD16_WORD_SWAP("mpr19618.5", 0x1000000, 0x0400000,
-                     CRC(9782ceee)
-                         SHA1(405dd42706416e128b1e2fde225b5343e9330092)) // good
-ROM_LOAD16_WORD_SWAP("mpr19619.6", 0x1400000, 0x0400000,
-                     CRC(0b76866c)
-                         SHA1(10add2993dfe9daf757ec2ff8675390081a93c0a)) // good
-ROM_LOAD16_WORD_SWAP("mpr19614.1", 0x1800000, 0x0400000,
-                     CRC(b83b3f03)
-                         SHA1(e5a5919ee74964633eaaf4af2fe04c38604ccf16)) // good
-ROM_LOAD16_WORD_SWAP("mpr19621.8", 0x1c00000, 0x0400000,
-                     CRC(f92616b3)
-                         SHA1(61a9dda92a86a02d027260e11b1bad3b0dda9f02)) // good
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr19620.7",    0x0200000, 0x0200000, CRC(c98de7e5) SHA1(5346f884793bcb080aa01967e91b54ced4a9802f) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19615.2",    0x0400000, 0x0400000, CRC(c62896da) SHA1(52a5b10ca8af31295d2d700349eca038c418b522) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19616.3",    0x0800000, 0x0400000, CRC(f62207c7) SHA1(87e60183365c6f7e62c7a0667f88df0c7f5457fd) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19617.4",    0x0c00000, 0x0400000, CRC(ab667e19) SHA1(2608a567888fe052753d0679d9a831d7706dbc86) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19618.5",    0x1000000, 0x0400000, CRC(9782ceee) SHA1(405dd42706416e128b1e2fde225b5343e9330092) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19619.6",    0x1400000, 0x0400000, CRC(0b76866c) SHA1(10add2993dfe9daf757ec2ff8675390081a93c0a) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19614.1",    0x1800000, 0x0400000, CRC(b83b3f03) SHA1(e5a5919ee74964633eaaf4af2fe04c38604ccf16) ) // good
+	ROM_LOAD16_WORD_SWAP( "mpr19621.8",    0x1c00000, 0x0400000, CRC(f92616b3) SHA1(61a9dda92a86a02d027260e11b1bad3b0dda9f02) ) // good
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("vmahjong.nv", 0x0000, 0x0080,
          CRC(4e6487f4) SHA1(d6d930ab5f21b8c4f42812d08b3ee90f2bc94081))
@@ -4082,11 +3702,8 @@ ROM_END
 ROM_START(winterht)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("fpr20108.13", 0x0000001, 0x0100000,
-                CRC(1ef9ced0)
-                    SHA1(abc90ce341cd17bb77349d611d6879389611f0bf)) // bad
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "fpr20108.13",    0x0000001, 0x0100000, CRC(1ef9ced0) SHA1(abc90ce341cd17bb77349d611d6879389611f0bf) ) // goodROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr20110.2", 0x0400000, 0x0400000,
                      CRC(238ef832)
@@ -4116,11 +3733,8 @@ ROM_END
 ROM_START(znpwfv)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr20398.13", 0x0000001, 0x0100000,
-                CRC(3fb56a0b)
-                    SHA1(13c2fa2d94b106d39e46f71d15fbce3607a5965a)) // good
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr20398.13",    0x0000001, 0x0100000, CRC(3fb56a0b) SHA1(13c2fa2d94b106d39e46f71d15fbce3607a5965a) ) // goodROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr20400.2", 0x0400000, 0x0400000,
                      CRC(1edfbe05)
@@ -4157,11 +3771,8 @@ ROM_START(znpwfvt)
 STV_BIOS
 ROM_DEFAULT_BIOS("tw") // only runs with Taiwanese BIOS ROMs
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr20408.13", 0x0000001, 0x0100000,
-                CRC(1d62fcf6)
-                    SHA1(3651261aa755da27b11462f2705311b7c639a687)) // good
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr20408.13",    0x0000001, 0x0100000, CRC(1d62fcf6) SHA1(3651261aa755da27b11462f2705311b7c639a687) ) // goodROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr20400.2", 0x0400000, 0x0400000,
                      CRC(1edfbe05)
@@ -4197,73 +3808,36 @@ ROM_END
 ROM_START(danchih)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("mpr21974.7", 0x0200000, 0x0200000,
-                     CRC(e7472793)
-                         SHA1(11b7b11cf492eb9cf69b50e7cfac46a5b86849ac)) // good
-ROM_LOAD16_WORD_SWAP("mpr21970.2", 0x0400000, 0x0400000,
-                     CRC(34dd7f4d)
-                         SHA1(d5c45da94ec5b6584049caf09516f1ad4ba3adb5)) // good
-ROM_LOAD16_WORD_SWAP("mpr21971.3", 0x0800000, 0x0400000,
-                     CRC(8995158c)
-                         SHA1(fbbd171d67eebf43630d6054bc1b9132f6b38183)) // good
-ROM_LOAD16_WORD_SWAP("mpr21972.4", 0x0c00000, 0x0400000,
-                     CRC(68a39090)
-                         SHA1(cff1b909c4191660570012eb5e4cb6a7467bc79e)) // good
-ROM_LOAD16_WORD_SWAP("mpr21973.5", 0x1000000, 0x0400000,
-                     CRC(b0f23f14)
-                         SHA1(4e7076c29fd57bb3ef9af50a6104e39ecda94e06)) // good
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "mpr21974.7",    0x0200000, 0x0200000, CRC(e7472793) SHA1(11b7b11cf492eb9cf69b50e7cfac46a5b86849ac) )// good
+	ROM_LOAD16_WORD_SWAP( "mpr21970.2",    0x0400000, 0x0400000, CRC(34dd7f4d) SHA1(d5c45da94ec5b6584049caf09516f1ad4ba3adb5) )// good
+	ROM_LOAD16_WORD_SWAP( "mpr21971.3",    0x0800000, 0x0400000, CRC(8995158c) SHA1(fbbd171d67eebf43630d6054bc1b9132f6b38183) )// good
+	ROM_LOAD16_WORD_SWAP( "mpr21972.4",    0x0c00000, 0x0400000, CRC(68a39090) SHA1(cff1b909c4191660570012eb5e4cb6a7467bc79e) )// good
+	ROM_LOAD16_WORD_SWAP( "mpr21973.5",    0x1000000, 0x0400000, CRC(b0f23f14) SHA1(4e7076c29fd57bb3ef9af50a6104e39ecda94e06) )// good
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(danchiq)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22", 0x0200000, 0x0200000,
-                     CRC(e216bfc8)
-                         SHA1(7a08fa32281e272dbf5e7daea50a1800cc225c1b)) // ic 7
-ROM_LOAD16_WORD_SWAP("ic24", 0x0400000, 0x0200000,
-                     CRC(b95aa5ac)
-                         SHA1(2766c5414643034a0f6d746050557516bd3753df)) // ic 2
-ROM_LOAD16_WORD_SWAP("ic26", 0x0600000, 0x0200000,
-                     CRC(df6ebd48)
-                         SHA1(fcccafbee1b8b952b07ed0e7e86219eed9cf4a93))
-ROM_LOAD16_WORD_SWAP("ic28", 0x0800000, 0x0200000,
-                     CRC(cf6a2b76)
-                         SHA1(1f7522d446d57b78d099bae553133d5e7e54ff70)) // ic 3
-ROM_LOAD16_WORD_SWAP("ic30", 0x0a00000, 0x0200000,
-                     CRC(0b6a9901)
-                         SHA1(b4c335199d3e49a9ae5d474b10130abc4718cdf9))
-ROM_LOAD16_WORD_SWAP("ic32", 0x0c00000, 0x0200000,
-                     CRC(0b4604f5)
-                         SHA1(547cba4a80baf126e87f87529aa933587643d359)) // ic 4
-ROM_LOAD16_WORD_SWAP("ic34", 0x0e00000, 0x0200000,
-                     CRC(616e20fa)
-                         SHA1(45c175e79b5701db9726d157ff92eee368f4bbf9))
-ROM_LOAD16_WORD_SWAP("ic36", 0x1000000, 0x0200000,
-                     CRC(43474e08)
-                         SHA1(30b3ede287d5de93c6e0219bfd0a5d7ed5b6a958)) // ic 5
-ROM_LOAD16_WORD_SWAP("ic23", 0x1200000, 0x0200000,
-                     CRC(d080eb71)
-                         SHA1(9c39b887697c8872f0cb655cff24282ad3b90e9b))
-ROM_LOAD16_WORD_SWAP(
-    "ic25", 0x1400000, 0x0200000,
-    CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) //(Untested)
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22",    0x0200000, 0x0200000, CRC(e216bfc8) SHA1(7a08fa32281e272dbf5e7daea50a1800cc225c1b) )//ic 7
+	ROM_LOAD16_WORD_SWAP( "ic24",    0x0400000, 0x0200000, CRC(b95aa5ac) SHA1(2766c5414643034a0f6d746050557516bd3753df) )//ic 2
+	ROM_LOAD16_WORD_SWAP( "ic26",    0x0600000, 0x0200000, CRC(df6ebd48) SHA1(fcccafbee1b8b952b07ed0e7e86219eed9cf4a93) )
+	ROM_LOAD16_WORD_SWAP( "ic28",    0x0800000, 0x0200000, CRC(cf6a2b76) SHA1(1f7522d446d57b78d099bae553133d5e7e54ff70) )//ic 3
+	ROM_LOAD16_WORD_SWAP( "ic30",    0x0a00000, 0x0200000, CRC(0b6a9901) SHA1(b4c335199d3e49a9ae5d474b10130abc4718cdf9) )
+	ROM_LOAD16_WORD_SWAP( "ic32",    0x0c00000, 0x0200000, CRC(0b4604f5) SHA1(547cba4a80baf126e87f87529aa933587643d359) )//ic 4
+	ROM_LOAD16_WORD_SWAP( "ic34",    0x0e00000, 0x0200000, CRC(616e20fa) SHA1(45c175e79b5701db9726d157ff92eee368f4bbf9) )
+	ROM_LOAD16_WORD_SWAP( "ic36",    0x1000000, 0x0200000, CRC(43474e08) SHA1(30b3ede287d5de93c6e0219bfd0a5d7ed5b6a958) )//ic 5
+	ROM_LOAD16_WORD_SWAP( "ic23",    0x1200000, 0x0200000, CRC(d080eb71) SHA1(9c39b887697c8872f0cb655cff24282ad3b90e9b) )
+	ROM_LOAD16_WORD_SWAP( "ic25",    0x1400000, 0x0200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) )//(Untested)
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(mausuke)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("ic13.bin", 0x0000001, 0x0100000,
-                CRC(b456f4cd) SHA1(91cbe703ec7c1dd45eb3b05bdfeb06e3570599d1))
-ROM_RELOAD_PLAIN(0x0200000,
-                 0x0100000) // needs the rom mapped here to appear 'normal'
-ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE(             "ic13.bin",      0x0000001, 0x0100000, CRC(b456f4cd) SHA1(91cbe703ec7c1dd45eb3b05bdfeb06e3570599d1) )
+	ROM_RELOAD_PLAIN ( 0x0200000, 0x0100000 ) // needs the rom mapped here to appear 'normal'ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 
 ROM_LOAD16_WORD_SWAP("mcj-00.2", 0x0400000, 0x0200000,
                      CRC(4eeacd6f)
@@ -4294,7 +3868,7 @@ ROM_END
 ROM_START(batmanfr)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 /* Thanks to Runik to point this out*/
 ROM_LOAD16_BYTE("350-mpa1.u19", 0x0000000, 0x0100000,
                 CRC(2a5a8c3a) SHA1(374ec55a39ea909cc672e4a629422681d1f2da05))
@@ -4360,10 +3934,8 @@ ROM_START(critcrsh) /* Must use Europe or Asia BIOS */
 STV_BIOS
 ROM_DEFAULT_BIOS("euro")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr-18821.ic13", 0x0000001, 0x0080000,
-                CRC(9a6658e2) SHA1(16dbae3d9ab584713afcb403f89fe71049609245))
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr-18821.ic13",  0x0000001, 0x0080000, CRC(9a6658e2) SHA1(16dbae3d9ab584713afcb403f89fe71049609245) )ROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 //  ROM_LOAD16_WORD_SWAP( "mpr17946.2",    0x0400000, 0x0400000, CRC(4cb245f7)
@@ -4403,10 +3975,8 @@ ROM_START(tatacot) /* Must use Japan or Asia BIOS */
 STV_BIOS
 ROM_DEFAULT_BIOS("jp")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr-18790.ic13", 0x0000001, 0x0080000,
-                CRC(d95155dc) SHA1(b08b75d15aad073eecf8b04fd2d718366bb6f6bb))
-ROM_RELOAD(0x0100001, 0x0080000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr-18790.ic13",  0x0000001, 0x0080000, CRC(d95155dc) SHA1(b08b75d15aad073eecf8b04fd2d718366bb6f6bb) )ROM_RELOAD(0x0100001, 0x0080000)
 ROM_RELOAD_PLAIN(0x0200000, 0x0080000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0080000)
 //  ROM_LOAD16_WORD_SWAP( "mpr18138.2",    0x0400000, 0x0400000, CRC(f5567049)
@@ -4460,10 +4030,8 @@ ROM_LOAD16_WORD_SWAP(
     CRC(48e2eecf) SHA1(
         a38bfbd5f279525e413b18b5ed3f37f6e9e31cdc)) /* sport fishing 2 bios */
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr-18427.ic13", 0x0000001, 0x0100000,
-                CRC(3f25bec8) SHA1(43a5342b882d5aec0f35a8777cb475659f43b1c4))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr-18427.ic13",  0x0000001, 0x0100000, CRC(3f25bec8) SHA1(43a5342b882d5aec0f35a8777cb475659f43b1c4) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr-18273.ic2", 0x0400000, 0x0400000,
                      CRC(6fec0193)
@@ -4479,10 +4047,8 @@ DISK_REGION("saturn_cd_hle")
 DISK_IMAGE_READONLY("cdp-00428", 0,
                     SHA1(166cb5518fa5e0ab15d40dade70fa8913089dcd2))
 
-ROM_REGION32_BE(0x3000000, "abus", ROMREGION_ERASE00) /* SH2 code */
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "abus", ROMREGION_ERASEFF )
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(sfish2j)
 //  STV_BIOS // - sports fishing 2 uses its own bios
@@ -4493,10 +4059,8 @@ ROM_LOAD16_WORD_SWAP(
     CRC(48e2eecf) SHA1(
         a38bfbd5f279525e413b18b5ed3f37f6e9e31cdc)) /* sport fishing 2 bios */
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr18344.a", 0x0000001, 0x0100000,
-                CRC(5a7de018) SHA1(88e0c2a9a9d4ebf699878c0aa9737af85f95ccf8))
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr18344.a",      0x0000001, 0x0100000, CRC(5a7de018) SHA1(88e0c2a9a9d4ebf699878c0aa9737af85f95ccf8) )ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr-18273.ic2", 0x0400000, 0x0400000,
                      CRC(6fec0193)
@@ -4509,19 +4073,14 @@ DISK_REGION("saturn_cd_hle")
 DISK_IMAGE_READONLY("cdp-00386b", 0,
                     SHA1(2cb357a930bb7fa668949717ec6daaad2669d137))
 
-ROM_REGION32_BE(0x3000000, "abus", ROMREGION_ERASE00) /* SH2 code */
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "abus", ROMREGION_ERASEFF )
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(magzun)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("flash.ic13", 0x0000001, 0x0100000,
-                CRC(e6f0aca0)
-                    SHA1(251d4d9c5a332d13af3a144c5eb9d8e7836bdd1b)) // good
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "flash.ic13",               0x0000001, 0x0100000, CRC(e6f0aca0) SHA1(251d4d9c5a332d13af3a144c5eb9d8e7836bdd1b) ) // goodROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr-19354.ic2", 0x0400000, 0x0400000,
                      CRC(a23822e7)
@@ -4562,11 +4121,8 @@ ROM_END
 ROM_START(stress)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_BYTE("epr-21300a.ic13", 0x0000001, 0x0100000,
-                CRC(899d829e)
-                    SHA1(b6c6da92dc108353998b29c0659d288645541519)) // good
-ROM_RELOAD_PLAIN(0x0200000, 0x0100000)
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_BYTE( "epr-21300a.ic13",    0x0000001, 0x0100000, CRC(899d829e) SHA1(b6c6da92dc108353998b29c0659d288645541519) ) // goodROM_RELOAD_PLAIN(0x0200000, 0x0100000)
 ROM_RELOAD_PLAIN(0x0300000, 0x0100000)
 ROM_LOAD16_WORD_SWAP("mpr-21290.ic2", 0x0400000, 0x0400000,
                      CRC(a49d29f3)
@@ -4606,7 +4162,7 @@ ROM_END
 ROM_START(nclubv3)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("ic22", 0x0200000, 0x0200000,
                      CRC(b4008ed0)
@@ -4647,7 +4203,7 @@ ROM_END
 ROM_START(nclubv4) // 837-12765-11 sticker
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("ic22", 0x0200000, 0x0200000,
                      CRC(80eba7e9)
@@ -4752,7 +4308,7 @@ ROM_END
 ROM_START(techbowl) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("ic22", 0x0200000, 0x0200000,
                      CRC(5058db21)
@@ -4778,7 +4334,7 @@ ROM_END
 ROM_START(micrombc) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("ic22", 0x0200000, 0x0200000,
                      CRC(8385bc45)
@@ -4813,23 +4369,12 @@ ROM_END
 ROM_START(chalgolf) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(1d887acc)
-                         SHA1(11a35c22c5ac71fc15470e0792f426c8735b854d))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(6091ee88)
-                         SHA1(ef26245a30196bccbc472aa377611e855ded76d0))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(aff38d56)
-                         SHA1(0b4429d8940d0b84af06f24b051ad667ec389fb9))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(571cc8da)
-                         SHA1(cf469c8ed15f7e760519a6e4c15cd76644ff253b))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(a67eabb0)
-                         SHA1(80d93b18779c7ab46917f5947838817a38ddb1c2))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(1d887acc) SHA1(11a35c22c5ac71fc15470e0792f426c8735b854d) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(6091ee88) SHA1(ef26245a30196bccbc472aa377611e855ded76d0) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(aff38d56) SHA1(0b4429d8940d0b84af06f24b051ad667ec389fb9) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(571cc8da) SHA1(cf469c8ed15f7e760519a6e4c15cd76644ff253b) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(a67eabb0) SHA1(80d93b18779c7ab46917f5947838817a38ddb1c2) )
 ROM_REGION16_BE(0x80, "eeprom", ROMREGION_ERASE00) // preconfigured to 1 player
 ROM_LOAD("chalgolf.nv", 0x0000, 0x0080,
          CRC(6e89815f) SHA1(4478f614fb61859f4ee7bf55462f737387887e6f))
@@ -4838,32 +4383,15 @@ ROM_END
 ROM_START(choroqhr) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(22c58710)
-                         SHA1(6d8b849f6fcf6566193dcff6e2c7c857b7d0d9bf))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(09b8a154)
-                         SHA1(cfd212c6fe6188b9c665650b21f2fd80cd65268f))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(136ca5e9)
-                         SHA1(8697a415d0958e58f5cea5dcc767dd6a4cbdef5c))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(3c949563)
-                         SHA1(ab2a9f9ec23071cc236dee945b436a9cd73efb92))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(7e93078d)
-                         SHA1(10fa99029a3e741ea0fddcf00ee07b5fd039bf19))
-ROM_LOAD16_WORD_SWAP("ic32.bin", 0x0c00000, 0x200000,
-                     CRC(86cdcbd8)
-                         SHA1(90060cde84c75fd4146ebf6b9101f04140408e88))
-ROM_LOAD16_WORD_SWAP("ic34.bin", 0x0e00000, 0x200000,
-                     CRC(be2ed0a0)
-                         SHA1(a9225ba6b78fa0119fc6484828f4d4cc6ea05d8f))
-ROM_LOAD16_WORD_SWAP("ic36.bin", 0x1000000, 0x200000,
-                     CRC(9a4109e5)
-                         SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(22c58710) SHA1(6d8b849f6fcf6566193dcff6e2c7c857b7d0d9bf) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(09b8a154) SHA1(cfd212c6fe6188b9c665650b21f2fd80cd65268f) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(136ca5e9) SHA1(8697a415d0958e58f5cea5dcc767dd6a4cbdef5c) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(3c949563) SHA1(ab2a9f9ec23071cc236dee945b436a9cd73efb92) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(7e93078d) SHA1(10fa99029a3e741ea0fddcf00ee07b5fd039bf19) )
+	ROM_LOAD16_WORD_SWAP( "ic32.bin",     0x0c00000, 0x200000, CRC(86cdcbd8) SHA1(90060cde84c75fd4146ebf6b9101f04140408e88) )
+	ROM_LOAD16_WORD_SWAP( "ic34.bin",     0x0e00000, 0x200000, CRC(be2ed0a0) SHA1(a9225ba6b78fa0119fc6484828f4d4cc6ea05d8f) )
+	ROM_LOAD16_WORD_SWAP( "ic36.bin",     0x1000000, 0x200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) )
 ROM_REGION16_BE(0x80, "eeprom", ROMREGION_ERASE00) // preconfigured to 1 player
 ROM_LOAD("choroqhr.nv", 0x0000, 0x0080,
          CRC(6e89815f) SHA1(4478f614fb61859f4ee7bf55462f737387887e6f))
@@ -4874,7 +4402,7 @@ ROM_START(pclub2) // set to 1p / runs with the USA bios
 STV_BIOS
 ROM_DEFAULT_BIOS("us")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclub2_ic22", 0x0200000, 0x0200000,
                      CRC(d2ceade7)
@@ -4906,7 +4434,7 @@ ROM_END
 ROM_START(pclub2fc) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclub2fc_ic22", 0x0200000, 0x0200000,
                      CRC(109c61a5)
@@ -4932,7 +4460,7 @@ ROM_END
 ROM_START(pclub2pf) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclb2puf.ic22", 0x0200000, 0x0200000,
                      CRC(a14282f2)
@@ -4958,7 +4486,7 @@ ROM_END
 ROM_START(prc297wi) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "prc297wi_ic22", 0x0200000, 0x0200000,
@@ -5002,7 +4530,7 @@ ROM_END
 ROM_START(prc297wia) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "pclb297w_ic22_alt", 0x0200000, 0x0200000,
@@ -5046,7 +4574,7 @@ ROM_END
 ROM_START(prc298sp) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "prc298sp_ic22", 0x0200000, 0x0200000,
@@ -5091,7 +4619,7 @@ ROM_END
 ROM_START(prc298su) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "pclb298s_ic22", 0x0200000, 0x0200000,
@@ -5122,7 +4650,7 @@ ROM_END
 ROM_START(pclub26w) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclbvol6w_ic22", 0x0200000, 0x0200000,
                      CRC(72aa320c)
@@ -5148,7 +4676,7 @@ ROM_END
 ROM_START(pclub26wa) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x0200000,
                      CRC(a88e117d)
@@ -5184,7 +4712,7 @@ ROM_END
 ROM_START(pclub27s) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclub2v7.ic22", 0x0200000, 0x0200000,
                      CRC(44c8ab27)
@@ -5210,7 +4738,7 @@ ROM_END
 ROM_START(prc28su) // set to 1p. 837-12765-02 ROM BD (stickered)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "u22.bin", 0x0200000, 0x0200000,
@@ -5258,7 +4786,7 @@ ROM_END
 ROM_START(prc29au) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "ic22.bin", 0x0200000, 0x0200000,
@@ -5305,31 +4833,13 @@ ROM_END
 ROM_START(prc2ksu) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-// NOTE: Game fails IC7 check but rom read consistently, might be okay, might
-// not be - supposedly ST-V print carts are known to have bad ROM tests(?)
-ROM_LOAD16_WORD_SWAP(
-    "ic22.bin", 0x0200000, 0x0200000,
-    CRC(4b3de7df)
-        SHA1(869c3840ac2eab263bb8b79ba1430e5789fa5758)) // 'BAD' (tested as IC7)
-                                                        // (but maybe OK)
-ROM_LOAD16_WORD_SWAP(
-    "ic24.bin", 0x0400000, 0x0200000,
-    CRC(02da49b7)
-        SHA1(dd19bfd6c21f432b3af011ce43ba38d295c06c6d)) // OK (tested as IC2)
-ROM_LOAD16_WORD_SWAP(
-    "ic26.bin", 0x0600000, 0x0200000,
-    CRC(a431d614)
-        SHA1(75de91d8eff5af7e1b668012a0613884ba660e21)) // OK (tested as IC2)
-ROM_LOAD16_WORD_SWAP(
-    "ic28.bin", 0x0800000, 0x0200000,
-    CRC(c0fba1a5)
-        SHA1(5f98be1eed5f74e62fe5a3e33fdcf3b827dda1a7)) // OK (tested as IC3)
-ROM_LOAD16_WORD_SWAP(
-    "ic30.bin", 0x0a00000, 0x0200000,
-    CRC(0811d0e4)
-        SHA1(b4fd9369c80f76141ae2fb38525b405b4c2f391a)) // OK (tested as IC3)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	// NOTE: Game fails IC7 check but rom read consistently, might be okay, might not be - supposedly ST-V print carts are known to have bad ROM tests(?)
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",    0x0200000, 0x0200000, CRC(4b3de7df) SHA1(869c3840ac2eab263bb8b79ba1430e5789fa5758) ) // 'BAD' (tested as IC7) (but maybe OK)
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",    0x0400000, 0x0200000, CRC(02da49b7) SHA1(dd19bfd6c21f432b3af011ce43ba38d295c06c6d) ) // OK (tested as IC2)
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",    0x0600000, 0x0200000, CRC(a431d614) SHA1(75de91d8eff5af7e1b668012a0613884ba660e21) ) // OK (tested as IC2)
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",    0x0800000, 0x0200000, CRC(c0fba1a5) SHA1(5f98be1eed5f74e62fe5a3e33fdcf3b827dda1a7) ) // OK (tested as IC3)
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",    0x0a00000, 0x0200000, CRC(0811d0e4) SHA1(b4fd9369c80f76141ae2fb38525b405b4c2f391a) ) // OK (tested as IC3)
 ROM_REGION16_BE(0x80, "eeprom", ROMREGION_ERASE00) // preconfigured to 1 player
 ROM_LOAD("prc2ksu.nv", 0x0000, 0x0080,
          CRC(ee7ffdc5) SHA1(4008e37cae306c0202146c5dd79ca925b8d8edd5))
@@ -5339,7 +4849,7 @@ ROM_END
 ROM_START(pclub2mb) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x0200000,
                      CRC(d16683a9)
@@ -5367,7 +4877,7 @@ ROM_END
 ROM_START(pclub2pe) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclb2psi_ic22", 0x0200000, 0x0200000,
                      CRC(caadc660)
@@ -5393,7 +4903,7 @@ ROM_END
 ROM_START(pclub2wb) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclb2wb_ic22", 0x0200000, 0x0200000,
                      CRC(12245be7)
@@ -5419,7 +4929,7 @@ ROM_END
 ROM_START(pclubyo) // 837-12765-01 ROM BD
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclbyov1.ic22", 0x0200000, 0x0200000,
                      CRC(769468d1)
@@ -5453,7 +4963,7 @@ ROM_END
 ROM_START(pclubyo2) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclbyov2.ic22", 0x0200000, 0x0200000,
                      CRC(719a4d27)
@@ -5481,28 +4991,13 @@ ROM_END
 ROM_START(pclubsc5)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("pclub2_ic22", 0x0200000, 0x0200000,
-                     CRC(a0e5d77f)
-                         SHA1(7bb3fbd8a1bbb5fc7ecd8dcc4e606738d585dc87))
-ROM_LOAD16_WORD_SWAP("pclub2_ic24", 0x0400000, 0x0200000,
-                     CRC(6abf081f)
-                         SHA1(5a7afdbcf325fd83c779b83017ecdc1268508882))
-ROM_LOAD16_WORD_SWAP("pclub2_ic26", 0x0600000, 0x0200000,
-                     CRC(5118a889)
-                         SHA1(ce994661f94b3263186c288aca14a66f0fc84b7c))
-ROM_LOAD16_WORD_SWAP(
-    "pclub2_ic28", 0x0800000, 0x0200000,
-    CRC(f29f1ec9)
-        SHA1(8558ce02231aaf715632e9a2d1933593621a4c04)) // same content as IC32
-ROM_LOAD16_WORD_SWAP("pclub2_ic30", 0x0a00000, 0x0200000,
-                     CRC(a6dc82c8)
-                         SHA1(3f194f78c484e67411ddd6f687586d4e63957579))
-ROM_LOAD16_WORD_SWAP(
-    "pclub2_ic32", 0x0c00000, 0x0200000,
-    CRC(f29f1ec9)
-        SHA1(8558ce02231aaf715632e9a2d1933593621a4c04)) // same content as IC28
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "pclub2_ic22",    0x0200000, 0x0200000, CRC(a0e5d77f) SHA1(7bb3fbd8a1bbb5fc7ecd8dcc4e606738d585dc87) )
+	ROM_LOAD16_WORD_SWAP( "pclub2_ic24",    0x0400000, 0x0200000, CRC(6abf081f) SHA1(5a7afdbcf325fd83c779b83017ecdc1268508882) )
+	ROM_LOAD16_WORD_SWAP( "pclub2_ic26",    0x0600000, 0x0200000, CRC(5118a889) SHA1(ce994661f94b3263186c288aca14a66f0fc84b7c) )
+	ROM_LOAD16_WORD_SWAP( "pclub2_ic28",    0x0800000, 0x0200000, CRC(f29f1ec9) SHA1(8558ce02231aaf715632e9a2d1933593621a4c04) ) // same content as IC32
+	ROM_LOAD16_WORD_SWAP( "pclub2_ic30",    0x0a00000, 0x0200000, CRC(a6dc82c8) SHA1(3f194f78c484e67411ddd6f687586d4e63957579) )
+	ROM_LOAD16_WORD_SWAP( "pclub2_ic32",    0x0c00000, 0x0200000, CRC(f29f1ec9) SHA1(8558ce02231aaf715632e9a2d1933593621a4c04) ) // same content as IC28
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD16_WORD_SWAP("pclubsc5.nv", 0x0000, 0x0080,
                      CRC(5a01a17b)
@@ -5521,26 +5016,13 @@ ROM_END
 ROM_START(pclubsc6)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(754890c3)
-                         SHA1(37378e9abb93ce4f8568f8e34aff40ac5fbae75d))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(9830393b)
-                         SHA1(3a0e75b034aacf3231da42d07a64f22cfc16723d))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(6bec2559)
-                         SHA1(8d481a8f77ae9945b5bcd82831ebf09bc26666c7))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(79a159e6)
-                         SHA1(f5be546a88d7418cd353d45297ee30c50bbd8fc0))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(6533f7fc)
-                         SHA1(7ca107191bdf1e54718bb609e0cff7387d16d794))
-ROM_LOAD16_WORD_SWAP("ic32.bin", 0x0c00000, 0x200000,
-                     CRC(048876e3)
-                         SHA1(13cc97bc13dcd77df9088ea80151202bbeb08465))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000, CRC(754890c3) SHA1(37378e9abb93ce4f8568f8e34aff40ac5fbae75d) )
+	ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000, CRC(9830393b) SHA1(3a0e75b034aacf3231da42d07a64f22cfc16723d) )
+	ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000, CRC(6bec2559) SHA1(8d481a8f77ae9945b5bcd82831ebf09bc26666c7) )
+	ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000, CRC(79a159e6) SHA1(f5be546a88d7418cd353d45297ee30c50bbd8fc0) )
+	ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000, CRC(6533f7fc) SHA1(7ca107191bdf1e54718bb609e0cff7387d16d794) )
+	ROM_LOAD16_WORD_SWAP("ic32.bin", 0x0c00000, 0x200000, CRC(048876e3) SHA1(13cc97bc13dcd77df9088ea80151202bbeb08465) )
 // TODO: add 1p eeprom default
 ROM_REGION16_BE(0x80, "eeprom",
                 ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
@@ -5550,7 +5032,7 @@ ROM_END
 ROM_START(pclub2sr) // 837-12765-01 ROM BD, protection device not present
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic22",    0x0200000, 0x0200000, CRC(83bc85e3) SHA1(955089dacf9d08bd21f65066e976bbad2ec95edb) ) // tests good
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic24",    0x0400000, 0x0200000, CRC(35721f04) SHA1(9658c9526a3d1dde89e1b6fd986b3469011813ca) ) // tests good, same as pclubol
@@ -5595,7 +5077,7 @@ ROM_END
 ROM_START( pclub2bb ) // 837-12765-01 ROM BD, protection device not present
 	STV_BIOS
 
-	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASE00 ) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic22",    0x0200000, 0x0200000, CRC(525d9690) SHA1(e8a46276cfdfe285b2a451a81ae465c015249ea0) ) // tests good
 	ROM_LOAD16_WORD_SWAP( "lh28f016sut-10.ic24",    0x0400000, 0x0200000, CRC(8bde60c5) SHA1(c8ab3ab506d4c407771b528e4b89a6ac2d8c6073) ) // tests good
@@ -5659,7 +5141,7 @@ ROM_START(pclubnbc) // 837-12765-04 (stickered) ROM BD, protection device
                     // (317-0230) present
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("lh28f016sut-10.ic22", 0x0200000, 0x0200000,
                      CRC(b0207086)
@@ -5697,7 +5179,7 @@ ROM_START(
     pclub2ts) // 837-12765-02 (stickered) ROM BD, protection device not present
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("lh28f016sut-10.ic22", 0x0200000, 0x0200000,
                      CRC(a8fef41b)
@@ -5741,7 +5223,7 @@ ROM_END
 ROM_START(prc298au) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("prc298au_ic22", 0x0200000, 0x0200000,
                      CRC(21a995ce)
@@ -5777,7 +5259,7 @@ ROM_END
 ROM_START(pclubor) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclubor_ic22", 0x0200000, 0x0200000,
                      CRC(b25072f7)
@@ -5813,7 +5295,7 @@ ROM_END
 ROM_START(pclubol) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclubol_ic22", 0x0200000, 0x0200000,
                      CRC(668b1049)
@@ -5850,7 +5332,7 @@ ROM_START(pclub2v3) // set to 1p / runs with the USA bios
 STV_BIOS
 ROM_DEFAULT_BIOS("us")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclub2v3_ic22", 0x0200000, 0x0200000,
                      BAD_DUMP CRC(f88347aa)
@@ -5877,7 +5359,7 @@ ROM_START(pclubpok) // set to 1p / runs with the USA bios
 STV_BIOS
 ROM_DEFAULT_BIOS("us")
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("pclubpok_ic22", 0x0200000, 0x0200000,
                      CRC(48ab8371)
@@ -5903,7 +5385,7 @@ ROM_END
 ROM_START(pclub2kc) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "pclub2kc_ic22", 0x0200000, 0x0200000,
@@ -5934,7 +5416,7 @@ ROM_END
 ROM_START(pclb2elk) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP(
     "pclb2elk_ic22", 0x0200000, 0x0200000,
@@ -5965,40 +5447,18 @@ ROM_END
 ROM_START(pckobe99) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-// all ROM tests fail both in MAME and on real hardware, but ROMs read
-// consistently. there do seem to be bad values on some 0x40000 boundaries in
-// places tho (obvious if you look at the blank fill area of ic36 for instance)
-// as a result I'm marking them as bad, we'll need a 2nd cartridge to verify
-// tho.
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x0200000,
-                     BAD_DUMP CRC(670296eb)
-                         SHA1(18055dddf59edbf6d6a97bc81ba332e681f460ba)) //
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x0200000,
-                     BAD_DUMP CRC(c2139f62)
-                         SHA1(9e7060d77571349b13e58a845fde0f75c29a1bac)) //
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x0200000,
-                     BAD_DUMP CRC(17e3efd0)
-                         SHA1(f004bb27c1708ed5a78426aa26a51496470c173d)) //
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x0200000,
-                     BAD_DUMP CRC(a52f99f6)
-                         SHA1(9d23f63a9515b468c93320458d12f54850e9e121)) //
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x0200000,
-                     BAD_DUMP CRC(f1b7e3d5)
-                         SHA1(2e1f881c0abe8bfb168478b3cbbd724c74c374c0)) //
-ROM_LOAD16_WORD_SWAP(
-    "ic32.bin", 0x0c00000, 0x0200000,
-    BAD_DUMP CRC(76f6efaa)
-        SHA1(d861d178a37adbde6b86df84231b34b89c5fc1d8)) // not tested
-ROM_LOAD16_WORD_SWAP(
-    "ic34.bin", 0x0e00000, 0x0200000,
-    BAD_DUMP CRC(894c63f9)
-        SHA1(9956fd512cb715780616c4262d2b05474e3337ff)) // not tested
-ROM_LOAD16_WORD_SWAP(
-    "ic36.bin", 0x1000000, 0x0200000,
-    BAD_DUMP CRC(078694c3) SHA1(
-        a37eb118338c0fc07aa75705dc6a7a1b866cb081)) // not tested 2ND HALF = xx00
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	// all ROM tests fail both in MAME and on real hardware, but ROMs read consistently.
+	// there do seem to be bad values on some 0x40000 boundaries in places tho (obvious if you look at the blank fill area of ic36 for instance)
+	// as a result I'm marking them as bad, we'll need a 2nd cartridge to verify tho.
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",    0x0200000, 0x0200000, BAD_DUMP CRC(670296eb) SHA1(18055dddf59edbf6d6a97bc81ba332e681f460ba) ) //
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",    0x0400000, 0x0200000, BAD_DUMP CRC(c2139f62) SHA1(9e7060d77571349b13e58a845fde0f75c29a1bac) ) //
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",    0x0600000, 0x0200000, BAD_DUMP CRC(17e3efd0) SHA1(f004bb27c1708ed5a78426aa26a51496470c173d) ) //
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",    0x0800000, 0x0200000, BAD_DUMP CRC(a52f99f6) SHA1(9d23f63a9515b468c93320458d12f54850e9e121) ) //
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",    0x0a00000, 0x0200000, BAD_DUMP CRC(f1b7e3d5) SHA1(2e1f881c0abe8bfb168478b3cbbd724c74c374c0) ) //
+	ROM_LOAD16_WORD_SWAP( "ic32.bin",    0x0c00000, 0x0200000, BAD_DUMP CRC(76f6efaa) SHA1(d861d178a37adbde6b86df84231b34b89c5fc1d8) ) // not tested
+	ROM_LOAD16_WORD_SWAP( "ic34.bin",    0x0e00000, 0x0200000, BAD_DUMP CRC(894c63f9) SHA1(9956fd512cb715780616c4262d2b05474e3337ff) ) // not tested
+	ROM_LOAD16_WORD_SWAP( "ic36.bin",    0x1000000, 0x0200000, BAD_DUMP CRC(078694c3) SHA1(a37eb118338c0fc07aa75705dc6a7a1b866cb081) ) // not tested 2ND HALF = xx00
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("eeprom", 0x0000, 0x0080,
          CRC(dbe305a9) SHA1(4b738104db8345385db3f622672dcc536bbfe67e))
@@ -6007,36 +5467,15 @@ ROM_END
 ROM_START(pclove)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the
-// protection device because it occupies the same memory address as the rom at
-// IC26 this sometimes causes it to fail on real hardware too(!)
-ROM_LOAD16_WORD_SWAP(
-    "pclblove.ic22", 0x0200000, 0x0200000,
-    CRC(8cd25a0f)
-        SHA1(c938d5f4f800db019abc2e17cce1e780e93f3d02)) // OK (tested as IC7)
-ROM_LOAD16_WORD_SWAP(
-    "pclblove.ic24", 0x0400000, 0x0200000,
-    CRC(85583e2c)
-        SHA1(7f407d1bce40317fc10433dafcd82ee41be05839)) // OK (tested as IC2)
-ROM_LOAD16_WORD_SWAP(
-    "pclblove.ic26", 0x0600000, 0x0200000,
-    CRC(7efcabcc)
-        SHA1(b99a67ab2053c3be5ce37530b65f9693c2a4eef8)) // OK (tested as IC2)
-ROM_LOAD16_WORD_SWAP(
-    "pclblove.ic28", 0x0800000, 0x0200000,
-    CRC(a1336da7)
-        SHA1(ba26810067a13968a54a8867025b8d8e96384ae7)) // OK (tested as IC3)
-ROM_LOAD16_WORD_SWAP(
-    "pclblove.ic30", 0x0a00000, 0x0200000,
-    CRC(ec5b5e28)
-        SHA1(89bcddb52c176c86ad4bdb9f4f052be5b75bcd1b)) // OK (tested as IC3)
-ROM_LOAD16_WORD_SWAP(
-    "pclblove.ic32", 0x0c00000, 0x0200000,
-    CRC(9a4109e5)
-        SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) // FF fill? (not tested
-                                                        // either)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the protection device because it occupies the same memory address as the rom at IC26
+	// this sometimes causes it to fail on real hardware too(!)
+	ROM_LOAD16_WORD_SWAP( "pclblove.ic22",    0x0200000, 0x0200000, CRC(8cd25a0f) SHA1(c938d5f4f800db019abc2e17cce1e780e93f3d02) ) // OK (tested as IC7)
+	ROM_LOAD16_WORD_SWAP( "pclblove.ic24",    0x0400000, 0x0200000, CRC(85583e2c) SHA1(7f407d1bce40317fc10433dafcd82ee41be05839) ) // OK (tested as IC2)
+	ROM_LOAD16_WORD_SWAP( "pclblove.ic26",    0x0600000, 0x0200000, CRC(7efcabcc) SHA1(b99a67ab2053c3be5ce37530b65f9693c2a4eef8) ) // OK (tested as IC2)
+	ROM_LOAD16_WORD_SWAP( "pclblove.ic28",    0x0800000, 0x0200000, CRC(a1336da7) SHA1(ba26810067a13968a54a8867025b8d8e96384ae7) ) // OK (tested as IC3)
+	ROM_LOAD16_WORD_SWAP( "pclblove.ic30",    0x0a00000, 0x0200000, CRC(ec5b5e28) SHA1(89bcddb52c176c86ad4bdb9f4f052be5b75bcd1b) ) // OK (tested as IC3)
+	ROM_LOAD16_WORD_SWAP( "pclblove.ic32",    0x0c00000, 0x0200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) ) // FF fill? (not tested either)
 // protection device used to decrypt some startup code
 
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
@@ -6047,36 +5486,15 @@ ROM_END
 ROM_START(pclove2)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the
-// protection device because it occupies the same memory address as the rom at
-// IC26 this sometimes causes it to fail on real hardware too(!)
-ROM_LOAD16_WORD_SWAP(
-    "ic22", 0x0200000, 0x0200000,
-    CRC(d7d968d6)
-        SHA1(59916a453ba8a53af2138272e359c6d6ce11ea8c)) // OK (tested as IC7)
-ROM_LOAD16_WORD_SWAP(
-    "ic24", 0x0400000, 0x0200000,
-    CRC(9c9b7e57)
-        SHA1(ae834a3648126ec2456d2cc5544f81b6dc2f5825)) // OK (tested as IC2)
-ROM_LOAD16_WORD_SWAP(
-    "ic26", 0x0600000, 0x0200000,
-    CRC(55eb859f)
-        SHA1(4f25536787142f965d688d1758a45885b52ae52e)) // OK (tested as IC2)
-ROM_LOAD16_WORD_SWAP(
-    "ic28", 0x0800000, 0x0200000,
-    CRC(463604a6)
-        SHA1(d8eb41676c750e01870241361ef04c8f22a0c4b4)) // OK (tested as IC3)
-ROM_LOAD16_WORD_SWAP(
-    "ic30", 0x0a00000, 0x0200000,
-    CRC(ec5b5e28)
-        SHA1(89bcddb52c176c86ad4bdb9f4f052be5b75bcd1b)) // OK (tested as IC3)
-ROM_LOAD16_WORD_SWAP(
-    "ic32", 0x0c00000, 0x0200000,
-    CRC(9a4109e5)
-        SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) // FF fill? (not tested
-                                                        // either)
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the protection device because it occupies the same memory address as the rom at IC26
+	// this sometimes causes it to fail on real hardware too(!)
+	ROM_LOAD16_WORD_SWAP( "ic22",    0x0200000, 0x0200000, CRC(d7d968d6) SHA1(59916a453ba8a53af2138272e359c6d6ce11ea8c) ) // OK (tested as IC7)
+	ROM_LOAD16_WORD_SWAP( "ic24",    0x0400000, 0x0200000, CRC(9c9b7e57) SHA1(ae834a3648126ec2456d2cc5544f81b6dc2f5825) ) // OK (tested as IC2)
+	ROM_LOAD16_WORD_SWAP( "ic26",    0x0600000, 0x0200000, CRC(55eb859f) SHA1(4f25536787142f965d688d1758a45885b52ae52e) ) // OK (tested as IC2)
+	ROM_LOAD16_WORD_SWAP( "ic28",    0x0800000, 0x0200000, CRC(463604a6) SHA1(d8eb41676c750e01870241361ef04c8f22a0c4b4) ) // OK (tested as IC3)
+	ROM_LOAD16_WORD_SWAP( "ic30",    0x0a00000, 0x0200000, CRC(ec5b5e28) SHA1(89bcddb52c176c86ad4bdb9f4f052be5b75bcd1b) ) // OK (tested as IC3)
+	ROM_LOAD16_WORD_SWAP( "ic32",    0x0c00000, 0x0200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) ) // FF fill? (not tested either)
 // protection device used to decrypt some startup code
 
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
@@ -6087,26 +5505,14 @@ ROM_END
 ROM_START(pcpooh2) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the
-// protection device because it occupies the same memory address as the rom at
-// IC26 this sometimes causes it to fail on real hardware too(!)
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x0200000,
-                     CRC(2cb33332)
-                         SHA1(7c05035358c08b6327d9f0581bf7036e95001eae)) // OK
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x0200000,
-                     CRC(3c6fc10f)
-                         SHA1(8edb4c583be7270c1a8c155663f47554064f5213)) // OK
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x0200000,
-                     CRC(b891c7ab)
-                         SHA1(7948ac76cde2851dcba3752e84e1fc35affe0bc4)) // OK
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x0200000,
-                     CRC(1a1c74cb)
-                         SHA1(0a35e5a5ccf42bda641d56cce2fd0d02953f3878)) // OK
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x0200000,
-                     CRC(b7b6fc61)
-                         SHA1(bb02b321d3e2ff120f1b84f008507f0cf6c36768)) // OK
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the protection device because it occupies the same memory address as the rom at IC26
+	// this sometimes causes it to fail on real hardware too(!)
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",    0x0200000, 0x0200000, CRC(2cb33332) SHA1(7c05035358c08b6327d9f0581bf7036e95001eae) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",    0x0400000, 0x0200000, CRC(3c6fc10f) SHA1(8edb4c583be7270c1a8c155663f47554064f5213) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",    0x0600000, 0x0200000, CRC(b891c7ab) SHA1(7948ac76cde2851dcba3752e84e1fc35affe0bc4) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",    0x0800000, 0x0200000, CRC(1a1c74cb) SHA1(0a35e5a5ccf42bda641d56cce2fd0d02953f3878) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",    0x0a00000, 0x0200000, CRC(b7b6fc61) SHA1(bb02b321d3e2ff120f1b84f008507f0cf6c36768) ) // OK
 // protection device is 317-0230
 
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
@@ -6117,26 +5523,14 @@ ROM_END
 ROM_START(pcpooh3) // set to 1p
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the
-// protection device because it occupies the same memory address as the rom at
-// IC26 this sometimes causes it to fail on real hardware too(!)
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x0200000,
-                     CRC(efc83c4f)
-                         SHA1(8cabb88d8d52beddcde6a62858f4666092ed179e)) // OK
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x0200000,
-                     CRC(e8753d0d)
-                         SHA1(571fe30075ad63dc395402cfb1d4734b54017e77)) // OK
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x0200000,
-                     CRC(daf1a0d4)
-                         SHA1(474fe24fb95ad3065a66e664f362692d86a8d563)) // OK
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x0200000,
-                     CRC(3c0f040f)
-                         SHA1(18d3917a1c1f49a2b45b13b92ba7da37341d3d1f)) // OK
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x0200000,
-                     CRC(6006d785)
-                         SHA1(b6f4d1c26288c5ae48ad5ec785512a4b0fd3f8ef)) // OK
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	// note, 'IC2' in service mode (the test of IC24/IC26) fails once you map the protection device because it occupies the same memory address as the rom at IC26
+	// this sometimes causes it to fail on real hardware too(!)
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",    0x0200000, 0x0200000, CRC(efc83c4f) SHA1(8cabb88d8d52beddcde6a62858f4666092ed179e) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",    0x0400000, 0x0200000, CRC(e8753d0d) SHA1(571fe30075ad63dc395402cfb1d4734b54017e77) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",    0x0600000, 0x0200000, CRC(daf1a0d4) SHA1(474fe24fb95ad3065a66e664f362692d86a8d563) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",    0x0800000, 0x0200000, CRC(3c0f040f) SHA1(18d3917a1c1f49a2b45b13b92ba7da37341d3d1f) ) // OK
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",    0x0a00000, 0x0200000, CRC(6006d785) SHA1(b6f4d1c26288c5ae48ad5ec785512a4b0fd3f8ef) ) // OK
 // protection device is 317-0230
 
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
@@ -6150,23 +5544,12 @@ ROM_END
 ROM_START(aclub)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("lh28f016sut.ic22", 0x0200000, 0x0200000,
-                     CRC(1d6fc99d)
-                         SHA1(0b1a85560325b0d44bd105e4b4fde5a97bf6497c))
-ROM_LOAD16_WORD_SWAP("lh28f016sut.ic24", 0x0400000, 0x0200000,
-                     CRC(65502690)
-                         SHA1(00879e23c8645e67e9ce9ccddb851660478c4c18))
-ROM_LOAD16_WORD_SWAP("lh28f016sut.ic26", 0x0600000, 0x0200000,
-                     CRC(ed530d76)
-                         SHA1(1cb9956e92787b7a09395310da9e4ef7320a85c6))
-ROM_LOAD16_WORD_SWAP("lh28f016sut.ic28", 0x0800000, 0x0200000,
-                     CRC(1c6a7967)
-                         SHA1(5390236467077e37f962975095c7cb937f61973e))
-ROM_LOAD16_WORD_SWAP("lh28f016sut.ic30", 0x0a00000, 0x0200000,
-                     CRC(4b7e36d1)
-                         SHA1(a5688976df83ce58d61b33aec36630ab6a372dcb))
-// empty sockets ic32, ic34 and ic36
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut.ic22",    0x0200000, 0x0200000, CRC(1d6fc99d) SHA1(0b1a85560325b0d44bd105e4b4fde5a97bf6497c) )
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut.ic24",    0x0400000, 0x0200000, CRC(65502690) SHA1(00879e23c8645e67e9ce9ccddb851660478c4c18) )
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut.ic26",    0x0600000, 0x0200000, CRC(ed530d76) SHA1(1cb9956e92787b7a09395310da9e4ef7320a85c6) )
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut.ic28",    0x0800000, 0x0200000, CRC(1c6a7967) SHA1(5390236467077e37f962975095c7cb937f61973e) )
+	ROM_LOAD16_WORD_SWAP( "lh28f016sut.ic30",    0x0a00000, 0x0200000, CRC(4b7e36d1) SHA1(a5688976df83ce58d61b33aec36630ab6a372dcb) )// empty sockets ic32, ic34 and ic36
 // ic13 populated with a PALCE16V8H-10
 
 // TODO: add 1p eeprom default
@@ -6236,24 +5619,12 @@ ROM_END
 ROM_START(patocar)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(b7e6d425)
-                         SHA1(b7496cb390fe50ee786815082415427056e4e3e1))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(cbbb687e)
-                         SHA1(cfc87ae6124f9978bb2432b98d77f0da07d020b7))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(91db9dbe)
-                         SHA1(8652fe45ce56633016403c75e8b3a7b77f279819))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(bff0cd9c)
-                         SHA1(3c62aa2d7f71bd6fb147fdcd8d99cd7815f3047e))
-ROM_LOAD16_WORD_SWAP(
-    "ic30.bin", 0x0a00000, 0x200000,
-    CRC(9a4109e5)
-        SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) // empty / FF filled
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(b7e6d425) SHA1(b7496cb390fe50ee786815082415427056e4e3e1) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(cbbb687e) SHA1(cfc87ae6124f9978bb2432b98d77f0da07d020b7) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(91db9dbe) SHA1(8652fe45ce56633016403c75e8b3a7b77f279819) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(bff0cd9c) SHA1(3c62aa2d7f71bd6fb147fdcd8d99cd7815f3047e) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) )   // empty / FF filled
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("patocar.nv", 0x0000, 0x0080,
          CRC(d9873ee8) SHA1(e74747816bba6745afd718b0beec67a884c6a31c))
@@ -6263,56 +5634,26 @@ ROM_START(sackids)
 STV_BIOS
 
 // it looks like game has a specific I/O board for the lightpen
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(4d9d1870)
-                         SHA1(c702964af2767b0db4ca1d6c7d07356e675d5efd))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(39fca3e5)
-                         SHA1(29be552f58b69f8f3f237ca14f13af3673559123))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(f38c79b6)
-                         SHA1(a470a22ef3d735c9929f70ef5441547a07a480e8))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(63d09f3c)
-                         SHA1(e470e5af52f9ee70bf160ff58a5cbafd7e674073))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(f89811ba)
-                         SHA1(8fa8b4b09430456bce63e45686640c7bcdde90e9))
-ROM_LOAD16_WORD_SWAP("ic32.bin", 0x0c00000, 0x200000,
-                     CRC(1db6c26b)
-                         SHA1(2e14b7b021bce145f989295fdc6effcd799f00a4))
-ROM_LOAD16_WORD_SWAP("ic34.bin", 0x0e00000, 0x200000,
-                     CRC(0f3622c8)
-                         SHA1(69337114d6902675018371101f0fba01902de54a))
-ROM_LOAD16_WORD_SWAP(
-    "ic36.bin", 0x1000000, 0x200000,
-    CRC(9a4109e5)
-        SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1)) // empty / FF filled
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(4d9d1870) SHA1(c702964af2767b0db4ca1d6c7d07356e675d5efd) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(39fca3e5) SHA1(29be552f58b69f8f3f237ca14f13af3673559123) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(f38c79b6) SHA1(a470a22ef3d735c9929f70ef5441547a07a480e8) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(63d09f3c) SHA1(e470e5af52f9ee70bf160ff58a5cbafd7e674073) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(f89811ba) SHA1(8fa8b4b09430456bce63e45686640c7bcdde90e9) )
+	ROM_LOAD16_WORD_SWAP( "ic32.bin",     0x0c00000, 0x200000, CRC(1db6c26b) SHA1(2e14b7b021bce145f989295fdc6effcd799f00a4) )
+	ROM_LOAD16_WORD_SWAP( "ic34.bin",     0x0e00000, 0x200000, CRC(0f3622c8) SHA1(69337114d6902675018371101f0fba01902de54a) )
+	ROM_LOAD16_WORD_SWAP( "ic36.bin",     0x1000000, 0x200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) ) // empty / FF filled
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(wasafari)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(d8bb2e2c)
-                         SHA1(e55714425f8dcf01e8cb68d67c96f19a9d6f4e3a))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(c1b0e173)
-                         SHA1(92e5fe1f9fa70182c5bf8f087686782714cf4416))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(a5c0577c)
-                         SHA1(b6e19001e67c8222af6802eae7b58be65d8ca9fd))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(2a8cfa97)
-                         SHA1(a38ab55e88413e0df3f32f23c2a9dcccca4483be))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(9a4109e5)
-                         SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(d8bb2e2c) SHA1(e55714425f8dcf01e8cb68d67c96f19a9d6f4e3a) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(c1b0e173) SHA1(92e5fe1f9fa70182c5bf8f087686782714cf4416) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(a5c0577c) SHA1(b6e19001e67c8222af6802eae7b58be65d8ca9fd) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(2a8cfa97) SHA1(a38ab55e88413e0df3f32f23c2a9dcccca4483be) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(9a4109e5) SHA1(ba59caac5f5a80fc52c507d8a47f322a380aa9a1) )
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("wasafari.nv", 0x0000, 0x0080,
          CRC(50861c5a) SHA1(c431703d7b56185f20af1aec04cabb5f49e2d4ba))
@@ -6410,26 +5751,13 @@ ROM_END
 ROM_START(skychal)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(a12ccf64)
-                         SHA1(eb3ff0cdc10fa17e40af5bddedfa5f758c7a5623))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(9a929dcf)
-                         SHA1(892e491fa33cc30cbbd24feb4ea6a63f9a9e1a62))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(ed2183d3)
-                         SHA1(7c43171a57e070a295c191408bd1b8ffee053d9b))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(e7401d68)
-                         SHA1(02f77439075b6367b46dc9ef7f67023b32a68526))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(950f7a2f)
-                         SHA1(1b4fd7b08eeb2fdf2cdfae7f8aa3240e8dce3b9a))
-ROM_LOAD16_WORD_SWAP("ic32.bin", 0x0c00000, 0x200000,
-                     CRC(a656212b)
-                         SHA1(b2bf325cb4cf67787c836a9ac1bb7231068ffd82))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(a12ccf64) SHA1(eb3ff0cdc10fa17e40af5bddedfa5f758c7a5623) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(9a929dcf) SHA1(892e491fa33cc30cbbd24feb4ea6a63f9a9e1a62) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(ed2183d3) SHA1(7c43171a57e070a295c191408bd1b8ffee053d9b) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(e7401d68) SHA1(02f77439075b6367b46dc9ef7f67023b32a68526) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(950f7a2f) SHA1(1b4fd7b08eeb2fdf2cdfae7f8aa3240e8dce3b9a) )
+	ROM_LOAD16_WORD_SWAP( "ic32.bin",     0x0c00000, 0x200000, CRC(a656212b) SHA1(b2bf325cb4cf67787c836a9ac1bb7231068ffd82) )
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("skychal.nv", 0x0000, 0x0080,
          CRC(a6515237) SHA1(5e50cc93eb60ed67cdca408b23b80d16a398df02))
@@ -6438,23 +5766,12 @@ ROM_END
 ROM_START(supgoal)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP("ic22.bin", 0x0200000, 0x200000,
-                     CRC(a686f7a2)
-                         SHA1(f4f9b63046d184864cfffe6ef8268a33b73298da))
-ROM_LOAD16_WORD_SWAP("ic24.bin", 0x0400000, 0x200000,
-                     CRC(56fbbeea)
-                         SHA1(2c622ccc20aed0df7c611a00986ce76b84c61d70))
-ROM_LOAD16_WORD_SWAP("ic26.bin", 0x0600000, 0x200000,
-                     CRC(64701c2b)
-                         SHA1(e9a426ce1882660d533b963899a8b1b6f41f85d4))
-ROM_LOAD16_WORD_SWAP("ic28.bin", 0x0800000, 0x200000,
-                     CRC(d9aebe8c)
-                         SHA1(cd19cf1227d151a015c4dc3aed14bc3b2f78ce07))
-ROM_LOAD16_WORD_SWAP("ic30.bin", 0x0a00000, 0x200000,
-                     CRC(26d4ade5)
-                         SHA1(6b958aa4db293c7af88a735323d19f6417d86048))
-
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "ic22.bin",     0x0200000, 0x200000, CRC(a686f7a2) SHA1(f4f9b63046d184864cfffe6ef8268a33b73298da) )
+	ROM_LOAD16_WORD_SWAP( "ic24.bin",     0x0400000, 0x200000, CRC(56fbbeea) SHA1(2c622ccc20aed0df7c611a00986ce76b84c61d70) )
+	ROM_LOAD16_WORD_SWAP( "ic26.bin",     0x0600000, 0x200000, CRC(64701c2b) SHA1(e9a426ce1882660d533b963899a8b1b6f41f85d4) )
+	ROM_LOAD16_WORD_SWAP( "ic28.bin",     0x0800000, 0x200000, CRC(d9aebe8c) SHA1(cd19cf1227d151a015c4dc3aed14bc3b2f78ce07) )
+	ROM_LOAD16_WORD_SWAP( "ic30.bin",     0x0a00000, 0x200000, CRC(26d4ade5) SHA1(6b958aa4db293c7af88a735323d19f6417d86048) )
 ROM_REGION16_BE(0x80, "eeprom", 0) // preconfigured to 1 player
 ROM_LOAD("supgoal.nv", 0x0000, 0x0080,
          CRC(63806aae) SHA1(b82f0995799e9259a1f071ea8b64a719f9e3c9e9))
@@ -6496,35 +5813,16 @@ CN1/2/3/4 - connectors joining to main board
 ROM_START(fanzonem)
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
-ROM_LOAD16_WORD_SWAP(
-    "epr-21440a.ic13", 0x0000000, 0x0080000,
-    CRC(28457d58)
-        SHA1(1c7c3153eae1faa6c09595dc01906fe05702352d)) // ST M27C4002-12F1
-ROM_LOAD16_WORD_SWAP("mpr-21441.ic2", 0x0400000, 0x0400000,
-                     CRC(b69133a5)
-                         SHA1(63fb8b23cf216a84a2f2458b14a1648b22ae6256))
-ROM_LOAD16_WORD_SWAP("mpr-21445.ic1", 0x0800000, 0x0400000,
-                     CRC(c02ffbd3)
-                         SHA1(284fb6ff25b0621b7c1406a78308da522beaaaf7))
-ROM_LOAD16_WORD_SWAP("mpr-21442.ic4", 0x0c00000, 0x0400000,
-                     CRC(d4d3575f)
-                         SHA1(a3f50f2c932e5b9b9d7e0acf04e8aec41f252147))
-ROM_LOAD16_WORD_SWAP("mpr-21446.ic3", 0x1000000, 0x0400000,
-                     CRC(4831539e)
-                         SHA1(7a3b1c6d4d7e6652efd16fe95ed0471b67c1871e))
-ROM_LOAD16_WORD_SWAP("mpr-21443.ic6", 0x1400000, 0x0400000,
-                     CRC(cb1401c9)
-                         SHA1(a24836b84f8eb63079607b62dd6e72d76cca14ae))
-ROM_LOAD16_WORD_SWAP("mpr-21447.ic5", 0x1800000, 0x0400000,
-                     CRC(61e0d313)
-                         SHA1(595553d82e63aaadb1b19ccf761748677013454d))
-ROM_LOAD16_WORD_SWAP("mpr-21444.ic8", 0x1c00000, 0x0400000,
-                     CRC(a82ff33b)
-                         SHA1(9559ee4cf1ec487c3847df40d10aa2a4eaee97d2))
-ROM_REGION16_BE(0x80, "eeprom",
-                ROMREGION_ERASEFF) /* no dump: the driver synthesises the factory defaults */
-ROM_END
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
+	ROM_LOAD16_WORD_SWAP( "epr-21440a.ic13",  0x0000000, 0x0080000, CRC(28457d58) SHA1(1c7c3153eae1faa6c09595dc01906fe05702352d) ) // ST M27C4002-12F1
+	ROM_LOAD16_WORD_SWAP( "mpr-21441.ic2",    0x0400000, 0x0400000, CRC(b69133a5) SHA1(63fb8b23cf216a84a2f2458b14a1648b22ae6256) )
+	ROM_LOAD16_WORD_SWAP( "mpr-21445.ic1",    0x0800000, 0x0400000, CRC(c02ffbd3) SHA1(284fb6ff25b0621b7c1406a78308da522beaaaf7) )
+	ROM_LOAD16_WORD_SWAP( "mpr-21442.ic4",    0x0c00000, 0x0400000, CRC(d4d3575f) SHA1(a3f50f2c932e5b9b9d7e0acf04e8aec41f252147) )
+	ROM_LOAD16_WORD_SWAP( "mpr-21446.ic3",    0x1000000, 0x0400000, CRC(4831539e) SHA1(7a3b1c6d4d7e6652efd16fe95ed0471b67c1871e) )
+	ROM_LOAD16_WORD_SWAP( "mpr-21443.ic6",    0x1400000, 0x0400000, CRC(cb1401c9) SHA1(a24836b84f8eb63079607b62dd6e72d76cca14ae) )
+	ROM_LOAD16_WORD_SWAP( "mpr-21447.ic5",    0x1800000, 0x0400000, CRC(61e0d313) SHA1(595553d82e63aaadb1b19ccf761748677013454d) )
+	ROM_LOAD16_WORD_SWAP( "mpr-21444.ic8",    0x1c00000, 0x0400000, CRC(a82ff33b) SHA1(9559ee4cf1ec487c3847df40d10aa2a4eaee97d2) )
+	ROM_REGION16_BE( 0x80, "eeprom", ROMREGION_ERASEFF ) /* no dump: the driver synthesises the factory defaults */ROM_END
 
 ROM_START(yattrmnp) // ROM board stickered 837-13598
 STV_BIOS
@@ -6592,7 +5890,7 @@ ROM_END
 ROM_START(tsuribor) // 837-12765-01 ROM BD
 STV_BIOS
 
-ROM_REGION32_BE(0x3000000, "cart", ROMREGION_ERASE00) /* SH2 code */
+	ROM_REGION32_BE( 0x3000000, "cart", ROMREGION_ERASEFF )
 
 ROM_LOAD16_WORD_SWAP("lh28f016sut.ic22", 0x0200000, 0x0200000,
                      CRC(f18764a5)
@@ -6630,187 +5928,64 @@ ROM_END
 GAME(1996, stvbios, 0, stv_slot, stv6b, stv_state, init_stv, ROT0, "Sega",
      "ST-V BIOS", MACHINE_IS_BIOS_ROOT)
 
-/* Playable */
-GAME(1998, astrass, stvbios, stv_5881, stv6b, stv_state, init_astrass, ROT0,
-     "Sunsoft", "Astra SuperStars (J 980514 V1.002)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND)
-GAME(1995, bakubaku, stvbios, stv, stv, stv_state, init_stv, ROT0, "Sega",
-     "Baku Baku Animal (J 950407 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, batmanfr, stvbios, batmanfr, batmanfr, stv_state, init_batmanfr,
-     ROT0, "Acclaim", "Batman Forever (JUE 960507 V1.000)",
-     MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, colmns97, stvbios, stv, stv, stv_state, init_colmns97, ROT0, "Sega",
-     "Columns '97 (JET 961209 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, cotton2, stvbios, stv, stv, stv_state, init_cotton2, ROT0, "Success",
-     "Cotton 2 (JUET 970902 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, cottonbm, stvbios, stv, stv, stv_state, init_cottonbm, ROT0,
-     "Success", "Cotton Boomerang (JUET 980709 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAMEL(1995, critcrsh, stvbios, critcrsh, critcrsh, stv_state, init_stv, ROT0,
-      "Sega", "Critter Crusher (EA 951204 V1.000)",
-      MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS, layout_critcrsh)
-GAMEL(1995, tatacot, critcrsh, critcrsh, critcrsh, stv_state, init_stv, ROT0,
-      "Sega", "Tatacot (JA 951128 V1.000)",
-      MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS, layout_critcrsh)
-GAME(1999, danchih, stvbios, stvmp, stvmp, stv_state, init_danchih, ROT0,
-     "Altron (Tecmo license)", "Danchi de Hanafuda (J 990607 V1.400)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(2000, danchiq, stvbios, stv, stv, stv_state, init_danchiq, ROT0, "Altron",
-     "Danchi de Quiz: Okusan Yontaku Desuyo! (J 001128 V1.200)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, diehard, stvbios, stv, stv, stv_state, init_diehard, ROT0, "Sega",
-     "Die Hard Arcade (UET 960515 V1.000)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND)
-GAME(1996, dnmtdeka, diehard, stv, stv, stv_state, init_dnmtdeka, ROT0, "Sega",
-     "Dynamite Deka (J 960515 V1.000)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND)
-GAME(1995, ejihon, stvbios, stv, stv, stv_state, init_stv, ROT0, "Sega",
-     "Ejihon Tantei Jimusho (J 950613 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, elandore, stvbios, stv_5881, stv6b, stv_state, init_elandore, ROT0,
-     "Sai-Mate",
-     "Touryuu Densetsu Elan-Doree / Elan Doree - Legend of Dragoon (JUET "
-     "980922 V1.006)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1999, ffrevng10, ffreveng, stv_5881, stv6b, stv_state, init_ffreveng, ROT0,
-     "Capcom", "Final Fight Revenge / Final Revenge (JUET 990714 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1999, ffreveng, stvbios, stv_5881, stv6b, stv_state, init_ffreveng, ROT0,
-     "Capcom", "Final Fight Revenge / Final Revenge (JUET 990930 V1.100)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, fhboxers, stvbios, stv, stv, stv_state, init_fhboxers, ROT0, "Sega",
-     "Funky Head Boxers (JUETBKAL 951218 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, findlove, stvbios, stv, stv, stv_state, init_stv, ROT0,
-     "Daiki / FCF",
-     "Zenkoku Seifuku Bishoujo Grand Prix Find Love (J 971212 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1994, gaxeduel, stvbios, stv, stv6b, stv_state, init_gaxeduel, ROT0,
-     "Sega", "Golden Axe - The Duel (JUETL 950117 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, grdforce, stvbios, stv, stv, stv_state, init_grdforce, ROT0,
-     "Success", "Guardian Force (JUET 980318 V0.105)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, groovef, stvbios, stv, stv6b, stv_state, init_groovef, ROT0, "Atlus",
-     "Groove on Fight - Gouketsuji Ichizoku 3 (J 970416 V1.001)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, hanagumi, stvbios, stv, stv, stv_state, init_hanagumi, ROT0, "Sega",
-     "Sakura Taisen - Hanagumi Taisen Columns (J 971007 V1.010)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND)
-GAME(1996, introdon, stvbios, stv, stv, stv_state, init_stv, ROT0,
-     "Sunsoft / Success", "Karaoke Quiz Intro Don Don! (J 960213 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, kiwames, stvbios, stvmp, stvmp, stv_state, init_stv, ROT0, "Athena",
-     "Pro Mahjong Kiwame S (J 951020 V1.208)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, maruchan, stvbios, stv, stv, stv_state, init_maruchan, ROT0,
-     "Sega / Toyosuisan", "Maru-Chan de Goo! (J 971216 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, mausuke, stvbios, stv, stv, stv_state, init_mausuke, ROT0,
-     "Data East Corporation", "Mausuke no Ojama the World (J 960314 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1999, micrombc, stvbios, hopper, micrombc, stv_state, init_stv, ROT0,
-     "Sega", "Microman Battle Charge (J 990326 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, myfairld, stvbios, stvmp, myfairld, stv_state, init_stv, ROT0,
-     "Micronet", "Virtual Mahjong 2 - My Fair Lady (J 980608 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING)
-GAME(1998, othellos, stvbios, stv, stv, stv_state, init_othellos, ROT0,
-     "Success", "Othello Shiyouyo (J 980423 V1.002)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(2001, patocar, stvbios, hopper, patocar, stv_state, init_stv, ROT0, "Sega",
-     "Hashire Patrol Car (J 990326 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, pblbeach, stvbios, stv, stv, stv_state, init_pblbeach, ROT0,
-     "T&E Soft", "Pebble Beach - The Great Shot (JUE 950913 V0.990)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, prikura, stvbios, stv, stv, stv_state, init_prikura, ROT0, "Atlus",
-     "Princess Clara Daisakusen (J 960910 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, puyosun, stvbios, stv, stv, stv_state, init_puyosun, ROT0, "Compile",
-     "Puyo Puyo Sun (J 961115 V0.001)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, rsgun, stvbios, stv_5881, stv, stv_state, init_rsgun, ROT0,
-     "Treasure", "Radiant Silvergun (JUET 980523 V1.000)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND)
-GAME(1998, sasissu, stvbios, stv, stv, stv_state, init_sasissu, ROT0, "Sega",
-     "Taisen Tanto-R Sashissu!! (J 980216 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1999, sanjeon, sasissu, stv, stv, stv_state, init_sanjeon, ROT0,
-     "Sega / Deniam", "DaeJeon! SanJeon SuJeon (AJTUE 990412 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, seabass, stvbios, stv, stv, stv_state, init_seabass, ROT0,
-     "A wave inc. (Able license)", "Sea Bass Fishing (JUET 971110 V0.001)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, shanhigw, stvbios, stv, stv, stv_state, init_shanhigw, ROT0,
-     "Sunsoft / Activision",
-     "Shanghai - The Great Wall / Shanghai Triple Threat (JUE 950623 V1.005)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, shienryu, stvbios, shienryu, stv, stv_state, init_shienryu, ROT270,
-     "Warashi", "Shienryu (JUET 961226 V1.000)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND)
-GAME(1998, sss, stvbios, stv_5881, stv, stv_state, init_sss, ROT0,
-     "Capcom / Cave / Victor Interactive Software",
-     "Steep Slope Sliders (JUET 981110 V1.000)",
-     MACHINE_IMPERFECT_SOUND |
-         MACHINE_IMPERFECT_GRAPHICS) // Also credited as Pack In Soft in ending
-                                     // screen
-GAME(1995, sandor, stvbios, stv, stv, stv_state, init_sandor, ROT0, "Sega",
-     "Puzzle & Action: Sando-R (J 951114 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, thunt, sandor, stv, stv, stv_state, init_thunt, ROT0, "Sega",
-     "Puzzle & Action: Treasure Hunt (JUET 970901 V2.00E)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, thuntk, sandor, stv, stv, stv_state, init_sandor, ROT0,
-     "Sega / Deniam", "Puzzle & Action: BoMulEul Chajara (JUET 970125 V2.00K)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(2000, skychal, stvbios, hopper, patocar, stv_state, init_stv, ROT0, "Sega",
-     "Sky Challenger (J 000406 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, smleague, stvbios, stv, stv, stv_state, init_smleague, ROT0, "Sega",
-     "Super Major League (U 960108 V1.000)",
-     MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, finlarch, smleague, stv, stv, stv_state, init_finlarch, ROT0, "Sega",
-     "Final Arch (J 950714 V1.001)",
-     MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, sokyugrt, stvbios, stv, stv, stv_state, init_sokyugrt, ROT0,
-     "Raizing / Eighting", "Soukyugurentai / Terra Diver (JUET 960821 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1995, suikoenb, stvbios, stv, stv6b, stv_state, init_suikoenb, ROT0,
-     "Data East Corporation",
-     "Suiko Enbu / Outlaws of the Lost Dynasty (JUETL 950314 V2.001)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, supgoal, stvbios, hopper, patocar, stv_state, init_stv, ROT0, "Sega",
-     "Nerae! Super Goal (J 981218 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, techbowl, stvbios, hopper, patocar, stv_state, init_stv, ROT0,
-     "Sega", "Technical Bowling (J 971212 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1996, vfkids, stvbios, stv, stv, stv_state, init_stv, ROT0, "Sega",
-     "Virtua Fighter Kids (JUET 960319 V0.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, vmahjong, stvbios, stvmp, vmahjong, stv_state, init_stv, ROT0,
-     "Micronet", "Virtual Mahjong (J 961214 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, wwshin, stvbios, stv, wwshin, stv_state, init_stv, ROT0, "Sega",
-     "Waku Waku Shinkansen (J 971031 V0.002)",
-     MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1998, wasafari, stvbios, stv, wasafari, stv_state, init_stv, ROT0, "Sega",
-     "Wanpaku Safari (J 981109 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING)
-GAME(1997, winterht, stvbios, stv, stv, stv_state, init_winterht, ROT0, "Sega",
-     "Winter Heat (JUET 971012 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, znpwfv, stvbios, stv, stv, stv_state, init_znpwfv, ROT0, "Sega",
-     "Zen Nippon Pro-Wres Featuring Virtua (J 971123 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-GAME(1997, znpwfvt, znpwfv, stv, stv, stv_state, init_znpwfv, ROT0, "Sega",
-     "All Japan Pro-Wrestling Featuring Virtua (T 971123 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
-
+// Playable
+GAME( 1998, astrass,   stvbios, stv_5881, stv6b,    stv_state,   init_astrass,    ROT0,   "Sunsoft",                      "Astra SuperStars (J 980514 V1.002)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
+GAME( 1995, bakubaku,  stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Baku Baku Animal (J 950407 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, batmanfr,  stvbios, batmanfr, batmanfr, stv_state,   init_batmanfr,   ROT0,   "Acclaim",                      "Batman Forever (JUE 960507 V1.000)", MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, colmns97,  stvbios, stv,      stv,      stv_state,   init_colmns97,   ROT0,   "Sega",                         "Columns '97 (JET 961209 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, cotton2,   stvbios, stv,      stv,      stv_state,   init_cotton2,    ROT0,   "Success",                      "Cotton 2 (JUET 970902 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1998, cottonbm,  stvbios, stv,      stv,      stv_state,   init_cottonbm,   ROT0,   "Success",                      "Cotton Boomerang (JUET 980709 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAMEL(1995, critcrsh,  stvbios, critcrsh, critcrsh, stv_state,   init_stv,        ROT0,   "Sega",                         "Critter Crusher (EA 951204 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS, layout_critcrsh )
+GAMEL(1995, tatacot,   critcrsh,critcrsh, critcrsh, stv_state,   init_stv,        ROT0,   "Sega",                         "Tatacot (JA 951128 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS, layout_critcrsh )
+GAME( 1999, danchih,   stvbios, stvmp,    stvmp,    stv_state,   init_danchih,    ROT0,   "Altron (Tecmo license)",       "Danchi de Hanafuda (J 990607 V1.400)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 2000, danchiq,   stvbios, stv,      stv,      stv_state,   init_danchiq,    ROT0,   "Altron",                       "Danchi de Quiz: Okusan Yontaku Desuyo! (J 001128 V1.200)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, diehard,   stvbios, stv,      stv,      stv_state,   init_diehard,    ROT0,   "Sega",                         "Die Hard Arcade (UET 960515 V1.000)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND  )
+GAME( 1996, dnmtdeka,  diehard, stv,      stv,      stv_state,   init_dnmtdeka,   ROT0,   "Sega",                         "Dynamite Deka (J 960515 V1.000)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND  )
+GAME( 1995, ejihon,    stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Ejihon Tantei Jimusho (J 950613 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1998, elandore,  stvbios, stv_5881, stv6b,    stv_state,   init_elandore,   ROT0,   "Sai-Mate",                     "Touryuu Densetsu Elan-Doree / Elan Doree - Legend of Dragoon (JUET 980922 V1.006)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1999, ffrevng10, ffreveng,stv_5881, stv6b,    stv_state,   init_ffreveng,   ROT0,   "Capcom",                       "Final Fight Revenge / Final Revenge (JUET 990714 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1999, ffreveng,  stvbios, stv_5881, stv6b,    stv_state,   init_ffreveng,   ROT0,   "Capcom",                       "Final Fight Revenge / Final Revenge (JUET 990930 V1.100)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, fhboxers,  stvbios, stv,      stv,      stv_state,   init_fhboxers,   ROT0,   "Sega",                         "Funky Head Boxers (JUETBKAL 951218 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, findlove,  stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Daiki / FCF",                  "Zenkoku Seifuku Bishoujo Grand Prix Find Love (J 971212 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1994, gaxeduel,  stvbios, stv,      stv6b,    stv_state,   init_gaxeduel,   ROT0,   "Sega",                         "Golden Axe - The Duel (JUETL 950117 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS)
+GAME( 1998, grdforce,  stvbios, stv,      stv,      stv_state,   init_grdforce,   ROT0,   "Success",                      "Guardian Force (JUET 980318 V0.105)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, groovef,   stvbios, stv,      stv6b,    stv_state,   init_groovef,    ROT0,   "Atlus",                        "Groove on Fight - Gouketsuji Ichizoku 3 (J 970416 V1.001)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, hanagumi,  stvbios, stv,      stv,      stv_state,   init_hanagumi,   ROT0,   "Sega",                         "Sakura Taisen - Hanagumi Taisen Columns (J 971007 V1.010)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
+GAME( 1996, introdon,  stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sunsoft / Success",            "Karaoke Quiz Intro Don Don! (J 960213 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, kiwames,   stvbios, stvmp,    stvmp,    stv_state,   init_stv,        ROT0,   "Athena",                       "Pro Mahjong Kiwame S (J 951020 V1.208)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, maruchan,  stvbios, stv,      stv,      stv_state,   init_maruchan,   ROT0,   "Sega / Toyosuisan",            "Maru-Chan de Goo! (J 971216 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, mausuke,   stvbios, stv,      stv,      stv_state,   init_mausuke,    ROT0,   "Data East Corporation",        "Mausuke no Ojama the World (J 960314 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1999, micrombc,  stvbios, hopper,   micrombc, stv_state,   init_stv,        ROT0,   "Sega",                         "Microman Battle Charge (J 990326 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1998, myfairld,  stvbios, stvmp,    myfairld, stv_state,   init_stv,        ROT0,   "Micronet",                     "Virtual Mahjong 2 - My Fair Lady (J 980608 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING )
+GAME( 1998, othellos,  stvbios, stv,      stv,      stv_state,   init_othellos,   ROT0,   "Success",                      "Othello Shiyouyo (J 980423 V1.002)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 2001, patocar,   stvbios, hopper,   patocar,  stv_state,   init_stv,        ROT0,   "Sega",                         "Hashire Patrol Car (J 990326 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, pblbeach,  stvbios, stv,      stv,      stv_state,   init_pblbeach,   ROT0,   "T&E Soft",                     "Pebble Beach - The Great Shot (JUE 950913 V0.990)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, prikura,   stvbios, stv,      stv,      stv_state,   init_prikura,    ROT0,   "Atlus",                        "Princess Clara Daisakusen (J 960910 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, puyosun,   stvbios, stv,      stv,      stv_state,   init_puyosun,    ROT0,   "Compile",                      "Puyo Puyo Sun (J 961115 V0.001)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1998, rsgun,     stvbios, stv_5881, stv,      stv_state,   init_rsgun,      ROT0,   "Treasure",                     "Radiant Silvergun (JUET 980523 V1.000)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
+GAME( 1998, sasissu,   stvbios, stv,      stv,      stv_state,   init_sasissu,    ROT0,   "Sega",                         "Taisen Tanto-R Sashissu!! (J 980216 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1999, sanjeon,   sasissu, stv,      stv,      stv_state,   init_sanjeon,    ROT0,   "Sega / Deniam",                "DaeJeon! SanJeon SuJeon (AJTUE 990412 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, seabass,   stvbios, stv,      stv,      stv_state,   init_seabass,    ROT0,   "A wave inc. (Able license)",   "Sea Bass Fishing (JUET 971110 V0.001)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, shanhigw,  stvbios, stv,      stv,      stv_state,   init_shanhigw,   ROT0,   "Sunsoft / Activision",         "Shanghai - The Great Wall / Shanghai Triple Threat (JUE 950623 V1.005)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, shienryu,  stvbios, shienryu, stv,      stv_state,   init_shienryu,   ROT270, "Warashi",                      "Shienryu (JUET 961226 V1.000)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
+GAME( 1998, sss,       stvbios, stv_5881, stv,      stv_state,   init_sss,        ROT0,   "Capcom / Cave / Victor Interactive Software", "Steep Slope Sliders (JUET 981110 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS ) // Also credited as Pack In Soft in ending screen
+GAME( 1995, sandr,    stvbios,  stv,      stv,      stv_state,   init_sandr,      ROT0,   "Sega",                         "Puzzle & Action: Sand-R (J 951114 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, thunt,     sandr,   stv,      stv,      stv_state,   init_thunt,      ROT0,   "Sega",                         "Puzzle & Action: Treasure Hunt (JUET 970901 V2.00E)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, thuntk,    sandr,   stv,      stv,      stv_state,   init_sandr,      ROT0,   "Sega / Deniam",                "Puzzle & Action: BoMulEul Chajara (JUET 970125 V2.00K)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 2000, skychal,   stvbios, hopper,   patocar,  stv_state,   init_stv,        ROT0,   "Sega",                         "Sky Challenger (J 000406 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, smleague,  stvbios, stv,      stv,      stv_state,   init_smleague,   ROT0,   "Sega",                         "Super Major League (U 960108 V1.000)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, finlarch,  smleague,stv,      stv,      stv_state,   init_finlarch,   ROT0,   "Sega",                         "Final Arch (J 950714 V1.001)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, sokyugrt,  stvbios, stv,      stv,      stv_state,   init_sokyugrt,   ROT0,   "Raizing / Eighting",           "Soukyugurentai / Terra Diver (JUET 960821 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1995, suikoenb,  stvbios, stv,      stv6b,    stv_state,   init_suikoenb,   ROT0,   "Data East Corporation",        "Suiko Enbu / Outlaws of the Lost Dynasty (JUETL 950314 V2.001)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1998, supgoal,   stvbios, hopper,   patocar,  stv_state,   init_stv,        ROT0,   "Sega",                         "Nerae! Super Goal (J 981218 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, techbowl,  stvbios, hopper,   patocar,  stv_state,   init_stv,        ROT0,   "Sega",                         "Technical Bowling (J 971212 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1996, vfkids,    stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Virtua Fighter Kids (JUET 960319 V0.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, vmahjong,  stvbios, stvmp,    vmahjong, stv_state,   init_stv,        ROT0,   "Micronet",                     "Virtual Mahjong (J 961214 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, wwshin,    stvbios, stv,      wwshin,   stv_state,   init_stv,        ROT0,   "Sega",                         "Waku Waku Shinkansen (J 971031 V0.002)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1998, wasafari,  stvbios, stv,      wasafari, stv_state,   init_stv,        ROT0,   "Sega",                         "Wanpaku Safari (J 981109 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING )
+GAME( 1997, winterht,  stvbios, stv,      stv,      stv_state,   init_winterht,   ROT0,   "Sega",                         "Winter Heat (JUET 971012 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, znpwfv,    stvbios, stv,      stv,      stv_state,   init_znpwfv,     ROT0,   "Sega",                         "Zen Nippon Pro-Wres Featuring Virtua (J 971123 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1997, znpwfvt,   znpwfv,  stv,      stv,      stv_state,   init_znpwfv,     ROT0,   "Sega",                         "All Japan Pro-Wrestling Featuring Virtua (T 971123 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
 // Unemulated printer / camera devices
 // USA sets
 GAME(1997, pclub2, stvbios, stv, stv, stvpc_state, init_stv, ROT0, "Atlus",
@@ -6926,26 +6101,12 @@ GAME(1998, nclubdis, stvbios, stv, stv, stvpc_state, init_stv, ROT0, "Sega",
      "Name Club Disney (J 980614 V1.000)",
      MACHINE_NOT_WORKING) // errors due to missing security card
 
-/* Doing something.. but not enough yet */
-GAME(1995, vfremix, stvbios, stv, stv, stv_state, init_vfremix, ROT0, "Sega",
-     "Virtua Fighter Remix (JUETBKAL 950428 V1.000)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING)
-GAME(1996, decathlt, stvbios, stv_5838, stv, stv_state, init_decathlt, ROT0,
-     "Sega", "Decathlete (JUET 960709 V1.001)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING)
-GAME(1996, decathlto, decathlt, stv_5838, stv, stv_state, init_decathlt, ROT0,
-     "Sega", "Decathlete (JUET 960424 V1.000)",
-     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING)
-GAME(1998, twcup98, stvbios, stv_5881, stv, stv_state, init_twcup98, ROT0,
-     "Tecmo", "Tecmo World Cup '98 (JUET 980410 V1.000)",
-     MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND |
-         MACHINE_IMPERFECT_GRAPHICS) // some situations with the GK result in
-                                     // the game stalling, maybe CPU core bug??
-GAME(1998, twsoc98, twcup98, stv_5881, stv, stv_state, init_twcup98, ROT0,
-     "Tecmo", "Tecmo World Soccer '98 (JUET 980410 V1.000)",
-     MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND |
-         MACHINE_IMPERFECT_GRAPHICS) // ^^ (check)
-
+// Doing something.. but not enough yet
+GAME( 1995, vfremix,   stvbios, stv,      stv,      stv_state,   init_vfremix,    ROT0,   "Sega",                         "Virtua Fighter Remix (JUETBKAL 950428 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING )
+GAME( 1996, decathlt,  stvbios, stv_5838, stv,      stv_state,   init_decathlt,   ROT0,   "Sega",                         "DecAthlete (JUET 960709 V1.001)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING )
+GAME( 1996, decathlto, decathlt,stv_5838, stv,      stv_state,   init_decathlt,   ROT0,   "Sega",                         "DecAthlete (JUET 960424 V1.000)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING )
+GAME( 1998, twcup98,   stvbios, stv_5881, stv,      stv_state,   init_twcup98,    ROT0,   "Tecmo",                        "Tecmo World Cup '98 (JUET 980410 V1.000)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS ) // some situations with the GK result in the game stalling, maybe CPU core bug??
+GAME( 1998, twsoc98,   twcup98, stv_5881, stv,      stv_state,   init_twcup98,    ROT0,   "Tecmo",                        "Tecmo World Soccer '98 (JUET 980410 V1.000)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS ) // ^^ (check)
 // Gives I/O errors
 GAME( 1996, magzun,    stvbios, magzun,   stv,      stv_state,   init_magzun,     ROT0,   "Sega",                         "Magical Zunou Power (J 961031 V1.000)", MACHINE_NOT_WORKING | MACHINE_NODEVICE_MICROPHONE )
 GAME( 1998, yattrmnp,  stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Yatterman Plus (J 981006 V1.000)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS ) // needs emulation of the medal specific hardware
@@ -6957,10 +6118,6 @@ GAME( 2000, sackids,   stvbios, stv,      stv,      stv_state,   init_stv,      
 GAME( 2001, dfeverg,   stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Dancing Fever Gold (J 000821 V2.001)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
 GAME( 2002, slotbatt,  stvbios, stv,      stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Slot Battler (J 020703 V1.000)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
 
-/* CD games */
-GAME(1995, sfish2, 0, stvcd, stv, stv_state, init_stv_us, ROT0, "Sega",
-     "Sport Fishing 2 (UET 951106 V1.10e)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING | MACHINE_NODEVICE_LAN)
-GAME(1995, sfish2j, sfish2, stvcd, stv, stv_state, init_stv, ROT0, "Sega",
-     "Sport Fishing 2 (J 951201 V1.100)",
-     MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING | MACHINE_NODEVICE_LAN)
+// CD games
+GAME( 1995, sfish2,    0,       stvcd,    stv,      stv_state,   init_stv_us,     ROT0,   "Sega",                         "Sport Fishing 2 (UET 951106 V1.10e)", MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING | MACHINE_NODEVICE_LAN )
+GAME( 1995, sfish2j,   sfish2,  stvcd,    stv,      stv_state,   init_stv,        ROT0,   "Sega",                         "Sport Fishing 2 (J 951201 V1.100)", MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING | MACHINE_NODEVICE_LAN )
