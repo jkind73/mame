@@ -858,6 +858,11 @@ void sh7604_device::dmac_address_error()
 // the interrupt condition itself, so it needs RIE/TIE set (section 9.3.2).
 bool sh7604_device::dmac_request(int channel) const
 {
+	// MSTP4 halts the DMAC clock: it keeps its state and continues from it
+	// when the module is released (section 14.2.1).
+	if (BIT(m_sbycr, 4))
+		return false;
+
 	if (BIT(m_dmac[channel].chcr, 9))
 		return true;
 
@@ -2379,7 +2384,10 @@ void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			}
 			sh2_recalc_irq();
 		}
-		if (data & 0x1c)
+		// Releasing MSTP4 lets a halted DMAC continue from its saved state
+		if (BIT(old_sbycr & ~m_sbycr, 4))
+			dmac_kick();
+		if (data & 0x0c)
 			logerror("SH2 module stop selected %02x\n", data);
 		break;
 	}
