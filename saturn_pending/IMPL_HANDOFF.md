@@ -13747,3 +13747,11 @@ This candidate addresses the independently established vector-read ordering.
 - Falsifier: primary documentation or Mednafen/Ymir evidence requires indexed
   zero transparency for these prohibited modes, or a different end-code rule.
   Runtime validation was not run. No fields or save layout changed.
+
+## IMPL-0180 — VDP1 invalid-mode end-code consistency
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0180 | VDP1 | `777e87bc` | UNVALIDATED — syntax checked only | Prohibited VDP1 colour modes apply the same VRAM word-0 `0x7fff` end-code test during list rasterization and pixel output |
+
+MiSTer `a95b085038ace57fa621558d60a7adc7a3c53f78`, `rtl/Saturn/VDP1/VDP1_pkg.sv:272–289`, defines the default pattern end code as `16'h7fff`; the prior candidate changed pixel classification but left `vdp1_is_end_code` returning false for modes 6/7. The implementation now checks VRAM word 0 for that same value. Syntax check and diff check passed; runtime validation remains validator-owned.
