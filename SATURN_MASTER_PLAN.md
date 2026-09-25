@@ -237,3 +237,28 @@ against a known DSP program before either side is changed.
 - No game ROMs. `regtests/*.zip` **do** contain real firmware
   (`sega_101.bin`, `mpr-17933.bin`, `stv110.bin`, ...), so a BIOS boot replay is
   possible once a binary can be linked.
+
+## Production code fixes (headless-verified, this phase)
+
+Two real production commits, each built headless (no SDL/X11/fontconfig/GL on
+this box; stubs kept OUTSIDE the repo) and verified by booting
+`mame saturnjp -rompath regtests` at 100% with an unchanged correct BIOS screen:
+
+- `864f7f2b` sega/saturn: VDP2 mosaic vertical sizing in interlace modes.
+  MZSZV is N+1 dots non-interlace but 2*(N+1) in interlace (ST-058-R2 p.117/118);
+  old code doubled only for LSMD==3 and after the size==1 early-out, skipping
+  mosaic on interlace screens with MZSZV==0. Fixed via vdp2_mosaic_v_size().
+- `c032bf1d` sega/saturn: mosaic in double-density interlace forces the CRTC
+  to single-density (ST-058-R2 p.117/119). MZCTL enable bits are plumbed into
+  saturn_vdp2_device (set_mosaic_active/effective_lsmd) and used by
+  get_vblank_duration/get_pixel_clock/reconfigure_crtc/vcount. The interlace+
+  mosaic path has no in-sandbox software to exercise it; doc-faithful, flagged.
+  VDP1-side interlace (saturn.cpp) intentionally still uses raw LSMD.
+
+Stale TODOs audited as actually implemented: mosaic block sizing/enables, SCU
+irq ack via IST (write-0-to-clear, ST-097 p.12 fig 1.18), VDP2 H-counter x2 in
+non-Hi-Res.
+
+Note: no commercial game ROMs exist in this repo (only BIOS + test firmware),
+so MACHINE_NOT_WORKING cannot be certified here; the BIOS is the verifiable
+surface and it boots and renders correctly.
