@@ -2835,7 +2835,10 @@ bool saturn_state::vdp1_is_end_code(int address, int texel) const {
     return m_vdp1_legacy.gfx_decode[address] == 0x7f &&
            m_vdp1_legacy.gfx_decode[(address + 1) & 0x7ffff] == 0xff;
   default:
-    return false; // prohibited color modes have no documented end code
+    // Prohibited colour modes fetch the fixed VRAM word-0 pattern used by
+    // the pixel path above; apply its RGB end-code value consistently.
+    return (m_vdp1_legacy.gfx_decode[0] == 0x7f &&
+            m_vdp1_legacy.gfx_decode[1] == 0xff);
   }
 }
 
