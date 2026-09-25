@@ -7,8 +7,12 @@
     Sega Saturn (c) 1994 Sega
 
     @TODO List of things that needs to be implemented:
-    - There's definitely an ack mechanism in SCU irqs. This is almost surely
-done via the ISM register (i.e. going 0->1 to the given bit acks it).
+    - (resolved) The SCU irq ack mechanism is the Interrupt Status Register,
+not the mask register. ST-097-R5 p.12 figure 1.18: on a write "interrupt is
+reset if 0 is written, and maintains the current interrupt status when 1 is
+written", which is what saturn_scu_device::irq_status_w() implements. The mask
+register is the other way round (p.12 figure 1.17): a 1 masks the interrupt,
+a 0 lets it occur.
     - There might be a delay to exactly when SCU irqs happens. This is due to
 the basic fact that SCU runs at 14-ish MHz, so it needs some time before
 actually firing the irq.
@@ -90,7 +94,13 @@ backgrounds (TODO: reinvestigate this), dinoisl;
 - VRAM cycle pattern section needs to be better encapsulated and investigated
 thru real HW also cfr. several "minor GFX" glitches scattered across, kingbox on
 gameplay, columns Sega Ages logo;
-- Missing mosaic effect
+- Mosaic effect: block sizing and the enable bits are implemented (see
+  vdp2_mosaic_v_size, vdp2_draw_mosaic and the scroll sampler).  Not modelled
+  is the rule at ST-058-R2 p.117 and p.119 that performing mosaic processing
+  in the double-density interlace mode makes the screen be displayed by the
+  single-density interlace mode; that needs MZCTL's enable bits plumbed into
+  saturn_vdp2_device so reconfigure_crtc() and friends see an effective LSMD
+  of 10 rather than 11;
   cfr. Saturn BIOS memory screens, capgen2 Choh Makai Mura map transitions
 (obviously);
 - Per-scanline raster effects, at very least Color Offset section is eligible to
@@ -3863,6 +3873,23 @@ bit->
 #define VDP2_N2MZE ((VDP2_MZCTL & 0x0004) >> 2)
 #define VDP2_N1MZE ((VDP2_MZCTL & 0x0002) >> 1)
 #define VDP2_N0MZE ((VDP2_MZCTL & 0x0001) >> 0)
+
+/* ST-058-R2 p.118, "Mosaic size bit (MZSZV3 to MZSZV0)": the vertical mosaic
+   size table has separate non-interlace and interlace columns.  A field value
+   of N selects N+1 dots in non-interlace mode but 2*(N+1) dots in interlace
+   mode -- 1..16 dots in single-dot units versus 2..32 dots in two-dot units
+   (p.117).  LSMD (TVMD bits 7-6, p.17) is 00 non-interlace, 01 not allowed,
+   10 single-density interlace and 11 double-density interlace, so both
+   interlace settings take the two-dot-unit column.
+
+   Note that a field value of 0 still means mosaic is active in interlace mode
+   (2 dots vertically), so this has to be resolved before any "size is 1, do
+   nothing" test rather than after it. */
+static unsigned vdp2_mosaic_v_size(unsigned mzsrv, uint8_t lsmd)
+{
+	unsigned const size = mzsrv + 1;
+	return (lsmd == 2 || lsmd == 3) ? (size * 2) : size;
+}
 
 /*180024 - Special Function Code Select
 
@@ -8637,17 +8664,12 @@ void saturn_state::vdp2_draw_line(bitmap_rgb32 &bitmap,
 
 void saturn_state::vdp2_draw_mosaic(bitmap_rgb32 &bitmap,
                                     const rectangle &cliprect, uint8_t is_roz) {
-  uint8_t h_size = VDP2_MZSZH + 1;
-  uint8_t v_size = VDP2_MZSZV + 1;
-
-  if (is_roz)
-    v_size = 1;
+  unsigned const h_size = VDP2_MZSZH + 1;
+  // Mosaic on the rotation scroll surface is horizontal only (ST-058-R2 p.119).
+  unsigned const v_size = is_roz ? 1 : vdp2_mosaic_v_size(VDP2_MZSZV, m_vdp2->get_lsmd());
 
   if (h_size == 1 && v_size == 1)
     return; // don't bother
-
-  if (m_vdp2->get_lsmd() == 3)
-    v_size <<= 1;
 
   for (int y = cliprect.top(); y <= cliprect.bottom(); y += v_size) {
     for (int x = cliprect.left(); x <= cliprect.right(); x += h_size) {
@@ -8655,8 +8677,8 @@ void saturn_state::vdp2_draw_mosaic(bitmap_rgb32 &bitmap,
 
       // The final block may extend past the clip rectangle, including the
       // bitmap edge.  Do not overwrite pixels outside this rendering pass.
-      const int block_height = std::min<int>(v_size, cliprect.bottom() - y + 1);
-      const int block_width = std::min<int>(h_size, cliprect.right() - x + 1);
+      const int block_height = std::min<int>(int(v_size), cliprect.bottom() - y + 1);
+      const int block_width = std::min<int>(int(h_size), cliprect.right() - x + 1);
       for (int yi = 0; yi < block_height; yi++)
         for (int xi = 0; xi < block_width; xi++)
           bitmap.pix(y + yi, x + xi) = pix;
@@ -9345,7 +9367,7 @@ void saturn_state::vdp2_draw_scroll_screen(bitmap_rgb32 &bitmap, const rectangle
   unsigned const stride = bool(t.linescroll_enable) + bool(t.vertical_linescroll_enable) + bool(t.linezoom_enable);
   bool const mosaic = t.mosaic_screen_enabled;
   unsigned const mosaic_x = mosaic ? VDP2_MZSZH + 1 : 1;
-  unsigned const mosaic_y = mosaic ? (VDP2_MZSZV + 1) * (m_vdp2->get_lsmd() == 3 ? 2 : 1) : 1;
+  unsigned const mosaic_y = mosaic ? vdp2_mosaic_v_size(VDP2_MZSZV, m_vdp2->get_lsmd()) : 1;
   bool const cell_scroll = t.vertical_cell_scroll_enable && !mosaic;
   unsigned const cell_stride = VDP2_N0VCSC && VDP2_N1VCSC ? 2 : 1;
   unsigned const cell_base = ((((VDP2_VCSTAU << 16) | VDP2_VCSTAL) * 2) / 4) +
