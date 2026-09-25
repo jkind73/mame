@@ -77,6 +77,10 @@ struct timer {
   void adjust(int delay, int param) { assert(delay == 17 && param == 0); ++arms; }
 };
 struct saturn_vdp2_device {
+ // saturn_vdp2.h:57 -- device_reset() now notifies the owner so the
+ // legacy rendering half is reset too (saturn_vdp2.cpp:108-109).
+ struct line_cb{unsigned calls=0;int last=-1;
+                void operator()(int s){++calls;last=s;}}m_register_reset_cb;
  bool m_exltfg=false,m_exsyfg=false;
  u16 preserved_tvmd=0xffff;
  void preserve_scanned_output(){preserved_tvmd=m_tvmd;}

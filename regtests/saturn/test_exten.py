@@ -59,6 +59,10 @@ struct machine_stub {
   bool side_effects_disabled() const { return peek; }
 };
 struct saturn_vdp2_device {
+ // saturn_vdp2.h:57 -- device_reset() now notifies the owner so the
+ // legacy rendering half is reset too (saturn_vdp2.cpp:108-109).
+ struct line_cb{unsigned calls=0;int last=-1;
+                void operator()(int s){++calls;last=s;}}m_register_reset_cb;
   screen scr;
   timer tim;
   screen *m_screen = &scr;

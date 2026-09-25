@@ -95,27 +95,49 @@ int main() {
       assert(s.events[DMA_EVENT_TIMER1] == 2);
       ++cases;
     }
-  // Retain existing T1MD load gating; changing mode cannot postpone a count.
+  // ST-210 precaution 31: "Loading the value of Timer 1 set data register to
+  // Timer 1 occurs when Timer 1 is stopped and H-Blank occurs." There is no
+  // T1MD term in the load condition. ST-097 p.11 (fig. 1.16) makes T1MD select
+  // interrupt occurrence only: 0 = every line, 1 = only lines designated by
+  // Timer 0. Changing mode must not postpone a running count.
   saturn_scu_device gated;
   gated.t1_setdata_w(0, 100);
-  gated.t1_mode_w(0, 0x101);
+  gated.t1_mode_w(0, 0x101); // T1MD=1, TENB=1
   gated.hblank_in_w(1);
-  assert(gated.tim.arms == 0);
-  gated.m_t0c = gated.m_timer0_counter + 1; // match the next HBlank increment
-  gated.hblank_in_w(1);
-  assert(gated.tim.deadline.ticks == 100);
+  assert(gated.tim.arms == 1 && gated.tim.deadline.ticks == 100);
   gated.advance(40);
   gated.t1_mode_w(0, 0, 0xff00); // clear T1MD, leave TENB set
   gated.hblank_in_w(1);
   assert(gated.tim.deadline.ticks == 100 && gated.tim.arms == 1);
   gated.advance(100);
   assert(gated.events[DMA_EVENT_TIMER1] == 1);
+
+  // ST-097 fig. 2.13 (in sync with Timer 0): the count is still loaded each
+  // line, but expiry only raises the interrupt on the designated line.
+  saturn_scu_device synced;
+  synced.t1_setdata_w(0, 50);
+  synced.t1_mode_w(0, 0x101); // T1MD=1, TENB=1
+  synced.hblank_in_w(1);      // timer 0 counter becomes 1
+  assert(synced.tim.arms == 1);
+  synced.advance(50);
+  // m_t0c is 1023, so Timer 0 designates no line here: no Timer 1 interrupt.
+  assert(synced.events[DMA_EVENT_TIMER1] == 0);
+
+  saturn_scu_device designated;
+  designated.t1_setdata_w(0, 50);
+  designated.t1_mode_w(0, 0x101);
+  designated.m_t0c = 1;      // designate the first counted line
+  designated.hblank_in_w(1); // timer 0 counter becomes 1 == m_t0c
+  assert(designated.tim.arms == 1);
+  designated.advance(50);
+  assert(designated.events[DMA_EVENT_TIMER1] == 1 &&
+         (designated.m_ist & IST_TIMER_1));
   // Data register mask/width; high-byte writes cannot alter the 9-bit value.
   gated.t1_setdata_w(0, 0xffffffff);
   assert(gated.m_t1s == 511);
   gated.t1_setdata_w(0, 0, 0xffff0000);
   assert(gated.m_t1s == 511);
-  std::cout << cases << " timer-1 reload scenarios passed; gating/masks passed\n";
+  std::cout << cases << " timer-1 reload scenarios passed; ST-210 No.31 load and T1MD occurrence gating passed\n";
 }
 '''
 with tempfile.TemporaryDirectory(prefix="saturn-timer1-") as temp:

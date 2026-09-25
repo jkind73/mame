@@ -89,7 +89,12 @@ int main() {
               assert(s.events[DMA_EVENT_TIMER0] == expected_events);
               assert(bool(s.m_ist & IST_TIMER_0) == hit);
               assert(s.irq_snapshot & IST_HBLANK_IN);
-              assert(s.tim.arms == arms + int(enabled && (!mode || hit)));
+              // ST-210 precaution 31: Timer 1 loads "when Timer 1 is stopped
+              // and H-Blank occurs" -- T1MD is not part of that condition,
+              // it only selects interrupt occurrence (ST-097 fig. 1.16).
+              // The advance below retires the one-shot, so every HBlank
+              // finds Timer 1 stopped and must reload it.
+              assert(s.tim.arms == arms + int(enabled));
               s.advance(s.tim.now + 2); // allow the one-count timer to finish
               // VBlank-IN must not reset timer 0: counting continues in blanking.
               if (edge == 225) {
