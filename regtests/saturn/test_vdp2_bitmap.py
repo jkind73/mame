@@ -46,7 +46,11 @@ code=r'''
 #include <vector>
 using offs_t=uint32_t;
 struct rgb_t {uint32_t v;rgb_t(uint32_t a):v(a){}rgb_t(int r,int g,int b):v((r<<16)|(g<<8)|b){}operator uint32_t()const{return v;}};
-int pal5bit(int v){return (v<<3)|(v>>2);}
+// ST-058-R2 Table 4.3 (p.76): the 32,768-colour RGB format designates
+// "the higher 5 bits within RGB 8-bit, and the lower 3 bits are set to
+// 0" -- so 31 maps to 248.  This is not MAME's host-side pal5bit()
+// (src/lib/util/palette.h:253), which bit-replicates for DAC output.
+int color5fill(int v){return (v&31)<<3;}
 uint32_t alpha_blend_r32(uint32_t d,uint32_t s,unsigned a){uint32_t result=0;for(int sh:{0,8,16})result|=((((s>>sh)&255)*a+((d>>sh)&255)*(256-a))>>8)<<sh;return result;}
 uint32_t add_blend_r32(uint32_t d,uint32_t s){uint32_t out=0;for(int sh:{0,8,16})out|=std::min(255u,((d>>sh)&255)+((s>>sh)&255))<<sh;return out;}
 struct rectangle {int l,r,t,b;int left()const{return l;}int right()const{return r;}int top()const{return t;}int bottom()const{return b;}};
@@ -123,8 +127,8 @@ int main(){
    bool visible=format<3?raw!=0:format==3?(raw&0x8000)!=0:(raw&0x80000000)!=0;
    if(!visible&&!c.transparency)continue;
    uint32_t color;
-   if(format<3){unsigned index=raw+(format<2?768:0);unsigned word=s.m_vdp2_cram[index/2]>>(index%2?0:16);color=rgb_t(pal5bit(word&31),pal5bit((word>>5)&31),pal5bit((word>>10)&31));}
-   else if(format==3)color=rgb_t(pal5bit(raw&31),pal5bit((raw>>5)&31),pal5bit((raw>>10)&31));
+   if(format<3){unsigned index=raw+(format<2?768:0);unsigned word=s.m_vdp2_cram[index/2]>>(index%2?0:16);color=rgb_t(color5fill(word&31),color5fill((word>>5)&31),color5fill((word>>10)&31));}
+   else if(format==3)color=rgb_t(color5fill(raw&31),color5fill((raw>>5)&31),color5fill((raw>>10)&31));
    else color=rgb_t(raw&255,(raw>>8)&255,(raw>>16)&255);
    uint32_t blended;
    if(additive)blended=rgb_t(std::min(255u,32+((color>>16)&255)),std::min(255u,64+((color>>8)&255)),std::min(255u,96+(color&255)));

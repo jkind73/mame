@@ -93,7 +93,7 @@ int main(){saturn_state s;unsigned cases=0;
    s.vdp2_draw_back(out,{1,6,y,y});
    unsigned word=(base+(per_line?unsigned(y)/(interlace==3?2:1):0))%words;
    unsigned pixel=(s.m_vdp2_vram[word/2]>>(word%2?0:16))&65535;
-   auto expand=[](unsigned n){n&=31;return (n<<3)|(n>>2);};
+   auto expand=[](unsigned n){n&=31;return n<<3;}; /* ST-058-R2 Tbl 4.3 */
    uint32_t expected=0xff000000|(expand(pixel)<<16)|(expand(pixel>>5)<<8)|expand(pixel>>10);
    for(int x=1;x<=6;++x)assert(out.pix(y,x)==expected);
    s.vdp2_draw_line(out,{1,6,y,y});

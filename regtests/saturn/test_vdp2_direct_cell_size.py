@@ -34,6 +34,10 @@ code=r'''
 #include <memory>
 #include "palette.h"
 using u32=uint32_t;using u8=uint8_t;using s32=int32_t;using s64=int64_t;
+// ST-058-R2 Table 4.3 (p.76): the 32,768-colour RGB format designates "the
+// higher 5 bits within RGB 8-bit, and the lower 3 bits are set to 0" -- so 31
+// maps to 248.  Not MAME's host-side pal5bit() (src/lib/util/palette.h:253).
+static int color5fill(unsigned v){return int((v&31)<<3);}
 // BLENDS
 struct rectangle {
  int l,r,t,b;int left()const{return l;}int right()const{return r;}int top()const{return t;}int bottom()const{return b;}
@@ -80,7 +84,7 @@ int main(){saturn_state s;unsigned cases=0;
     unsigned address=(code*32+(row*8+col)*bytes)%capacity;uint32_t dot=0;
     for(unsigned b=0;b<bytes;++b)dot=(dot<<8)|s.m_vdp2_legacy.gfx_decode[(address+b)%capacity];
     if(opaque||(dot&(rgb32?0x80000000:0x8000))){
-     uint32_t color=rgb32?rgb_t(dot&255,(dot>>8)&255,(dot>>16)&255):rgb_t(pal5bit(dot&31),pal5bit((dot>>5)&31),pal5bit((dot>>10)&31));
+     uint32_t color=rgb32?rgb_t(dot&255,(dot>>8)&255,(dot>>16)&255):rgb_t(color5fill(dot&31),color5fill((dot>>5)&31),color5fill((dot>>10)&31));
      expected=mode==4?alpha_blend_r32(expected,color,120):mode==2?add_blend_r32(expected,color):color;
     }
    }

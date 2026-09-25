@@ -79,7 +79,7 @@ int main(){saturn_state s;auto &t=s.current_tilemap;auto *memory=s.m_vdp2_legacy
    if(!covered&&!opaque)continue;
    uint32_t color;
    if(format<3)color=s.pal.pen(raw+(format<2?768:0));
-   else if(format==3){auto expand=[](unsigned v){v&=31;return (v<<3)|(v>>2);};color=0xff000000|(expand(raw)<<16)|(expand(raw>>5)<<8)|expand(raw>>10);}
+   else if(format==3){auto expand=[](unsigned v){v&=31;return v<<3;}; /* ST-058-R2 Tbl 4.3 */color=0xff000000|(expand(raw)<<16)|(expand(raw>>5)<<8)|expand(raw>>10);}
    else color=0xff000000|((raw&255)<<16)|(raw&0xff00)|((raw>>16)&255);
    uint32_t result=color;
    if(mode){result=0;for(unsigned sh:{0u,8u,16u}){unsigned c=(color>>sh)&255,d=(0x204060>>sh)&255;result|=(mode==2?std::min(255u,c+d):(c*15+d*17)/32)<<sh;}}

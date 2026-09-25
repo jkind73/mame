@@ -48,7 +48,11 @@ code=r'''
 #include <iostream>
 using offs_t=uint32_t;
 struct rgb_t {uint32_t v;rgb_t(int r,int g,int b):v((r<<16)|(g<<8)|b){}operator uint32_t()const{return v;}};
-int pal5bit(int v){return (v<<3)|(v>>2);}
+// ST-058-R2 Table 4.3 (p.76): the 32,768-colour RGB format designates
+// "the higher 5 bits within RGB 8-bit, and the lower 3 bits are set to
+// 0" -- so 31 maps to 248.  This is not MAME's host-side pal5bit()
+// (src/lib/util/palette.h:253), which bit-replicates for DAC output.
+int color5fill(int v){return (v&31)<<3;}
 struct palette {std::array<uint32_t,2048> pens{};
  void set_pen_color(unsigned i,uint32_t c){pens.at(i)=c;}
  void set_pen_color(unsigned i,int r,int g,int b){set_pen_color(i,rgb_t(r,g,b));}
@@ -65,7 +69,7 @@ struct saturn_state {
 #define VDP2_RAMCTL ramctl
 #define COMBINE_DATA(p) (*(p)=(*(p)&~mem_mask)|(data&mem_mask))
 // FUNCTIONS
-uint32_t color555(unsigned v){return rgb_t(pal5bit(v&31),pal5bit((v>>5)&31),pal5bit((v>>10)&31));}
+uint32_t color555(unsigned v){return rgb_t(color5fill(v&31),color5fill((v>>5)&31),color5fill((v>>10)&31));}
 uint32_t cpu_read(const std::array<uint32_t,1024>& words,unsigned address,unsigned mode){
  if(mode<2)return words[address];
  auto half=[&](unsigned bank){unsigned i=bank*512+address/2;return (words[i]>>(address%2?0:16))&65535;};
