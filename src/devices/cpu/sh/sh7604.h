@@ -39,6 +39,7 @@ public:
 	void ftci_w(int state);
 	auto ftoa_wr_callback() { return m_write_ftoa.bind(); }
 	auto ftob_wr_callback() { return m_write_ftob.bind(); }
+	auto wdtovf_wr_callback() { return m_write_wdtovf.bind(); }
 
 	void sh2_notify_dma_data_available();
 
@@ -47,6 +48,7 @@ protected:
 
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	void reset_chip(bool manual, bool watchdog);
 	virtual void execute_set_input(int irqline, int state) override;
 
 	virtual void sh2_exception(const char *message, int irqline) override;
@@ -241,6 +243,7 @@ private:
 	uint16_t m_ocra, m_ocrb, m_frc_icr;
 	bool m_frt_out_a, m_frt_out_b;
 	devcb_write_line m_write_ftoa, m_write_ftob;
+	devcb_write_line m_write_wdtovf; // /WDTOVF pin: low for 128 clocks on a watchdog overflow
 
 	// INTC
 	struct
@@ -306,8 +309,12 @@ private:
 
 	emu_timer *m_timer;
 	emu_timer *m_wdtimer;
+	emu_timer *m_wdtovf_timer;
+	emu_timer *m_wdt_reset_timer;
 	// Device-owned suspension must not alias the external HALT input.
 	static constexpr uint32_t SUSPEND_REASON_DMAC = 0x00010000;
+	// The chip stays in the internal reset state for 512 clocks (section 12.3.1).
+	static constexpr uint32_t SUSPEND_REASON_WDTRESET = 0x00020000;
 	emu_timer *m_dma_current_active_timer[2];
 	int m_dma_timer_active[2];
 	uint8_t m_dma_irq[2];
@@ -329,6 +336,8 @@ private:
 	TIMER_CALLBACK_MEMBER(sh2_timer_callback);
 	TIMER_CALLBACK_MEMBER(sh2_wdtimer_callback);
 	TIMER_CALLBACK_MEMBER(rtc_callback);
+	TIMER_CALLBACK_MEMBER(wdtovf_callback);
+	TIMER_CALLBACK_MEMBER(wdt_reset_callback);
 	TIMER_CALLBACK_MEMBER(sh2_dma_current_active_callback);
 	void frt_reset();
 	void frt_compare_tick(uint16_t previous);

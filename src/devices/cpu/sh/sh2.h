@@ -37,6 +37,8 @@ protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	// Reset exception fetch: vectors 0/1 for a power-on reset, 2/3 for a manual reset
+	void load_reset_vectors(bool manual);
 
 	// device_execute_interface overrides
 	virtual uint32_t execute_min_cycles() const noexcept override { return 1; }

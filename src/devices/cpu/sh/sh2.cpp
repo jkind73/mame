@@ -95,13 +95,19 @@ void sh2_device::device_reset()
 	m_sh2_state->sleep_mode = 0;
 	m_sh2_state->internal_irq_level = -1;
 	m_sh2_state->sr = SH_I;
-	m_sh2_state->pc = read_long(0);
-	m_sh2_state->r[15] = read_long(4);
+	load_reset_vectors(false);
 
 	m_test_irq = 0;
 	m_cpu_off = 0;
 	m_internal_irq_vector = 0;
 	m_cache_dirty = true;
+}
+
+void sh2_device::load_reset_vectors(bool manual)
+{
+	uint32_t const base = manual ? 8 : 0;
+	m_sh2_state->pc = read_long(base);
+	m_sh2_state->r[15] = read_long(base + 4);
 }
 
 device_memory_interface::space_config_vector sh2_device::memory_space_config() const

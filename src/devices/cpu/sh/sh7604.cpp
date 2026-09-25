@@ -42,7 +42,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_write_sck(*this)
 	, m_tier(0), m_ftcsr(0), m_ftcsr_read(0), m_frc_tcr(0), m_tocr(0), m_frt_temp(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_frt_out_a(false), m_frt_out_b(false)
-	, m_write_ftoa(*this), m_write_ftob(*this)
+	, m_write_ftoa(*this), m_write_ftob(*this), m_write_wdtovf(*this)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0), m_wdt_read(0)
@@ -52,7 +52,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_rtcsr_read(false)
 	, m_rtc_base(0), m_rtc_timer(nullptr)
 	, m_frc_base(0), m_frt_input(0), m_frt_clock_input(false)
-	, m_timer(nullptr), m_wdtimer(nullptr)
+	, m_timer(nullptr), m_wdtimer(nullptr), m_wdtovf_timer(nullptr), m_wdt_reset_timer(nullptr)
 	, m_is_slave(0)
 	, m_dma_kludge_cb(*this)
 	, m_dma_fifo_data_available_cb(*this)
@@ -88,6 +88,10 @@ void sh7604_device::device_start()
 	m_timer->adjust(attotime::never);
 	m_wdtimer = timer_alloc(FUNC(sh7604_device::sh2_wdtimer_callback), this);
 	m_wdtimer->adjust(attotime::never);
+	m_wdtovf_timer = timer_alloc(FUNC(sh7604_device::wdtovf_callback), this);
+	m_wdtovf_timer->adjust(attotime::never);
+	m_wdt_reset_timer = timer_alloc(FUNC(sh7604_device::wdt_reset_callback), this);
+	m_wdt_reset_timer->adjust(attotime::never);
 	m_rtc_timer = timer_alloc(FUNC(sh7604_device::rtc_callback), this);
 	m_rtc_timer->adjust(attotime::never);
 	m_sci_tx_timer = timer_alloc(FUNC(sh7604_device::sci_tx_tick), this);
@@ -238,7 +242,28 @@ void sh7604_device::device_start()
 
 void sh7604_device::device_reset()
 {
+	// RES pin: a power-on reset unless the NMI pin is low, which selects a
+	// manual reset (section 4.2.1, table 4.5). Software cannot tell the two
+	// apart on the vector fetch except through the table entries used.
+	reset_chip(m_nmi_line_state == ASSERT_LINE, false);
+}
+
+// Common reset sequence. A manual reset initializes the CPU and every
+// on-chip module except the BSC, UBC and the frequency modification
+// register, and fetches PC/SP from vectors 2 and 3 instead of 0 and 1
+// (sections 4.2.2 and 4.2.3). An internal reset caused by a watchdog
+// overflow additionally leaves RSTCSR alone (section 12.2.3).
+void sh7604_device::reset_chip(bool manual, bool watchdog)
+{
+	uint8_t const saved_rstcsr = m_rstcsr;
+
 	sh2_device::device_reset();
+	if (manual)
+		load_reset_vectors(true);
+	m_wdtovf_timer->adjust(attotime::never);
+	m_wdt_reset_timer->adjust(attotime::never);
+	resume(SUSPEND_REASON_WDTRESET);
+	m_write_wdtovf(1);
 
 	// ICR control bits reset to falling-edge NMI detection and auto-vector
 	// mode (section 5.3.8). NMIL continues to reflect the external input.
@@ -297,16 +322,32 @@ void sh7604_device::device_reset()
 	// RSTCSR instead (section 12.2.3); its delivery remains separate.
 	m_wtcnt = 0;
 	m_wtcsr = 0;
-	m_rstcsr = 0;
+	m_rstcsr = watchdog ? saved_rstcsr : 0;
 	m_wdt_read = 0;
 	m_wdtimer->adjust(attotime::never);
 
 	sci_reset();
 
-	m_barah = 0;
-	m_baral = 0;
-	m_barbh = 0;
-	m_barbl = 0;
+	// The BSC and UBC registers only have a defined reset value after a
+	// power-on reset (sections 6.2 and 7.2); a manual reset keeps them.
+	if (!manual)
+	{
+		m_barah = 0;
+		m_baral = 0;
+		m_barbh = 0;
+		m_barbl = 0;
+
+		m_bcr1 = 0x03f0;
+		m_bcr2 = 0x00fc;
+		m_wcr = 0xaaff;
+		m_mcr = 0;
+		m_rtcsr = 0;
+		m_rtcnt = 0;
+		m_rtcor = 0;
+		m_rtcsr_read = false;
+		m_rtc_base = total_cycles();
+		m_rtc_timer->adjust(attotime::never);
+	}
 }
 
 void sh7604_device::sh7604_map(address_map &map)
@@ -672,6 +713,11 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_wdtimer_callback)
 	else // watchdog mode
 	{
 		m_rstcsr |= 0x80;
+
+		// /WDTOVF is driven low for 128 clocks whether or not RSTE is set
+		m_write_wdtovf(0);
+		m_wdtovf_timer->adjust(cycles_to_attotime(128));
+
 		if (!(m_rstcsr & 0x40))
 		{
 			// With RSTE=0, only WTCNT/WTCSR reset on watchdog overflow
@@ -681,8 +727,28 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_wdtimer_callback)
 			m_wdtimer->adjust(attotime::never);
 			sh2_recalc_irq();
 		}
-		// TODO RSTE=1 internal reset and /WDTOVF out
+		else
+		{
+			// RSTE=1: the whole chip is reset internally, as a manual reset
+			// when RSTS is set and as a power-on reset otherwise, and stays
+			// in the reset state for 512 clocks (section 12.3.1).
+			reset_chip(BIT(m_rstcsr, 5), true);
+			m_write_wdtovf(0);
+			m_wdtovf_timer->adjust(cycles_to_attotime(128));
+			suspend(SUSPEND_REASON_WDTRESET, true);
+			m_wdt_reset_timer->adjust(cycles_to_attotime(512));
+		}
 	}
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::wdtovf_callback)
+{
+	m_write_wdtovf(1);
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::wdt_reset_callback)
+{
+	resume(SUSPEND_REASON_WDTRESET);
 }
 
 /*
