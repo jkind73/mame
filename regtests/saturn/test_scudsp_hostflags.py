@@ -27,9 +27,14 @@ using offs_t=uint32_t;
 #define INPUT_LINE_HALT 2
 #define ASSERT_LINE 1
 #define CLEAR_LINE 0
+#define SUSPEND_REASON_HALT 1
 struct scudsp_cpu_device {
- enum {EXF=16,LEF=15,EPF=25,PRF=26};
- uint32_t m_flags=0;uint8_t m_pc=0;int reset=0,halt=0;bool m_paused=false,m_delay_pending=false;struct{bool stalled=false;}m_dma;
+ enum {EXF=16,ESF=17,LEF=15,EPF=25,PRF=26};
+ uint32_t m_flags=0;uint8_t m_pc=0;int reset=0,halt=0;bool m_paused=false,m_delay_pending=false,m_step_pending=false,m_lps_active=false;uint8_t m_delay=0;struct{bool stalled=false;}m_dma;
+ unsigned m_suspend_mask=0;
+ void suspend(unsigned reason,bool){m_suspend_mask|=reason;}
+ void resume(unsigned reason){m_suspend_mask&=~reason;}
+ void update_execution_state();
  void set_input_line(int line,int value){if(line==INPUT_LINE_RESET)reset=value;else {assert(line==INPUT_LINE_HALT);halt=value;}}
  void popmessage(const char*){}
  void program_control_w(offs_t,uint32_t,uint32_t);
@@ -46,7 +51,9 @@ int main(){
   uint32_t value=pattern==0?0:pattern==1?0xffffffffu:random;
   scudsp_cpu_device s;s.m_flags=flags<<16;s.m_pc=flags;
   s.m_paused=paused;s.m_delay_pending=pending;s.m_dma.stalled=stalled;
-  uint32_t writable=(value&mask&0x06000000)?0:mask&0x00030000;
+  // Only EX (bit 16) is R/W in the flag byte; ES (bit 17) is a (W) strobe.
+  // EP/PR writes suppress the EX latch update entirely.
+  uint32_t writable=(value&mask&0x06000000)?0:mask&0x00010000;
   uint32_t expected=(s.m_flags&~writable)|(value&writable);
   bool const load=(!(flags&1)||paused)&&(value&mask&0x8000);
   unsigned pc=load?((flags&~mask)|(value&mask))&255:flags;
@@ -54,9 +61,12 @@ int main(){
   if(flags&1){if(value&mask&0x02000000)pause=true;else if(value&mask&0x04000000)pause=false;}
   s.program_control_w(0,value,mask);
   assert(s.m_pc==pc);assert(s.m_delay_pending==(load?false:bool(pending)));
-  assert(s.m_flags==expected);assert(s.reset==!BIT(expected,16));
+  assert(s.m_flags==expected);
   assert(s.m_paused==pause);
-  assert(s.halt==(pause||stalled));++cases;
+  // ST-097 pp.51-52: the DSP runs only while EX is latched on, it is not
+  // paused, and no DMA is stalling it; a pending ES step allows one stage.
+  bool const stopped=pause||stalled||(!BIT(expected,16)&&!s.m_step_pending);
+  assert(s.m_suspend_mask==(stopped?SUSPEND_REASON_HALT:0u));++cases;
  }
  std::cout<<cases<<" actual masked flag/PC/pending-slot/entry-state cases passed\n";
 }

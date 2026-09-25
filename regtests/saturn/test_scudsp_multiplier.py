@@ -20,7 +20,8 @@ methods='\n'.join(extract(sig) for sig in (
     'void scudsp_cpu_device::execute_run()', 'void scudsp_cpu_device::op_alu(',
     'void scudsp_cpu_device::op_move_immediate(', 'void scudsp_cpu_device::set_dest_mem_reg(',
     'void scudsp_cpu_device::set_dest_mem_reg_2(', 'uint32_t scudsp_cpu_device::compute_condition(',
-    'uint32_t scudsp_cpu_device::get_source_mem_value(', 'uint32_t scudsp_cpu_device::get_source_mem_reg_value('))
+    'uint32_t scudsp_cpu_device::get_source_mem_value(', 'uint32_t scudsp_cpu_device::get_source_mem_reg_value(',
+    'void scudsp_cpu_device::update_execution_state()'))
 macros='\n'.join(re.findall(r'^#define SET_[CSZV]\b.*$',src,re.M))
 cpp=r'''
 #include <array>
@@ -37,19 +38,25 @@ constexpr uint64_t concat_64(uint32_t hi,uint32_t lo){return (uint64_t(hi)<<32)|
 #define scudsp_readmem(a,b) ram.at((b)*64+(a))
 #define scudsp_writemem(a,b,v) (ram.at((b)*64+(a))=(v))
 #define INPUT_LINE_HALT 1
+#define SUSPEND_REASON_HALT 1
 #define ASSERT_LINE 1
 namespace util {int32_t sext(uint32_t v,unsigned bits){uint32_t sign=1u<<(bits-1);return int32_t((v&((1u<<bits)-1))^sign)-int32_t(sign);}}
 // MACROS
 struct scudsp_cpu_device {
- enum {CF=20,SF=22,ZF=21,T0F=23};
+ enum {LEF=15,EXF=16,ESF=17,CF=20,ZF=21,SF=22,T0F=23};
  R32 m_acl,m_pl,m_rx,m_ry;R16 m_ach,m_ph;
  int64_t m_alu=0,m_mul=0;uint32_t m_flags=0,m_ra0=0,m_wa0=0;
  uint8_t m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0,m_pc=0,m_delay=0,m_top=0;
- uint16_t m_lop=0;bool m_delay_pending=false;uint32_t m_delay_opcode=0;
+ uint16_t m_lop=0;bool m_lps_active=false;bool m_delay_pending=false;uint32_t m_delay_opcode=0;
  int m_update_mul=0,m_icount=0;
+ bool m_paused=false,m_step_pending=false;
+ unsigned suspend_calls=0,resume_calls=0;
  struct{unsigned ex=0,dir=0,dst=0;bool stalled=false;}m_dma;
  std::array<uint32_t,256> code{},ram{};
  void debugger_instruction_hook(uint8_t){}
+ void suspend(int,bool){++suspend_calls;}
+ void resume(int){++resume_calls;}
+ void update_execution_state();
  void set_input_line(int,int){assert(false);}
  void op_illegal(uint32_t){assert(false);}void op_dma(uint32_t){assert(false);}
  void op_jump(uint32_t){assert(false);}void op_loop(uint32_t){assert(false);}

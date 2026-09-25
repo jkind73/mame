@@ -20,7 +20,8 @@ def extract(signature):
 methods='\n'.join(extract(s) for s in ('void scudsp_cpu_device::op_dma(', 'void scudsp_cpu_device::exec_dma()',
     'TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)','void scudsp_cpu_device::device_reset()',
     'void scudsp_cpu_device::set_dest_dma_mem(', 'void scudsp_cpu_device::set_dest_mem_reg_2(',
-    'uint32_t scudsp_cpu_device::get_mem_source_dma('))
+    'uint32_t scudsp_cpu_device::get_mem_source_dma(',
+    'void scudsp_cpu_device::update_execution_state()'))
 fields=re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state)\)\)',src)
 restore='\n'.join(f'd.{f}=s.{f};' for f in fields)
 mutant=os.environ.get('SCUDSP_CBUS_MUTANT','')
@@ -37,14 +38,14 @@ int main(){
  for(unsigned bank=0;bank<4;++bank)for(unsigned mode=0;mode<8;++mode)
  for(unsigned count:{1u,2u,3u,8u,63u,64u,65u,255u,256u})
  for(unsigned memory=0;memory<2;++memory)for(unsigned hold=0;hold<2;++hold){
-  scudsp_cpu_device s;s.m_wa0=base/4;s.count_source=count&255;
+  scudsp_cpu_device s;s.m_flags=1u<<16;/*EX*/s.m_wa0=base/4;s.count_source=count&255;
   s.m_ct0=s.m_ct1=s.m_ct2=s.m_ct3=57;
   for(unsigned i=0;i<256;++i)s.ram[i]=0xa1230000|(i*0x103);
   auto op=0xc0001000|(bank<<8)|(mode<<15)|(hold<<14)|(memory?0x2000:count&255);
   s.op_dma(op);unsigned stride=mode?1u<<mode:0;
   for(unsigned cut:{0u,1u,2u,3u,6u}){
    auto a=s;a.m_dma_timer=&a.t;for(unsigned i=0;i<cut;++i)a.tick();
-   scudsp_cpu_device b;restore(b,a);a.writes.clear();b.writes.clear();a.finish();b.finish();
+   scudsp_cpu_device b;b.m_flags=1u<<16;/*EX*/restore(b,a);a.writes.clear();b.writes.clear();a.finish();b.finish();
    assert(a.writes==b.writes&&a.m_wa0==b.m_wa0&&a.m_dma.dst==b.m_dma.dst);
   }
   s.finish();assert(s.writes.size()==2*count);

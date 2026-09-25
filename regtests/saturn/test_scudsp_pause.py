@@ -18,8 +18,9 @@ methods='\n'.join(extract(s) for s in ('void scudsp_cpu_device::op_dma(', 'void 
     'TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)','void scudsp_cpu_device::device_reset()',
     'void scudsp_cpu_device::set_dest_dma_mem(', 'void scudsp_cpu_device::set_dest_mem_reg_2(',
     'uint32_t scudsp_cpu_device::get_mem_source_dma(', 'uint32_t scudsp_cpu_device::program_control_r()',
-    'void scudsp_cpu_device::program_control_w('))
-fields=re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state|m_paused)\)\)',src)
+    'void scudsp_cpu_device::program_control_w(',
+    'void scudsp_cpu_device::update_execution_state()'))
+fields=re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state|m_paused|m_step_pending|m_lps_active)\)\)',src)
 restore='\n'.join(f'd.{f}=s.{f};' for f in fields)
 mutant=os.environ.get('SCUDSP_PAUSE_MUTANT','')
 if mutant=='resume-dma': methods=methods.replace('(m_paused || m_dma.stalled)', 'm_paused')
@@ -30,12 +31,12 @@ if mutant=='save-stall': restore=restore.replace('d.m_dma.stalled=s.m_dma.stalle
 tree=ast.parse((ROOT/'regtests/saturn/test_scudsp_dma.py').read_text())
 h=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='harness' for t in n.targets))
 h=h[:h.index('int main(){')]
-h=h.replace('T0F=23','T0F=23,EXF=16,LEF=15,EPF=25,PRF=26,VF=19,EF=18')
+h=h.replace('T0F=23','T0F=23,EPF=25,PRF=26,VF=19,EF=18')
 h=h.replace('count=0;} m_dma;', 'count=0;bool stalled=false;} m_dma;')
 if 'm_paused' not in h: h=h.replace('int clock(){return 1;}', 'bool m_paused=false;int clock(){return 1;}')
 h=h.replace('int clock(){return 1;}', '''int reset=0;
  struct machine_type {bool side_effects_disabled(){return false;}} machine_state;
- machine_type &machine(){return machine_state;}void m_out_irq_cb(int){}void popmessage(const char*){}
+ machine_type &machine(){return machine_state;}void popmessage(const char*){}
  uint32_t program_control_r();void program_control_w(offs_t,uint32_t,uint32_t);
  int clock(){return 1;}''')
 h=h.replace('assert(line==INPUT_LINE_HALT);halt=state;', 'if(line==INPUT_LINE_HALT)halt=state;else {assert(line==INPUT_LINE_RESET);reset=state;}')

@@ -41,7 +41,8 @@ methods = '\n'.join(extract(s) for s in (
     'void scudsp_cpu_device::set_dest_dma_mem(',
     'void scudsp_cpu_device::set_dest_mem_reg_2(',
     'uint32_t scudsp_cpu_device::get_mem_source_dma(',
-    'uint32_t scudsp_cpu_device::get_source_mem_value('))
+    'uint32_t scudsp_cpu_device::get_source_mem_value(',
+    'void scudsp_cpu_device::update_execution_state()'))
 fields = re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state)\)\)', src)
 harness = harness.replace('// METHODS', methods).replace('// RESTORE', '\n'.join(f'd.{f}=s.{f};' for f in fields))
 harness += r'''

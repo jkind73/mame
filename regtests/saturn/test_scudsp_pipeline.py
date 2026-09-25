@@ -23,8 +23,9 @@ methods='\n'.join(extract(sig) for sig in (
     'void scudsp_cpu_device::execute_run()', 'void scudsp_cpu_device::op_jump(',
     'void scudsp_cpu_device::op_loop(', 'void scudsp_cpu_device::op_move_immediate(',
     'void scudsp_cpu_device::set_dest_mem_reg_2(',
-    'uint32_t scudsp_cpu_device::compute_condition(', 'void scudsp_cpu_device::device_reset()'))
-fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_opcode|m_delay_pending|m_top|m_lop)\)\)',src)
+    'uint32_t scudsp_cpu_device::compute_condition(', 'void scudsp_cpu_device::device_reset()',
+    'void scudsp_cpu_device::update_execution_state()'))
+fields=re.findall(r'save_item\(NAME\((m_pc|m_flags|m_delay|m_delay_opcode|m_delay_pending|m_top|m_lop|m_lps_active|m_step_pending|m_paused)\)\)',src)
 restore='\n'.join(f'd.{f}=s.{f};' for f in fields)
 mutation=os.environ.get('MUTATE_DSP_PIPELINE','')
 if mutation=='wrong-fetch':methods=methods.replace('m_delay_opcode = scudsp_readop(m_delay);', 'm_delay_opcode = scudsp_readop(m_pc);')
@@ -51,12 +52,14 @@ harness=r'''
 namespace util {int32_t sext(uint32_t v,unsigned bits){uint32_t sign=1u<<(bits-1);return int32_t((v&((1u<<bits)-1))^sign)-int32_t(sign);}}
 struct attotime {static constexpr int never=-1;};
 struct timer {void adjust(int){}};
+#define SUSPEND_REASON_HALT 1
 struct scudsp_cpu_device {
- enum {CF=20,SF=22,ZF=21,T0F=23,DMA_STATE_IDLE=0};
+ enum {LEF=15,EXF=16,ESF=17,CF=20,ZF=21,SF=22,T0F=23,DMA_STATE_IDLE=0};
  uint8_t m_pc=0,m_delay=0,m_top=0,m_update_mul=0,m_dma_state=0;
- bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint16_t m_lop=0;uint32_t m_flags=0;
+ bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint16_t m_lop=0;bool m_lps_active=false;uint32_t m_flags=0;
  int m_icount=0;int64_t m_mul=0;struct{int32_t si=0;}m_rx,m_ry;
- bool m_paused=false;struct{unsigned ex=0,count=0,dir=0,dst=0;bool stalled=false;}m_dma;
+ bool m_paused=false,m_step_pending=false;
+ struct{unsigned ex=0,count=0,dir=0,dst=0;bool stalled=false;}m_dma;
  timer t;timer *m_dma_timer=&t;
  std::array<uint32_t,256> code{};std::vector<unsigned> fetch,executed;std::vector<uint32_t> retired;
  uint32_t readop(uint8_t a){fetch.push_back(a);return code[a];}
@@ -66,6 +69,11 @@ struct scudsp_cpu_device {
  void op_illegal(uint32_t){assert(false);}void op_dma(uint32_t){assert(false);}
  void op_end(uint32_t){--m_icount;}
  void m_out_ddwt_cb(int){}void m_out_ddmv_cb(int){}void set_input_line(int,int){}
+ uint32_t m_ra=0;int irq_line=-1;void m_out_irq_cb(int n){irq_line=n;}
+ unsigned m_suspend_mask=0;
+ void suspend(unsigned r,bool){m_suspend_mask|=r;}
+ void resume(unsigned r){m_suspend_mask&=~r;}
+ void update_execution_state();
  void execute_run();void op_jump(uint32_t);void op_loop(uint32_t);
  void op_move_immediate(uint32_t);void set_dest_mem_reg_2(uint32_t,uint32_t);
  uint32_t compute_condition(uint32_t);void device_reset();
