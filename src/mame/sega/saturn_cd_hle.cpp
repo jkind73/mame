@@ -947,7 +947,7 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
     /* During seek state, values returned are from the target position */
     uint8_t seek_track = m_cdrom_image->get_track(cd_fad_seek - 150);
 
-    cr1 = cur_status | (playtype << 7) | 0x00 | (cdda_repeat_count & 0xf);
+    cr1 = cur_status | (cdda_repeat_count & 0xf);
     cr2 = (seek_track == 0xff)
               ? 0xffff
               : ((sega_cdrom_get_adr_control(seek_track) << 8) | (seek_track + 1));
@@ -955,7 +955,7 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
           (cd_fad_seek >> 16); // index & 0xff00
     cr4 = cd_fad_seek;
   } else {
-    cr1 = cur_status | (playtype << 7) | 0x00 |
+    cr1 = cur_status |
           (cdda_repeat_count & 0xf); // options << 4 | repeat & 0xf
     // Track and CONTROL/ADR must describe the same reported position.
     // cur_track can still name the track where a multi-track play began.
@@ -2747,6 +2747,8 @@ void saturn_cd_hle_device::cmd_abort_file() {
   // This is a commanded pause, not a temporary buffer-space pause: later
   // Delete/DataEnd/reset frees must not restart the aborted file producer.
   buffull_temp_pause = false;
+  playtype = 0;
+  fadstoplay = 0;
   if (((cd_stat & 0x0f00) != CD_STAT_NODISC) &&
       ((cd_stat & 0x0f00) != CD_STAT_OPEN))
     cd_change_status(CD_STAT_PAUSE); // force to pause
@@ -3853,6 +3855,7 @@ void saturn_cd_hle_device::cd_exec_command() {
     update_hirq();
     break;
   }
+  cmd_pending = 0;
 }
 
 TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::sh1_command_cb) {
@@ -3903,7 +3906,8 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
   hirqreg |= SCDQ;
   update_hirq();
 
-  if (cd_stat & CD_STAT_PERI) {
+  if (!cmd_pending) {
+    cd_stat |= CD_STAT_PERI;
     cr_standard_return(cd_stat);
   }
   trace_boot_state("periodic");
@@ -4578,6 +4582,7 @@ void saturn_cd_hle_device::cd_playdata() {
                 hirqreg |= EFLS;
                 update_hirq();
                 trace_boot_state("file-complete", true);
+                playtype = 0;
               }
             } else {
               // a cdda_maxrepeat of 0xf means keep repeating same track
