@@ -187,9 +187,13 @@ halved rate was wrong.
 |---|---|
 | Baseline `a9995558` | 44 PASS / 29 FAIL |
 | After `59146b25` | 50 PASS / 23 FAIL |
-| After `46cc6682` | **59 PASS / 14 FAIL** |
+| After `46cc6682` | 59 PASS / 14 FAIL |
+| After `09cd47fd` (RGB555 oracles) | 62 PASS / 11 FAIL |
+| After the `scudsp_lop` rewrite | **63 PASS / 10 FAIL** |
 
-Groups closed completely: **SCUDSP host/DMA** (cbus, count_operand, dma,
+Groups closed completely: **VDP2 colour oracles** (bitmap_vramsize,
+direct_cell_size, palette), **SCUDSP LOP/BTM** (scudsp_lop),
+**SCUDSP host/DMA** (cbus, count_operand, dma,
 hostflags, parallel), **SMPC** (handshake, timeout, transport,
 controller_slots), **VDP2 reset notification** (exten, tvmd), **SCU timers**
 (timer0, timer1), plus `vdp2_raster_writes` and `vdp2_postload`.
