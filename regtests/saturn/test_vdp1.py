@@ -26,7 +26,7 @@ def extract(text, signature):
     return text[start:end]
 pixels=('drawpixel_poly','drawpixel_8bpp_trans','drawpixel_4bpp_trans','drawpixel_4bpp_notrans','drawpixel_generic')
 functions=extract(current,'bool saturn_state::vdp1_pixel_visible(')+'\n'+extract(current,'void saturn_state::vdp1_abort_draw()')+'\n'
-functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_advance_display_erase(', 'void saturn_state::vdp1_begin_display_erase()', 'void saturn_state::vdp1_finish_display_erase()', 'void saturn_state::vdp1_draw_rectangle_slice(', 'void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_line_capacity()', 'void saturn_state::vdp1_advance_vblank_erase(', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
+functions+='\n'.join(extract(current,s) for s in ('void saturn_state::vdp1_advance_display_erase(', 'void saturn_state::vdp1_begin_display_erase()', 'void saturn_state::vdp1_finish_display_erase()', 'void saturn_state::vdp1_draw_rectangle_slice(', 'void saturn_state::vdp1_vram_w(', 'void saturn_state::vdp1_reset_raster_queue()', 'int saturn_state::vdp1_raster_slice_cycles()', 'void saturn_state::vdp1_set_drawpixel()', 'void saturn_state::vdp1_draw_raster_slice()', 'uint32_t saturn_state::vdp1_vblank_erase_line_capacity()', 'void saturn_state::vdp1_advance_vblank_erase(', 'uint32_t saturn_state::vdp1_vblank_erase_capacity()', 'void saturn_state::vdp1_begin_vblank_erase()', 'void saturn_state::vdp1_finish_vblank_erase()', 'void saturn_state::vdp1_cancel_erase()', 'int saturn_state::vdp1_scaled_coordinate(', 'bool saturn_state::vdp1_texture_sample_visible(', 'void saturn_state::vdp1_fill_line(', 'void saturn_state::vdp1_latch_color_lookup()', 'void saturn_state::vdp1_latch_framebuffer_config()', 'void saturn_state::vdp1_request_termination()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_terminate)', 'std::array<uint32_t, 6> saturn_state::vdp1_rotation_parameters()', 'int saturn_state::vdp1_rotation_coordinate(', 'uint16_t saturn_state::vdp1_display_pixel(', 'uint16_t saturn_state::vdp1_color_calculate(', 'void saturn_state::vdp1_draw_color(', 'uint16_t saturn_state::vdp1_read_pixel(', 'void saturn_state::vdp1_write_pixel(', 'void saturn_state::vdp1_clear_framebuffer(', 'void saturn_state::vdp1_change_framebuffers()', 'void saturn_state::vdp1_video_update()', 'void saturn_state::vdp1_set_framebuffer_config()', 'void saturn_state::vdp1_state_save_postload()', 'void saturn_state::vdp1_reset_framebuffers()', 'void saturn_state::vdp1_prepare_framebuffers()', 'void saturn_state::vdp1_regs_w('))+'\n'
 for group, signatures in [
  ('commands', ['void saturn_state::vdp1_process_list()', 'TIMER_CALLBACK_MEMBER(saturn_state::vdp1_draw_end)']),
  ('framebuffer',['void saturn_state::vdp1_framebuffer0_w(', 'uint32_t saturn_state::vdp1_framebuffer0_r(']),
@@ -102,8 +102,15 @@ assert 'vdp1_fill_line(' in extract(current,'void saturn_state::vdp1_fill_slope(
 assert 'vdp1_end_w' not in extract(current,'TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline)')
 for field in ('drawing','command_position','command_return'):
     assert f'save_item(NAME(m_vdp1_legacy.{field}));' in current
-assert 'vdp1_abort_draw();' in extract(current,'void saturn_state::machine_reset()')
-assert 'vdp1_abort_draw();' in extract(current,'void saturn_state::system_reset_w(')
+# Both reset paths now funnel through vdp1_reset(), which cancels the draw,
+# cancels the erase, clears PTM to idle (ST-013 section 4.3) and re-owns the
+# framebuffer banks.  Check the whole chain rather than one direct call.
+_vdp1_reset = extract(current,'void saturn_state::vdp1_reset()')
+for _callee in ('vdp1_abort_draw();','vdp1_cancel_erase();',
+                'm_vdp1_regs[0x004 / 2] = 0;','vdp1_reset_framebuffers();'):
+    assert _callee in _vdp1_reset, _callee
+assert 'vdp1_reset();' in extract(current,'void saturn_state::machine_reset()')
+assert 'vdp1_reset();' in extract(current,'void saturn_state::system_reset_w(')
 assert 'vdp1_request_termination();' in extract(current,'void saturn_state::vdp1_regs_w(')
 for bank in (0,1):
     for name in ('framebuffer','field_framebuffer'):
@@ -114,8 +121,8 @@ for name in ('field_valid','draw_field','draw_eos','erase_upper_left','erase_low
     assert f'save_item(NAME(m_vdp1_legacy.{name}));' in current
 for name in ('pending','active','bank','stride','data','left','right','top','bottom','budget','x','y','words_per_line','step'):
     assert f'save_item(NAME(m_vdp1_legacy.vblank_erase_{name}));' in current
-for signature in ('void saturn_state::machine_reset()', 'void saturn_state::system_reset_w('):
-    assert 'vdp1_cancel_erase();' in extract(current,signature)
+# vdp1_cancel_erase() is covered above against vdp1_reset(), the single
+# cancellation point both reset paths now reach.
 for field in ('segments','count','index','dot','x','y','error','extra','end_codes'):
     assert f'save_item(NAME(m_vdp1_raster.{field}));' in current
 assert 'save_item(NAME(m_vdp1_texture_end));' in current
@@ -123,8 +130,9 @@ for field in ('integer','x','r','g','b','dr','dg','db'):
     assert f'save_item(STRUCT_MEMBER(vdp1_shading_data->scanline, {field}));' in current
 for field in ('CMDCTRL','CMDPMOD','CMDCOLR','ispoly'):
     assert f'save_item(NAME(current_sprite.{field}));' in current
-for signature in ('void saturn_state::machine_reset()', 'void saturn_state::system_reset_w(', 'int saturn_state::vdp1_start()'):
-    assert 'vdp1_reset_framebuffers();' in extract(current,signature)
+# machine_reset()/system_reset_w() reach this through vdp1_reset() (asserted
+# above); vdp1_start() still calls it directly when allocating the banks.
+assert 'vdp1_reset_framebuffers();' in extract(current,'int saturn_state::vdp1_start()')
 types=extract(header,'struct vdp1_display_erase_state {')+' m_vdp1_display_erase;'+extract(header,'struct vdp1_raster_state {')+' m_vdp1_raster;'+extract(current,'struct shaded_point {')+';'+extract(header,'struct _gouraud_shading {')+' gouraud_shading;'+extract(header,'struct vdp1_sprite_list')+' current_sprite;'
 types+='\n'+extract(header,'struct vdp1_poly_scanline {')+';\n'+extract(header,'struct vdp1_poly_scanline_data {')+';'
 types+='\n'+extract(header,'struct spoint {')+';'
@@ -202,7 +210,8 @@ struct saturn_state {
  void vdp1_draw_raster_slice();
  void vdp1_draw_rectangle_slice(const int32_t*);
  timer timer_,terminate_;cpu cpu_;scu scu_;cpu *m_maincpu=&cpu_;scu *m_scu=&scu_;
- struct legacy {
+  std::array<uint16_t,16> m_vdp1_color_lookup{}; // saturn.h:259
+struct legacy {
   timer *draw_end_timer=nullptr,*terminate_timer=nullptr;
   bool drawing=false;int command_position=0,command_return=-1;
   uint16_t lopr=0,copr=0;
@@ -217,6 +226,7 @@ struct saturn_state {
   uint8_t vblank_erase_bank=0;
   uint16_t vblank_erase_stride=512,vblank_erase_data=0,vblank_erase_left=0,vblank_erase_right=0,vblank_erase_top=0,vblank_erase_bottom=0;
   uint32_t vblank_erase_budget=0;
+  uint8_t vblank_erase_row_setup=0; // saturn.h:116
   uint16_t vblank_erase_x=0,vblank_erase_y=0,vblank_erase_words_per_line=0;
   uint8_t vblank_erase_step=1;
   byte_buffer gfx_decode=byte_buffer(0x100000,0x11);
@@ -286,6 +296,7 @@ struct saturn_state {
  void vdp1_process_list();void vdp1_draw_end(int);void vdp1_abort_draw();void vdp1_request_termination();void vdp1_terminate(int);
  void vdp1_reset_framebuffers();void vdp1_prepare_framebuffers();void vdp1_state_save_postload();void vdp1_change_framebuffers();
  void vdp1_regs_w(offs_t,uint16_t,uint16_t);
+ void vdp1_latch_color_lookup();
  void vdp1_latch_framebuffer_config();void vdp1_set_framebuffer_config();
  void vdp1_framebuffer0_w(offs_t,uint32_t,uint32_t);
  uint32_t vdp1_framebuffer0_r(offs_t,uint32_t);
