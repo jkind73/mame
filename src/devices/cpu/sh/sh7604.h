@@ -279,6 +279,7 @@ private:
 	uint16_t m_ipra, m_iprb;
 	uint16_t m_vcra, m_vcrb, m_vcrc, m_vcrd, m_vcrwdt, m_vcrdiv, m_intc_icr, m_vcrdma[2];
 	bool m_vecmd, m_nmie;
+	bool m_nmi_pin_low; // NMI pin level (ASSERT_LINE = low), independent of the edge select
 
 	// DIVU
 	bool m_divu_ovf, m_divu_ovfie;

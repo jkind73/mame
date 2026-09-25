@@ -43,7 +43,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_tier(0), m_ftcsr(0), m_ftcsr_read(0), m_frc_tcr(0), m_tocr(0), m_frt_temp(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_frt_out_a(false), m_frt_out_b(false)
 	, m_write_ftoa(*this), m_write_ftob(*this), m_write_wdtovf(*this)
-	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
+	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false), m_nmi_pin_low(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0), m_wdt_read(0)
 	, m_dmaor(0)
@@ -188,6 +188,7 @@ void sh7604_device::device_start()
 
 	save_item(NAME(m_vecmd));
 	save_item(NAME(m_nmie));
+	save_item(NAME(m_nmi_pin_low));
 
 	// DIVU
 	save_item(NAME(m_divu_ovf));
@@ -252,7 +253,7 @@ void sh7604_device::device_reset()
 	// RES pin: a power-on reset unless the NMI pin is low, which selects a
 	// manual reset (section 4.2.1, table 4.5). Software cannot tell the two
 	// apart on the vector fetch except through the table entries used.
-	reset_chip(m_nmi_line_state == ASSERT_LINE, false);
+	reset_chip(m_nmi_pin_low, false);
 }
 
 // Common reset sequence. A manual reset initializes the CPU and every
@@ -276,6 +277,9 @@ void sh7604_device::reset_chip(bool manual, bool watchdog)
 	// mode (section 5.3.8). NMIL continues to reflect the external input.
 	m_intc_icr = 0;
 	m_nmie = m_vecmd = false;
+	// The base CPU tracks the effective NMI request level, which follows the
+	// pin again now that rising-edge detection is off.
+	m_nmi_line_state = m_nmi_pin_low ? ASSERT_LINE : CLEAR_LINE;
 
 	// CCR resets to zero (section 8.2); this disables the cache without
 	// implying a purge of cache memory, which reset does not initialize.
@@ -475,14 +479,28 @@ void sh7604_device::sh7604_map(address_map &map)
 
 void sh7604_device::execute_set_input(int irqline, int state)
 {
-	// Attach the DMAC side effect to the same NMI assertion recognized by
-	// the base CPU. Do not change its exception/IRQ or delay-slot handling.
-	if (irqline == INPUT_LINE_NMI && state != CLEAR_LINE && state != m_nmi_line_state)
+	if (irqline == INPUT_LINE_NMI)
 	{
-		// Section 9.2.7: NMIF also latches when no DMA channel is running.
-		m_dmaor |= 0x02;
-		sh2_dmac_check(0);
-		sh2_dmac_check(1);
+		// ASSERT_LINE is the NMI pin low. ICR.NMIE selects which edge of the
+		// pin requests the interrupt (section 5.3.8): falling by default,
+		// rising when set. The base CPU requests it on its own assertion, so
+		// hand it the effective request level: the pin for falling-edge
+		// detection and the inverted pin for rising-edge detection.
+		m_nmi_pin_low = state != CLEAR_LINE;
+		int const request = m_nmie ? (m_nmi_pin_low ? CLEAR_LINE : ASSERT_LINE) : state;
+
+		// Attach the DMAC side effect to the same NMI request recognized by
+		// the base CPU. Do not change its exception/IRQ or delay-slot handling.
+		if (request != CLEAR_LINE && request != m_nmi_line_state)
+		{
+			// Section 9.2.7: NMIF also latches when no DMA channel is running.
+			m_dmaor |= 0x02;
+			sh2_dmac_check(0);
+			sh2_dmac_check(1);
+		}
+
+		sh2_device::execute_set_input(irqline, request);
+		return;
 	}
 
 	sh2_device::execute_set_input(irqline, state);
@@ -1910,15 +1928,22 @@ uint16_t sh7604_device::frc_icr_r(offs_t offset, uint16_t mem_mask)
 
 uint16_t sh7604_device::intc_icr_r()
 {
-	// TODO: flip meaning based off NMI edge select bit (NMIE)
-	uint16_t nmilv = m_nmi_line_state == ASSERT_LINE ? 0 : 0x8000;
+	// NMIL reports the pin level whichever edge is selected (section 5.3.8)
+	uint16_t nmilv = m_nmi_pin_low ? 0 : 0x8000;
 	return nmilv | (m_intc_icr & 0x0101);
 }
 
 void sh7604_device::intc_icr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	COMBINE_DATA(&m_intc_icr);
-	m_nmie = BIT(m_intc_icr, 8);
+	bool const nmie = BIT(m_intc_icr, 8);
+	if (nmie != m_nmie)
+	{
+		// Changing the edge select must not itself look like an edge: move
+		// the base CPU's request level to the new mapping of the same pin.
+		m_nmie = nmie;
+		m_nmi_line_state = (m_nmie != m_nmi_pin_low) ? ASSERT_LINE : CLEAR_LINE;
+	}
 	m_vecmd = BIT(m_intc_icr, 0);
 }
 
