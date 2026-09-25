@@ -181,17 +181,37 @@ decrement rate. `MASTER_CLOCK_352` = 14318181 x 4 = 57272724 Hz and
 about 1/4 the system clock" (28.6364/4). An initial reading of `clock()/8` as a
 halved rate was wrong.
 
-### Remaining red at 23 — categorised, not yet fixed
+### 2026-09-25 — Phase 0 continued
 
-| Group | Tests | State |
+| Point | Result |
+|---|---|
+| Baseline `a9995558` | 44 PASS / 29 FAIL |
+| After `59146b25` | 50 PASS / 23 FAIL |
+| After `46cc6682` | **59 PASS / 14 FAIL** |
+
+Groups closed completely: **SCUDSP host/DMA** (cbus, count_operand, dma,
+hostflags, parallel), **SMPC** (handshake, timeout, transport,
+controller_slots), **VDP2 reset notification** (exten, tvmd), **SCU timers**
+(timer0, timer1), plus `vdp2_raster_writes` and `vdp2_postload`.
+
+Every oracle change in this range was mutation-verified, not just made green:
+reintroducing the superseded T1MD load gating fails both timer scripts at the
+corrected assertions, and `test_vdp2_postload` catches all four of its mutants.
+
+A latent hole was found and closed while doing this: `test_vdp2_postload`'s
+`decode` mutant rewrote text that had moved out of the function under test, so
+`str.replace` no-op'd and the mutant could never be caught. It now asserts the
+target text is present exactly once before substituting.
+
+### Remaining red at 14 — categorised, not yet fixed
+
+| Group | Tests | Precise state |
 |---|---|---|
-| SMPC mocks | `smpc_handshake`, `smpc_timeout`, `smpc_transport`, `controller_slots` | mocks lack `m_intback_wait`, `INTBACK_WAIT_*`, `m_in_vblank`, `m_reset_button_count`, `read_ext_size` |
-| VDP2 mocks | `exten`, `tvmd` | mocks lack `m_register_reset_cb` (`saturn_vdp2.h:57`) |
-| VDP2 oracles | `vdp2_bitmap`, `_bitmap_vramsize`, `_direct_cell_size`, `_table_wrap`, `_palette` | compile now; pixel oracles still assume bit replication (contradicted by ST-058 Table 4.3) |
-| VDP2 extraction | `vdp2_postload`, `_rotation_clip`, `_scroll_pixels` | further helpers not yet extracted |
-| SCUDSP | `scudsp_lop`, `_multiplier`, `_pipeline`, `_pause` | compile now; assertions encode the pre-`m_lps_active` delay-slot model and the pre-suspend-mask halt model |
-| VDP1/other | `vdp1`, `sprite_scanout`, `vcounter` | stale literal/source assertions |
-| SCU timers | `timer0`, `timer1` | encode T1MD gating the *load*, contradicted by ST-210 No. 31 |
+| VDP2 pixel oracles | `vdp2_bitmap`, `_bitmap_vramsize`, `_direct_cell_size`, `_table_wrap`, `_palette` | Build and run. Oracles still expand RGB555 by bit replication (31 -> 255); ST-058-R2 Table 4.3 p.76 requires zero-fill (31 -> 248). Fix is oracle arithmetic, already adjudicated. |
+| VDP2 extraction | `_rotation_clip`, `_scroll_pixels` | Further un-extracted helpers (`vdp2_rotation_vram_access` and friends); peel one layer at a time. |
+| SCUDSP execution model | `scudsp_lop`, `_multiplier`, `_pipeline`, `_pause` | Build and run. Assertions encode the pre-`m_lps_active` delay-slot LPS model and the pre-suspend-mask `set_input_line(HALT)` model. |
+| VDP1 | `vdp1` | All source assertions pass and the harness builds and runs (~59 s); one behavioural check fails in the raster/draw-line path: `framebuffer_draw_lines[0][0]==0x8bad`. Not yet adjudicated. |
+| Misc | `sprite_scanout`, `vcounter` | Mocks reference `vdp2_expand_color5` / a removed vcounter helper; not yet resynced. |
 
 ### Open question found, not resolved
 
