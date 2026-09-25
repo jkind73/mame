@@ -37,6 +37,7 @@ for field in ('m_prev_hint', 'm_prev_vint'):
 assert 'm_prev_hint = m_prev_vint = 0;' in extract(host, 'void saturn_state::machine_reset()')
 assert 'int m_prev_hint = 0, m_prev_vint = 0;' in header
 functions = '\n'.join((extract(smpc, 'void smpc_hle_device::vblank_in()'),
+                       extract(smpc, 'void smpc_hle_device::vblank_out()'),
                        extract(smpc, 'inline void smpc_hle_device::sf_ack('),
                        extract(host, 'void saturn_state::vint_callback(')))
 mutations = {
@@ -58,9 +59,12 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+struct attotime { static int from_usec(int n){return n;} };
 struct timer {
- bool pending=false; unsigned resets=0;
+ bool pending=false; unsigned resets=0; int delay=-1;
  void reset(){pending=false;++resets;}
+ // vblank_out() defers the command/CONTINUE start here (ST-169 p.50).
+ void adjust(int n){delay=n;pending=true;}
 };
 struct smpc_hle_device {
  bool m_resb=false,m_has_ctrl_ports=true,m_command_in_progress=false,m_sf=false,m_cd_sf=false;
@@ -68,8 +72,16 @@ struct smpc_hle_device {
  unsigned m_intback_stage=0,m_peripheral_size=38,m_peripheral_pos=32,irqs=0;
  timer command,continuation;
  timer *m_cmd_timer=&command,*m_intback_timer=&continuation;
+ // smpc.h:151,171-173 -- vblank_in() now samples the reset switch every
+ // VBlank-IN and qualifies the NMI over three samples (ST-169 pp.19/33-34).
+ bool m_in_vblank=false,m_NMI_reset=false;
+ enum {INTBACK_WAIT_NONE,INTBACK_WAIT_COMMAND,INTBACK_WAIT_CONTINUE};
+ uint8_t m_intback_wait=INTBACK_WAIT_NONE;
+ uint8_t m_reset_button_count=0;
+ unsigned nmis=0;
+ void master_sh2_nmi(){++nmis;}
  int m_reset_button_read(){return 0;}
- void sf_ack(bool);void vblank_in();void irq_request(){++irqs;}
+ void sf_ack(bool);void vblank_in();void vblank_out();void irq_request(){++irqs;}
 };
 struct scu {
  unsigned in=0,out=0;

@@ -58,6 +58,11 @@ struct port {
  unsigned status_reads=0,id_reads=0,data_reads=0;
  u8 read_status(){++status_reads;return status;}
  u8 read_id(unsigned i){++id_reads;return ids.at(i);}
+ // ST-169 pp.70-73: the separate length byte is only queried for an ID
+ // whose low nibble is zero.  setup() only builds 0x20|size with size>=2,
+ // so this must never be reached here; asserting that also catches a
+ // regression that consults it for a plain fixed-size ID.
+ u8 read_ext_size(unsigned){assert(false);return 0;}
  // Synthetic variable-length devices keep a packed backing vector; the new
  // interface explicitly identifies a physical device before its payload byte.
  u8 read_ctrl_slot(unsigned index,unsigned offset){
@@ -72,6 +77,10 @@ struct smpc_hle_device {
  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;
  u8 m_intback_stage=0,m_pmode=0;
+ enum {INTBACK_WAIT_NONE,INTBACK_WAIT_COMMAND,INTBACK_WAIT_CONTINUE};
+ u8 m_intback_wait=INTBACK_WAIT_NONE;
+ bool m_in_vblank=false;
+ u8 m_reset_button_count=0;
  u8 m_intback_buf[3]{},m_smem[5]{},m_rtc_data[7]{},m_region_code=1;
  u8 m_peripheral_data[512]{};uint16_t m_peripheral_size=0,m_peripheral_pos=0;
  port *m_ctrl1=nullptr,*m_ctrl2=nullptr;

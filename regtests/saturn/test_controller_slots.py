@@ -30,9 +30,10 @@ def extract(path, signature):
 
 
 base = 'src/devices/bus/sat_ctrl/'
-method = extract(base+'ctrl.h', 'virtual uint8_t read_ctrl_slot(')
+method = (extract(base+'ctrl.h', 'virtual uint8_t read_ctrl_slot(') + '\n' +
+          extract(base+'ctrl.h', 'virtual uint8_t read_ext_size('))
 functions = '\n'.join(extract(base+'ctrl.cpp', 'uint8_t saturn_control_port_device::'+name)
-                      for name in ('read_ctrl(', 'read_ctrl_slot(', 'read_status(', 'read_id('))
+                      for name in ('read_ctrl(', 'read_ctrl_slot(', 'read_status(', 'read_id(', 'read_ext_size('))
 for device in ('multitap', 'segatap'):
     functions += '\n'+'\n'.join(extract(base+device+'.cpp', 'uint8_t saturn_'+device+'_device::'+name)
                                for name in ('read_ctrl(', 'read_ctrl_slot(', 'read_id('))
@@ -63,7 +64,7 @@ struct device_saturn_control_port_interface {
 struct saturn_control_port_device {
  device_saturn_control_port_interface *m_device=nullptr;
  uint8_t read_ctrl(uint8_t);uint8_t read_ctrl_slot(unsigned,uint8_t);
- uint8_t read_status();uint8_t read_id(int);
+ uint8_t read_status();uint8_t read_id(int);uint8_t read_ext_size(unsigned);
 };
 struct joy:device_saturn_control_port_interface {
  uint16_t value=0;unsigned reads=0;
@@ -137,6 +138,6 @@ with tempfile.TemporaryDirectory(prefix='saturn-slots-') as tmp:
     exe = d/'test'
     cpp.write_text(harness.replace('// DEFAULT_METHOD', method).replace('// FUNCTIONS', functions))
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1', '-g',
-                    '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
+                    '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-fsanitize=address,undefined',
                     '-fno-sanitize-recover=all', str(cpp), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

@@ -44,6 +44,13 @@ struct smpc_hle_device {
  u8 m_ireg[7]{},m_oreg[32]{},m_comreg=0,m_ckchg_tick=0,m_prev_sndoff=0,m_prev_sshoff=0,m_prev_cdoff=0;
  bool m_command_in_progress=false,m_NMI_reset=false,m_cur_dotsel=false,m_has_ctrl_ports=true;
  u8 m_intback_stage=0,m_pmode=0;
+ // smpc.h:171-173 -- ST-169 p.50/p.56: collection may not start during
+ // vertical blanking, so a CONTINUE seen inside VBlank defers its timer
+ // to VBlank-OUT instead of arming it immediately.
+ enum {INTBACK_WAIT_NONE,INTBACK_WAIT_COMMAND,INTBACK_WAIT_CONTINUE};
+ u8 m_intback_wait=INTBACK_WAIT_NONE;
+ bool m_in_vblank=false;
+ u8 m_reset_button_count=0;
  u8 m_peripheral_data[512]{};uint16_t m_peripheral_size=64,m_peripheral_pos=0;
  unsigned ports=0,irqs=0;
  timer cmd,intback,snd,rtc;
