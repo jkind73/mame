@@ -50,6 +50,7 @@ void saturn_vdp2_device::device_start() {
   save_item(NAME(m_disp));
   save_item(NAME(m_bdclmd));
   save_item(NAME(m_lsmd));
+  save_item(NAME(m_mosaic_active));
   save_item(NAME(m_vreso));
   save_item(NAME(m_hreso));
   save_item(NAME(m_odd_bit));
@@ -84,6 +85,7 @@ void saturn_vdp2_device::device_reset() {
   m_disp = 0;
   m_bdclmd = 0;
   m_lsmd = 0;
+  m_mosaic_active = false;
   m_vreso = 0;
   m_hreso = 0;
   m_old_tvmd = 0xffff; // retain forced configuration on the first low-byte write
@@ -267,13 +269,31 @@ int saturn_vdp2_device::get_hblank_duration() {
 }
 
 // some vblank lines measurements (according to Charles MacDonald)
+u8 saturn_vdp2_device::effective_lsmd() {
+  // ST-058-R2 p.117: "If the register is set to do mosaic processing when in
+  // the double-density interlace mode, the screen is made to display in the
+  // single-density interlace mode."  Restated p.119.  LSMD 11 is double- and
+  // 10 single-density interlace (TVMD, p.17), so with mosaic enabled the CRTC
+  // must behave as single-density.
+  return (m_lsmd == 3 && m_mosaic_active) ? 2 : m_lsmd;
+}
+
+void saturn_vdp2_device::set_mosaic_active(bool b) {
+  if (m_mosaic_active == b)
+    return;
+  u8 const old = effective_lsmd();
+  m_mosaic_active = b;
+  if (effective_lsmd() != old)
+    reconfigure_crtc();
+}
+
 // TODO: interlace mode "eats" one line, should be 262.5
 int saturn_vdp2_device::get_vblank_duration() {
   const int base_vtotal[2] = {263, 313};
   int res = base_vtotal[m_is_pal];
 
   // compensate for double density interlace
-  if (m_lsmd == 3)
+  if (effective_lsmd() == 3)
     res <<= 1;
 
   // Exclusive modes
@@ -295,7 +315,7 @@ int saturn_vdp2_device::get_pixel_clock() {
   if (BIT(m_hreso, 1))
     divider >>= 1;
 
-  if (m_lsmd == 3)
+  if (effective_lsmd() == 3)
     divider >>= 1;
 
   // TODO: Unknown for Exclusive modes
@@ -327,7 +347,7 @@ void saturn_vdp2_device::reconfigure_crtc() {
   //	popmessage("Illegal VRES MODE");
 
   // In double density interlace bump by x2 the vertical resolution
-  if (m_lsmd == 3) {
+  if (effective_lsmd() == 3) {
     vert_res *= 2;
   }
 
@@ -409,7 +429,7 @@ int saturn_vdp2_device::get_vcounter() {
   // rows. The rollback table is indexed by field lines, not screen rows.
   // Masking vpos to nine bits instead can index rows 313..511 out of bounds
   // and wraps the final rows back to the start of the table.
-  if (m_lsmd == 3) {
+  if (effective_lsmd() == 3) {
     const unsigned field_line = unsigned(vcount) >> 1;
     assert(field_line < std::size(true_vcount));
     const int base = true_vcount[field_line][m_vreso & ((m_is_pal << 1) | 1)];

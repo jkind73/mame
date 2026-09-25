@@ -41,6 +41,8 @@ public:
   bool get_disp() { return m_disp; }
   bool get_bdclmd() { return m_bdclmd; }
   u8 get_lsmd() { return m_lsmd; }
+  u8 effective_lsmd();
+  void set_mosaic_active(bool b);
   int get_vblank_start_position();
   int get_ystep_count();
   bool get_vramsz() { return m_vramsz; }
@@ -65,6 +67,7 @@ private:
   // The startup clock notification can configure the CRTC before reset.
   u16 m_tvmd = 0, m_old_tvmd = 0xffff;
   u8 m_disp = 0, m_bdclmd = 0, m_lsmd = 0, m_vreso = 0, m_hreso = 0;
+  bool m_mosaic_active = false;
   bool m_odd_bit = true;
   u16 m_exten = 0;
   bool m_exlten = false, m_exsyen = false, m_dasel = false, m_exbgen = false;

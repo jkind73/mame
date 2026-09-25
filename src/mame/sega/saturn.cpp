@@ -11096,6 +11096,11 @@ void saturn_state::vdp2_regs_w(offs_t offset, uint16_t data,
     m_vdp2->preserve_scanned_output();
   COMBINE_DATA(&m_vdp2_regs[offset]);
 
+  // MZCTL enable bits (0x1f) decide whether the CRTC must treat a
+  // double-density interlace mode as single-density (ST-058-R2 p.117/119).
+  if (offset == 0x022 / 2)
+    m_vdp2->set_mosaic_active((VDP2_MZCTL & 0x1f) != 0);
+
   // window coordinates may have changed
   vdp2_window_cache_invalidate();
 
