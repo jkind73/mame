@@ -47,6 +47,8 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0), m_wdt_read(0)
 	, m_dmaor(0)
+	, m_write_dack(*this), m_write_dma_data(*this), m_read_dma_data(*this, 0)
+	, m_dmac_top(1), m_dmac_access(false)
 	, m_sbycr(0), m_ccr(0)
 	, m_bcr1(0x03f0), m_bcr2(0x00fc), m_wcr(0xaaff), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
 	, m_rtcsr_read(false)
@@ -60,6 +62,8 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 {
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
+	std::fill(std::begin(m_dreq_pin), std::end(m_dreq_pin), false);
+	std::fill(std::begin(m_dreq_edge), std::end(m_dreq_edge), false);
 	std::fill(std::begin(m_dma_irq), std::end(m_dma_irq), 0);
 	std::fill(std::begin(m_active_dma_incs), std::end(m_active_dma_incs), 0);
 	std::fill(std::begin(m_active_dma_incd), std::end(m_active_dma_incd), 0);
@@ -215,6 +219,9 @@ void sh7604_device::device_start()
 	// The permanent timers save their own deadlines, but the channel state
 	// used by their callbacks must accompany the visible register image.
 	save_item(NAME(m_dma_timer_active));
+	save_item(NAME(m_dreq_pin));
+	save_item(NAME(m_dreq_edge));
+	save_item(NAME(m_dmac_top));
 	save_item(NAME(m_dma_irq));
 	save_item(NAME(m_active_dma_incs));
 	save_item(NAME(m_active_dma_incd));
@@ -310,6 +317,13 @@ void sh7604_device::reset_chip(bool manual, bool watchdog)
 		m_active_dma_dst[i] = 0;
 		m_active_dma_count[i] = 0;
 	}
+	// The first transfer after a reset gives channel 1 priority in
+	// round-robin mode (section 9.2.7), and DACK is idle (CHCR.AL=0: high).
+	m_dmac_top = 1;
+	m_dmac_access = false;
+	m_dreq_edge[0] = m_dreq_edge[1] = false;
+	dmac_dack_idle(0);
+	dmac_dack_idle(1);
 	sh2_dmac_update_suspend();
 
 	// DVCR is initialized by power-on/manual reset, not module standby
@@ -793,166 +807,242 @@ void sh7604_device::sh2_notify_dma_data_available()
 
 }
 
+// Section 4.3.1 table 4.6 (data accesses by the DMAC): a word access must be
+// on an even address, a longword access on a longword boundary, and the
+// on-chip peripheral space rejects byte accesses at H'FFFFFF00-H'FFFFFFFF and
+// longword accesses at H'FFFFFE00-H'FFFFFEFF. 16-byte transfers use
+// longword accesses (note 2).
+bool sh7604_device::dmac_bad_address(uint32_t address, int size) const
+{
+	switch (size)
+	{
+	case 0:
+		return address >= 0xffffff00;
+	case 1:
+		return BIT(address, 0);
+	default:
+		return (address & 3) || (address >= 0xfffffe00 && address < 0xffffff00);
+	}
+}
+
+// An address error in the DMAC sets DMAOR.AE. Transfers are performed up to
+// the one that caused it; none can be enabled again until AE is cleared.
+void sh7604_device::dmac_address_error()
+{
+	LOG("SH2: DMA address error\n");
+	m_dmaor |= 0x04;
+	sh2_dmac_check(0);
+	sh2_dmac_check(1);
+}
+
+// Table 9.3: AR selects auto-request; otherwise DRCR.RS selects the DREQ pin
+// (edge or level per CHCR.DS/DL) or an SCI RXI/TXI request. The SCI request is
+// the interrupt condition itself, so it needs RIE/TIE set (section 9.3.2).
+bool sh7604_device::dmac_request(int channel) const
+{
+	if (BIT(m_dmac[channel].chcr, 9))
+		return true;
+
+	switch (m_dmac[channel].drcr & 3)
+	{
+	case 0:
+		if (BIT(m_dmac[channel].chcr, 6))
+			return m_dreq_edge[channel];
+		return m_dreq_pin[channel] == bool(BIT(m_dmac[channel].chcr, 5));
+	case 1:
+		return (m_ssr & SSR_RDRF) && (m_scr & 0x40);
+	case 2:
+		return (m_ssr & SSR_TDRE) && (m_scr & 0x80);
+	default:
+		return false;
+	}
+}
+
+// A channel that has been started and has a request outstanding
+bool sh7604_device::dmac_ready(int channel) const
+{
+	return m_dma_timer_active[channel] == 1 && m_active_dma_count[channel] && dmac_request(channel);
+}
+
+// Section 9.2.7 DMAOR.PR: fixed priority favors channel 0; in round-robin mode
+// the channel that transferred last drops to the bottom.
+bool sh7604_device::dmac_has_priority(int other, int channel) const
+{
+	if (BIT(m_dmaor, 3))
+		return other == m_dmac_top;
+	return other < channel;
+}
+
+// Restart channels that were waiting for a transfer request
+void sh7604_device::dmac_kick()
+{
+	for (int ch = 0; ch < 2; ch++)
+	{
+		if (m_dma_timer_active[ch] == 3 && dmac_request(ch))
+		{
+			m_dma_timer_active[ch] = 1;
+			m_dma_current_active_timer[ch]->adjust(cycles_to_attotime(2), ch);
+			sh2_dmac_update_suspend();
+		}
+	}
+}
+
+void sh7604_device::dreq_w(int channel, int state)
+{
+	bool const level = state != 0;
+	bool const changed = m_dreq_pin[channel] != level;
+	m_dreq_pin[channel] = level;
+	if (!changed)
+		return;
+
+	if (BIT(m_dmac[channel].chcr, 6) && !BIT(m_dmac[channel].chcr, 9) && !(m_dmac[channel].drcr & 3))
+	{
+		// Edge detection: DL=0 falling edge, DL=1 rising edge (table 9.5)
+		if (level == bool(BIT(m_dmac[channel].chcr, 5)))
+			m_dreq_edge[channel] = true;
+	}
+	dmac_kick();
+}
+
+// DACK level is selected by CHCR.AL: 0 active low, 1 active high
+void sh7604_device::dmac_dack(int channel)
+{
+	bool const active_high = BIT(m_dmac[channel].chcr, 7);
+	m_write_dack[channel](active_high ? 1 : 0);
+	m_write_dack[channel](active_high ? 0 : 1);
+}
+
+void sh7604_device::dmac_dack_idle(int channel)
+{
+	m_write_dack[channel](BIT(m_dmac[channel].chcr, 7) ? 0 : 1);
+}
+
 void sh7604_device::sh2_do_dma(int dmach)
 {
 	if (m_active_dma_count[dmach] > 0)
 	{
+		// Transfers wait for their request source, and the lower priority
+		// channel yields the bus while the other has a request pending.
+		if (!dmac_request(dmach))
+		{
+			m_dma_timer_active[dmach] = 3;
+			sh2_dmac_update_suspend();
+			return;
+		}
+		int const other = dmach ^ 1;
+		if (dmac_ready(other) && dmac_has_priority(other, dmach))
+		{
+			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+			return;
+		}
+
 		uint32_t const previous_src = m_active_dma_src[dmach];
 		uint32_t const previous_dst = m_active_dma_dst[dmach];
 
-		// SH7604 manual section 9.3.1, figure 9.2: transfer at SAR/DAR,
-		// then update the addresses. Byte/word/longword decrement modes
-		// are not the SH-2 instruction set's pre-decrement addressing.
-		switch (m_active_dma_size[dmach])
+		// Single-address mode (TA=1) moves data between memory and an
+		// external device on the data bus: AM=0 reads memory (SAR, SM) for
+		// the device, AM=1 writes memory (DAR, DM) from the device.
+		bool const single = BIT(m_dmac[dmach].chcr, 3);
+		bool const device_to_memory = single && BIT(m_dmac[dmach].chcr, 8);
+		bool const memory_to_device = single && !BIT(m_dmac[dmach].chcr, 8);
+		bool const use_dack = single || (!BIT(m_dmac[dmach].chcr, 9) && !(m_dmac[dmach].drcr & 3));
+
+		int const size = m_active_dma_size[dmach];
+		unsigned const bytes = size == 0 ? 1 : size == 1 ? 2 : 4;
+		uint32_t const data_mask = 0xffffffffU >> (32 - 8 * bytes);
+
+		// Longword accesses are used for the 16-byte transfer size too
+		if ((!device_to_memory && dmac_bad_address(m_active_dma_src[dmach], size)) ||
+			(!memory_to_device && dmac_bad_address(m_active_dma_dst[dmach], size)))
 		{
-		case 0:
-		{
-			// we need to know the src / dest ahead of time without changing them
-			// to allow for the callback to check if we can process the DMA at this
-			// time (we need to know where we're reading / writing to/from)
-
-			uint32_t tempsrc = m_active_dma_src[dmach];
-
-			uint32_t tempdst = m_active_dma_dst[dmach];
-
-			if (!m_dma_fifo_data_available_cb.isnull())
-			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					return;
-				}
-			}
-
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
-
-			uint32_t dmadata = m_program->read_byte(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_byte(tempdst, dmadata);
-
-			if (m_active_dma_incs[dmach] == 2)
-				m_active_dma_src[dmach]--;
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach]--;
-
-			if (m_active_dma_incs[dmach] == 1)
-				m_active_dma_src[dmach]++;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach]++;
-
-			m_active_dma_count[dmach]--;
-			break;
+			dmac_address_error();
+			return;
 		}
 
-		case 1:
+		if (!m_dma_fifo_data_available_cb.isnull())
 		{
-			uint32_t tempsrc = m_active_dma_src[dmach];
+			int const available = m_dma_fifo_data_available_cb(m_active_dma_src[dmach], m_active_dma_dst[dmach], 0, size);
 
-			uint32_t tempdst = m_active_dma_dst[dmach];
-
-			if (!m_dma_fifo_data_available_cb.isnull())
+			if (!available)
 			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					return;
-				}
+				m_dma_timer_active[dmach] = 2; // stalled: retry the transfer when notified
+				return;
 			}
-
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
-
-			// check: should this really be using read_word_32 / write_word_32?
-			uint32_t dmadata = m_program->read_word(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_word(tempdst, dmadata);
-
-			if (m_active_dma_incs[dmach] == 2)
-				m_active_dma_src[dmach] -= 2;
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach] -= 2;
-
-			if (m_active_dma_incs[dmach] == 1)
-				m_active_dma_src[dmach] += 2;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach] += 2;
-
-			m_active_dma_count[dmach]--;
-			break;
 		}
 
-		case 2:
-		{
-			uint32_t tempsrc = m_active_dma_src[dmach];
+		// Retain the existing service deadline, not bus-cycle timing.
+		m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
 
-			uint32_t tempdst = m_active_dma_dst[dmach];
+		if (use_dack)
+			dmac_dack(dmach);
 
-			if (!m_dma_fifo_data_available_cb.isnull())
-			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					return;
-				}
-			}
-
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
-
-			uint32_t dmadata = m_program->read_dword(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst, dmadata);
-
-			if (m_active_dma_incs[dmach] == 2)
-				m_active_dma_src[dmach] -= 4;
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach] -= 4;
-
-			if (m_active_dma_incs[dmach] == 1)
-				m_active_dma_src[dmach] += 4;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach] += 4;
-
-			m_active_dma_count[dmach]--;
-			break;
-		}
-
-		case 3:
+		if (size != 3)
 		{
 			uint32_t const tempsrc = m_active_dma_src[dmach];
+			uint32_t const tempdst = m_active_dma_dst[dmach];
 
-			if (!m_dma_fifo_data_available_cb.isnull())
+			uint32_t dmadata;
+			if (device_to_memory)
+				dmadata = m_read_dma_data[dmach](0, data_mask) & data_mask;
+			else
 			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, m_active_dma_dst[dmach], 0, m_active_dma_size[dmach]);
-
-				if (!available)
+				m_dmac_access = true;
+				switch (size)
 				{
-					m_dma_timer_active[dmach] = 2; // retry the whole block when notified
-					return;
+				case 0:  dmadata = m_program->read_byte(tempsrc); break;
+				case 1:  dmadata = m_program->read_word(tempsrc); break;
+				default: dmadata = m_program->read_dword(tempsrc); break;
 				}
+				m_dmac_access = false;
 			}
 
-			// Retain the existing block-service deadline, not bus-cycle timing.
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+			if (!m_dma_kludge_cb.isnull())
+				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, size);
+
+			if (memory_to_device)
+				m_write_dma_data[dmach](0, dmadata & data_mask, data_mask);
+			else
+			{
+				m_dmac_access = true;
+				switch (size)
+				{
+				case 0:  m_program->write_byte(tempdst, dmadata); break;
+				case 1:  m_program->write_word(tempdst, dmadata); break;
+				default: m_program->write_dword(tempdst, dmadata); break;
+				}
+				m_dmac_access = false;
+			}
+
+			// Section 9.2.4: DM/SM = 01 increments and 10 decrements. In
+			// single-address mode only the memory address is meaningful.
+			if (!device_to_memory)
+			{
+				if (m_active_dma_incs[dmach] == 2)
+					m_active_dma_src[dmach] -= bytes;
+				else if (m_active_dma_incs[dmach] == 1)
+					m_active_dma_src[dmach] += bytes;
+			}
+			if (!memory_to_device)
+			{
+				if (m_active_dma_incd[dmach] == 2)
+					m_active_dma_dst[dmach] -= bytes;
+				else if (m_active_dma_incd[dmach] == 1)
+					m_active_dma_dst[dmach] += bytes;
+			}
+
+			m_active_dma_count[dmach]--;
+		}
+		else
+		{
+			uint32_t const tempsrc = m_active_dma_src[dmach];
 
 			// Figures 9.43 and 9.52: all four reads precede the writes, even
 			// when TCR leaves fewer than four destination longwords to write.
 			uint32_t buffer[4];
+			m_dmac_access = true;
 			for (unsigned i = 0; i < 4; ++i)
 				buffer[i] = m_program->read_dword(tempsrc + 4 * i);
+			m_dmac_access = false;
 			m_active_dma_src[dmach] += 16; // independent of SM (section 9.2.4)
 
 			for (unsigned i = 0; i < 4 && m_active_dma_count[dmach]; ++i)
@@ -960,8 +1050,10 @@ void sh7604_device::sh2_do_dma(int dmach)
 				uint32_t const tempdst = m_active_dma_dst[dmach];
 				uint32_t dmadata = buffer[i];
 				if (!m_dma_kludge_cb.isnull())
-					dmadata = m_dma_kludge_cb(tempsrc + 4 * i, tempdst, dmadata, m_active_dma_size[dmach]);
+					dmadata = m_dma_kludge_cb(tempsrc + 4 * i, tempdst, dmadata, size);
+				m_dmac_access = true;
 				m_program->write_dword(tempdst, dmadata);
+				m_dmac_access = false;
 
 				// DM applies to each longword write: a full block advances by
 				// 0/+16/-16, while a short final block advances only as written.
@@ -971,9 +1063,16 @@ void sh7604_device::sh2_do_dma(int dmach)
 					m_active_dma_dst[dmach] -= 4;
 				--m_active_dma_count[dmach];
 			}
-			break;
 		}
-		}
+
+		// An edge request is consumed by the transfer it starts; burst mode
+		// keeps it until TCR reaches 0 (section 9.3.2).
+		if (!BIT(m_dmac[dmach].chcr, 4))
+			m_dreq_edge[dmach] = false;
+
+		// Round-robin: the channel that just transferred drops to the bottom
+		if (BIT(m_dmaor, 3))
+			m_dmac_top = dmach ^ 1;
 
 		// Sections 9.2.1-3: SAR/DAR report the next addresses and TCR the
 		// remaining units. Publish only after a successful service (stalls
@@ -982,6 +1081,9 @@ void sh7604_device::sh2_do_dma(int dmach)
 		m_dmac[dmach].sar += m_active_dma_src[dmach] - previous_src;
 		m_dmac[dmach].dar += m_active_dma_dst[dmach] - previous_dst;
 		m_dmac[dmach].tcr = m_active_dma_count[dmach] & 0x00ffffff;
+
+		// A DMAC access to RDR/TDR changes the SCI flags and thus its requests
+		sh2_recalc_irq();
 	}
 	else // the dma is complete
 	{
@@ -989,6 +1091,7 @@ void sh7604_device::sh2_do_dma(int dmach)
 		m_dmac[dmach].tcr = 0;
 		m_dmac[dmach].chcr |= 2;
 		m_dma_timer_active[dmach] = 0;
+		m_dreq_edge[dmach] = false;
 		sh2_dmac_update_suspend();
 		m_dma_irq[dmach] |= 1;
 		sh2_recalc_irq();
@@ -1029,28 +1132,19 @@ void sh7604_device::sh2_dmac_check(int dmach)
 
 			m_dma_timer_active[dmach] = 1;
 
-			m_active_dma_src[dmach] &= m_am;
-			m_active_dma_dst[dmach] &= m_am;
+			// The cached/cache-through windows mirror the same memory, so the
+			// address mask only applies below H'40000000; the associative
+			// purge, cache array and on-chip peripheral spaces are used as is,
+			// exactly as for CPU accesses.
+			if (m_active_dma_src[dmach] < 0x40000000)
+				m_active_dma_src[dmach] &= m_am;
+			if (m_active_dma_dst[dmach] < 0x40000000)
+				m_active_dma_dst[dmach] &= m_am;
 
-			switch (m_active_dma_size[dmach])
-			{
-			case 0:
-				break;
-			case 1:
-				m_active_dma_src[dmach] &= ~1;
-				m_active_dma_dst[dmach] &= ~1;
-				break;
-			case 2:
-				m_active_dma_src[dmach] &= ~3;
-				m_active_dma_dst[dmach] &= ~3;
-				break;
-			case 3:
-				m_active_dma_src[dmach] &= ~3;
-				m_active_dma_dst[dmach] &= ~3;
-				// Section 9.3.8 permits a final block with only 1-3 writes.
-				// Do not discard the low TCR bits at activation.
-				break;
-			}
+			// Section 9.3.8 permits a final 16-byte block with only 1-3
+			// writes, so the low TCR bits are not discarded here. Addresses
+			// that are not aligned to the transfer size are an address error
+			// of the DMAC, reported when the transfer unit is attempted.
 
 			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
 		}
@@ -1067,6 +1161,7 @@ void sh7604_device::sh2_dmac_check(int dmach)
 			m_dma_current_active_timer[dmach]->adjust(attotime::never, dmach);
 
 			m_dma_timer_active[dmach] = 0;
+			m_dreq_edge[dmach] = false;
 		}
 	}
 	sh2_dmac_update_suspend();
@@ -1077,8 +1172,9 @@ void sh7604_device::sh2_dmac_update_suspend()
 	// CHCR.TB=1 is burst mode (section 9.2.4). Retain the coarse CPU
 	// suspension model, but release only the DMAC's own reason and only
 	// after the last active burst channel has completed or been cancelled.
-	bool const burst_active = (m_dma_timer_active[0] && m_active_dma_burst[0])
-		|| (m_dma_timer_active[1] && m_active_dma_burst[1]);
+	// A channel waiting for its transfer request (state 3) does not own the bus.
+	bool const burst_active = ((m_dma_timer_active[0] == 1 || m_dma_timer_active[0] == 2) && m_active_dma_burst[0])
+		|| ((m_dma_timer_active[1] == 1 || m_dma_timer_active[1] == 2) && m_active_dma_burst[1]);
 	if (burst_active && !suspended(SUSPEND_REASON_DMAC))
 		suspend(SUSPEND_REASON_DMAC, true);
 	else if (!burst_active && suspended(SUSPEND_REASON_DMAC))
@@ -1214,6 +1310,22 @@ void sh7604_device::tdr_w(uint8_t data)
 	// TDR write alone does not start a transfer: the SCI watches TDRE
 	// (Figure 13.15 step 1, p.372)
 	m_tdr = data;
+
+	// A DMAC write clears TDRE by itself (section 13.2.7, TDRE), then the
+	// character is moved to TSR like after a CPU acknowledge.
+	if (m_dmac_access && BIT(m_scr, 5))
+	{
+		m_ssr &= ~(SSR_TDRE | SSR_TEND);
+		if (!m_sci_tx_active &&
+			(!BIT(m_smr, 7) || !(m_ssr & (SSR_ORER | SSR_FER | SSR_PER))))
+		{
+			m_tsr = m_tdr;
+			m_ssr |= SSR_TDRE;
+			sci_transmit_start();
+		}
+		m_sci_ssr_read &= m_ssr;
+		sci_update_clock();
+	}
 }
 
 uint8_t sh7604_device::ssr_r()
@@ -1256,6 +1368,9 @@ void sh7604_device::ssr_w(uint8_t data)
 
 uint8_t sh7604_device::rdr_r()
 {
+	// The DMAC's read of RDR clears RDRF by itself (section 13.2.7, RDRF)
+	if (m_dmac_access)
+		m_ssr &= ~SSR_RDRF;
 	return m_rdr;
 }
 
@@ -2608,6 +2723,9 @@ void sh7604_device::sh2_recalc_irq()
 	m_sh2_state->internal_irq_level = irq;
 	m_internal_irq_vector = vector;
 	m_test_irq = 1;
+
+	// SCI RXI/TXI conditions are DMAC transfer requests as well
+	dmac_kick();
 }
 
 /*
@@ -2705,7 +2823,7 @@ void sh7604_device::dmaor_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (ACCESSING_BITS_0_7)
 	{
 		uint8_t old = m_dmaor & 0xf;
-		m_dmaor = (data & ~6) | (old & data & 6);
+		m_dmaor = (data & 9) | (old & data & 6);
 		sh2_dmac_check(0);
 		sh2_dmac_check(1);
 	}

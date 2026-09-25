@@ -43,6 +43,18 @@ public:
 
 	void sh2_notify_dma_data_available();
 
+	// DMAC external pins. DACKn is asserted for the ack cycle of an external
+	// request or single-address transfer at the level selected by CHCR.AL. In
+	// single-address mode the memory side of the transfer is performed by the
+	// DMAC and the device side is a data callback: dma_data_wr receives the
+	// data of a memory-to-device transfer and dma_data_rd supplies the data of
+	// a device-to-memory transfer (CHCR.AM selects the direction).
+	template <unsigned N> auto dack_wr_callback() { return m_write_dack[N].bind(); }
+	template <unsigned N> auto dma_data_wr_callback() { return m_write_dma_data[N].bind(); }
+	template <unsigned N> auto dma_data_rd_callback() { return m_read_dma_data[N].bind(); }
+	void dreq0_w(int state) { dreq_w(0, state); }
+	void dreq1_w(int state) { dreq_w(1, state); }
+
 protected:
 	sh7604_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines);
 
@@ -292,6 +304,13 @@ private:
 		uint32_t chcr;
 	} m_dmac[2];
 	uint8_t m_dmaor;
+	devcb_write_line::array<2> m_write_dack;
+	devcb_write32::array<2> m_write_dma_data;
+	devcb_read32::array<2> m_read_dma_data;
+	bool m_dreq_pin[2];   // DREQn input level
+	bool m_dreq_edge[2];  // latched active DREQ edge (edge detection)
+	uint8_t m_dmac_top;   // channel with top priority in round-robin mode
+	bool m_dmac_access;   // the DMAC itself is accessing the bus (SCI flag clearing)
 
 	// misc
 	uint8_t m_sbycr, m_ccr;
@@ -350,6 +369,15 @@ private:
 	uint32_t rtc_ticks_to_match() const;
 	void sh2_do_dma(int dmach);
 	void sh2_dmac_check(int dma);
+	void dreq_w(int channel, int state);
+	bool dmac_request(int channel) const;
+	bool dmac_ready(int channel) const;
+	bool dmac_has_priority(int other, int channel) const;
+	void dmac_kick();
+	void dmac_address_error();
+	bool dmac_bad_address(uint32_t address, int size) const;
+	void dmac_dack(int channel);
+	void dmac_dack_idle(int channel);
 	void sh2_dmac_update_suspend();
 	void sh2_recalc_irq();
 };
