@@ -147,6 +147,64 @@ restored suite plus a live BIOS replay actually demonstrates.
 
 ---
 
+## Progress log
+
+### 2026-09-25 — Phase 0 partial
+
+Full-suite measurement (`regtests/saturn/test_*.py`, each run individually):
+
+| Point | Result |
+|---|---|
+| Baseline `a9995558` | **44 PASS / 29 FAIL** |
+| After `59146b25` | **50 PASS / 23 FAIL** |
+
+Newly green: `scudsp_cbus`, `scudsp_count_operand`, `scudsp_dma`,
+`scudsp_hostflags`, `scudsp_parallel`, `vdp2_raster_writes`.
+
+Two further adjudications were made against the SDK while repairing harnesses.
+In both cases **production is correct and the test oracle was stale**:
+
+1. **DSP Program Control Port (ST-097 p.51-52, Figure 3.14).** `ES` (bit 17),
+   `LE` (15), `EP` (25) and `PR` (26) are marked `(W)` — write strobes, not
+   stored flags. Only `EX` (bit 16) is `(R/W)` and `P7-0` are R/W. `T0/S/Z/C/V/E`
+   are `(R)`. So a control-port write must not land ES in the flag register; it
+   becomes a step request valid only while stopped. `device_reset()` clearing
+   PPAF to `00000000H` (EX=0, DSP stopped) is likewise correct.
+2. **RGB555 -> RGB888 (ST-058-R2 Table 4.3, p.76).** For the 32,768-colour RGB
+   format the pixels "designate the higher 5 bits within RGB 8-bit, and the lower
+   3 bits are set to 0" — i.e. `(value & 31) << 3`, **not** bit replication.
+   `saturn.cpp:6327` is correct.
+
+Also confirmed correct and deliberately **not** changed: the SCU Timer 1
+decrement rate. `MASTER_CLOCK_352` = 14318181 x 4 = 57272724 Hz and
+`from_ticks(count, clock()/8)` = 7159090 Hz, which is ST-097 p.31's "7 MHz or
+about 1/4 the system clock" (28.6364/4). An initial reading of `clock()/8` as a
+halved rate was wrong.
+
+### Remaining red at 23 — categorised, not yet fixed
+
+| Group | Tests | State |
+|---|---|---|
+| SMPC mocks | `smpc_handshake`, `smpc_timeout`, `smpc_transport`, `controller_slots` | mocks lack `m_intback_wait`, `INTBACK_WAIT_*`, `m_in_vblank`, `m_reset_button_count`, `read_ext_size` |
+| VDP2 mocks | `exten`, `tvmd` | mocks lack `m_register_reset_cb` (`saturn_vdp2.h:57`) |
+| VDP2 oracles | `vdp2_bitmap`, `_bitmap_vramsize`, `_direct_cell_size`, `_table_wrap`, `_palette` | compile now; pixel oracles still assume bit replication (contradicted by ST-058 Table 4.3) |
+| VDP2 extraction | `vdp2_postload`, `_rotation_clip`, `_scroll_pixels` | further helpers not yet extracted |
+| SCUDSP | `scudsp_lop`, `_multiplier`, `_pipeline`, `_pause` | compile now; assertions encode the pre-`m_lps_active` delay-slot model and the pre-suspend-mask halt model |
+| VDP1/other | `vdp1`, `sprite_scanout`, `vcounter` | stale literal/source assertions |
+| SCU timers | `timer0`, `timer1` | encode T1MD gating the *load*, contradicted by ST-210 No. 31 |
+
+### Open question found, not resolved
+
+ST-097 p.83 defines LPS as "the program counter stops, the next command is
+executed, loop counter ([LOP]) is decremented ... repeated until the loop counter
+is 0", and p.89 adds "The repeat number executes one time more than the set
+value." Tracing MAME's `execute_run`/`op_loop` delay-slot pipeline gives **N**
+executions of the repeated word for `LOP = N`, whereas p.89 reads as **N+1**.
+The MiSTer RTL (`rtl/Saturn/SCU/DSP.sv:334-356`) also appears to give N, but its
+fetch/execute pipeline alignment was not fully established, so this is recorded
+as **unadjudicated** rather than assumed correct. It needs a directed test
+against a known DSP program before either side is changed.
+
 ## Environment constraints (recorded honestly)
 
 - 2 CPU cores, 3 GB RAM, no ccache. A full MAME link is not feasible here.
