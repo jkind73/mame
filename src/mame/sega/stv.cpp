@@ -1210,11 +1210,16 @@ void stv_state::stv_mem(address_map &map) {
       .rw("ioga", FUNC(sega_315_5649_device::read),
           FUNC(sega_315_5649_device::write))
       .umask32(0x00ff00ff);
-  // the FRT init windows read back 0xffff and pass writes straight to the FRT
+  // the FRT init windows read back 0xffff and pass writes straight to the FRT;
+  // both have cache-through aliases at 21000000H / 21800000H (MINIT and SINIT
+  // are write-only triggers, so a write that must reach the bus instead of
+  // sitting in the SH-2 write-back cache has to use the alias)
   map(0x01000000, 0x017fffff)
+      .mirror(0x20000000)
       .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
       .w("dcc", FUNC(saturn_dcc_device::minit_w));
   map(0x01800000, 0x01ffffff)
+      .mirror(0x20000000)
       .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
       .w("dcc", FUNC(saturn_dcc_device::sinit_w));
   map(0x02000000, 0x04ffffff)
