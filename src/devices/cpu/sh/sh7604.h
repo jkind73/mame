@@ -296,6 +296,8 @@ private:
 	// BSC
 	uint32_t m_bcr1, m_bcr2, m_wcr, m_mcr, m_rtcsr, m_rtcor, m_rtcnt;
 	bool m_rtcsr_read;
+	uint64_t m_rtc_base; // epoch of the last RTCNT count tick (preserves prescaler remainder)
+	emu_timer *m_rtc_timer;
 
 	uint64_t m_frc_base; // epoch of last internal counter tick (preserves prescaler remainder)
 
@@ -326,6 +328,7 @@ private:
 
 	TIMER_CALLBACK_MEMBER(sh2_timer_callback);
 	TIMER_CALLBACK_MEMBER(sh2_wdtimer_callback);
+	TIMER_CALLBACK_MEMBER(rtc_callback);
 	TIMER_CALLBACK_MEMBER(sh2_dma_current_active_callback);
 	void frt_reset();
 	void frt_compare_tick(uint16_t previous);
@@ -333,6 +336,9 @@ private:
 	void sh2_timer_activate();
 	void sh2_wtcnt_recalc();
 	void sh2_wdt_activate();
+	void rtc_resync();
+	void rtc_activate();
+	uint32_t rtc_ticks_to_match() const;
 	void sh2_do_dma(int dmach);
 	void sh2_dmac_check(int dma);
 	void sh2_dmac_update_suspend();

@@ -50,6 +50,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_sbycr(0), m_ccr(0)
 	, m_bcr1(0x03f0), m_bcr2(0x00fc), m_wcr(0xaaff), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
 	, m_rtcsr_read(false)
+	, m_rtc_base(0), m_rtc_timer(nullptr)
 	, m_frc_base(0), m_frt_input(0), m_frt_clock_input(false)
 	, m_timer(nullptr), m_wdtimer(nullptr)
 	, m_is_slave(0)
@@ -87,6 +88,8 @@ void sh7604_device::device_start()
 	m_timer->adjust(attotime::never);
 	m_wdtimer = timer_alloc(FUNC(sh7604_device::sh2_wdtimer_callback), this);
 	m_wdtimer->adjust(attotime::never);
+	m_rtc_timer = timer_alloc(FUNC(sh7604_device::rtc_callback), this);
+	m_rtc_timer->adjust(attotime::never);
 	m_sci_tx_timer = timer_alloc(FUNC(sh7604_device::sci_tx_tick), this);
 	m_sci_tx_timer->adjust(attotime::never);
 	m_sci_clock_timer = timer_alloc(FUNC(sh7604_device::sci_clock_tick), this);
@@ -230,6 +233,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_rtcor));
 	save_item(NAME(m_rtcnt));
 	save_item(NAME(m_rtcsr_read));
+	save_item(NAME(m_rtc_base));
 }
 
 void sh7604_device::device_reset()
@@ -1857,8 +1861,6 @@ void sh7604_device::dvcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		//   a stage with game timer <= 10
 		m_divu_ovf = BIT(data, 0);
 		m_divu_ovfie = BIT(data, 1);
-		if (m_divu_ovfie)
-			LOG("SH2: unemulated DIVU OVF interrupt enable\n");
 		sh2_recalc_irq();
 	}
 }
@@ -2254,8 +2256,92 @@ void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	COMBINE_DATA(&m_mcr);
 }
 
+// Refresh timer (section 7.2.5-7.2.7). RTCNT counts at CLK/4 ... CLK/4096
+// as selected by RTCSR.CKS2-0; 000 stops it. Each count tick advances RTCNT;
+// the tick that brings it to RTCOR sets CMF, and the following tick clears
+// it to zero, so the match period is RTCOR + 1 counts. Like the FRT, the
+// counter is advanced lazily from the CPU cycle count when it is observed.
+static constexpr int rtc_shift_tab[8] = { 0, 2, 4, 6, 8, 10, 11, 12 };
+
+// Count ticks until the tick that sets CMF, from the current counter value.
+uint32_t sh7604_device::rtc_ticks_to_match() const
+{
+	uint32_t const c = m_rtcnt & 0xff;
+	uint32_t const r = m_rtcor & 0xff;
+	if (c < r)
+		return r - c;
+	if (c == r)
+		return r ? r + 1 : 1;
+	return (256 - c) + (r ? r : 0);
+}
+
+void sh7604_device::rtc_resync()
+{
+	unsigned const cks = (m_rtcsr >> 3) & 7;
+	uint64_t const now = total_cycles();
+	if (!cks)
+	{
+		m_rtc_base = now;
+		return;
+	}
+
+	int const shift = rtc_shift_tab[cks];
+	uint64_t n = (now - m_rtc_base) >> shift;
+	m_rtc_base += n << shift;
+	if (!n)
+		return;
+
+	uint32_t c = m_rtcnt & 0xff;
+	uint32_t const r = m_rtcor & 0xff;
+	uint32_t const first = rtc_ticks_to_match();
+	if (n < first)
+	{
+		if (c < r)
+			c += uint32_t(n);
+		else if (c == r)
+			c = uint32_t(n) - 1;
+		else
+			c = (c + uint32_t(n)) & 0xff;
+	}
+	else
+	{
+		m_rtcsr |= 0x80;
+		n -= first;
+		// From RTCOR the counter needs one tick to clear, then RTCOR more
+		// to match again, so every following match is RTCOR + 1 ticks apart.
+		uint32_t const period = r ? r + 1 : 1;
+		uint32_t const rem = uint32_t(n % period);
+		c = rem ? rem - 1 : r;
+	}
+	m_rtcnt = c;
+}
+
+void sh7604_device::rtc_activate()
+{
+	m_rtc_timer->adjust(attotime::never);
+
+	// A compare match only needs a scheduled event when it can raise an
+	// interrupt; CMF itself is caught up on the next register access.
+	unsigned const cks = (m_rtcsr >> 3) & 7;
+	if (!cks || !(m_rtcsr & 0x40) || (m_rtcsr & 0x80))
+		return;
+
+	int const shift = rtc_shift_tab[cks];
+	uint64_t const delta = uint64_t(rtc_ticks_to_match()) << shift;
+	uint64_t const elapsed = total_cycles() - m_rtc_base;
+	m_rtc_timer->adjust(cycles_to_attotime(delta > elapsed ? delta - elapsed : 0));
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::rtc_callback)
+{
+	rtc_resync();
+	sh2_recalc_irq();
+	rtc_activate();
+}
+
 uint32_t sh7604_device::rtcsr_r(offs_t offset, uint32_t mem_mask)
 {
+	rtc_resync();
 	// CMF clearing requires a status read as one (section 7.2.5).
 	// Only the permitted longword/low-word reads qualify, not an upper
 	// word, unsupported partial read, or debugger inspection.
@@ -2269,15 +2355,21 @@ void sh7604_device::rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
 		return;
 
+	rtc_resync();
 	// Software cannot set CMF; a read-one/write-zero sequence clears it.
 	// Consume the qualification so a subsequent match needs a fresh read.
-	m_rtcsr = (data & ~0x80U) | (m_rtcsr & 0x80 & (m_rtcsr_read ? data : 0x80U));
+	m_rtcsr = (data & 0x78) | (m_rtcsr & 0x80 & (m_rtcsr_read ? data : 0x80U));
 	if (!(m_rtcsr & 0x80))
 		m_rtcsr_read = false;
+	// A new clock selection starts a fresh prescaler interval.
+	m_rtc_base = total_cycles();
+	rtc_activate();
+	sh2_recalc_irq();
 }
 
 uint32_t sh7604_device::rtcnt_r()
 {
+	rtc_resync();
 	return m_rtcnt & 0xff;
 }
 
@@ -2286,8 +2378,10 @@ void sh7604_device::rtcnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
 		return;
 
+	rtc_resync();
 	COMBINE_DATA(&m_rtcnt);
 	m_rtcnt &= 0xff;
+	rtc_activate();
 }
 
 uint32_t sh7604_device::rtcor_r()
@@ -2300,8 +2394,10 @@ void sh7604_device::rtcor_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (mem_mask != 0xffffffff || (data >> 16) != 0xa55a)
 		return;
 
+	rtc_resync();
 	COMBINE_DATA(&m_rtcor);
 	m_rtcor &= 0xff;
+	rtc_activate();
 }
 
 void sh7604_device::set_frt_input(int state)
@@ -2338,31 +2434,19 @@ void sh7604_device::sh2_recalc_irq()
 	int vector = -1;
 	int level;
 
-	// Timer irqs
-	if (m_tier & m_ftcsr & (ICF | OCFA | OCFB | OVF))
-	{
-		level = (m_irq_level.frc & 15);
-		if (level > irq)
-		{
-			int mask = m_tier & m_ftcsr;
-			irq = level;
-			if (mask & ICF)
-				vector = m_irq_vector.fic & 0x7f;
-			else if (mask & (OCFA | OCFB))
-				vector = m_irq_vector.foc & 0x7f;
-			else
-				vector = m_irq_vector.fov & 0x7f;
-		}
-	}
+	// On-chip sources are examined in the default priority order of
+	// Table 5.4 (DIVU, DMAC0, DMAC1, WDT, REF, SCI, FRT, highest first) and
+	// a later source only replaces the current one with a strictly higher
+	// level, so equal priority levels resolve to the default order.
 
-	// WDT irqs
-	if (m_wtcsr & 0x80)
+	// DIVU OVFI: a level request that stays until DVCR.OVF is cleared
+	if (m_divu_ovf && m_divu_ovfie)
 	{
-		level = m_irq_level.wdt & 15;
+		level = m_irq_level.divu & 15;
 		if (level > irq)
 		{
 			irq = level;
-			vector = (m_vcrwdt >> 8) & 0x7f;
+			vector = m_irq_vector.divu & 0x7f;
 		}
 	}
 
@@ -2385,6 +2469,29 @@ void sh7604_device::sh2_recalc_irq()
 			irq = level;
 			m_dma_irq[1] &= ~1;
 			vector = m_irq_vector.dmac[1] & 0x7f;
+		}
+	}
+
+	// WDT ITI (VCRWDT bits 14-8), then the BSC refresh compare match CMI
+	// (VCRWDT bits 6-0). Both use the IPRA WDT priority level and ITI
+	// wins when they occur together (section 5.3.1).
+	if (m_wtcsr & 0x80)
+	{
+		level = m_irq_level.wdt & 15;
+		if (level > irq)
+		{
+			irq = level;
+			vector = (m_vcrwdt >> 8) & 0x7f;
+		}
+	}
+
+	if ((m_rtcsr & 0xc0) == 0xc0)
+	{
+		level = m_irq_level.wdt & 15;
+		if (level > irq)
+		{
+			irq = level;
+			vector = m_vcrwdt & 0x7f;
 		}
 	}
 
@@ -2412,6 +2519,23 @@ void sh7604_device::sh2_recalc_irq()
 		{
 			irq = level;
 			vector = (m_vcrb >> 8) & 0x7f; // STEV: TEI
+		}
+	}
+
+	// FRT: ICI > OCI (OCIA/OCIB share a vector) > OVI
+	if (m_tier & m_ftcsr & (ICF | OCFA | OCFB | OVF))
+	{
+		level = (m_irq_level.frc & 15);
+		if (level > irq)
+		{
+			int mask = m_tier & m_ftcsr;
+			irq = level;
+			if (mask & ICF)
+				vector = m_irq_vector.fic & 0x7f;
+			else if (mask & (OCFA | OCFB))
+				vector = m_irq_vector.foc & 0x7f;
+			else
+				vector = m_irq_vector.fov & 0x7f;
 		}
 	}
 
