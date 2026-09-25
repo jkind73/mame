@@ -20,9 +20,16 @@ def extract(src,sig):
   depth+=(src[end]=='{')-(src[end]=='}');end+=1
  return src[start:end]
 f=extract(source,'void saturn_state::vdp2_state_save_postload(')
+# postload now delegates the VRAM->gfx byte view to this; the mock already
+# provides m_vdp2_vram, m_vdp2_legacy.gfx_decode and m_gfxdecode.
+f+='\n'+extract(source,'void saturn_state::vdp2_rebuild_memory_views(')
 if a.mutation=='capture':f=f.replace('m_vdp2_gradation_capture = false;', 'm_vdp2_gradation_capture = true;')
 if a.mutation=='priority':f=f.replace('m_vdp2_priority_pass = -1;', 'm_vdp2_priority_pass = 3;')
-if a.mutation=='decode':f=f.replace('(data & 0xff000000) >> 24', '(data & 0x00ff0000) >> 16')
+if a.mutation=='decode':
+    # The decode loop moved from postload into vdp2_rebuild_memory_views, so
+    # mutate it there and fail loudly if the target text ever moves again.
+    assert f.count('(data & 0xff000000) >> 24') == 1
+    f=f.replace('(data & 0xff000000) >> 24', '(data & 0x00ff0000) >> 16')
 if a.mutation=='window':f=f.replace('vdp2_window_cache_invalidate();', '(void)0;')
 fields=device[device.index('  u16 m_tvmd'):device.index('  TIMER_CALLBACK_MEMBER(sync_timer_cb)')]
 code=r'''
@@ -52,7 +59,7 @@ struct saturn_state {
  struct _vdp2_layer_data {unsigned offset=0;};_vdp2_layer_data vdp2_layer_data;
  unsigned palettes=0;void refresh_palette_data(){++palettes;}
  // INVALIDATE
- void vdp2_state_save_postload();
+ void vdp2_state_save_postload();void vdp2_rebuild_memory_views();
 };
 // FUNCTION
 int main(){
