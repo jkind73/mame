@@ -45,3 +45,26 @@ and Ymir `scu.cpp`. Do not reopen without a reproducer.
   pcpooh2, dfeverg. rsgun/elandore reproduce on the pre-session build too. Master waits on a flag
   its interrupt handler never sets; SH-2 DMAC ch1 and FRC verified healthy. Treat as a symptom
   to re-test after A/B/C work, not as a target.
+
+## E. SH7604 chip audit (2026-09-25, code read against ADE-602-085C)
+
+Method: each on-chip module's code was read against its manual chapter.
+
+Fixed (all verified through the debugger on the Saturn BIOS):
+
+| Module | Defect found in code | Change |
+|---|---|---|
+| INTC | DIVU overflow interrupt was stored but never raised; BSC compare-match request absent; equal levels resolved in the wrong module order | `sh2_recalc_irq` follows Table 5.4 and adds DIVU/REF |
+| BSC | RTCNT never counted, CMF never set, no CMI | refresh timer per 7.2.5-7.2.7 (closed form checked against a tick simulation for all counter/RTCOR states) |
+| Reset | no manual reset, BSC/UBC never re-initialised, watchdog overflow only set WOVF | power-on/manual reset types, WDT internal reset with RSTS, /WDTOVF pin, 512-clock hold |
+| DMAC | every channel was auto-request; no DREQ/DACK, SCI RXI/TXI requests, single-address mode, DMAOR.PR, address errors; on-chip register addresses were masked so the DMAC could not reach them | reworked per section 9 |
+
+Open in the SH-2 (each needs a design decision, not a guess):
+
+* **UBC**: only BARA/BARB are stored; BAMR, BBR, BDR, BDMR, BRCR and the user-break exception are absent.
+* **CPU address errors** (vectors 9/10, Table 4.6): the core never raises them. The DRC accessors would need an exception path that knows the faulting instruction.
+* **Cache**: CCR is stored only; no cache array, purge, way or 2-way behaviour is modelled.
+* **Standby/module stop**: MSTP4/MSTP2 (DMAC, DIVU), SBY standby and FMR clock multiplication are not modelled.
+* **NMI edge select**: ICR.NMIE is stored, NMIL read-back ignores it (TODO in `intc_icr_r`).
+
+Reference-oracle note: the Ymir source in `docs` has empty vendor submodules (fmt, mio, libchdr deps), so it cannot be built here without downloading them.
