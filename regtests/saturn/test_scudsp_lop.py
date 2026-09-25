@@ -80,10 +80,22 @@ void check_write(unsigned mode,uint32_t value){
 void check_loop(unsigned initial,bool lps){
  scudsp_cpu_device d;d.m_lop=initial;d.m_top=23;
  for(unsigned left=initial;;--left){
-  d.m_pc=100;d.m_delay_pending=false;d.m_icount=1;d.op_loop(lps?0xe8000000:0xe0000000);
+  // Model the pipeline state as LPS/BTM retires: the repeated word at address
+  // 100 is already in the delay slot and the fetch address has run ahead to
+  // 101.  op_loop() restores the fetch address from the slot, not from m_pc.
+  d.m_delay=100;d.m_pc=101;d.m_icount=1;
+  d.op_loop(lps?0xe8000000:0xe0000000);
   assert(d.m_icount==0);
-  if(left){assert(d.m_lop==left-1&&d.m_delay_pending&&d.m_delay==100&&d.m_pc==(lps?99:23));}
-  else{assert(d.m_lop==0&&!d.m_delay_pending&&d.m_pc==100);break;}
+  if(left){
+   assert(d.m_lop==left-1);
+   // ST-097 p.83: LPS means "the program counter stops, the next command is
+   // executed, loop counter ([LOP]) is decremented", so the repeated word is
+   // re-fetched; m_lps_active holds the slot for execute_run().  BTM instead
+   // loads TOP into the program counter.
+   assert(d.m_pc==(lps?100u:23u));
+   assert(d.m_lps_active==lps);
+  }
+  else{assert(d.m_lop==0&&d.m_pc==101);break;}
  }
 }
 int main(){
