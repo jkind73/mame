@@ -24,7 +24,7 @@ def extract(text,sig):
 funcs=[extract(src,'void saturn_state::draw_'+name+'_bitmap(') for name in formats]
 if a.mutation:
  n=formats.index(a.mutation);funcs[n]=funcs[n].replace('? 0xfffff : 0x7ffff', '? 0x7ffff : 0x7ffff')
-f='\n'.join(funcs)
+f=extract(src,'static constexpr uint8_t vdp2_expand_color5(')+'\n'+'\n'.join(funcs)
 fields=sorted(set(re.findall(r'current_tilemap\.(\w+)',f)))
 code=r'''
 #include <algorithm>

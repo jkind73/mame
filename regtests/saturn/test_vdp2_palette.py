@@ -21,7 +21,7 @@ def extract(sig):
     while depth:
         depth+=(text[end]=='{')-(text[end]=='}');end+=1
     return text[start:end]
-functions='\n'.join(extract(s) for s in ('static constexpr bool vdp2_per_dot_coefficients(', 'uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_read_rotation_coefficient('))
+functions='\n'.join(extract(s) for s in ('static constexpr uint8_t vdp2_expand_color5(', 'static constexpr bool vdp2_per_dot_coefficients(', 'uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_read_rotation_coefficient('))
 if a.mutation=='mirror-preserve':
     old='(cmode0 && ((vdp2_cram_r(offset ^ 0x200) ^ data) & mem_mask))'
     assert functions.count(old)==1

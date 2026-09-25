@@ -91,7 +91,7 @@ int main(){saturn_state s;unsigned cases=0;
  std::cout<<cases<<" direct-color character boundary/zoom/flip/blend/window/split images passed\n";
 }
 '''
-code=code.replace('// DECLS','\n'.join(f[:f.index('{')].replace('saturn_state::','')+';' for f in funcs)).replace('// FUNCTIONS','\n'.join(funcs)).replace('// BLENDS','\n'.join(extract(blend,s) for s in ('constexpr u32 alpha_blend_r32(', 'constexpr u32 add_blend_r32(')))
+code=code.replace('// DECLS','\n'.join(f[:f.index('{')].replace('saturn_state::','')+';' for f in funcs)).replace('// FUNCTIONS',extract(src,'static constexpr uint8_t vdp2_expand_color5(')+'\n'+'\n'.join(funcs)).replace('// BLENDS','\n'.join(extract(blend,s) for s in ('constexpr u32 alpha_blend_r32(', 'constexpr u32 add_blend_r32(')))
 with tempfile.TemporaryDirectory(prefix='saturn-direct-cell-') as d:
  cpp=Path(d)/'test.cpp';exe=Path(d)/'test';cpp.write_text(code)
  subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-I',str(ROOT/'src/lib/util'),'-O1','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(cpp),'-o',str(exe)],check=True)

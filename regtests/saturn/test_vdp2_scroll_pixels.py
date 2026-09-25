@@ -22,7 +22,7 @@ def extract(text,sig):
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
 funcs=[extract(src,sig) for sig in ('void saturn_state::vdp2_prepare_vram_access(', 'bool saturn_state::vdp2_normal_vram_access(', 'void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(', 'void saturn_state::vdp2_draw_scroll_screen(')]
-f=extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
+f=extract(src,'bool saturn_state::vdp2_palette_color_msb(')+'\n'+extract(src,'static constexpr uint8_t vdp2_expand_color5(')+'\n'+extract(src,'bool saturn_state::vdp2_rotation_vram_access(')+'\n'+extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+'\n'.join(funcs)
 if a.mutation=='fetch-vcsc':f=f.replace('cell_y = vdp2_normal_vram_access(address, 0x0c + (t.layer_name & 1))', 'cell_y = true')
 if a.mutation=='fetch-pn':f=f.replace('!vdp2_normal_vram_access(address, current_tilemap.layer_name)', 'false')
 if a.mutation=='fetch-cp':f=f.replace('!vdp2_normal_vram_access(address, current_tilemap.layer_name + 4)', 'false')
@@ -78,6 +78,7 @@ struct saturn_state {
  int m_vdp2_priority_pass=-1;
  uint32_t m_vdp2_cram[1024]{};
  uint32_t vdp2_cram_r(unsigned i){return m_vdp2_cram[i];}
+ bool vdp2_palette_color_msb(unsigned);
  // TILEMAP
  struct {// REGS
  } regs;

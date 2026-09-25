@@ -24,7 +24,7 @@ def extract(text,sig):
 bitmap_functions=[extract(src,'void saturn_state::draw_'+name+'_bitmap(') for name in ('4bpp','8bpp','11bpp','rgb15','rgb32')]
 over_helpers=[extract(src,sig) for sig in ('void saturn_state::vdp2_compose_pixel(', 'unsigned saturn_state::vdp2_special_priority_mode(', 'rgb_t saturn_state::vdp2_special_priority_pixel(', 'unsigned saturn_state::vdp2_special_color_mode(', 'rgb_t saturn_state::vdp2_special_color_pixel(', 'rgb_t saturn_state::vdp2_line_color(', 'rgb_t saturn_state::vdp2_dot_pixel(', 'rgb_t saturn_state::vdp2_pattern_pixel(', 'rgb_t saturn_state::vdp2_scroll_pixel(')]
 over_function='\n'.join(over_helpers)+'\n'+extract(src,'rgb_t saturn_state::vdp2_screen_over_pattern_pixel(')
-f=extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr bool vdp2_per_dot_coefficients(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sum(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sub(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+over_function+'\n'+'\n'.join(bitmap_functions)+'\n'+extract(src,'static inline uint32_t coef_delta(')+'\n'+extract(src,'void saturn_state::vdp2_copy_roz_bitmap(')
+f=extract(src,'bool saturn_state::vdp2_palette_color_msb(')+'\n'+extract(src,'static constexpr uint8_t vdp2_expand_color5(')+'\n'+extract(src,'bool saturn_state::vdp2_rotation_vram_access(')+'\n'+extract(src,'static uint32_t vdp2_gradation_color(')+'\n'+extract(src,'static uint32_t vdp2_extended_color(')+'\n'+extract(src,'static constexpr bool vdp2_per_dot_coefficients(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sum(')+'\n'+extract(src,'static inline int32_t vdp2_wrap_sub(')+'\n'+extract(src,'static constexpr uint8_t vdp2_cc_blend_level(')+'\n'+over_function+'\n'+'\n'.join(bitmap_functions)+'\n'+extract(src,'static inline uint32_t coef_delta(')+'\n'+extract(src,'void saturn_state::vdp2_copy_roz_bitmap(')
 real_windows=[extract(src,sig) for sig in ('inline bool saturn_state::vdp2_roz_window(', 'inline bool saturn_state::vdp2_roz_mode3_window(', 'inline int saturn_state::get_roz_window_pixel(')]
 real_windows=[fn.replace('saturn_state::vdp2_roz_window(', 'saturn_state::real_roz_window(').replace('saturn_state::vdp2_roz_mode3_window(', 'saturn_state::real_mode3_window(') for fn in real_windows]
 f+='\n'+'\n'.join(real_windows)
@@ -89,6 +89,7 @@ struct saturn_state {
  bool m_vdp2_extended_active=false;bool m_vdp2_gradation_active=false,m_vdp2_gradation_capture=false;unsigned m_vdp2_gradation_layer=7;bitmap_rgb32 m_vdp2_gradation_source{16,8};
 
  void vdp2_compose_pixel(bitmap_rgb32&,int,int,rgb_t,bool,unsigned,bool,rgb_t,unsigned);
+ bool vdp2_palette_color_msb(unsigned);
  int m_vdp2_priority_pass=-1;
  uint32_t m_vdp2_cram[1024]{};
  uint32_t vdp2_cram_r(unsigned i){return m_vdp2_cram[i];}

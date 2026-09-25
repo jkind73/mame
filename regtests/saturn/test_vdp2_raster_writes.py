@@ -20,7 +20,7 @@ def extract(text,sig):
   depth+=(text[end]=='{')-(text[end]=='}');end+=1
  return text[start:end]
 funcs=[extract(src,s) for s in ('void saturn_state::vdp2_vram_w(', 'uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_cram_w(', 'void saturn_state::vdp2_regs_w(')]
-f=extract(dev,'void saturn_vdp2_device::preserve_scanned_output(')+'\n'+'\n'.join(funcs)
+f=extract(src,'static constexpr uint8_t vdp2_expand_color5(')+'\n'+extract(dev,'void saturn_vdp2_device::preserve_scanned_output(')+'\n'+'\n'.join(funcs)
 if args.mutation=='late':
  f=f.replace('  if ((m_vdp2_vram[offset] ^ data) & mem_mask)\n    m_vdp2->preserve_scanned_output();\n  COMBINE_DATA(&m_vdp2_vram[offset]);',
              '  bool const changed = (m_vdp2_vram[offset] ^ data) & mem_mask;\n  COMBINE_DATA(&m_vdp2_vram[offset]);\n  if (changed) m_vdp2->preserve_scanned_output();')

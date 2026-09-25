@@ -28,7 +28,7 @@ if a.mutation in ('w0-row','w1-row'):
  funcs[index]=funcs[index].replace('(y >> interlace)', '((y + 1) >> interlace)')
 if a.mutation=='back':funcs[-2]=funcs[-2].replace('& ((base_mask << 1) | 1)', '& 0xfffff')
 if a.mutation=='line':funcs[-1]=funcs[-1].replace('&= (base_mask << 1) | 1', '&= 0xfffff')
-f=extract('static void fixup_window_x(')+'\n'+'\n'.join(funcs)
+f=extract('static constexpr uint8_t vdp2_expand_color5(')+'\n'+extract('static void fixup_window_x(')+'\n'+'\n'.join(funcs)
 names=sorted(set(re.findall(r'VDP2_\w+',f)))
 code=r'''
 #include <array>

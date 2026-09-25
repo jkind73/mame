@@ -25,7 +25,7 @@ sigs=['void saturn_state::draw_'+n+'_bitmap(' for n in ('4bpp','8bpp','11bpp','r
 sigs+=['void saturn_state::refresh_palette_data(', 'uint32_t saturn_state::vdp2_cram_r(', 'void saturn_state::vdp2_compute_color_offset(', 'void saturn_state::vdp2_get_window0_coordinates(', 'void saturn_state::vdp2_get_window1_coordinates(', 'int saturn_state::get_window_pixel(', 'int saturn_state::vdp2_window_process_pixel(', 'uint32_t saturn_state::vdp2_window_config(', 'void saturn_state::vdp2_window_cache_line(', 'inline int saturn_state::vdp2_window_process(']
 funcs=[extract(source,s) for s in sigs]
 decls='\n'.join(f[:f.index('{')].replace('saturn_state::','').strip()+';' for f in funcs)
-functions=extract(source,'static void fixup_window_x(')+'\n'+'\n'.join(funcs)
+functions=extract(source,'static constexpr uint8_t vdp2_expand_color5(')+'\n'+extract(source,'static void fixup_window_x(')+'\n'+'\n'.join(funcs)
 if a.mutation=='sprite-logic':
     old='res = logic_or ? (res | keep) : (res & keep);'
     assert functions.count(old)==1
