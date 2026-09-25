@@ -13727,3 +13727,23 @@ This candidate addresses the independently established vector-read ordering.
   build run. The exact hardware behavior of prohibited colour modes remains
   unqualified. VDP1 arbitration, transfer-over semantics, reversed/empty
   erase windows and command timing remain open. Validator owns acceptance.
+
+## IMPL-0179 — VDP1 prohibited colour modes use RGB transparency rules
+
+| ID | parent | commit | state | one-line contract |
+|---|---|---|---|---|
+| IMPL-0179 | VDP1 | `da7b9e76` | UNVALIDATED — syntax checked only | Invalid colour modes use deterministic VRAM word-0 RGB TP/END decoding |
+
+- `src/mame/sega/saturn.cpp` modes 6/7 previously fetched VRAM word 0 but
+  used only literal zero as transparent and had no end code. MiSTer pin
+  `a95b085038ace57fa621558d60a7adc7a3c53f78`,
+  `rtl/Saturn/VDP1/VDP1_pkg.sv:272–289`, defines default/RGB pattern decoding
+  as `TP = !DATA[15]` and `EC = DATA == 16'h7fff`; `VDP1.sv:1656` applies
+  those independently through SPD/ECD. The implementation now follows that
+  peer contract while retaining the documented word-0 fetch.
+- Observable: fixed word-0 data with MSB clear is transparent unless SPD is
+  set; MSB-set data is writable; `0x7fff` ends a command when ECD is clear.
+  Exact 16-bit classification, no host randomness or timing claim.
+- Falsifier: primary documentation or Mednafen/Ymir evidence requires indexed
+  zero transparency for these prohibited modes, or a different end-code rule.
+  Runtime validation was not run. No fields or save layout changed.
