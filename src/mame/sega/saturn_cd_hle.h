@@ -223,6 +223,7 @@ private:
   void cd_defragblocks(partitionT *part);
   void cd_copy_move_sector_data(bool move);
   void cd_reset_filter_conditions(filterT &filter);
+  void cd_reset_host_information();
   void cd_disconnect_filter_input(uint8_t input);
   void cd_connect_cddevice(uint8_t input);
   void cd_getsectoroffsetnum(uint32_t bufnum, uint32_t *sectoffs,

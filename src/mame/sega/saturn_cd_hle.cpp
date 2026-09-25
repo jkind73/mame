@@ -324,31 +324,19 @@ void saturn_cd_hle_device::directory_post_load() {
   // restarting a host stream or manufacturing a filesystem/IRQ completion.
 }
 
-void saturn_cd_hle_device::device_reset() {
+// ST-38 section 5 "Initialization of the CD Block": a power-on reset or an
+// Initialize CD System command with the software-reset flag (CR1 bit 0)
+// returns the host information to its initial state: file information,
+// initialization/play information, the selector (filters, connections,
+// buffer partitions and their contents), the data transfer control register
+// and the MPEG settings.  Session/TOC information and the drive itself are not
+// part of it.  The tray-open path and drive state are handled by the callers.
+void saturn_cd_hle_device::cd_reset_host_information() {
   int32_t i, j;
 
-  hirqmask = 0x0000;
-  // FIXME: should be zero but CD auto load and azelpanztai breaks otherwise
-  // (what's the origin of this CMOK?)
-  hirqreg = 0x0001;
-  update_hirq();
-  cr1 = 'C';
-  cr2 = ('D' << 8) | 'B';
-  cr3 = ('L' << 8) | 'O';
-  cr4 = ('C' << 8) | 'K';
-
-  //	cd_stat = CD_STAT_PAUSE;
-  //	cd_stat |= CD_STAT_PERI;
-  //	cd_next_stat = CD_STAT_PAUSE;
-  // clear, not supposed to be used until actual command issued
-  cd_seek_stat = CD_STAT_BUSY;
-  cur_track = 0xff;
-  calcsize = 0;
   playtype = 0;
+  fadstoplay = 0;
   buffull_temp_pause = false;
-  m_status_change_in_progress = false;
-  m_seek_in_progress = false;
-  m_seek_ticks_left = 0;
 
   curdir.clear();
   curroot = {};
@@ -408,6 +396,42 @@ void saturn_cd_hle_device::device_reset() {
     blocks[i].size = -1;
   }
 
+  cdda_maxrepeat = 0;
+  cdda_repeat_count = 0;
+  m_play_start_fad = m_play_end_fad = 150;
+  m_play_range_valid = false;
+
+  // MPEG state is still not registered for save states; reset re-establishes
+  // it independently of the saved selector/sector-buffer state.
+  mpeg_reset();
+}
+
+void saturn_cd_hle_device::device_reset() {
+  hirqmask = 0x0000;
+  // FIXME: should be zero but CD auto load and azelpanztai breaks otherwise
+  // (what's the origin of this CMOK?)
+  hirqreg = 0x0001;
+  update_hirq();
+  cr1 = 'C';
+  cr2 = ('D' << 8) | 'B';
+  cr3 = ('L' << 8) | 'O';
+  cr4 = ('C' << 8) | 'K';
+
+  //	cd_stat = CD_STAT_PAUSE;
+  //	cd_stat |= CD_STAT_PERI;
+  //	cd_next_stat = CD_STAT_PAUSE;
+  // clear, not supposed to be used until actual command issued
+  cd_seek_stat = CD_STAT_BUSY;
+  cur_track = 0xff;
+  calcsize = 0;
+  playtype = 0;
+  buffull_temp_pause = false;
+  m_status_change_in_progress = false;
+  m_seek_in_progress = false;
+  m_seek_ticks_left = 0;
+
+  cd_reset_host_information();
+
   // open device
   if (m_cdrom_image->exists()) {
     LOG("Opened CD-ROM successfully, reading root directory\n");
@@ -419,17 +443,8 @@ void saturn_cd_hle_device::device_reset() {
     cd_change_status(tray_is_closed ? CD_STAT_NODISC : CD_STAT_OPEN);
   }
 
-  buffull = 0;
   cd_speed = 2;
-  cdda_maxrepeat = 0;
-  cdda_repeat_count = 0;
-  m_play_start_fad = m_play_end_fad = 150;
-  m_play_range_valid = false;
   m_scan_reverse = m_scan_audible = false;
-
-  // MPEG state is still not registered for save states; reset re-establishes
-  // it independently of the saved selector/sector-buffer state.
-  mpeg_reset();
 
   m_sector_timer->adjust(
       attotime::from_hz(150)); // 150 sectors / second = 300kBytes/second
@@ -1136,6 +1151,11 @@ void saturn_cd_hle_device::cmd_init_cdsystem() {
   // if((cr1 & 0x81) == 0x00) //guess TODO: nope, Choice Cuts doesn't like it,
   // it crashes if you try to skip the FMV otherwise.
   {
+    // ST-38 p.15: only the software-reset flag returns host information
+    // (file info, play info, selector, buffers, transfer state) to its
+    // initial state; without it those settings survive the command.
+    if (cr1 & 1)
+      cd_reset_host_information();
     if (((cd_stat & 0x0f00) != CD_STAT_NODISC) &&
         ((cd_stat & 0x0f00) != CD_STAT_OPEN)) {
       cd_fad_seek = 150;
@@ -1149,29 +1169,6 @@ void saturn_cd_hle_device::cmd_init_cdsystem() {
     hirqreg &= 0xffe5;
     update_hirq();
     cd_speed = (cr1 & 0x10) ? 1 : 2;
-
-/* reset filter connections */
-/* Guess: X-Men COTA sequence is 0x48->0x48->0x04(01)->0x04(00)->0x30 then 0x10,
- * without this game throws a FAD reject error */
-/* X-Men vs. SF is even fussier, sequence is  0x04 (1) 0x04 (0) 0x03 (0) 0x03
- * (1) 0x30 */
-#if 0
-		for(int i=0;i<MAX_FILTERS;i++)
-		{
-			filters[i].fad = 0;
-			filters[i].range = 0xffffffff;
-			filters[i].mode = 0;
-			filters[i].chan = 0;
-			filters[i].smmask = 0;
-			filters[i].cimask = 0;
-			filters[i].fid = 0;
-			filters[i].smval = 0;
-			filters[i].cival = 0;
-		}
-#endif
-
-    /* reset CD device connection */
-    // cddevice = (filterT *)nullptr;
   }
 
   // TODO: ESEL happens at the end of the actual reset phase
