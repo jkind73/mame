@@ -2010,15 +2010,14 @@ void saturn_state::drawpixel_generic(int x, int y, int patterndata,
     case 0x0038: // mode 7 invalid
       // game tengoku uses this on hi score screen (tate mode)
       // according to Charles, reads from VRAM address 0
-      /* both illegal colour modes behave the same way: the dot data comes from
-         VRAM word 0 instead of from the character data (mednafen does the same,
-         and its VRAM usage counter attributes the access to address 0 as well)
-       */
+      /* Both prohibited colour modes still fetch a 16-bit pattern from VRAM
+         word 0 instead of the character data. MiSTer's GetPattern path uses
+         the RGB-format transparent-pixel/end-code rules for the default CM:
+         MSB clear is transparent and 7fff is the end code. */
       raw = pix =
           m_vdp1_legacy.gfx_decode[1] | (m_vdp1_legacy.gfx_decode[0] << 8);
-      // TODO: check transpen
-      transpen = 0;
-      endcode = -1;
+      transpen = (raw & 0x8000) ? 0 : raw;
+      endcode = 0x7fff;
       break;
     default: // other settings illegal
       // Reserved modes are still a VRAM fetch on the VDP1 bus.  Do not use
