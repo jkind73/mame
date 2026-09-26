@@ -99,79 +99,22 @@ attributable to MAME being wrong. Differences that remain and need a capture rat
 * Ymir treats condition codes as OR-ed bit masks (Z|C etc.); MAME decodes only the documented codes (1,2,3,4,8).
 * Instruction timing is approximated (DMA cycle-steal, 1-cycle ops); the source says the real timings are unknown.
 
-## H. VDP1 verification plan (harness built, run not completed)
+## H. VDP1 verification (differential fuzz against Ymir; tooling in `regtests/saturn/vdp1_fuzz`)
 
-A randomized single-command differential harness exists in the scratchpad (`yoracle/vdp1fuzz.cpp` generates cases
-and draws them in Ymir; `yoracle/vdp1fuzz.lua` replays them in MAME with the CPUs parked and reads
-`m_vdp1_legacy.framebuffer[]`). Status: Ymir side generates cases (a case with a gouraud polyline never signals
-draw-finished and needs investigation on the Ymir side); the MAME side is written but has not been run, and the
-comparison script does not exist yet. Phase 2 work item: finish it, triage differences against ST-013 and MiSTer
-`VDP1.sv`, and record each mismatch here with the arbiter used.
+Method: 600 random single-command cases (seed 2): normal/scaled/distorted sprites, polygons, polylines and lines;
+all colour modes, gouraud, mesh, shadow/half-luminance/half-transparent, MSB-on, SPD/ECD, HSS, user/system clipping,
+flip, local coordinates, 16 and 8 bpp frame buffers. Result: **581/600 pixel-identical**; with ECD forced on,
+**596/600**. Limits: single commands, no rotation/HDTV/double-interlace frame buffer modes, no command chaining
+(jump/call), no timing.
 
-## K. SMPC audit (2026-09-26, `sega/smpc.cpp` against Ymir `smpc.cpp` and Mednafen `smpc.cpp`)
-
-Command set, INTBACK staging, SETTIME/SETSMEM/STE, RESENAB/RESDISA, CKCHG halt/NMI sequence and command timing table
-are implemented and are a superset of Ymir (which lacks CDON/CDOFF and NETLINK). Defects/gaps recorded:
-
-| ID | Item | Evidence |
+| ID | Finding | Verdict |
 |---|---|---|
-| SMPC-01 | SYSRES scope: `system_reset_w` resets SCU/VDP1/VDP2, clears RAMs and pulses only the master SH-2 reset. The slave SH-2 (and its SSHON/SSHOFF shadow), the SCSP/68K, the CD block and the clock ratio (return to 320) are not reset. Ymir's soft reset resets both SH-2s (slave off), SCU, VDP, SMPC, SCSP, CD block and clock; Mednafen's CKCHG path also resets the sound CPU/SCSP | Ymir `Saturn::Reset(false)`, Mednafen `smpc.cpp` |
-| SMPC-02 | The RAM clearing in SYSRES (work RAM, sound RAM, VRAM) is asserted by a comment ("only backup RAM and SMPC RAM are retained"); Ymir does not clear RAM on soft reset | decide from ST-169 text before changing |
-| SMPC-03 | NETLINK on/off only logs; undocumented SEC_GETSEED/SEC_VERIFY (0x1E/0x1F) unhandled | no reference behaviour available |
-| SMPC-04 | Command timing for INTBACK peripheral collection is a fixed 700 us (TODO per device) | ST-169 pp.55-57 |
+| VDP1-D1 | 15 of the 19 differences disappear with ECD=1: with ECD=0 and two end codes in a texture row, Ymir drops the texels *before* the end code; MAME, Mednafen (`ec_count = 2`) and the MiSTer RTL (`EC_FIND`, `VDP1.sv:1270-1331`) draw them | Ymir differs; **MAME is consistent with Mednafen and hardware RTL**, no action |
+| VDP1-D2 | 4 cases differ only at frame-buffer/system-clip boundaries (right edge x=319, bottom-left) for quads and distorted sprites whose vertices lie far outside the clip: MAME draws boundary pixels Ymir does not. The MiSTer RTL terminates a line when its position is outside the system clip and moving away (`VDP1.sv:1313-1318`, unless PCLP), and Mednafen stops a line once it leaves the clip after having been inside (`drawn_ac`, `vdp1_common.h:448-476`). MAME's `vdp1_draw_segment` only rejects whole spans (pre-clip bounding test) and clips per pixel; it has no in-line termination | **candidate MAME defect** (extra/edge-coverage dots beyond the termination point); needs the exact termination rule before any change: decide from the RTL, then re-run the fuzz with a targeted generator |
+| VDP1-D3 | Zero-width/zero-height scaled sprite: Ymir draws a one-row/one-column line, MAME draws a single dot (seen in an earlier generator run that produced degenerate zoom-point sizes) | undecided; not arbitrated against RTL |
 
-## L. CD block audit (2026-09-26, HLE `saturn_cd_hle.cpp` command dispatch against ST-162, `docs/cdblock`, Mednafen `cdb.cpp`)
-
-| ID | Item | Evidence |
-|---|---|---|
-| CD-01 | **Defect**: commands 0x65 and 0x66 are swapped. The dispatch calls `cmd_move_sector_data()` for 0x65 and `cmd_copy_sector_data()` for 0x66; 0x65 is Copy Sector Data and 0x66 is Move Sector Data | `docs/cdblock/saturn_cdblock_commands.md` lines 725/736, `saturn_cdblock_firmware.md` 637-638, Mednafen `COMMAND_COPY_SECDATA = 0x65`, `COMMAND_MOVE_SECDATA = 0x66` |
-| CD-02 | 0x05 Open Tray is not dispatched; it falls to the unknown-command path (popmessage, only CMOK set) | Mednafen `COMMAND_OPEN`, Ymir `CmdOpenTray` |
-| CD-03 | 0x55 Execute FAD Search and 0x56 Get FAD Search Results are commented out | Mednafen implements both |
-| CD-04 | Remaining MPEG commands are partly stubbed (0xA7-0xAD reject by design); 0xE2 handled | acceptable per ST-162 text quoted in code |
-
-## M. Memory map audit (2026-09-26, `sat_console.cpp` `saturn_mem` against `docs/system/saturn_memory_map.md`)
-
-Every region of the documented map is present with the documented bus behaviour: BIOS/SMPC/backup RAM/work RAM-L in the
-CPU-local space, MINIT/SINIT windows (cache-through aliases included), A-Bus dummy area, CS2/CD block, SCSP RAM and
-registers, VDP1 VRAM/frame buffer/registers, VDP2 VRAM/CRAM/registers, SCU registers, work RAM-H with mirrors, purge
-space, cache address and data arrays. Cartridge areas (CS0/CS1) are mapped dynamically in `device_start` per cartridge ID
-(battery RAM 21h, data RAM 5Ah, ROM), which is why the static map lines are commented out.
-
-Decision input for SCU-D1 (DMA legality, section C): `saturn_memory_map.md` cites ST-210 No.01 (A-bus writes by SCU-DMA
-prohibited) and No.02 (reading VDP2 by SCU-DMA prohibited), which is exactly what MAME rejects. The peers' permissive
-behaviour is therefore not supported by the SDK text; recommendation for Phase 2: keep the current rejection, and only
-change it if a hardware trace shows the transfer completes.
-
-Unverified in this pass: exact mirror extents (work RAM-L mirrored at 00300000H, work RAM-H mirror span, SCSP register
-mirror stride, VDP1 register window 20h vs documented 18h) against a hardware read-back.
-
-## N. ST-V I/O audit (2026-09-26, `315_5649.cpp`, `stv.cpp` legacy `ioga_r/w`)
-
-No IOGA (315-5649) documentation exists in `docs` (SDK, cartridge notes, MiSTer and Ymir do not cover ST-V), so this
-chip can only be checked for internal consistency, not against a hardware reference. Observed:
-
-| ID | Item |
-|---|---|
-| IO-01 | The device implements ports A-G with a direction register, port G 4x16-bit counter mode with auto-increment and reset latch, the analog mux with auto-increment, two RS-422 channels with holding registers and loopback, and the mode register. Serial timing is byte-level (transmit register drains immediately) and the status error/enable bits (RX IE, framing) always read 0 |
-| IO-02 | `stv.cpp` still carries a duplicate legacy `ioga_r/w` (marked TODO "remove this legacy fallback") used by the per-game maps for critcrsh, stvmp and the hopper games; it reimplements the port G counter and the mode/serial-status reads separately from the device (the serial status read there is a constant 0) |
-| IO-03 | Port D coin counter/lockout mapping and the billboard write are inferred from game behaviour, not from a document |
-
-Phase 2 candidates that need no new hardware data: route the legacy per-game maps through the device (removing the divergence in IO-02).
-
-## O. SH-2 dual-CPU synchronisation audit (2026-09-26, `saturn_dcc.cpp`, `sat_console.cpp` config, `sh2.cpp` cycle accounting)
-
-Implemented: MINIT/SINIT as 16-bit-only write triggers into the other CPU's FRT input capture (byte/longword writes
-ignored), a temporary tighter scheduler quantum around each trigger, per-CPU interrupt acknowledge (master through the SCU
-with IMS reset, slave through the DCC vector table 41h-43h), SMPC SSHON/SSHOFF as a reset line, SCU DMA/system halt lines
-shared with SMPC clock change.
-
-| ID | Item |
-|---|---|
-| DUAL-01 | The core charges a fixed cycle count per instruction from a table; no per-access memory wait states (SDRAM CAS latency, SCU bus, A/B-bus penalties) and no bus arbitration between the two CPUs for work RAM-H/SCU are modelled, so relative timing of the two CPUs is approximate. The two SH-2s are interleaved by the scheduler quantum, not by shared-bus contention |
-| DUAL-02 | The tighter quantum after MINIT/SINIT is a constant (`INTERLEAVE_DIV`/`INTERLEAVE_DURATION`), not derived from hardware timing |
-| DUAL-03 | Cache is not modelled (Section E), so cache-coherency-sensitive code paths (cached vs cache-through alias) behave as if always coherent |
-
-These need measured bus timing (see C: SCU-04/BUS-01) rather than a guess; recorded as accuracy limits, not defects.
+Phase 2 items: settle VDP1-D2 from `VDP1.sv` (line early exit and AA state `LINE_END`), then extend the generator to
+command chains and the remaining frame-buffer modes; keep `FZ_ECD` runs to isolate Ymir's end-code divergence.
 
 ## H2. VDP2 verification plan
 
