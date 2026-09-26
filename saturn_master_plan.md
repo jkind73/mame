@@ -104,16 +104,16 @@ attributable to MAME being wrong. Differences that remain and need a capture rat
 Method: 600 random single-command cases (seed 2): normal/scaled/distorted sprites, polygons, polylines and lines;
 all colour modes, gouraud, mesh, shadow/half-luminance/half-transparent, MSB-on, SPD/ECD, HSS, user/system clipping,
 flip, local coordinates, 16 and 8 bpp frame buffers. Result: **581/600 pixel-identical**; with ECD forced on,
-**596/600**. Limits: single commands, no rotation/HDTV/double-interlace frame buffer modes, no command chaining
+**596/600**; every remaining difference is a Ymir divergence (D1, D2), none is a MAME defect so far. Limits: single commands, no rotation/HDTV/double-interlace frame buffer modes, no command chaining
 (jump/call), no timing.
 
 | ID | Finding | Verdict |
 |---|---|---|
 | VDP1-D1 | 15 of the 19 differences disappear with ECD=1: with ECD=0 and two end codes in a texture row, Ymir drops the texels *before* the end code; MAME, Mednafen (`ec_count = 2`) and the MiSTer RTL (`EC_FIND`, `VDP1.sv:1270-1331`) draw them | Ymir differs; **MAME is consistent with Mednafen and hardware RTL**, no action |
-| VDP1-D2 | 4 cases differ only at frame-buffer/system-clip boundaries (right edge x=319, bottom-left) for quads and distorted sprites whose vertices lie far outside the clip: MAME draws boundary pixels Ymir does not. The MiSTer RTL terminates a line when its position is outside the system clip and moving away (`VDP1.sv:1313-1318`, unless PCLP), and Mednafen stops a line once it leaves the clip after having been inside (`drawn_ac`, `vdp1_common.h:448-476`). MAME's `vdp1_draw_segment` only rejects whole spans (pre-clip bounding test) and clips per pixel; it has no in-line termination | **candidate MAME defect** (extra/edge-coverage dots beyond the termination point); needs the exact termination rule before any change: decide from the RTL, then re-run the fuzz with a targeted generator |
+| VDP1-D2 | 4 cases differ only at frame-buffer/system-clip boundaries (right edge x=319, bottom-left) for quads and distorted sprites with vertices far outside the clip: MAME draws boundary pixels Ymir does not. In case 560 the drawn pixels lie on row lines that start outside the clip (left edge of the quad at x=322) and run *toward* it. The MiSTer RTL ends a line only when its position is outside the system clip **and moving away** (`VDP1.sv:1313-1318`; `LINE_DIRX=1` adds -1), and Mednafen stops a line only after it has been inside and left (`drawn_ac`, `vdp1_common.h:448-476`); a line that starts outside and moves in keeps drawing, so its pixels at x<=319 are written. MAME's per-pixel clipping produces exactly those pixels | Ymir differs; **MAME is consistent with the RTL and Mednafen**, no action. In-line termination in the RTL cannot change visible pixels (it only fires when every remaining pixel is clipped) |
 | VDP1-D3 | Zero-width/zero-height scaled sprite: Ymir draws a one-row/one-column line, MAME draws a single dot (seen in an earlier generator run that produced degenerate zoom-point sizes) | undecided; not arbitrated against RTL |
 
-Phase 2 items: settle VDP1-D2 from `VDP1.sv` (line early exit and AA state `LINE_END`), then extend the generator to
+Phase 2 items: extend the generator to
 command chains and the remaining frame-buffer modes; keep `FZ_ECD` runs to isolate Ymir's end-code divergence.
 
 ## H2. VDP2 verification plan
