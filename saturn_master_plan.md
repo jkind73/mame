@@ -68,3 +68,51 @@ Open in the SH-2 (each needs a design decision, not a guess):
 * **NMI edge select**: ICR.NMIE is stored, NMIL read-back ignores it (TODO in `intc_icr_r`).
 
 Reference-oracle note: the Ymir source in `docs` has empty vendor submodules (fmt, mio, libchdr deps), so it cannot be built here without downloading them.
+
+## F. SCSP audit (2026-09-26, `scsp.cpp`/`scspdsp.cpp` read against Ymir, MiSTer `SCSP.sv`, ST-077)
+
+Done already (committed `81812edad51`): LFO stepped in whole-sample intervals (1020..1 samples per step,
+Ymir `s_lfoStepTbl`), advanced every sample regardless of PLFOS/ALFOS. Regression: `regtests/saturn/test_scsp_lfo.py`.
+
+Read and found consistent with the references (no action): DSP microprogram decode incl. NOFL bit 8, INPUTS latch,
+26-bit ACC, SHIFT/ADRL/FRCL, MADRS/RBL/RBP addressing, one memory access per step, EFREG persistence, UNPACK/PACK;
+slot addressing, interpolation, loop modes, SDIR/STWINH paths, EG tables.
+
+Open, needs a decision or a hardware capture (not to be guessed):
+
+| ID | Item | Note |
+|---|---|---|
+| SCSP-01 | Interrupt priority: MAME uses the maximum pending level, MiSTer uses a fixed source order | inconclusive between references |
+| SCSP-02 | `aica.cpp` has its own LFO struct (phase accumulator) that was not updated | same interval model may apply; AICA is out of Saturn scope, record only |
+| SCSP-03 | Remaining unread: timers, DMA (`exec_dma`), MIDI, slot register readback (`UpdateRegR`), master volume, per-sample mixer/pan/DAC ordering | complete Phase 1 read |
+
+## G. SCU DSP audit (2026-09-26, `scudsp.cpp` against Ymir `scu_dsp.cpp`)
+
+Compared: ALU op set and flags, X/Y/D1 bus parallel semantics incl. CT increment-once and same-bank read/write
+suppression, MVI/JMP/LPS/BTM/END/ENDI, condition codes, DMA count (8-bit, 0 = 256), DMA address-add tables,
+program-RAM DMA restart at TOP, ENDI edge rearm on PPAF read. No behavioural difference found that is
+attributable to MAME being wrong. Differences that remain and need a capture rather than a guess:
+
+* Ymir treats condition codes as OR-ed bit masks (Z|C etc.); MAME decodes only the documented codes (1,2,3,4,8).
+* Instruction timing is approximated (DMA cycle-steal, 1-cycle ops); the source says the real timings are unknown.
+
+## H. VDP1 verification plan (harness built, run not completed)
+
+A randomized single-command differential harness exists in the scratchpad (`yoracle/vdp1fuzz.cpp` generates cases
+and draws them in Ymir; `yoracle/vdp1fuzz.lua` replays them in MAME with the CPUs parked and reads
+`m_vdp1_legacy.framebuffer[]`). Status: Ymir side generates cases (a case with a gouraud polyline never signals
+draw-finished and needs investigation on the Ymir side); the MAME side is written but has not been run, and the
+comparison script does not exist yet. Phase 2 work item: finish it, triage differences against ST-013 and MiSTer
+`VDP1.sv`, and record each mismatch here with the arbiter used.
+
+## I. Remaining Phase 1 coverage (not yet audited)
+
+VDP2 (all layers, rotation, colour calculation, line/back screens, windows, mosaic, interlace) against Ymir and MiSTer;
+VDP1 drawing rules above; SCU DMA legality decision (SCU-D1: peers allow A-bus writes and VDP2 reads, MAME rejects);
+CD block, SMPC (commands, timings, peripherals), IOGA/cartridge/ST-V I/O, SH-2 dual-CPU synchronisation, memory map
+versus `saturn_memory_map.md`. Sections A-E above remain the only completed audits; F and G are complete for the parts stated.
+
+## J. Process note
+
+Implementation is Phase 2 and proceeds item by item from this document. One SCSP LFO change was implemented during
+Phase 1 (`81812edad51`); it is listed here so the Phase 2 order can account for it.
