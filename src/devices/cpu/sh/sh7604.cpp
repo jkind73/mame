@@ -385,6 +385,12 @@ void sh7604_device::sh7604_map(address_map &map)
 	//       we eventually internalize again via trampoline & sh7604_device
 	//       Also area 0xffff8000-0xffffbfff is for synchronous DRAM mode,
 	//       so this isn't actually a full mirror
+	// Synchronous DRAM mode register write window (section 7.5.4): a write to
+	// H'FFFF8000 + X issues a precharge-all followed by a mode register write
+	// command carrying X on the address lines. Nothing on the chip is modified,
+	// and address errors are not raised in this window (table 4.6 note 1).
+	map(0xffff8000, 0xffffbfff).nopw();
+
 	// SCI
 	map(0xfffffe00, 0xfffffe00).rw(FUNC(sh7604_device::smr_r), FUNC(sh7604_device::smr_w));
 	map(0xfffffe01, 0xfffffe01).rw(FUNC(sh7604_device::brr_r), FUNC(sh7604_device::brr_w));
