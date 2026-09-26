@@ -184,3 +184,27 @@ Differences and limits:
 | V1-P1-11 | Nested call | 6.1: one level of nesting, "do not use jump calls in subroutines" | a nested call is ignored and execution falls to the next table; undefined in the manual |
 | V1-P1-12 | System clip lower-left fixed at 0,0 | 7.1: system clipping command takes only the lower-right (XC,YC) | matches (`set(0,XC,0,YC)`); coordinates masked to 13 bits, unsigned |
 | V1-P1-13 | CMDCTRL and END decode | Table 6.1: END=1 only with Comm 0 | code tests bit 15 alone, so END with a nonzero Comm ends the list; the manual calls that combination prohibited |
+
+### 5c. VDP1 colour modes, end/transparent codes and colour calculation (ST-013 6.3, Table 6.2, 6.4)
+
+Compared `drawpixel_generic`, the fast-path selector `vdp1_set_drawpixel`, `vdp1_latch_color_lookup`, `vdp1_color_calculate` and `vdp1_draw_color`.
+
+Matches the manual:
+- Colour bank modes: mode 0 adds the 4-bit code to CMDCOLR bits 15-4, mode 2 uses 6 bits over `CMDCOLR & 0xffc0`, mode 3 uses 7 bits over `0xff80`, mode 4 uses 8 bits over `0xff00`; only the low 8 bits reach an 8 bpp buffer (`vdp1_write_pixel`).
+- End codes F (4-bit modes), FF (8-bit modes), 7FFF (mode 5); transparent codes 0, 00, 0000. Mode 2/3 end and transparent tests use the unmasked byte, as the manual's FFH/00H definitions require.
+- Lookup-table mode reads the 16-entry table at CMDCOLR*8 (32-byte aligned) and writes entries unchanged; the table is latched once per command.
+- Mode 5 forces a 16-byte aligned character address (cross-checked by Mednafen and Ymir per the code comment; the manual does not state it).
+- Colour calculation: replace, shadow (only when the frame-buffer MSB is 1, halves the buffer, keeps the MSB), half-luminance (source halved, no buffer read), half-transparency (replace when buffer MSB is 0, else average with buffer MSB kept), Gouraud alone, Gouraud + half-luminance (6), Gouraud + half-transparency (7). 8 bpp always replaces (p.94).
+- MON sets the frame-buffer MSB and writes no colour, after the mesh test (so a mesh pattern applies to the MSB write, per "MSB is set to ON in the mesh condition").
+
+Differences and limits:
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V1-P1-14 | Mode 5 transparency broader than the table | Table 6.2: 0000H is the transparent code; 0001H-7FFEH are "setting prohibited" in RGB mode | `transpen = (raw & 0x8000) ? 0 : raw` treats every MSB-clear word as transparent (code comment cites MiSTer GetPattern and Ymir). Consistent with the reference implementations, wider than the manual; it only matters for prohibited data |
+| V1-P1-15 | Colour-calc mode 5 (Gouraud bit clear, bits 2:0 = 101) | Prohibited | `vdp1_color_calculate(mode & 3)` treats it as shadow after Gouraud is applied to the source; no manual behaviour to compare |
+| V1-P1-16 | Colour modes 6/7 and reserved values | Prohibited | source data is read from VRAM word 0 (Mednafen behaviour, per comment), not from the character pattern. Not in the manual; a `TODO: check transpen` remains in the code |
+| V1-P1-17 | Polygon/line ECD and SPD | 6.3: ECD and SPD must both be 1 for polygons, polylines and lines | with ECD=0 a polygon colour of FFFFH is dropped as an end code and with SPD=0 a colour of 0 is dropped as transparent; matches what an unmodified hardware pipeline would do only if the reference emulators agree. Manual-conforming software is unaffected |
+| V1-P1-18 | 8 bpp MON write | 6.3: not described for 8 bpp | code sets bit 15 of the shared word (the even pixel's top bit), following Ymir; the code comment says silicon behaviour is unverified |
+| V1-P1-19 | Drawing speed | 6.3: shadow and half-transparent draw pixels 6 times slower | draw slicing uses `vdp1_raster_slice_cycles`; per-mode pixel cost not re-derived here (timing capture noted as unavailable) |
+
+Still to compare for VDP1: Gouraud table interpolation (6.7), character size and read direction (6.5-6.6, CMDCTRL Dir), the zoom-point placement rules, polygon/line/polyline rasterisation and pre-clip inversion, and chapter 7 clip/local-coordinate semantics.
