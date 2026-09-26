@@ -3714,11 +3714,14 @@ void saturn_cd_hle_device::cd_exec_command() {
   case 0x64:
     cmd_put_sector_data();
     break;
+  // ST-38 Table 8.1 orders these 7.6 Copy, 7.7 Move (command codes follow
+  // the function order); Mednafen cdb.cpp COMMAND_COPY_SECDATA = 0x65,
+  // COMMAND_MOVE_SECDATA = 0x66
   case 0x65:
-    cmd_move_sector_data();
+    cmd_copy_sector_data();
     break;
   case 0x66:
-    cmd_copy_sector_data();
+    cmd_move_sector_data();
     break;
   case 0x67:
     cmd_get_sector_data_copy_or_move_error();
