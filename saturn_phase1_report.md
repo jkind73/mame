@@ -278,3 +278,24 @@ Matches the manual:
 
 Not compared in 6.1 and continued in 6.2: the VRAM cycle pattern registers and the access-timing rules (3.2-3.3), RAMCTL and the
 colour RAM modes (3.4), then the scroll-screen chapters.
+
+### 6.2 RAMCTL, colour RAM modes and VRAM cycle patterns (ST-058 sections 3.2-3.4)
+
+Compared: RAMCTL (18000Eh), the eight cycle-pattern registers CYCA0L..CYCB1U (180010h-18001Eh), the access-command table (3.5),
+colour RAM modes 0/1/2 and their write behaviour, `vdp2_cram_r/w`, `vdp2_prepare_vram_access`, `vdp2_normal_vram_access`,
+`vdp2_rotation_vram_access`, `vdp2_check_vram_cycle_pattern_registers`.
+
+Matches the manual:
+- RAMCTL field decode: CRKTE bit 15, CRMD bits 13-12, VRBMD/VRAMD bits 9-8, RDBS fields bits 7-0.
+- Unpartitioned VRAM-A/B uses only the A0/B0 cycle registers (bank 1 registers ignored); hi-res and exclusive modes use T0-T3 and ignore T4-T7 (`slots = 4 : 8`).
+- Access commands 0-3 name reads, 4-7 character reads, Ch/Dh NBG0/NBG1 vertical cell scroll reads, others no access; the vertical cell scroll early-fetch rule (NBG0 before NBG1 in the same bank, p.35) is modelled.
+- RBG1 owns bank B1 for names and B0 for characters; when RBG1 is on, the cycle registers of B0/B1 are ignored (ST-058 p.32).
+- Colour RAM mode 0 writes reach both 1K-word halves (the code merges each half separately); mode 2 uses two 1K-word banks with 32-bit entries; RGB555 expands by appending three zero bits (p.43: 31 becomes 248).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-11 | Cycle patterns are a presence gate | 3.3: the number and timing of pattern-name and character-pattern reads is fixed by colour count, reduction and the selection limits of Tables 3.2-3.4 (e.g. NBG at 1/2 reduction needs 2 name reads); a layer with too few or misplaced slots is not displayed correctly | `vdp2_check_vram_cycle_pattern_registers` only checks that a name command and a character command appear somewhere; the code comment states it is "not fetch-address matching or a slot arbiter". Tables 3.2-3.4 counts and T-slot limits are not enforced (this is the earlier VDP2-D1 class) |
+| V2-P1-12 | CPU access wait | 3.3: the CPU waits for its selected CPU read/write slot during display; write wait is omitted after two words | no CPU/VDP2 VRAM arbitration is modelled (also listed under the memory-map timing limits) |
+| V2-P1-13 | Cycle-pattern registers write-only | 3.3: CYC registers are write-only | `vdp2_regs_r` returns the stored value for the whole 0x200-byte window, including the write-only registers (the hardware readback is not specified) |
+| V2-P1-14 | RAMCTL=mode 3 and CRKTE constraint | 3.4: CRMD=3 not allowed; CRKTE=1 requires mode 1 and turns the upper colour RAM half into the coefficient table | code treats `VDP2_CRMD & 2` as mode 2/3 alike (`case 2: case 3:`), so the prohibited mode 3 is decoded as 24-bit; whether the coefficient-table read uses the correct colour RAM half is checked in the rotation section |
+| V2-P1-15 | Mode change with stale halves | 3.4: "saving colour data must be done after these bits have been set" | halves can differ after a mode change until rewritten; the code comment states this and does not copy data. Consistent with the manual's rule |
