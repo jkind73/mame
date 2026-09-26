@@ -564,3 +564,41 @@ Matches the manual:
 | SCU-P1-19 | Program end interrupt | 2.2/3.3: E flag set by ENDI, interrupt raised, E cleared by reading the port | matches, with the ST-210 No.26 rule; a read of the port while the DSP runs may suppress the end interrupt per ST-210 No.36 and this is not modelled (the interrupt is raised regardless) |
 | SCU-P1-20 | Clock and cycle count | 4.1: D0-bus 28 MHz, X/Y bus 14 MHz; one step about 70 ns | `SCUDSP(config, ..., XTAL(57'272'727) / 4)` = 14.3 MHz with one icount per instruction; DMA and memory-access stalls approximate. The header lists "Fix timings (no info available so far)" |
 | SCU-P1-21 | Unassigned opcode groups | 4.2 lists no encoding for ALU op 7 and Ch-Eh, D1 sub-code 2, and MOV/MVI destinations 8-9 | treated as no-ops (`case 0x7`, `case 0x2 /* ??? */`, `unused`) |
+
+## 8. CD block (ST-38 "Saturn CD Communication Interface" against `saturn_cd_hle.cpp`)
+
+Scope of the official document. ST-38 (Doc. ST-38-R1-121093) specifies the host library (`CDC_*` functions), the four host
+registers (HIRQREQ, HIRQMSK, DATATRNS, DATASTAT), the drive status model, the selector/filter/partition model and the sector
+formats. It does NOT list hardware command codes, CR1-CR4 field layouts, or the MPEG and FAD-search commands. Where a finding below
+needs a command code it is derived from the order of the functions in ST-38 Table 8.1 (functions are numbered in command-code
+order) and the derived firmware notes in `docs/cdblock/saturn_cdblock_commands.md`, and says so. Command-level behaviour that ST-38
+leaves undefined (CR-field encodings, REJECT rules) is not judged here. Numbers are CD-P1-nn.
+
+Compared: HIRQ/HIRQMSK semantics (3.2), the drive status model and play/seek/scan rules (4.1-4.2), the selector model, filter
+mode/connection/reset semantics (5, 8.2.5), buffer and sector-length functions (8.2.6-8.2.7), initialisation scope (5.5),
+file system functions (8.2.8), and `cd_exec_command`, `cmd_init_cdsystem`, filter/selector command handlers.
+
+Matches ST-38:
+- HIRQ bits used by the code: CMOK 0, DRDY 1, CSCT 2, BFUL 3, PEND 4, DCHG 5 (ST-38 lists CMOK-MPEG only; ESEL/EFLS/ECPY/EHST exist in the hardware and are not in ST-38); masked bits do not drive the IRQ but remain visible in HIRQREQ.
+- Selectors: 24 (0-23); default filter i true output connected to partition i, false output disconnected; filter mode bit 7 restores the defaults (range 0/0, subheader conditions 0, mode 0) and ignores the other bits; CDC_ResetSelector reset-mode bits 2-7 (partition data, partition outputs, filter conditions, filter inputs, true outputs, false outputs) are decoded per bit.
+- Sector length types 2048/2336/2340/2352 with "no change" (0xff); mode 2 form 2 data of 2324 bytes is handled in the sector formatter.
+- Play mode: maximum repeats in the low 4 bits, 0x7f = no change, 0x0f endless; repeat counter 4 bits, cleared when the play range or the maximum changes; play end at range end + 1 gives PAUSE and PEND (`cd_change_status(PAUSE); hirqreg |= PEND`); a full buffer pauses and sets BFUL and play resumes when space appears (`buffull_temp_pause`).
+- Initialisation scope (5.5): only the soft-reset flag returns host information (play info, selector information, buffered data, transfer state) to the initial state (`cd_reset_host_information` is called only for `cr1 & 1`).
+- Directory file information holds up to 254 files (`XFERTYPE_FILEINFO_254`, `std::min<size_t>(254, ...)`).
+
+| ID | Finding | ST-38 | Code |
+|---|---|---|---|
+| CD-P1-01 | Open Tray | Table 8.1/4.2: `CDC_OpenTray` (function 1.7, between CdInit 1.6 and DataReady 1.8, i.e. command code 05h) "Opens the tray" | not dispatched: `cd_exec_command` has no case 0x05 (also no 0x55/0x56 and the MPEG codes beyond the implemented ones); the tray state can only change through the front-end tray control |
+| CD-P1-02 | Copy and Move command codes | Table 8.1: 7.5 Write, 7.6 Copy, 7.7 Move, 7.8 Get copy/move error (numbers follow command-code order 64h, 65h, 66h, 67h); `saturn_cdblock_commands.md` also gives 65h = copy, 66h = move | `case 0x65: cmd_move_sector_data(); case 0x66: cmd_copy_sector_data();` swapped |
+| CD-P1-03 | Init parameters ignored | 8.2.1 CdInit: standby time (0 = 180 s default, ffffh no change), ECC repetitions (0, 1-5, 80h none, ffh no change), retries (0, 1-Fh, 41h-4Fh, 80h, ffh no change) | `cmd_init_cdsystem` decodes only the init flag (soft reset, fixed-speed bit 4); CR2/CR3 (standby, ECC, retries) are not read. No error or retry model exists |
+| CD-P1-04 | Pause to standby | 4.1 and CdInit: after the standby time in PAUSE the drive is "regarded as STANDBY" | there is no standby timer; STANDBY is entered only by an explicit stop (seek to the home position) |
+| CD-P1-05 | Init closes the tray | 8.2.1: "If tray is open, this closes it" | Init keeps OPEN/NODISC (the seek is only started when a disc is present) |
+| CD-P1-06 | Init flag bit 7 | 8.2.1: bit 7 = request for change in the init flag | the fixed-speed bit is applied to `cd_speed` on every Init, whether or not bit 7 is set; the code comment reads it as "no change flag" |
+| CD-P1-07 | Reset selector: partition output connectors | 8.2.5: bit 3 initialises all partition output connectors (to unconnected) | `// TODO: bit 3, initialize all partition output connectors` |
+| CD-P1-08 | File information at soft reset | 5.5: file information is initialised when the tray opens or on a soft reset; TOC/session information only when the tray opens (a soft reset does not touch it) | `cd_reset_host_information` is tied to the soft-reset flag; the tray-open initialisation of file/TOC information was not traced in this pass |
+| CD-P1-09 | CD flag byte | 3.2 CdcStat: CD flag is a 4-bit flag, CD-DA (mute, emphasis) or CD-ROM (form, mode) | `cr_standard_return` sets CR1 bit 7 from the Q control data-track bit (added earlier); the CD-ROM mode/form bits and CD-DA mute/emphasis are reported as 0 |
+| CD-P1-10 | Drive status code values | Table 4.1 / CdcRet: library status codes 00h BUSY, 10h PAUSE, 11h STANDBY, 20h PLAY, 21h SEEK, 22h SCAN, 30h OPEN, 31h NODISC, 32h RETRY, 33h ERROR, 34h FATAL, all ones = REJECT | the hardware status nibbles used in CR1 (0 BUSY, 1 PAUSE, 2 STANDBY, 3 PLAY, 4 SEEK, 5 SCAN, 6 OPEN, 7 NODISC, 8 RETRY, 9 ERROR, A FATAL, FFh REJECT) are the ones the host library maps into ST-38's byte; the numeric mapping is not part of ST-38 and cannot be checked from it |
+| CD-P1-11 | FAD search, MPEG commands, AbortFile, CheckCopyProtection | not present in ST-38 (MPEG data transfer "not currently defined") | 55h/56h are not implemented; MPEG 90h-A?h and 75h/78h/etc. are implemented from other sources (comments: "enough to get Sport Fishing to do something") |
+| CD-P1-12 | Read error and retry states | 4.1 Table 4.1: RETRY, ERROR, FATAL; 4.1(5) error routine "not yet documented" | never entered (no read errors are modelled) |
+| CD-P1-13 | Subcode | 8.2.3: Get Subcode Q (10 bytes minus CRC) and R-W | `cmd_get_subcode_q_rw_channel` exists; R-W content is not produced from the image (checked only by reading the function head) |
+| CD-P1-14 | File system functions | 8.2.8: ChgDir, ReadDir (254 files), GetFileScope, GetFileInfo (fid = CDC_NUL_FID for all), GetOneFileInfo, ReadFile | present; the argument encodings and error conditions are not in ST-38, so behaviour rests on the firmware notes (see the `m_file_info_invalidated` and beyond-directory comments in `cmd_read_directory`) |
