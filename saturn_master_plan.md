@@ -230,98 +230,125 @@ Open runtime findings (each to be closed or explicitly recorded):
 | RT-04 | `machi`, `gaxeduel` fail on upstream as well | likely disc-specific |
 | RT-05 | `dukenk3d` asmjit InvalidInstruction once in the sweep, not reproducible | intermittent |
 
-## Q. Phase 2 master implementation plan (no code changes are made in Phase 2; every item below is executed in Phase 3)
+## Q. Phase 2 master implementation plan (derived only from `saturn_phase1_report.md`; no code is changed in Phase 2)
 
-Working rules for Phase 3: one item at a time, in the order given at the end; each item is implemented completely (no
-stubs, no game-specific hacks), cites its source (SDK document first, MiSTer/Mednafen/Ymir only where the SDK is silent),
-is verified by the stated check, and is committed alone with a technical message. Items marked BLOCKED need a measured
-artifact and stay recorded as accuracy limits until one exists.
+Derivation. Every item below cites the finding IDs of the Phase 1 report (`saturn_phase1_report.md`, sections 1-12), which were
+produced by comparing the code with the official documents. Earlier audit sections of this file (A-P) are history and are not the
+source of any item. Items come from class A (the code contradicts a stated rule) and from the class-B items whose comments or
+behaviour need a decision. Class C items (timing and arbitration) are listed as BLOCKED until a measurement source exists; class D
+(no document) is listed as runtime work only.
 
-### Q1. SH-2 master/slave (`sh.cpp`, `sh2.cpp`, `sh7604.cpp`, `saturn_dcc.cpp`)
-| ID | Item | Source | Verification |
+Working rules for Phase 3: one item at a time in the order at the end, each implemented completely (no stubs, no game-specific
+hacks), each citing its official source first (Mednafen/Ymir/MiSTer only where the document is silent or garbled, and then named in the
+code comment), verified by the stated check, and committed alone with a technical message. "DECISION" items need the stated evidence to
+be gathered and the decision recorded in the commit before any code changes. "DOC" items first re-read the original PDF page because
+the text extraction of the table was garbled (Phase 1 marks each one).
+
+### Q1. SMPC (`smpc.cpp`, port glue in `sat_console.cpp`/`saturn.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| SH-01 | CPU address error (vector 9) and DMA address error (vector 10): word/long alignment faults raise the exception with the stacked PC/SR of Table 4.11 in interpreter and DRC; not accepted in delay slots (4.6) | SH7604 manual 4.3.2, 4.6, Table 4.6; SH-1/SH-2 PM | regtest: misaligned MOV.W/MOV.L in both cores give identical stack frames and handler entry |
-| SH-02 | ICR.NMIE edge select and NMIL read-back (`intc_icr_r` TODO) | SH7604 5.3.1 | regtest on NMIL after pin toggles |
-| SH-03 | UBC: BAMR, BBR, BDR, BDMR, BRCR and the user-break exception | SH7604 UBC chapter | register test; break exception frame |
-| SH-04 | Cache: CCR-driven cache array, purge, way lock, so cached and cache-through aliases are not always coherent (DUAL-03) | SH7604 cache chapter, Table 7.3 | design decision recorded first; purge/stale-line regtest; sweeps must not regress |
-| SH-05 | Standby and module stop: SBYCR MSTP4/MSTP2 (DMAC, DIVU), SBY, FMR | SH7604 power-down chapter | register tests; DMAC/DIVU frozen while stopped |
-| SH-06 | DIVU busy-stall on register read (39-cycle and 6-cycle forms) | SH7604 DIVU chapter; Mednafen `divide_finish_timestamp` | cycle-count test in DRC and interpreter |
-| SH-07 | Bus wait states and inter-CPU bus arbitration (DUAL-01, RT-03): per-access cost from BCR1/BCR2/WCR/MCR (SDRAM CAS latency) for work RAM-H, A/B-bus and SCU accesses; shared-bus contention between the two SH-2s | SH7604 BSC chapter, SCU manual bus sections | BLOCKED for the SCU/A/B-bus costs (no documented table); the SDRAM part can be designed from the BSC chapter. Acceptance: Pulirula queue race (RT-03) no longer reproduces |
-| SH-08 | MINIT/SINIT quantum (DUAL-02): replace the constant interleave with the documented FRT input-capture latency | Dual CPU User's Guide (ST-202) | timing test MINIT to slave ICF |
-| SH-09 | DRC/interpreter parity suite for exceptions (illegal, slot illegal, TRAPA, address error, NMI, IRQ in delay slot) | SH7604 chapter 4 | one script runs identical vectors in both cores and compares registers and stack |
+| PL-SMPC-01 | SMPC-P1-01; SMPC manual Table 1.1, p.29 | SYSRES resets everything the manual lists: slave SH-2 held in reset with the SSHON shadow updated, sound CPU/SCSP reset with the SNDOFF shadow, dot clock back to 320, then the boot ROM starts; write the exact scope from Table 1.1 as the acceptance list first | regtest: issue SYSRES from a running system and read back each item; sweeps unchanged |
+| PL-SMPC-02 | SMPC-P1-02; p.17 | status-only INTBACK completes about 300 us after the command instead of 16 us | timing regtest (command write to SMPC interrupt), then the three titles of RT-01 are re-run |
+| PL-SMPC-03 | SMPC-P1-03; pp.55-57, Fig 3.5 | implement the IREG1 OPE optimisation (first frame measures the collection time, later frames start so it ends 1 ms after) | regtest with OPE set and clear across several frames |
+| PL-SMPC-04 | SMPC-P1-04; pp.38, 60 | DECISION: the manual defines no behaviour for IREG2 other than F0h, so keep it accepted; remove the stale TODO and record the reason | none |
+| PL-SMPC-05 | RT-01 (runtime symptom), SMPC-P1-01..03 | after PL-SMPC-01..03, rerun steamgea, nobutens and rayman without `joy_md3`; if they still leave the game, trace the INTBACK BREAK/CONTINUE status byte by byte against Table 3.2 and Figs 3.3, 3.4, 3.7 and file the result as a new item | the three titles reach game code |
 
-### Q2. SMPC (`smpc.cpp`, `sat_console.cpp` port glue, `bus/sat_ctrl`)
-| ID | Item | Source | Verification |
+### Q2. Memory map (`sat_console.cpp` `saturn_mem`, VDP1 register window)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| SMPC-A | RT-01: INTBACK termination and status-register contents after BREAK, CONTINUE and completion (NPE/PDL/RESB per phase), so titles using the direct port after a BREAK (steamgea, nobutens, rayman) behave as on hardware | SMPC User's Manual section 3 (Table 3.2, Figs 3.3/3.4/3.7), ST-169 | per-phase SR/IREG/COMREG trace compared with the manual; the three titles run without `joy_md3` |
-| SMPC-B | SMPC-01 SYSRES scope: slave SH-2 and SSHON shadow, SCSP/68K, CD block, clock back to 320 | ST-169 SYSRES; Ymir `Saturn::Reset(false)`, Mednafen smpc | regtest: SYSRES then check each component |
-| SMPC-C | SMPC-02 decide from ST-169 whether SYSRES clears work/sound/video RAM | ST-169 | decision recorded, then implemented or removed |
-| SMPC-D | SMPC-04 per-device INTBACK collection time replacing the fixed 700 us | ST-169 pp.55-57, SMPC manual | timing regtest per device type |
-| SMPC-E | Direct-mode port semantics (PDR/DDR/IOSEL/EXLE), including readback of input pins | SMPC manual PDR/DDR chapter | regtest sequences for TH/TR and pad protocols |
-| SMPC-F | SMPC-03 NETLINK and undocumented SEC_GETSEED/SEC_VERIFY | none available | recorded as unsupported |
+| PL-MM-01 | MM-P1-01, V1-P1-06 | VDP1 registers span 24 bytes: map and size `m_vdp1_regs` to 05D00000-05D00017 | read/write regtest at the edges |
+| PL-MM-02 | MM-P1-02 | map the whole 1 MB CS2 region (05800000-058FFFFF) and define the behaviour of 058A0000-058FFFFF from the memory map note | regtest reads |
+| PL-MM-03 | MM-P1-03, SH-P1-06 | cache address array 60000000-7FFFFFFF read/write (implemented together with PL-SH-03) | with PL-SH-03 |
+| PL-MM-04 | MM-P1-04 | A-Bus dummy area accepts writes (boot ROM mode words at 057FFFFC) in the console map | boot to the game intro, sweeps unchanged |
+| PL-MM-05 | MM-P1-05 | MINIT/SINIT are 4-byte registers; check what the document permits before narrowing the 8 MB decode | regtest; dual-CPU sweep titles unchanged |
+| PL-MM-06 | MM-P1-06, MM-P1-07 | DECISION: mirrors and undocumented mappings have no document; keep and record | none |
 
-### Q3. CD block (`saturn_cd_hle.cpp`)
-| ID | Item | Source | Verification |
+### Q3. SH-2 core and SH7604 modules (`sh.cpp`, `sh2.cpp`, `sh7604*.cpp`, `saturn_dcc.cpp`, `sat_console.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| CD-A | CD-01: 65h is Copy Sector Data and 66h is Move Sector Data (dispatch is swapped, also upstream) | `docs/cdblock/saturn_cdblock_commands.md`, firmware notes 637-638, Mednafen enum | regtest: 65h keeps the source, 66h removes it; sweep unchanged |
-| CD-B | CD-02: 05h Open Tray answers with status, raises DCHG and EFLS, drive to OPEN; the disc stays so closing restores PAUSE | command reference 0x05, ST-162 function 1.8, Ymir `CmdOpenTray` | regtest: command then close |
-| CD-C | CD-03: 55h Execute FAD Search and 56h Get FAD Search Results with the reject rules | command reference 0x55/0x56, Mednafen `COMMAND_EXEC_FADSRCH` | regtest on a partition with known FADs |
-| CD-D | Folded host path integration (IMPL-0120..0132 destination port) and Q-channel readout | `saturn_pending/PROMOTION_STATUS.md` | existing host-runtime fixtures |
-| CD-E | Confirm periodic-report and CR1 flag bits per command against ST-162 (CR4-read rule and data-track bit already done) | ST-162, Mednafen | script comparing CR1 across commands |
+| PL-SH-01 | SH-P1-03; SH7604 4.3.1 Table 4.6, 4.3.2 | raise address errors (vector 9) for every access and fetch case of Table 4.6 in both the interpreter and the DRC, with the stacked PC/SR of Table 4.11, not accepted in delay slots | parity regtest: the same faulting sequences in both cores give identical frames and handler entry |
+| PL-SH-02 | SH-P1-01, SH-P1-06 | give each SH-2 its own C0000000 data array in two-way mode and the address array | regtest: master and slave write the same address and read different data |
+| PL-SH-03 | SH-P1-02, SH-P1-05 | DECISION first: choose a cache model that gives stale reads for cached alias accesses and purge semantics without a large slowdown (way/LRU tags, associative purge at 40000000h with the ST-202 versus SH7604 disagreement recorded); then implement CCR enable, two-way, replacement disable and purge | stale-line and purge regtest; both sweeps must not regress |
+| PL-SH-04 | SHM-P1-12; SH7604 chapter 6 | implement UBC: BAMRA, BBRA, BARB/BAMRB/BBRB, BDRB/BDMRB, BRCR and the user break exception after the matching bus cycle | register test and a break exception frame check |
+| PL-SH-05 | SHM-P1-02; 10.3.3 | replace the +2^31 special case by the six-cycle overflow path | division corner-case regtest against the Table 10.2 results |
+| PL-SH-06 | SHM-P1-01; 10.1, 10.4.1 | DECISION: model the 39/6 cycle busy stall and the one-cycle read extension only if the DRC can expose the cycle time; otherwise record as a limit | cycle-count test in the interpreter and DRC |
+| PL-SH-07 | SH-P1-04, SHM-P1-10 | BLOCKED for the SCU/A-Bus/B-Bus parts (no per-bus table); the SDRAM/BSC part (BCR1/BCR2/WCR/MCR, CAS latency, refresh) can be designed from chapter 7. Acceptance: the Pulirula master/slave queue race no longer reproduces | Pulirula runtime |
+| PL-SH-08 | SH-P1-04, documentation | DECISION on dual-CPU timing (ST-202): replace the constant interleave quantum with the documented FRT input-capture latency for MINIT/SINIT | timing test from MINIT write to slave ICF |
+| PL-SH-09 | SHM-P1-11, SHM-P1-08 | trace and complete the refresh compare-match interrupt and DMAOR NMIF paths | register-level regtest |
+| PL-SH-10 | all | DRC/interpreter parity suite for exceptions and the new features (illegal, slot illegal, TRAPA, address error, NMI, IRQ in a delay slot, UBC break) | single script compares registers and stack in both cores |
 
-### Q4. SCU and DMA (`saturn_scu.cpp`, `scudsp.cpp`)
-| ID | Item | Source | Verification |
+### Q4. SCU and DSP (`saturn_scu.cpp`, `scudsp.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| SCU-A | SCU-D1: keep the rejection of A-bus-write and VDP2-read DMA (ST-210 No.01/02) unless a capture shows completion | ST-210 | recorded |
-| SCU-B | SCU-04/BUS-01 B-bus and A-bus wait states | BLOCKED: measured per-bus DMA timing | - |
-| SCU-C | DSP condition-code decode and instruction timing | BLOCKED: hardware capture | - |
-| SCU-D | Indirect-mode illegal descriptor; register write during DMA | BLOCKED: hardware capture | - |
+| PL-SCU-01 | SCU-P1-01 | DECISION: keep the mask reset at vector fetch (Mednafen/Ymir); correct the source comment so it no longer cites ST-097 figure 3.21 | none |
+| PL-SCU-02 | SCU-P1-02 | DECISION: whether IST bits stay set until software clears them (Table 3.8) or clear at delivery; compare with Mednafen and Ymir before touching; keep if the references agree with the code | regtest reading IST after a taken interrupt |
+| PL-SCU-03 | SCU-P1-16, SCU-P1-17 | DSP DMA address-add: derive the mapping of the 3-bit field (0,1,2,4,8,16,32,64) per ST-097 pp.134-140 and reconcile the immediate and RAM count forms; arbiter Ymir/Mednafen for the bus-specific cases | DSP DMA regtest for each add value and bus |
+| PL-SCU-04 | SCU-P1-07/08/09 | DECISION: prohibited operations are documented as hangs; keep accepting them and record instead of inventing behaviour | none |
+| PL-SCU-05 | SCU-P1-11/15/18/20 | BLOCKED: A-Bus/B-Bus/DSP DMA timing needs a measurement source | none |
 
-### Q5. VDP1
-| ID | Item | Source | Verification |
+### Q5. VDP1 (`saturn.cpp` VDP1 section)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| V1-A | VDP1-D3 zero-width/height scaled sprite: arbitrate against the RTL | MiSTer `VDP1.sv`, ST-013 | degenerate-size fuzz set |
-| V1-B | Extend the differential fuzz to command chains (jump/call/return), rotation and HDTV/double-interlace frame-buffer modes | Ymir and RTL as oracles, ST-013 | `regtests/saturn/vdp1_fuzz` new modes; every difference classified |
-| V1-C | Command/pixel timing and erase/readout arbitration | BLOCKED: timing capture | - |
+| PL-V1-01 | V1-P1-01 | erase at least one dot (eight in rotation/HDTV) when X1>=X3 or Y1>Y3 in both the immediate and V-blank erase paths | VDP1 erase regtest with degenerate rectangles |
+| PL-V1-02 | V1-P1-02 | write BEF from CEF at the start of drawing as well as at frame change | EDSR readback regtest across PTM=01 |
+| PL-V1-03 | V1-P1-03 | decode PTMR through bits 1-0 | regtest writing 0x0101 |
+| PL-V1-04 | V1-P1-13, V1-P1-09/10 | END with a non-zero command select, prohibited command codes and unmatched return: DECISION per Ymir/Mednafen evidence, then make list termination consistent with CEF/interrupt behaviour | command-list regtests for each case |
+| PL-V1-05 | V1-P1-08, V1-P1-20, V1-P1-14..18 | DECISION: keep the reference-emulator behaviours (commands 3 and 7, 13-bit coordinates, mode 5 transparency, polygon flags, MON in 8 bpp) but label each in the source as reference-derived rather than manual-derived | none |
+| PL-V1-06 | V1-P1-26/27/28 | the line/polygon algorithm and timing stay as accuracy limits; pre-clip direction inversion check against the differential fuzz | existing vdp1_fuzz |
 
-### Q6. VDP2
-| ID | Item | Source | Verification |
+### Q6. VDP2 (`saturn.cpp` VDP2 section, `saturn_vdp2.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| V2-A | VDP2-D1: VRAM access-pattern rule (ST-058 Tables 3.3/3.4): decide and implement what a layer with a short fetch count does, RTL as arbiter | ST-058 pp.32-33, MiSTer `VDP2*.sv` | D1-class fuzz differences resolved |
-| V2-B | VDP2-D3..D7 (NBG2 PNCN2/MPABN2, CHCTLA/B, WCTLB windows, ZMCTL reduction, SCRCTL line/vertical cell scroll): arbitrate each against ST-058 and the RTL and fix MAME where wrong | ST-058 chapters, RTL | targeted generators per register |
-| V2-C | Audit the remaining VDP2 chapters: rotation parameter and coefficient tables, colour calculation and special colour modes, shadow, line colour/back screen, windows, mosaic, interlace/PAL timing; append one audit table per chapter to this document and turn defects into items | ST-058 | tables appended |
-| V2-D | B.1: reconcile the stale TODO block in `saturn.cpp` with what is implemented | code read | no stale claims |
-| V2-E | VRAM cycle contention and CPU/VDP2 grants | BLOCKED: timing capture | - |
+| PL-V2-01 | V2-P1-11 | DOC then implement: VRAM cycle pattern rules (Tables 3.2-3.4: reads required per colour count and reduction, T-slot limits, CPU slot) with the RTL as arbiter for behaviour on violation | targeted register-mutation fuzz per rule |
+| PL-V2-02 | V2-P1-14 | colour RAM mode 3 is prohibited: stop treating it as mode 2; CRKTE=1 requires mode 1 | register regtest |
+| PL-V2-03 | V2-P1-39, V2-P1-40 | DOC: read Table 8.1 from the PDF, then ignore window coordinate bits above the documented widths and fix the exclusive-mode X mapping if the table requires it | window regtest per graphics mode |
+| PL-V2-04 | V2-P1-37, V2-P1-46 | colour RAM address MSB ignored in modes 0 and 2 for line colour, sprite and scroll palette lookups | palette regtest in modes 0-2 |
+| PL-V2-05 | V2-P1-16, V2-P1-25, V2-P1-10 | remove the stale TODO/"guessed" comments; add a test showing special high-resolution A/B renders as the manual's join | image test |
+| PL-V2-06 | V2-P1-02, V2-P1-03, V2-P1-26, V2-P1-36, V2-P1-41 | DOC: re-read Tables 2.3, 2.4, the SCRCTL line scroll interval table and the interlace line-table rules from the PDF; resolve each against Mednafen; adjust only where a document rule is proven | per-table regtests |
+| PL-V2-07 | V2-P1-01 | DECISION: ODD flag toggling in non-interlace contradicts the manual; keep with the game evidence stated, unless the reference emulators show a different rule | none |
+| PL-V2-08 | V2-P1-12 and timing items | BLOCKED: CPU/VDP2 VRAM arbitration and access timing | none |
 
-### Q7. SCSP
-| ID | Item | Source | Verification |
+### Q7. SCSP (`scsp.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| SC-A | Audio output verification (no pass has done this): capture a fixed set of sound tests and compare with Ymir/Mednafen renders | ST-077, Ymir, Mednafen | capture/compare script |
-| SC-B | SCSP-04: raise the 1Fs sample-tick interrupt per sample instead of once per stream batch | ST-077 interrupt section | 68K interrupt count equals 44100 per second |
-| SC-C | SCSP-01: re-read MiSTer `SCSP.sv` interrupt order; keep or align | RTL | decision recorded |
-| SC-D | SCSP-05: MEM4MB effect on the RAM map | MiSTer `SCSP.sv` | decision recorded |
-| SC-E | SCSP-06 RAM arbitration wait states | BLOCKED: measured timing | - |
+| PL-SC-01 | SC-P1-01 | raise the 1 Fs interrupt every sample rather than once per stream batch | 68K interrupt count equals the sample count over a fixed time |
+| PL-SC-02 | SC-P1-05 | widen RBP to the documented seven bits | DSP ring-buffer regtest |
+| PL-SC-03 | SC-P1-04, SC-P1-08 | DECISION: EG numbers and the DSP come from the reference emulators; document each source in the code; audio capture comparison against Ymir/Mednafen renders | capture/compare script |
+| PL-SC-04 | SC-P1-02/03/06 | BLOCKED: memory arbitration, MCRDYN wait states, DMA slowdown | none |
+| PL-SC-05 | SC-P1-10 | trace MEM4MB, DAC18B and MONO effects | register regtest |
 
-### Q8. ST-V I/O and boards
-| ID | Item | Source | Verification |
+### Q8. CD block (`saturn_cd_hle.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| IO-A | IO-02: remove the legacy per-game `ioga_r/w`; route critcrsh, stvmp and hopper games through the 315-5649 device | internal consistency (no document) | those games' input tests unchanged |
-| IO-B | RT-02: Print Club poll of I/O status 0040001Bh (serial/COM status): establish what the game expects before its timeout | game code analysis | the twelve Print Club sets reach the same screen as upstream |
-| IO-C | ST-V titles blank after 65 s (rsgun, elandore, skychal, techbowl, znpwfvt, pcpooh2, dfeverg): find the flag the master waits for | game code analysis | each reaches its title or is documented |
-| IO-D | IO-01 serial timing and status bits | BLOCKED: no IOGA documentation | recorded |
+| PL-CD-01 | CD-P1-02 | dispatch 65h to Copy Sector Data and 66h to Move Sector Data | regtest: 65h keeps the source, 66h removes it |
+| PL-CD-02 | CD-P1-01 | implement Open Tray (05h): status response, DCHG, drive state OPEN, disc retained so closing restores PAUSE | regtest: command then close |
+| PL-CD-03 | CD-P1-03, CD-P1-04 | read standby time, ECC and retry parameters of Init, and model the PAUSE to STANDBY transition after the standby time (default 180 s) | regtest with a short standby time |
+| PL-CD-04 | CD-P1-05, CD-P1-06 | Init closes an open tray; apply the init flag bit 7 (change request) rule after the ST-38 text is confirmed from the PDF | regtest |
+| PL-CD-05 | CD-P1-07 | implement reset-selector bit 3 (partition output connectors) after confirming the bit polarity from the PDF | selector regtest |
+| PL-CD-06 | CD-P1-08 | trace initialisation of file and TOC information at tray open and soft reset against 5.5 | regtest |
+| PL-CD-07 | CD-P1-09 | report the CD flag bits (mode/form, mute/emphasis) | CR1 comparison script |
+| PL-CD-08 | CD-P1-11, CD-P1-12 | FAD search, MPEG and read-error states have no ST-38 text: BLOCKED, keep as runtime work | none |
 
-### Q9. Memory map
-| ID | Item | Source | Verification |
+### Q9. Peripherals (`bus/sat_ctrl`, `smpc.cpp`)
+| ID | Source | Change | Verification |
 |---|---|---|---|
-| MM-A | Confirm mirror extents (work RAM-L at 00300000h, work RAM-H span, SCSP register mirror stride, VDP1 register window 20h vs 18h) | `docs/system/saturn_memory_map.md`, SDK | read/write mirror regtest |
+| PL-PER-01 | PER-P1-01 | DECISION: mouse movement encoding, absolute value with sign bits (manual) versus two's complement (code); check Mednafen and Ymir before touching | mouse-data regtest |
+| PL-PER-02 | PER-P1-04 | BLOCKED: per-device INTBACK collection time | none |
 
-### Q10. Validation and promotion
-1. Rebuild; run `regtests/saturn/run_all.py` (73 scripts, zero skips) and the tests added above.
+### Q10. ST-V I/O and boards (no official document)
+| ID | Source | Change | Verification |
+|---|---|---|---|
+| PL-STV-01 | section 11.2 | runtime work only: the Print Club poll of 0040001Bh and the blank-frame titles, found by tracing the games; documentation of what each poll waits for | the sets reach the same screens as upstream or are documented |
+
+### Q11. Validation and promotion
+1. Rebuild; run `regtests/saturn/run_all.py` and every regtest added above with zero skips.
 2. Re-run the Saturn disc sweep (1163 discs) and the ST-V sweep (107 sets) with the `satbatch/` harness; compare with the previous results and with upstream.
-3. Audio comparison (SC-A) and visual spot checks of a fixed title set.
+3. Audio comparison (PL-SC-03) and visual spot checks of a fixed title set.
 4. Promote (remove `MACHINE_NOT_WORKING`, set IMPERFECT flags for known limits) only what steps 1-3 support; BLOCKED items stay documented as limits.
 
-Suggested Phase 3 order: CD-A, CD-B, CD-C; SMPC-A, SMPC-B; IO-A, IO-B, IO-C; SH-01, SH-02, SH-09; V2-D, V2-A, V2-B; V1-A; SC-A, SC-B; SH-03..SH-08 as prerequisites allow; then Q10.
+Order for Phase 3: PL-CD-01, PL-CD-02; PL-SMPC-01, PL-SMPC-02, PL-SMPC-03, PL-SMPC-05; PL-MM-01, PL-MM-02, PL-MM-04, PL-MM-05; PL-V1-01,
+PL-V1-02, PL-V1-03; PL-SH-01, PL-SH-05, PL-SH-10; PL-SC-01, PL-SC-02; PL-V2-02, PL-V2-04, PL-V2-05; PL-CD-03 to PL-CD-07;
+PL-V2-01, PL-V2-03, PL-V2-06; PL-SH-02, PL-SH-03, PL-SH-04, PL-MM-03; PL-SCU-03; then the DECISION items as their evidence is gathered; then Q11.
 
 ## J. Process note
 
