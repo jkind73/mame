@@ -3852,7 +3852,6 @@ void saturn_cd_hle_device::cd_exec_command() {
     update_hirq();
     break;
   }
-  cmd_pending = 0;
 }
 
 TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::sh1_command_cb) {
@@ -3903,8 +3902,9 @@ TIMER_CALLBACK_MEMBER(saturn_cd_hle_device::cd_sector_cb) {
   hirqreg |= SCDQ;
   update_hirq();
 
-  if (!cmd_pending) {
-    cd_stat |= CD_STAT_PERI;
+  // Periodic reports resume once the host has read CR4 (dr4_r), as on the
+  // real block where the report is only refreshed after the results were read.
+  if (cd_stat & CD_STAT_PERI) {
     cr_standard_return(cd_stat);
   }
   trace_boot_state("periodic");
