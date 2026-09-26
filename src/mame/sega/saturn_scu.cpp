@@ -172,8 +172,10 @@ void saturn_scu_device::regs_map(address_map &map) {
   // describes the wait-state fields they carry
   map(0x00b0, 0x00b7).w(FUNC(saturn_scu_device::abus_set_w));
   map(0x00b8, 0x00bb).w(FUNC(saturn_scu_device::abus_refresh_w));
-  //  map(0x00c4, 0x00c7).rw(FUNC(saturn_scu_device::sdram_r),
-  //  FUNC(saturn_scu_device::sdram_w));
+  // RSEL: SDRAM select (ST-097 fig.3.31; ST-210 No.36 says it resets to
+  // 2 Mbit x 2 and the boot ROM switches it to 4 Mbit x 2)
+  map(0x00c4, 0x00c7).rw(FUNC(saturn_scu_device::rsel_r),
+                         FUNC(saturn_scu_device::rsel_w));
   map(0x00c8, 0x00cb).r(FUNC(saturn_scu_device::version_r));
 }
 
@@ -232,6 +234,7 @@ void saturn_scu_device::device_start() {
   save_item(NAME(m_abus_pending_ack));
   save_item(NAME(m_abus_asr));
   save_item(NAME(m_abus_aref));
+  save_item(NAME(m_rsel));
   save_item(NAME(m_t0c));
   save_item(NAME(m_t1s));
   save_item(NAME(m_t1md_reg));
@@ -344,6 +347,7 @@ void saturn_scu_device::device_reset() {
   m_abus_asr[1] = 0;
   // ST-210 No.33 supersedes the original AREF reset value: ARFEN starts set.
   m_abus_aref = 0x10;
+  m_rsel = false;
 
   // every dma_channel_t member has to be given a value here: the device
   // constructor leaves them indeterminate, and the DMA logic reads the flags
@@ -1009,7 +1013,8 @@ inline void saturn_scu_device::dma_start_factor_ack(dma_event_id_t event) {
   }
 }
 
-void saturn_scu_device::dma_force_stop_w(uint32_t data, uint32_t mem_mask) {
+void saturn_scu_device::dma_force_stop_w(offs_t offset, uint32_t data,
+                                         uint32_t mem_mask) {
   // ST-097 section 3.2, DSTP: writing DSTOP=1 cancels CPU-programmed DMA.
   if (!(data & mem_mask & 1))
     return;
@@ -1351,10 +1356,23 @@ void saturn_scu_device::abus_set_w(offs_t offset, uint32_t data,
   m_abus_asr[offset & 1] &= ~0x8000'8000;
 }
 
-void saturn_scu_device::abus_refresh_w(uint32_t data, uint32_t mem_mask) {
+// A handler taking two uint32_t arguments is (offset, data) to the memory
+// system, not (data, mem_mask): the offset must be declared explicitly.
+void saturn_scu_device::abus_refresh_w(offs_t offset, uint32_t data,
+                                       uint32_t mem_mask) {
   COMBINE_DATA(&m_abus_aref);
   // Only ARFEN (bit 4) and ARWT (bits 3:0) are implemented.
   m_abus_aref &= 0x1f;
+}
+
+uint32_t saturn_scu_device::rsel_r() { return m_rsel ? 1 : 0; }
+
+void saturn_scu_device::rsel_w(offs_t offset, uint32_t data,
+                               uint32_t mem_mask) {
+  // Only bit 0 (RSEL) exists. The selected size is not modelled: Work RAM-H
+  // is always the 1 MiB (4 Mbit x 2) fitted to production boards.
+  if (ACCESSING_BITS_0_7)
+    m_rsel = BIT(data, 0);
 }
 
 uint32_t saturn_scu_device::version_r() {

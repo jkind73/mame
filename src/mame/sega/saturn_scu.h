@@ -164,6 +164,7 @@ private:
   uint16_t m_abus_pending_ack; // A-Bus interrupts waiting for an AIACK write
   uint32_t m_abus_asr[2];      // ASR0/ASR1, A-Bus access settings ($B0-$B7)
   uint32_t m_abus_aref;        // AREF, A-Bus refresh setting ($B8-$BB)
+  bool m_rsel;                 // RSEL, SDRAM select: 0 = 2 Mbit x 2, 1 = 4 Mbit x 2 ($C4-$C7)
   uint16_t m_timer0_counter;
   uint32_t m_dma_clock_ref;
 
@@ -229,7 +230,7 @@ private:
 
   // DMA
   template <unsigned Level> void dma_map(address_map &map);
-  void dma_force_stop_w(uint32_t data, uint32_t mem_mask = ~0);
+  void dma_force_stop_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
   uint32_t dma_status_r();
 
   // Timers
@@ -245,7 +246,9 @@ private:
   // A-Bus section
   void abus_irqack_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
   void abus_set_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
-  void abus_refresh_w(uint32_t data, uint32_t mem_mask = ~0);
+  void abus_refresh_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+  uint32_t rsel_r();
+  void rsel_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 };
 
 // device type definition
