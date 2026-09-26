@@ -528,6 +528,19 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command) {
     m_sysres(1);
     m_sysres(0);
 
+    // SMPC User's Manual p.29 (command 0Dh) and Table 1.1: the command
+    // initializes all functions and enters the power-on state: the slave
+    // SH-2 and the sound CPU are held in reset until SSHON/SNDON, and the
+    // system clock is the 320 mode. The SMPC's own shadows of those states
+    // (reported in INTBACK OREG10) follow.
+    m_prev_sshoff = 1;
+    m_sshres(1);
+    m_prev_sndoff = 1;
+    m_sndres(1);
+    m_cur_dotsel = false;
+    m_dotsel(1);
+    m_ckchg_tick = 0;
+
     // send a 1 -> 0 transition to reset line (was PULSE_LINE)
     m_mshres(1);
     m_mshres(0);

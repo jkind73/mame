@@ -1134,8 +1134,13 @@ void sat_console_state::saturn(machine_config &config) {
       FUNC(sat_console_state::slave_sh2_reset_w));
   m_smpc_hle->sound_reset_handler().set(
       FUNC(sat_console_state::sound_68k_reset_w));
-  m_smpc_hle->system_reset_handler().set(
-      FUNC(sat_console_state::system_reset_w));
+  // SYSRES also initializes the CD block (SMPC User's Manual p.29: all
+  // functions are reset; Table 1.1: the CD block starts in its ON state)
+  m_smpc_hle->system_reset_handler().set([this](int state) {
+    system_reset_w(state);
+    if (state)
+      m_saturn_cd_hle->reset();
+  });
   m_smpc_hle->system_halt_handler().set(FUNC(sat_console_state::system_halt_w));
   m_smpc_hle->dot_select_handler().set(FUNC(sat_console_state::dot_select_w));
   m_smpc_hle->interrupt_handler().set(m_scu,
