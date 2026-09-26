@@ -129,6 +129,22 @@ are implemented and are a superset of Ymir (which lacks CDON/CDOFF and NETLINK).
 | CD-03 | 0x55 Execute FAD Search and 0x56 Get FAD Search Results are commented out | Mednafen implements both |
 | CD-04 | Remaining MPEG commands are partly stubbed (0xA7-0xAD reject by design); 0xE2 handled | acceptable per ST-162 text quoted in code |
 
+## M. Memory map audit (2026-09-26, `sat_console.cpp` `saturn_mem` against `docs/system/saturn_memory_map.md`)
+
+Every region of the documented map is present with the documented bus behaviour: BIOS/SMPC/backup RAM/work RAM-L in the
+CPU-local space, MINIT/SINIT windows (cache-through aliases included), A-Bus dummy area, CS2/CD block, SCSP RAM and
+registers, VDP1 VRAM/frame buffer/registers, VDP2 VRAM/CRAM/registers, SCU registers, work RAM-H with mirrors, purge
+space, cache address and data arrays. Cartridge areas (CS0/CS1) are mapped dynamically in `device_start` per cartridge ID
+(battery RAM 21h, data RAM 5Ah, ROM), which is why the static map lines are commented out.
+
+Decision input for SCU-D1 (DMA legality, section C): `saturn_memory_map.md` cites ST-210 No.01 (A-bus writes by SCU-DMA
+prohibited) and No.02 (reading VDP2 by SCU-DMA prohibited), which is exactly what MAME rejects. The peers' permissive
+behaviour is therefore not supported by the SDK text; recommendation for Phase 2: keep the current rejection, and only
+change it if a hardware trace shows the transfer completes.
+
+Unverified in this pass: exact mirror extents (work RAM-L mirrored at 00300000H, work RAM-H mirror span, SCSP register
+mirror stride, VDP1 register window 20h vs documented 18h) against a hardware read-back.
+
 ## H2. VDP2 verification plan
 
 Name-based coverage grep of the VDP2 register set in `saturn.cpp` found the registers implemented (RPMD/RPRCTL/KTCTL,
