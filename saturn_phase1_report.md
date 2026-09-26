@@ -222,3 +222,25 @@ then along the span. The Gouraud table is bound to vertices A, B, C, D independe
 | V1-P1-21 | CMDSIZE zero | 6.6: zero X or Y size is prohibited | code accepts and special-cases zero sizes (see the `CMDSIZE.H = 0` comment near `vdp1_draw_distorted_sprite`); behaviour taken from reference emulators, not the manual |
 | V1-P1-22 | Character/table address zero | 5.1-5.3: character patterns, lookup tables and Gouraud tables cannot start at 00000H (Gouraud: 00000H-0001FH) | no check; the manual states it as a constraint on software, not as hardware behaviour |
 | V1-P1-23 | Line Gouraud | 5.3: for lines only vertices A and B are used (start and end) | verified only for the sprite/polygon path (`vdp1_setup_rectangle_shading`); the line path is read in §5e |
+
+### 5e. VDP1 clipping, local coordinates, zoom point and lines (ST-013 6.1 Zoom Point, chapter 7)
+
+Matches the manual:
+- System clip: upper-left fixed at (0,0), lower-right (XC,YC) inclusive (`system_cliprect.set(0,XC,0,YC)`); points on the clip line are drawn.
+- User clip: (XA,YA)-(XC,YC) inclusive; inside mode draws it, outside mode excludes the boundary line as well (`vdp1_pixel_visible` inverts an inclusive test); the system clip always applies too (7.2).
+- Local coordinates are added to draw-command vertices (`x2s`/`y2s`) and not to the clip rectangles (7.3).
+- Zoom point ZP: bits 9-8 select left/centre/right (01/10/11), bits 11-10 select top/centre/bottom; the anchor is CMDXA/CMDYA and the extent is CMDXB/CMDYB (`vdp1_draw_scaled_sprite`). ZP=0 uses the A and C vertices; A=C draws one dot.
+- Horizontal/vertical inversion from Dir (CMDCTRL bits 5-4) is independent of extent inversion.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V1-P1-24 | Zoom-point centre rounding | 6.1: an odd extent leaves the centre point off-centre, computed from A and the display width | `left -= width >> 1` (arithmetic shift, floor for negatives); the manual gives no rounding rule for negative widths, and states a negative display width is not guaranteed |
+| V1-P1-25 | Prohibited zoom-point codes | 6.1: only 0,5,6,7,9,A,B,D,E,F are defined | codes with horizontal field 00 and a nonzero vertical field (4,8,C) are treated as horizontal "left"; undefined in the manual |
+| V1-P1-26 | Rasterisation rules | chapter 7 defines the command tables and figures only; the line/polygon/edge-coverage algorithm is not specified | `vdp1_draw_segment` implements a signed 13-bit error datapath with an extra edge-coverage dot, with comments citing MiSTer/Ymir. It cannot be verified against ST-013; the differential fuzz against the reference emulators is the only check available |
+| V1-P1-27 | Pre-clip rejection | 6.3 Pclp: pre-clip skips wholly outside lines, and also inverts horizontal drawing direction | the reject test exists (with a one-dot margin); the horizontal direction inversion is not modelled by the code as a separate step, so it only matters for the order of partial writes over a shared destination (e.g. half-transparent double writes) |
+| V1-P1-28 | Timing | chapter 7 gives no per-command timing; Table 4.4/4.5 and the "6 times slower" notes are the only figures | per-pixel cost of colour calculation and command fetch are approximations (`vdp1_raster_slice_cycles`, 16-cycle fetch from Ymir); acknowledged as incomplete in the code comments |
+
+Summary of the VDP1 review (§5-5e): the register file, frame-change modes, command list and colour paths agree with ST-013
+except for the items V1-P1-01 to -03 (erase of degenerate areas, BEF at draw start, PTMR bit mask), which are defects, and
+V1-P1-08 to -11, -13, -14, -20 and -21, where the code follows the reference emulators for cases the manual calls
+prohibited or defines differently. The remaining items are accuracy limits.
