@@ -158,6 +158,21 @@ chip can only be checked for internal consistency, not against a hardware refere
 
 Phase 2 candidates that need no new hardware data: route the legacy per-game maps through the device (removing the divergence in IO-02).
 
+## O. SH-2 dual-CPU synchronisation audit (2026-09-26, `saturn_dcc.cpp`, `sat_console.cpp` config, `sh2.cpp` cycle accounting)
+
+Implemented: MINIT/SINIT as 16-bit-only write triggers into the other CPU's FRT input capture (byte/longword writes
+ignored), a temporary tighter scheduler quantum around each trigger, per-CPU interrupt acknowledge (master through the SCU
+with IMS reset, slave through the DCC vector table 41h-43h), SMPC SSHON/SSHOFF as a reset line, SCU DMA/system halt lines
+shared with SMPC clock change.
+
+| ID | Item |
+|---|---|
+| DUAL-01 | The core charges a fixed cycle count per instruction from a table; no per-access memory wait states (SDRAM CAS latency, SCU bus, A/B-bus penalties) and no bus arbitration between the two CPUs for work RAM-H/SCU are modelled, so relative timing of the two CPUs is approximate. The two SH-2s are interleaved by the scheduler quantum, not by shared-bus contention |
+| DUAL-02 | The tighter quantum after MINIT/SINIT is a constant (`INTERLEAVE_DIV`/`INTERLEAVE_DURATION`), not derived from hardware timing |
+| DUAL-03 | Cache is not modelled (Section E), so cache-coherency-sensitive code paths (cached vs cache-through alias) behave as if always coherent |
+
+These need measured bus timing (see C: SCU-04/BUS-01) rather than a guess; recorded as accuracy limits, not defects.
+
 ## H2. VDP2 verification plan
 
 Name-based coverage grep of the VDP2 register set in `saturn.cpp` found the registers implemented (RPMD/RPRCTL/KTCTL,
