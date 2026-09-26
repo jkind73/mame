@@ -141,6 +141,14 @@ void smpc_hle_device::device_start() {
   save_item(NAME(m_intback_stage));
   save_item(NAME(m_intback_wait));
   save_item(NAME(m_in_vblank));
+  save_item(NAME(m_ope_valid));
+  save_item(NAME(m_vout_valid));
+  save_item(NAME(m_collecting));
+  save_item(NAME(m_collect_optimized));
+  save_item(NAME(m_ope_time));
+  save_item(NAME(m_vout_time));
+  save_item(NAME(m_display_period));
+  save_item(NAME(m_collect_start));
   save_item(NAME(m_pmode));
   save_item(NAME(m_rtc_data));
   save_item(NAME(m_smem));
@@ -213,6 +221,8 @@ void smpc_hle_device::device_reset() {
   m_intback_stage = 0;
   m_intback_wait = INTBACK_WAIT_NONE;
   m_in_vblank = false;
+  m_ope_valid = m_vout_valid = m_collecting = m_collect_optimized = false;
+  m_ope_time = m_vout_time = m_display_period = m_collect_start = attotime::zero;
   m_peripheral_size = m_peripheral_pos = 0;
   m_pmode = 0;
 
@@ -256,6 +266,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
         sr_ack();
         sf_ack(false);
         m_intback_stage = 0;
+        m_collecting = false;
         m_peripheral_size = m_peripheral_pos = 0;
       } else if ((previous ^ data) & 0x80) {
         LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
@@ -267,8 +278,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data) {
           m_intback_timer->reset();
         } else {
           m_intback_wait = INTBACK_WAIT_NONE;
-          m_intback_timer->adjust(
-              attotime::from_usec(700)); // TODO: per-device wire timing
+          m_intback_timer->adjust(attotime::from_usec(700));
         }
 
         // TODO: following looks wrong here
@@ -451,7 +461,8 @@ void smpc_hle_device::command_register_w(uint8_t data) {
     // in OREG and the SMPC interrupt is requested
     if (m_ireg[0] != 0) // non-peripheral data
       timing = 300;
-    // TODO: OPE scheduling and per-device wire timing (ST-169 pp.55-57).
+    // The collection duration is a fixed 700 us estimate: the manual gives
+    // no per-device wire time (it varies with the connected peripherals, p.56).
     // Peripheral-only collection; with a status report the peripheral phase
     // starts at the continue request and does not delay the status interrupt.
     else if (m_ireg[1] & 8)
@@ -660,6 +671,18 @@ void smpc_hle_device::vblank_in() {
 
   m_in_vblank = true;
 
+  // Length of the display period, for the acquisition time optimization.
+  if (m_vout_valid)
+    m_display_period = machine().time() - m_vout_time;
+
+  // A collection that has not ended by V-BLANK-IN is a time-over; the next
+  // optimized collection then starts at V-BLANK-OUT again (p.56).
+  if (m_collecting) {
+    if (m_collect_optimized)
+      m_ope_valid = false;
+    m_collecting = false;
+  }
+
   // Sample the hardwired switch every VBlank-IN, including idle/RESDISA.
   // Read the physical port rather than relying on a change callback, so a
   // button held across machine reset is sampled again on the next edge.
@@ -704,18 +727,61 @@ void smpc_hle_device::vblank_out() {
     return;
 
   m_in_vblank = false;
-  // Reuse the existing command/CONTINUE delays, but start them after the
-  // collection gate opens. OPE learning and wire-time measurement remain
-  // unimplemented; neither can permit collection during vertical blanking.
+  m_vout_time = machine().time();
+  m_vout_valid = true;
+  // Collection starts when the SMPC detects V-BLANK-OUT (p.56), or later in
+  // the display period when the acquisition time optimization is active
+  // (pp.55-57). Neither may permit collection during vertical blanking.
   switch (m_intback_wait) {
-  case INTBACK_WAIT_COMMAND:
-    m_cmd_timer->adjust(attotime::from_usec(8 + 700));
-    break;
-  case INTBACK_WAIT_CONTINUE:
-    m_intback_timer->adjust(attotime::from_usec(700));
+  case INTBACK_WAIT_COMMAND: {
+    attotime const offset = optimized_start_offset();
+    collection_start(offset);
+    m_cmd_timer->adjust(attotime::from_usec(8 + 700) + offset);
     break;
   }
+  case INTBACK_WAIT_CONTINUE: {
+    attotime const offset = optimized_start_offset();
+    collection_start(offset);
+    m_intback_timer->adjust(attotime::from_usec(700) + offset);
+    break;
+  }
+  }
   m_intback_wait = INTBACK_WAIT_NONE;
+}
+
+// Peripheral acquisition time optimization (OPE=0 in IREG1, pp.55-57): the
+// first collection starts at V-BLANK-OUT and its duration (including the wait
+// for the continue request) is measured. Later collections add a 1 ms margin
+// to the measured time and start that long before V-BLANK-IN so the data is
+// as fresh as possible when the SH-2 reads it.
+attotime smpc_hle_device::optimized_start_offset() const {
+  if ((m_intback_buf[1] & 2) || !m_ope_valid || !m_vout_valid)
+    return attotime::zero;
+
+  attotime const required = m_ope_time + attotime::from_msec(1);
+  if (m_display_period <= required)
+    return attotime::zero;
+  return m_display_period - required;
+}
+
+void smpc_hle_device::collection_start(attotime const &offset) {
+  m_collecting = true;
+  m_collect_optimized = offset != attotime::zero;
+  m_collect_start = m_vout_time + offset;
+}
+
+void smpc_hle_device::collection_finished() {
+  if (!m_collecting)
+    return;
+
+  m_collecting = false;
+  if (m_intback_buf[1] & 2) {
+    // OPE=1: no optimization, so nothing measured earlier may be reused
+    m_ope_valid = false;
+  } else {
+    m_ope_time = machine().time() - m_collect_start;
+    m_ope_valid = true;
+  }
 }
 
 void smpc_hle_device::resolve_intback() {
@@ -803,6 +869,8 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request) {
     // PDL marks the first page; NPE describes remaining data, not port #.
     sr_set(0x80 | (first ? 0x40 : 0) | (more ? 0x20 : 0) | m_pmode);
     m_intback_stage = more ? 2 : 0;
+    if (!more)
+      collection_finished();
   } else {
     // Keep the existing no-controller/ST-V handshake path unchanged.
     if (m_intback_stage == 2) {

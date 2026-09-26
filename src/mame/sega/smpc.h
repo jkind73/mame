@@ -171,6 +171,18 @@ private:
   enum : uint8_t { INTBACK_WAIT_NONE, INTBACK_WAIT_COMMAND, INTBACK_WAIT_CONTINUE };
   uint8_t m_intback_wait = INTBACK_WAIT_NONE;
   bool m_in_vblank = false;
+  // Peripheral acquisition time optimization (SMPC User's Manual pp.55-57)
+  bool m_ope_valid = false;       // a collection made with OPE=0 was measured
+  bool m_vout_valid = false;      // m_vout_time and m_display_period are known
+  bool m_collecting = false;      // a gated collection is running and timed
+  bool m_collect_optimized = false;
+  attotime m_ope_time;            // measured collection time
+  attotime m_vout_time;           // last V-BLANK-OUT
+  attotime m_display_period;      // V-BLANK-OUT to the following V-BLANK-IN
+  attotime m_collect_start;       // start of the collection being timed
+  attotime optimized_start_offset() const;
+  void collection_start(attotime const &offset);
+  void collection_finished();
   int m_intback_stage;
   int m_pmode;
   uint8_t m_region_code;
