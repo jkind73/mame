@@ -6,7 +6,7 @@ compared with the current source. Earlier audit notes in this repository (`satur
 are NOT used as evidence. Every finding cites the document page or section and the code location. Runtime observations from
 the disc/ST-V sweep are recorded separately and only as symptoms. No code is changed in Phase 1.
 
-Status per subsystem: SMPC (ง1), memory map (ง2), SH-2 dual-CPU/exceptions/cache (ง3), SCSP (ง4, partial), VDP1 (ง5), VDP2 (ง6) and SCU with its DSP (ง7) are done below, chapters listed per section; remaining SH7604 modules (INTC, UBC, BSC, DMAC, DIVU, FRT/WDT/SCI), the CD block, ST-V I/O, peripherals and the unfinished SCSP parts (EG, pitch, FM, MIDI, DMA, DSP) are pending.
+Status per subsystem: SMPC (ง1), memory map (ง2), SH-2 dual-CPU/exceptions/cache (ง3), SCSP (ง4, partial), VDP1 (ง5), VDP2 (ง6) and SCU with its DSP (ง7) are done below, chapters listed per section; the CD block (ยง8), the remaining SH7604 modules (ยง9) and the rest of the SCSP (ยง10) are done; ST-V I/O and the controller peripherals are pending.
 
 ## 1. SMPC (`src/mame/sega/smpc.cpp`, `smpc.h`, client glue `saturn.cpp`/`sat_console.cpp`)
 
@@ -676,3 +676,29 @@ compare-clear, RTCOR of 0 meaning 256).
 - WDT: WTCSR/WTCNT/RSTCSR use the write-key protocol; watchdog and interval-timer modes and the reset output are implemented (`sh7604_wdt.cpp`, `wdtovf_callback`); the counter is advanced lazily from CPU cycles, with the same accuracy limit as the FRT.
 - SCI: SMR/BRR/SCR/TDR/SSR/RDR at FFFFFE00h-05h, the bit-rate generator, TXI/RXI/ERI/TEI with ERI > RXI > TXI > TEI priority and the VCRA/VCRB vectors are implemented in `sh7604_sci.cpp` with page references; the Saturn does not connect the SCI to a device, so software rarely exercises it. The file header lists SCI DMA request/acknowledge routing and whole-chip standby as TODO.
 - Standby: SBYCR bit 6 and standby entry/exit (chapter 14) are not modelled beyond the module stops MSTP0, MSTP1 and MSTP4.
+
+## 10. SCSP, continued (ST-077 against `scsp.cpp` and `scspdsp.cpp`)
+
+Continues section 4, which covered LFO, mixer, timers, interrupts and memory arbitration. This pass adds the envelope generator,
+pitch, MIDI, the SCSP DMA and the DSP memory control registers. Numbers are SC-P1-nn (continuing SC-P1-03).
+
+Compared: EG register description (pp.40-45: AR, D1R, D2R, RR, DL, KRS, EGHOLD, LPSLNK, the four EG states and Figures 4.12-4.17),
+pitch (Tables 4.19/4.20 and the FNS/OCT formulas), the MIDI registers (pp.89-92), the DMA registers and Tables 4.39/4.40
+(pp.101-102), the RBL/RBP registers and Table 4.41 (p.103), the DSP RAM list (chapter 5.2).
+
+Matches the manual:
+- EG states: attack, decay 1, decay 2, release; KEY_OFF from any state starts the release from the current level (Figures 4.12/4.13); D2R = 0 keeps the level; decay 1 ends when the upper five bits of the attenuation reach DL; KRS = 0Fh turns key-rate scaling off (`KRS(slot) != 0xf` test); EGHOLD forces the visible attack level to 000h (`EG.prev_level = 0` while attacking with EGHOLD); LPSLNK holds the attack in place until the read pointer reaches the loop start and then starts decay 1 (`LPSLNK` tests and the transition at line ~1473, Figures 4.15-4.17); the EG value is 10 bits with 3FFh as silence (`m_EG_TABLE[EG >> ...]`).
+- Pitch: `Fn = FNS + 1024` shifted by the signed 4-bit OCT (`(OCT ^ 8) - 8`), which is the manual's `(1024 + FNS) x 2^OCT / 1024` (Table 4.20 values); pitch LFO sensitivity and depth are the ones checked in section 4.
+- DMA: DMEA (19-1), DRGA (11-1), DTLG (11-1), DGATE, DDIR, DEXE; word (16-bit) transfers with both addresses increasing; DEXE clears when the transfer ends and the DMA end interrupt (pending bit 4) is raised; writing 0 to DEXE is ignored; DMA onto its own control registers (DMEA..DTLG) is not performed (p.101); DGATE forces zero data.
+- MIDI: MIBUF/MOBUF, status bits MIOVF/MIFULL/MIEMP/MOFULL/MOEMP derived from FIFO occupancy, 4-byte FIFOs, MIDI-in empty interrupt on the empty-to-non-empty edge, MIDI-out empty interrupt when the output buffer drains (`reset_midi`, `UpdateRegR`).
+- DSP memory control: RBL selects 8K/16K/32K/64K words (`(8 * 1024) << RBL`), the ring buffer pointer is a 4K-word boundary (`RBP << 12`).
+
+| ID | Finding | ST-077 | Code |
+|---|---|---|---|
+| SC-P1-04 | EG rate behaviour is not derivable from the manual | pp.40-45 give only qualitative rules (AR/D1R/D2R/RR are 5-bit rates, 00h minimum, 1Fh maximum; no rate-to-step table, no key-rate-scaling formula, no attack curve) | the numeric behaviour (rate counter, attack curve, "attack bug" when AR plus scaled KRS/octave >= 20h, KRS/octave scaling, EGBYP bit 15 of slot register 0Ah "undocumented") comes from the Ymir hardware-tested `IncrementEG`, Mednafen `RunEG` and SaturnRecomp `env_tick` as stated in the source comments. Nothing in ST-077 can confirm or refute it |
+| SC-P1-05 | RBP width | RBP[19:13] is a seven-bit field (bits 6-0 of register 402h) | `RBP()` masks six bits (`& 0x003F`), so address bit 19 of the ring buffer base is dropped; harmless with the 4 Mbit sound memory of a stock Saturn (address bits 18-0) |
+| SC-P1-06 | DMA speed and CPU slowdown | p.101: the main and sound CPU speed drops during DMA; 3.2 gives DMA a memory-access priority below PCM/DSP and refresh, above both CPUs, without a rate | the whole DMA runs as a burst at DEXE write time, with no timing or CPU slowdown (comment: "as in Ymir and Mednafen") |
+| SC-P1-07 | SCSP DMA to non-word-aligned/bounds | p.102: the transfer origin and destination must not exceed the sound memory area or the register area | addresses wrap inside 1 MB (memory, `& 0xffffe`) and 4 KB (register, `& 0xffe`); the manual defines no behaviour for overrun |
+| SC-P1-08 | DSP micro-program semantics | chapter 5 of ST-077 lists only the DSP RAMs (EXTS, MIXS 20 bits, MEMS 24 bits, TEMP 128 words of 24 bits, COEF 13 bits, MADRS 16 bits, MPRO 64 bits, EFREG 16 bits) and Figure 5.1; there is no instruction encoding or timing | `scspdsp.cpp` implements the instruction set from other sources (ring addressing, ADREB, shifters); its behaviour cannot be compared with ST-077 |
+| SC-P1-09 | MIDI transmission | 4.x: 31.25 kbps serial interface; "a MIDI peripheral circuit and MIDI DIN connector are not included" | bytes are sent on a bit clock through `m_midi_out_cb`; no receiver is attached; behaviour matches the register-level contract |
+| SC-P1-10 | Not compared in this pass | slot status registers (MSLC/CA/SGC/EG readback, p.35), MEM4MB sound memory size bit and its effect on the address map, DAC 18-bit output bit, MONO bit | the readback (`m_latched_MSLC_data`) and the register exist; effects of MEM4MB and DAC18B on the output path were not traced |
