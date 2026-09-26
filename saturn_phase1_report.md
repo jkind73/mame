@@ -127,3 +127,33 @@ registers, memory-size register.
 | SC-P1-01 | The 1 Fs (one sample) interrupt is a per-sample source | Fig 4.63 ("1 Sample (1Fs) Interrupt"), 3.2 (128 memory cycles per 22.68 us sample) | raised once per sound-stream update batch (`if (stream.samples() > 0)` sets bit 10 once), a comment in the source states the hardware rate is per sample. The rate seen by the 68000 is therefore the batch rate, not 44.1 kHz |
 | SC-P1-02 | Sound memory access priorities and wait states (PCM/DSP, refresh, DMA, main CPU, sound CPU; two idle cycles per sample; CPU speed drops with SCSP DMA use) | 3.2, Figure 3.2 | no arbitration model; CPU accesses to sound RAM are not delayed by slot/DSP/DMA activity |
 | SC-P1-03 | Main CPU accesses insert wait states via MCRDYN until internal processing finishes | 3.1 (2) | no wait states on SCSP register or sound-RAM access from the SH-2 |
+
+## 5. VDP1 registers and frame control (ST-013 chapter 4 against `saturn.cpp`)
+
+Compared: TVMR, FBCR, PTMR, EWDR/EWLR/EWRR, ENDR, EDSR, LOPR, COPR, MODR, the frame change modes of Table 4.3, and the
+V-blank erase budget of Tables 4.4/4.5. The command tables and the drawing rules (chapters 5 and 6) are in §5b.
+
+Matches the manual:
+- MODR (`vdp1_regs_r` 0x16): VER=1 in bits 15-12, PTM1 bit 8, EOS/DIE/DIL/FCM bits 7-4, VBE bit 3, TVM bits 2-0 (section 4.9).
+- EDSR/LOPR/COPR writes are ignored (read-only, 4.6-4.8). COPR is stored as command address/8 (`position << 2` for 0x20-byte tables).
+- LOPR is latched from COPR on a frame-buffer change; CEF is cleared on the change, BEF takes the previous CEF (4.6/4.7).
+- ENDR terminates after about 30 clocks via `terminate_timer` (4.5); PTM=01 restarts from the top of the table, PTM is reset
+  to 00 by reset (4.3); `PTM=10` starts drawing after a frame change (`vdp1_video_update`).
+- FBCR FCM/FCT decoding follows Table 4.3: (0,x) one-cycle, (1,0) erase only, (1,1) change only, (0,1) prohibited and ignored.
+- Erase X unit is 8 or 16 dots by TVM bit 0, Y is doubled by DIE (4.4). EWDR/EWLR/EWRR are latched at the bank change.
+- The END command fetch sets CEF and raises the SCU draw-end interrupt (4.6).
+
+Differences found:
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V1-P1-01 | Degenerate erase area not erased | 4.4: if X1>=X3 or Y1>Y3, erase still covers 1 dot (8 dots in rotation/HDTV) as if X3=X1+1, Y3=Y1 | `vdp1_clear_framebuffer` and `vdp1_advance_vblank_erase` end at once when `left >= right` or `y > bottom`, so nothing is erased |
+| V1-P1-02 | BEF is not written when drawing starts | 4.6: BEF takes CEF "when the frame buffer is changed or at the start of drawing" | `vdp1_process_list` clears CEF only; BEF changes only in `vdp1_change_framebuffers` |
+| V1-P1-03 | PTMR compared as a whole register | 4.3: only bits 1-0 are PTM | `vdp1_regs_w` tests `VDP1_PTMR == 1`, so a write of 0x0101 does not start drawing, while MODR and PTM=2 decode use the masked value |
+| V1-P1-04 | Write-only registers readable | 4.1-4.5 and 4.9: TVMR, FBCR, PTMR, EWDR, EWLR, EWRR, ENDR are write-only, values not readable; FBCR read returns 0 in code, but the others return the stored word and log a warning | `vdp1_regs_r` default path returns `m_vdp1_regs[offset]` (marked TODO in code). The manual does not define the value, so this is an accuracy limit, not a defect |
+| V1-P1-05 | TVMR/FBCR changes accepted at any time | 4.1/4.2: TVM changes only from the second H-blank IN after V-blank IN to the H-blank IN after V-blank OUT; VBE/FCM/FCT only immediately after V-blank IN/OUT | the code accepts writes at any moment; software that follows the manual is unaffected. No enforcement needed, recorded so behaviour outside the window is not assumed correct |
+| V1-P1-06 | VDP1 register window size | 4.1: registers span 100000h-100017h (24 bytes) | `m_vdp1_regs` holds 0x20 bytes; offsets 0x18-0x1f store and return data (see memory map MM-P1-01) |
+| V1-P1-07 | V-blank erase budget | Tables 4.4/4.5: budget = (pixels per raster - 200) x (rasters per field - display rasters), NTSC 1708/263, PAL 1820/313, 31KC 852/525, HDTV 848/562 | `vdp1_vblank_erase_capacity` and `..._line_capacity` were not re-derived against these constants in this pass; compare in §5b |
+
+Missing from the driver as compared with the manual: none of the registers above is absent. The pseudo draw continuation
+procedure (4.8) needs COPR to hold the address of the interrupted table; the code retains COPR on forced termination,
+which matches.
