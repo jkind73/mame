@@ -962,7 +962,10 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
     /* During seek state, values returned are from the target position */
     uint8_t seek_track = m_cdrom_image->get_track(cd_fad_seek - 150);
 
-    cr1 = cur_status | (cdda_repeat_count & 0xf);
+    // CR1 low byte: bit 7 = the reported position is on a data (CD-ROM) track
+    // (Mednafen cdb.cpp MakeReport: is_cdrom << 7), low bits = repeat count.
+    cr1 = cur_status | (cdda_repeat_count & 0xf) |
+          ((seek_track != 0xff && (sega_cdrom_get_adr_control(seek_track) & 0x40)) ? 0x80 : 0);
     cr2 = (seek_track == 0xff)
               ? 0xffff
               : ((sega_cdrom_get_adr_control(seek_track) << 8) | (seek_track + 1));
@@ -970,11 +973,13 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status) {
           (cd_fad_seek >> 16); // index & 0xff00
     cr4 = cd_fad_seek;
   } else {
-    cr1 = cur_status |
-          (cdda_repeat_count & 0xf); // options << 4 | repeat & 0xf
     // Track and CONTROL/ADR must describe the same reported position.
     // cur_track can still name the track where a multi-track play began.
     const uint8_t current_track = m_cdrom_image->get_track(cd_curfad - 150);
+    // CR1 low byte: bit 7 = position on a data (CD-ROM) track, low bits = repeat
+    // count (Mednafen cdb.cpp MakeReport).
+    cr1 = cur_status | (cdda_repeat_count & 0xf) |
+          ((current_track != 0xff && (sega_cdrom_get_adr_control(current_track) & 0x40)) ? 0x80 : 0);
     cr2 = (cur_track == 0xff)
               ? 0xffff
               : ((sega_cdrom_get_adr_control(current_track) << 8) |
