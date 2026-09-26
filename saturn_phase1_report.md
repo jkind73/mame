@@ -208,3 +208,17 @@ Differences and limits:
 | V1-P1-19 | Drawing speed | 6.3: shadow and half-transparent draw pixels 6 times slower | draw slicing uses `vdp1_raster_slice_cycles`; per-mode pixel cost not re-derived here (timing capture noted as unavailable) |
 
 Still to compare for VDP1: Gouraud table interpolation (6.7), character size and read direction (6.5-6.6, CMDCTRL Dir), the zoom-point placement rules, polygon/line/polyline rasterisation and pre-clip inversion, and chapter 7 clip/local-coordinate semantics.
+
+### 5d. VDP1 command fields, coordinates and Gouraud (ST-013 5.1-5.3, 6.4-6.8)
+
+Matches the manual: CMDSIZE X field is bits 13-8 (times 8) and Y is bits 7-0 (`>> 8 & 0x3f`, `& 0xff`); the lookup table base is
+CMDCOLR*8 on a 32-byte boundary; CMDGRDA, CMDSRCA and CMDLINK are address/8. Gouraud correction per component is a 5-bit
+value with 16 meaning "no change" (`original + correction - 16`, clamped to 0-31, MSB preserved), interpolated along edges and
+then along the span. The Gouraud table is bound to vertices A, B, C, D independently of the texture read direction.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V1-P1-20 | Vertex coordinate width | 6.7: 11-bit signed, range -1024 to 1023, upper 5 bits are extension bits equal to bit 10 | `vdp1_coord` treats coordinates as 13-bit signed (bit 12 is the sign) and ignores bits 15-13; the code comment cites Mednafen and a Virtua Fighter 2 intro in Ymir. For values inside -1024..1023 both agree; outside that range the code follows the reference emulators, not ST-013. Local coordinates and user/system clip values are masked to 13 bits |
+| V1-P1-21 | CMDSIZE zero | 6.6: zero X or Y size is prohibited | code accepts and special-cases zero sizes (see the `CMDSIZE.H = 0` comment near `vdp1_draw_distorted_sprite`); behaviour taken from reference emulators, not the manual |
+| V1-P1-22 | Character/table address zero | 5.1-5.3: character patterns, lookup tables and Gouraud tables cannot start at 00000H (Gouraud: 00000H-0001FH) | no check; the manual states it as a constraint on software, not as hardware behaviour |
+| V1-P1-23 | Line Gouraud | 5.3: for lines only vertices A and B are used (start and end) | verified only for the sprite/polygon path (`vdp1_setup_rectangle_shading`); the line path is read in §5e |
