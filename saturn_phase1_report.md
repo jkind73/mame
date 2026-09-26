@@ -299,3 +299,18 @@ Matches the manual:
 | V2-P1-13 | Cycle-pattern registers write-only | 3.3: CYC registers are write-only | `vdp2_regs_r` returns the stored value for the whole 0x200-byte window, including the write-only registers (the hardware readback is not specified) |
 | V2-P1-14 | RAMCTL=mode 3 and CRKTE constraint | 3.4: CRMD=3 not allowed; CRKTE=1 requires mode 1 and turns the upper colour RAM half into the coefficient table | code treats `VDP2_CRMD & 2` as mode 2/3 alike (`case 2: case 3:`), so the prohibited mode 3 is decoded as 24-bit; whether the coefficient-table read uses the correct colour RAM half is checked in the rotation section |
 | V2-P1-15 | Mode change with stale halves | 3.4: "saving colour data must be done after these bits have been set" | halves can differ after a mode change until rewritten; the code comment states this and does not copy data. Consistent with the manual's rule |
+
+### 6.3 Screen enable, transparency enable and mosaic (ST-058 4.1, 4.16-4.17 mosaic)
+
+Compared: BGON (180020h), MZCTL (180022h) and their use in the NBG/RBG renderers.
+
+Matches the manual: BGON bit layout (N0ON..N3ON bits 0-3, R0ON bit 4, R1ON bit 5, N0TPON..N3TPON bits 8-11, R0TPON bit 12) and the
+"xxTPON=1 shows transparent-code dots" meaning; MZCTL layout (N0MZE..N3MZE, R0MZE bits 0-4, MZSZH bits 11-8, MZSZV bits 15-12,
+size = field + 1 dot); rotation surfaces mosaic horizontally only (`mosaic_width`, p.119); NBG mosaic disables vertical cell scroll
+(`cell_scroll = ... && !mosaic`).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-16 | Stale "missing mosaic" statement | n/a | the header TODO list at the top of `saturn.cpp` still lists "Missing mosaic effect", but mosaic is implemented in the NBG and RBG scanline renderers (`mosaic_x/mosaic_y`); the legacy `vdp2_draw_mosaic` post-pass is compiled out by `TEST_FUNCTIONS 0`. The comment is stale (this is the earlier V2-D item) |
+| V2-P1-17 | Interlace and mosaic | 4.17: vertical size table gives doubled sizes for interlace but the note says there is no relationship with the interlace setting; with double-density interlace, mosaic screens display as single-density interlace | code doubles the vertical size when LSMD=3 (`(MZSZV+1) * 2`) and does not switch the screen to single-density; the manual text is self-contradictory on the doubling and the behaviour is not settled by ST-058 alone |
+| V2-P1-18 | BGON with R1ON but not R0ON, and RBG with NBG | 4.1: R1ON must not be set without R0ON; when R0ON and R1ON are both 1 the normal scroll screens cannot display and their ON bits should be 0 | `vdp2_prepare_vram_access` treats R1ON as owning B0/B1 and skips their cycle registers, but the renderers are not shown to suppress NBG output when both are on; not checked further |
