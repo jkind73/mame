@@ -6,7 +6,7 @@ compared with the current source. Earlier audit notes in this repository (`satur
 are NOT used as evidence. Every finding cites the document page or section and the code location. Runtime observations from
 the disc/ST-V sweep are recorded separately and only as symptoms. No code is changed in Phase 1.
 
-Status per subsystem: SMPC, memory map, SH-2 dual-CPU/exceptions/cache (done below, chapters listed per section); SCU, remaining SH7604 modules, VDP1, VDP2, SCSP, CD block, ST-V I/O (pending).
+Status per subsystem: SMPC, memory map, SH-2 dual-CPU/exceptions/cache and SCSP (partial) done below, chapters listed per section; SCU, remaining SH7604 modules, VDP1, VDP2, CD block, ST-V I/O (pending).
 
 ## 1. SMPC (`src/mame/sega/smpc.cpp`, `smpc.h`, client glue `saturn.cpp`/`sat_console.cpp`)
 
@@ -99,3 +99,31 @@ timing tables.
 | SH-P1-04 | When the two CPUs compete for an external access one waits, so execution slows; cycle cost of an access depends on the bus state controller settings | ST-202 1.1, SH7604 chapter 7 | instruction cost is a fixed table value (`icount` per instruction); no per-access wait states and no arbitration between the CPUs. Relative CPU timing is therefore approximate; a documented example of software sensitive to it is the master/slave queue protocol seen in Pulirula |
 | SH-P1-05 | The two documents disagree on the associative-purge access: ST-202 7.2 says a 16-bit write of 0; SH7604 8.4.7 says access should be a longword | ST-202, SH7604 | writes to 40000000-47FFFFFF are ignored (`nopw`), so neither is emulated; consequence follows from SH-P1-02 |
 | SH-P1-06 | Address array (60000000-7FFFFFFF) and data array (C0000000-C0000FFF) are read/write spaces | SH7604 Table 8.2 | address array: write-only 1 KB window; data array: RAM (see SH-P1-01) |
+
+## 4. SCSP (`src/devices/sound/scsp.cpp`, `scspdsp.cpp`)
+
+Document: SCSP User's Manual ST-077-R2 (`docs/scsp/scsp_users_manual.pdf`). Compared in this pass: chapter 3 (interface and
+memory arbitration), the slot-register descriptions for LFO, TL/SDIR, mixer and pan, the timer registers, the interrupt
+registers and Tables 4.18, 4.21, 4.24-4.30 and 4.33-4.38. Not yet compared: EG rate behaviour and KRS, pitch tables
+4.19/4.20, FM modulation Tables 4.15-4.17, MIDI, DMA (Tables 4.39/4.40), DSP chapter 5 and Table 4.41, slot status
+registers, memory-size register.
+
+### 4.1 Confirmed consistent (checked value by value)
+
+| Item | Document | Code |
+|---|---|---|
+| LFO frequency for each of the 32 LFOF values (0.17 Hz ... 172.3 Hz) | Table 4.21 | `LFOStepInterval[32]`: 44100/(256 x interval) reproduces all 32 printed values within their rounding (script check, no mismatch) |
+| Amplitude-LFO depth 0/0.4/0.8/1.5/3/6/12/24 dB and pitch-LFO depth 0/7/13.5/27/55/112/230/494 cent | Table 4.24 | `ASCALE[]`, `PSCALE[]` |
+| Send levels for IMXL/DISDL/EFSDL: -inf, -36, -30, -24, -18, -12, -6, 0 dB | Tables 4.26, 4.27, 4.29 | `SDLT[8]` |
+| Fixed pan: DIPAN/EFPAN 00h and 10h centre, bits weigh 3/6/12/24 dB on the left (00h-0Fh) or right (10h-1Fh) side, 0Fh left silent, 1Fh right silent | Tables 4.28, 4.30 | pan table generation (`iPAN` bits, `(iPAN & 0xf) == 0xf`) |
+| Timers A/B/C count once every 1, 2, 4, ... 128 samples, request the interrupt when the 8-bit counter reaches FFh, interrupt time = (255 - TIM) x cycle | Tables 4.33-4.37 | `timer_sync/timer_arm`: tick = 512 clocks << prescale, deadline at (FFh - counter) ticks |
+| Interrupt pending bits: 0-2 external INT0N-2N, 3 MIDI in, 4 DMA end?, 5 CPU manual (only writable bit), 6-8 timers A/B/C, 9 MIDI out, 10 1Fs sample; pending flags are set regardless of the enable register and reset by SCIRE/MCIRE | Fig 4.63, Table 4.38 | `m_udata.data[0x20/2]` bit assignments, `ResetInterrupts`, timer bits `0x40 << idx` |
+| Main CPU accesses the SCSP in 16-bit units | 3.1 | 16-bit register handlers |
+
+### 4.2 Discrepancies and gaps
+
+| ID | Finding | Document | Code |
+|---|---|---|---|
+| SC-P1-01 | The 1 Fs (one sample) interrupt is a per-sample source | Fig 4.63 ("1 Sample (1Fs) Interrupt"), 3.2 (128 memory cycles per 22.68 us sample) | raised once per sound-stream update batch (`if (stream.samples() > 0)` sets bit 10 once), a comment in the source states the hardware rate is per sample. The rate seen by the 68000 is therefore the batch rate, not 44.1 kHz |
+| SC-P1-02 | Sound memory access priorities and wait states (PCM/DSP, refresh, DMA, main CPU, sound CPU; two idle cycles per sample; CPU speed drops with SCSP DMA use) | 3.2, Figure 3.2 | no arbitration model; CPU accesses to sound RAM are not delayed by slot/DSP/DMA activity |
+| SC-P1-03 | Main CPU accesses insert wait states via MCRDYN until internal processing finishes | 3.1 (2) | no wait states on SCSP register or sound-RAM access from the SH-2 |
