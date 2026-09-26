@@ -117,7 +117,7 @@ registers, memory-size register.
 | Send levels for IMXL/DISDL/EFSDL: -inf, -36, -30, -24, -18, -12, -6, 0 dB | Tables 4.26, 4.27, 4.29 | `SDLT[8]` |
 | Fixed pan: DIPAN/EFPAN 00h and 10h centre, bits weigh 3/6/12/24 dB on the left (00h-0Fh) or right (10h-1Fh) side, 0Fh left silent, 1Fh right silent | Tables 4.28, 4.30 | pan table generation (`iPAN` bits, `(iPAN & 0xf) == 0xf`) |
 | Timers A/B/C count once every 1, 2, 4, ... 128 samples, request the interrupt when the 8-bit counter reaches FFh, interrupt time = (255 - TIM) x cycle | Tables 4.33-4.37 | `timer_sync/timer_arm`: tick = 512 clocks << prescale, deadline at (FFh - counter) ticks |
-| Interrupt pending bits: 0-2 external INT0N-2N, 3 MIDI in, 4 DMA end?, 5 CPU manual (only writable bit), 6-8 timers A/B/C, 9 MIDI out, 10 1Fs sample; pending flags are set regardless of the enable register and reset by SCIRE/MCIRE | Fig 4.63, Table 4.38 | `m_udata.data[0x20/2]` bit assignments, `ResetInterrupts`, timer bits `0x40 << idx` |
+| Interrupt pending bits: 0-2 external INT0N-2N, 3 MIDI in, 4 DMA end, 5 CPU manual (only writable bit), 6-8 timers A/B/C, 9 MIDI out, 10 1Fs sample; pending flags are set regardless of the enable register and reset by SCIRE/MCIRE | Fig 4.63, Table 4.38 | `m_udata.data[0x20/2]` bit assignments, `ResetInterrupts`, timer bits `0x40 << idx` |
 | Main CPU accesses the SCSP in 16-bit units | 3.1 | 16-bit register handlers |
 
 ### 4.2 Discrepancies and gaps
