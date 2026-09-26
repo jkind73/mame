@@ -157,3 +157,30 @@ Differences found:
 Missing from the driver as compared with the manual: none of the registers above is absent. The pseudo draw continuation
 procedure (4.8) needs COPR to hold the address of the interrupted table; the code retains COPR on forced termination,
 which matches.
+
+### 5b. VDP1 command list and CMDPMOD (ST-013 sections 6.1-6.3, 7.1-7.3 against `vdp1_draw_end`)
+
+Compared so far: command decoding (Table 6.1), the jump modes, the clipping/local-coordinate commands, and the CMDPMOD bits
+HSS, Pclp, Clip/Cmod, Mesh. Colour modes, colour calculation (Gouraud, shadow, half-luminance, half-transparent), the
+character-size/direction fields, and the exact line/polygon rasterisation rules (6.4-6.7 and chapter 7 figures) are NOT yet
+compared and remain open for this report.
+
+Matches the manual:
+- Table 6.1: END bit in CMDCTRL bit 15 ends the list (CEF set, draw-end interrupt raised); commands 0-2 textured, 4-6 polygon/
+  polyline/line, 8/9/A clipping and local coordinates. Command tables are 0x20 bytes, CMDLINK is address/8 (`>> 2` to the table index).
+- Jump modes: next, assign, call (return address = next table), return, and the four skip forms that process no draw but still
+  follow the link; skip-call/skip-return follow the same nesting rule (section 6.1 Jump Mode table).
+- Clip=1, Cmod=0 draws inside the user rectangle; Clip=1, Cmod=1 draws outside, still bounded by the system rectangle (6.3).
+- Mesh draws only pixels where X LSB XOR Y LSB = 0 (`(x ^ y) & 1` rejects the rest).
+- HSS samples even/odd source columns by FBCR.EOS only when reducing, and ignores the end code (Figure 6.5).
+- Pclp=0 pre-clips, Pclp=1 skips it (`0x0800` tests in the sprite and line paths).
+
+Differences and limits:
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V1-P1-08 | Aliased command codes | Table 6.1 defines only Comm 0,1,2,4,5,6,8,9,A; all others are "setting prohibited" | Comm 3 is drawn as a distorted sprite and 7 as a polyline (comments cite Hardcore 4x4, Baroque, Samurai Shodown 4). Not in the manual; taken from software behaviour. Keep only if the reference emulators agree |
+| V1-P1-09 | Prohibited command aborts the list | Undefined by the manual | codes 0x0b-0x0f abort the list without CEF or a draw-end interrupt (the code comment states the exact progression is unimplemented). Titles listed in the comments (Asenna, Rayman, Choro Q, Albody) reach these codes, so the reference behaviour needs to be established |
+| V1-P1-10 | Return with no call | Undefined | jump/skip return with no subroutine ends the list without CEF |
+| V1-P1-11 | Nested call | 6.1: one level of nesting, "do not use jump calls in subroutines" | a nested call is ignored and execution falls to the next table; undefined in the manual |
+| V1-P1-12 | System clip lower-left fixed at 0,0 | 7.1: system clipping command takes only the lower-right (XC,YC) | matches (`set(0,XC,0,YC)`); coordinates masked to 13 bits, unsigned |
+| V1-P1-13 | CMDCTRL and END decode | Table 6.1: END=1 only with Comm 0 | code tests bit 15 alone, so END with a nonzero Comm ends the list; the manual calls that combination prohibited |
