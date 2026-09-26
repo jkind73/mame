@@ -82,9 +82,12 @@ Open, needs a decision or a hardware capture (not to be guessed):
 
 | ID | Item | Note |
 |---|---|---|
-| SCSP-01 | Interrupt priority: MAME uses the maximum pending level, MiSTer uses a fixed source order | inconclusive between references |
+| SCSP-01 | Interrupt priority to the 68K: MAME picks the highest pending level over SCILV0-2 with sources 8-10 sharing source 7's level; Ymir does the identical computation (`UpdateM68KInterrupts`). Only MiSTer's fixed source order differs | keep MAME; MiSTer RTL to be re-read to see whether its order is a simplification |
 | SCSP-02 | `aica.cpp` has its own LFO struct (phase accumulator) that was not updated | same interval model may apply; AICA is out of Saturn scope, record only |
-| SCSP-03 | Remaining unread: timers, DMA (`exec_dma`), MIDI, slot register readback (`UpdateRegR`), master volume, per-sample mixer/pan/DAC ordering | complete Phase 1 read |
+| SCSP-03 | Timers (TIMA-C load-on-next-tick, SCIRE re-pend), SCIEB/SCIPD/SCIRE/MCIEB/MCIPD, MIDI in/out FIFOs, DMA (burst on DEXE, DGATE, DMA-register self-target ignored), TEMP/MEMS/MIXS/EFREG/EXTS readback windows, COEF/MADRS mirrors: read, consistent with Ymir/mednafen | no action |
+| SCSP-04 | The 1Fs sample-tick interrupt (SCIPD bit 10) is raised once per sound-stream update batch, not once per 44.1 kHz sample as on hardware; code comment says it follows Yabause | quantify batch size; per-sample raise would need the 68K to be scheduled at sample granularity |
+| SCSP-05 | Register 0x400 bit 9 (MEM4MB) is neither stored nor used; Ymir stores it but does not use it either | document only; check MiSTer `SCSP.sv` for any effect on the RAM address map |
+| SCSP-06 | DMA and 68K wait states from SCSP RAM arbitration are not modelled (source comment, same in Ymir/mednafen) | needs measured timing |
 
 ## G. SCU DSP audit (2026-09-26, `scudsp.cpp` against Ymir `scu_dsp.cpp`)
 
@@ -104,6 +107,16 @@ and draws them in Ymir; `yoracle/vdp1fuzz.lua` replays them in MAME with the CPU
 draw-finished and needs investigation on the Ymir side); the MAME side is written but has not been run, and the
 comparison script does not exist yet. Phase 2 work item: finish it, triage differences against ST-013 and MiSTer
 `VDP1.sv`, and record each mismatch here with the arbiter used.
+
+## H2. VDP2 verification plan
+
+Name-based coverage grep of the VDP2 register set in `saturn.cpp` found the registers implemented (RPMD/RPRCTL/KTCTL,
+coefficient tables, colour-calc, line colour, shadow, window, mosaic, zoom, cycle patterns); name matching cannot prove
+behaviour. Plan: extend the same capture-and-replay oracle (MAME injects random VRAM/CRAM/register state, Ymir renders
+it) with randomized static VDP2 states per feature group (NBG0-3 cell/bitmap in every colour depth, RBG0/1 with both
+coefficient modes, priority/colour-calc/extended-CC, windows, line-colour and back screen, mosaic, hi-res/interlace).
+Limits already known: mid-frame register changes cannot be reproduced, so per-line effects are checked separately by
+reading the code against ST-058.
 
 ## I. Remaining Phase 1 coverage (not yet audited)
 
