@@ -377,3 +377,27 @@ Matches the manual:
 | V2-P1-28 | Negative scroll values | 5.1: scroll values must be positive; the display area repeats | scroll and line-scroll tables are decoded as signed when relative (line scroll data is relative and sign-extended); register scroll values are used as 11-bit positive numbers |
 | V2-P1-29 | Reduction of a bitmap layer and cell-scroll granularity | 5.3: vertical cell scroll operates in 8-dot columns also in bitmap format | cell boundaries are counted in source-cell columns (`>> 19`), matching the manual's 8-dot cells |
 | V2-P1-30 | RBG1 plane size (resolves V2-P1-24) | ST-058 chapter 6 intro and Table 6.1: RBG1 always uses rotation parameter B | `plane_size = R1ON ? RBPLSZ : N0PLSZ` is consistent with the manual |
+
+### 6.7 Rotation scroll surfaces (ST-058 chapter 6)
+
+Compared: rotation parameter table decode (`vdp2_fill_rotation_parameter_table`), RPTA/RPMD/RPRCTL/KTCTL/KTAOF/RAMCTL RDBS/PLSZ.OVR
+fields, the per-line latch (`vdp2_latch_rotation_parameters`), the coefficient table modes, screen-over, and the RBG0/RBG1
+renderer set-up in `saturn.cpp`.
+
+Matches the manual (field widths checked against Figure 6.2 and Figure 6.3):
+- Table layout: 0x60-byte tables, parameter A at RPTA and parameter B at +0x80 (RPTA6 forced 0/1 via byte address bit 7); RPTA byte address = register x 2 in the code's bit layout; wrap inside VRAM.
+- Xst/Yst/Zst 13-bit signed integer-in-word + 10-bit fraction (`0x1fffffc0`), Xst/Yst increments and X/Y increments 13 bits (`0x7ffc0`, sign bit 18), matrix A-F 14 bits (`0xfffc0`, sign bit 19), Px/Py/Pz and Cx/Cy/Cz 14-bit signed integers (two per word for Px/Py and Cx/Cy), Mx/My 24 bits (`0x3fffffc0`), kx/ky 24 bits with 16-bit fraction, KAst 32 bits (16.10), dKAst/dKAx 20 bits (`0x03ffffc0`); word order matches the 24 words of Figure 6.3.
+- Xst/Yst/KAst are read on the first line and re-read only when RPRCTL requests it (`m_rotation_latch_valid`, `reload & 1/2/4`); otherwise the per-line increment accumulates. RPRCTL bits 0-2 and 8-10 are cleared when consumed ("At the same time, this bit is cleared to 0").
+- RPMD modes 0-3: A, B, A/B switched by the coefficient MSB of A's table, A/B switched by the rotation parameter window; RBG1 always uses parameter B and RBG1's coefficient and line-colour source is A's table; RPMD=2 with A reading coefficients per dot ignores B's per-dot request (`per_dot_coefficients`).
+- KTCTL: RAKTE bit 0, RAKDBS bit 1, RAKMD bits 3-2, RAKLCE bit 4, B fields +8; KTAOF: RAKTAOS bits 2-0, RBKTAOS bits 10-8; 2-word tables use `(KTAOS & 3) x 40000h + index x 4`, 1-word tables `(KTAOS & 7) x 20000h + index x 2` (p.170).
+- RAMCTL RDBS decode selects the coefficient/name/character bank roles (see 6.2); the coefficient table can be in the upper half of colour RAM when CRKTE=1 (comment at coefficient setup).
+- Screen over: RxOVR=1 repeats the OVPNR character pattern (cell format only), 2/3 make the outside transparent (display area 512x512 for 3).
+- Rotation coordinates: start value 20 bits with 9 fractional bits, increment 12 bits (`vdp1_rotation_coordinate`, ST-058 p.159, used for frame-buffer rotation read).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-31 | Unit-step rotation shortcut | 6.1: coordinates always derive from the full matrix, kx/ky, coefficient table and windows | `vdp2_is_rotation_applied` returns "no rotation" when A=E=1, others 0, dxst=0, dyst=1, dx=1, dy=0, kx=ky=1, xst=yst=0 and no coefficient table, over-process, line screen, mosaic, window, LSMD=3 or hi-res; the shortcut path is expected to be equivalent but its equivalence with the full path was not proven in this pass |
+| V2-P1-32 | Coefficient MSB semantics | Table 6.4 | the mode-2 A switch, B/other transparent-bit handling and RBG1 always-transparent rules are present (see `selected`, per-dot code); RBG1 transparency for coefficient MSB was not traced |
+| V2-P1-33 | Prohibited RAMCTL combinations | 6.2/6.4: RBG1 requires RDBSB fields 00, CRKTE=1 requires colour RAM mode 1 and forbids the coefficient RAM role in bank 4 | not enforced beyond the fetch gating of 6.2 |
+| V2-P1-34 | Rotation in exclusive monitor modes | 4.5 notes: RBG0/RBG1 "cannot display" for some colour counts in exclusive monitor | not enforced (same as V2-P1-19) |
+| V2-P1-35 | Per-line rotation parameter timing | 6.3: parameters are read once per line; software changes take effect from the next read | latched per output line at scanline callbacks (`vdp2_latch_rotation_parameters`), interlace stepping preserved; the exact hardware read position within the line is not modelled |
