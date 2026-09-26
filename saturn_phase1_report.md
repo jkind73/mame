@@ -539,3 +539,28 @@ Matches the manual:
 | SCU-P1-13 | SCU version register | 3.7: version register | returns 4 "correct for stock Saturn at least" (comment); not verifiable against ST-097 from the extraction |
 | SCU-P1-14 | External interrupt sources | 1.3/3.6: A-Bus interrupts and the PAD interrupt (bit 8) | only the CD block raises an external interrupt; PAD interrupt from SMPC lightgun/mouse is a TODO in the header; SMPC interrupt is wired to the system-manager bit (7) |
 | SCU-P1-15 | DMA transfer unit and speed | 2.1 (p.16, Figure 2.1): DMA is basically longword access through the controller buffer, with byte units at unaligned head/tail; the B-bus splits each longword into two 16-bit writes (Figures 3.6-3.8); no transfer-time table is given | the engine reads a longword into a source buffer and writes 16-bit units (byte units at head/tail), matching the description; its per-unit time (`dma_clock_ref = clock / 1`, comment "should be /4 but saturn BIOS already disagrees") and the 1-cycle CPU steal are not derived from the manual. Accuracy limit |
+
+### 7.2 SCU DSP (ST-097 chapters 3.3 and 4 against `scudsp.cpp`)
+
+Compared: PPAF/PPD/PDA/PDD ports (25FE0080h-25FE008Ch), the block map (4.1), the command list (4.2-4.5): ALU, X-bus,
+Y-bus, D1-bus operations, MVI, DMA/DMAH, JMP, BTM/LPS, END/ENDI, the conditional-flag rules, and the special sequences of 4.4.
+
+Matches the manual:
+- Program control port: EX bit 16 (read/write latch), ES bit 17 (write strobe, only accepted while stopped), LE bit 15 (write strobe, only while stopped), PR bit 26 / EP bit 25 (pause reset / pause, only while executing), T0 bit 23, S bit 22, Z bit 21, C bit 20, V bit 19, E bit 18; the program address P7-0 reads back the counter; reading the port clears V and E (ST-097 p.51-52, ST-210 No.36). ST-210 No.26: ENDI cannot raise another end interrupt while E is still set.
+- Program RAM 256 words, four 64-word data RAM banks, PDA selects bank in bits 7-6 and word in bits 5-0 and auto-increments on PDD access; the RA field is independent of CT0-CT3 (as the code comment says).
+- ALU: AND/OR/XOR set S and Z and clear C; ADD/SUB set S, Z, C and V on 32 bits; AD2 works on the 48-bit ACH:ACL and PH:PL pair; SR keeps the MSB and shifts b0 into C, RR rotates b0 into b31 and C, SL shifts b31 into C, RL rotates b31 into b0 and C, RL8 rotates by 8 with C = b24; opcodes 7 and Ch-Eh do nothing; V is a latch cleared by reading the port.
+- X-bus: MOV [s],X loads RX, MOV MUL,P loads PH (high 16) and PL (low 32) from the 48-bit product (X x Y recomputed after each instruction), MOV [s],P loads PL and sign-extends PH; Y-bus: CLR A, MOV ALU,A (48 bits), MOV [s],A with ACH sign-extended from ACL; a source with "C" increments its CTx after the instruction, all buses see the instruction-entry CT values and each increment is applied once.
+- D1-bus: MOV SImm,[d] (signed 8 bits) and MOV [s],[d] with destinations MC0-MC3, RX, PL, RA0, WA0, LOP, TOP, CT0-CT3 (codes 8 and 9 unused) and ALU low/high as sources.
+- MVI: unconditional 25-bit signed immediate, conditional 19-bit signed with Z, NZ, S, NS, C, NC, T0, NT0, ZS, NZS conditions; MVI to PC saves the next address in TOP so a subroutine runs the following word twice (p.85, Figure 4.4).
+- JMP/conditional JMP: absolute 8-bit address, one prefetched word executes before the jump.
+- BTM/LPS: while LOP is not 0 the loop counter decrements and the PC returns to TOP (BTM) or the next word repeats (LPS, executed LOP+1 times).
+- END/ENDI clear EX (ENDI also sets E and raises the DSP-end interrupt); a running DMA continues after END (p.88).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| SCU-P1-16 | DSP DMA address-add mapping (immediate count) | 4.5 DMA/DMAH: add field 0,1,2,3,4,5,6,7 selects address add 0,1,2,4,8,16,32,64 (long-word steps; only 0 and 1 valid on the A-bus; all values on the B-bus) | `op_dma` maps the field to byte adds 0,4,4,16,16,64,128,256; the entries for field values 2 and 4 (adds of 2 and 8 in the manual, i.e. 8 and 32 bytes) differ, and the code comment says "why this calculation diverges vs. SCU DMA". Bus-specific rules are then applied on top |
+| SCU-P1-17 | DSP DMA count from RAM | 4.5: count from data RAM `[s]` with add value in the command | the RAM-count form only distinguishes add 0 and "not 0" (both mapped to 4 bytes), so add values above 1 are not honoured for A-bus/C-bus reads and are handled per bus in the block below |
+| SCU-P1-18 | DSP DMA timing | 4.3 Tables 4.6/4.7: transfer follows the data-ready signal in long-word units; T0 stays set until the end signal | modelled as a timed transfer (T0F set, `m_dma_timer` 4 clocks) with a stated "HACK ... cycle steal" to stop the SH-2s overrunning (vfremix); no bus timing data exists in the manual |
+| SCU-P1-19 | Program end interrupt | 2.2/3.3: E flag set by ENDI, interrupt raised, E cleared by reading the port | matches, with the ST-210 No.26 rule; a read of the port while the DSP runs may suppress the end interrupt per ST-210 No.36 and this is not modelled (the interrupt is raised regardless) |
+| SCU-P1-20 | Clock and cycle count | 4.1: D0-bus 28 MHz, X/Y bus 14 MHz; one step about 70 ns | `SCUDSP(config, ..., XTAL(57'272'727) / 4)` = 14.3 MHz with one icount per instruction; DMA and memory-access stalls approximate. The header lists "Fix timings (no info available so far)" |
+| SCU-P1-21 | Unassigned opcode groups | 4.2 lists no encoding for ALU op 7 and Ch-Eh, D1 sub-code 2, and MOV/MVI destinations 8-9 | treated as no-ops (`case 0x7`, `case 0x2 /* ??? */`, `unused`) |
