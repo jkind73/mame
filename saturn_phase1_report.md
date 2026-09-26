@@ -335,3 +335,23 @@ Matches the manual (each item checked field by field):
 | V2-P1-19 | Colour-count exclusions | 4.5 (p.61): NBG0 at 2048/32768 colours removes NBG2; NBG0 at 16.77M removes NBG1-NBG3; NBG1 at 2048/32768 removes NBG3; 5.2 Table 5.2 reduction ties up NBG2 | enforced in the NBG2/NBG3/NBG1 setup (`current_tilemap.enabled = 0` for `N0CHCN` 2-4, `N0ZMQT`, `N0ZMHF` with 256 colours, `N1CHCN` 2-3). Prohibited depths (N0CHCN 5-7) are drawn transparent. Not enforced: RBG0/RBG1 "cannot display" in exclusive monitor mode |
 | V2-P1-20 | VRAM 4 Mbit vs 8 Mbit character number | 4.6: bit 14 unused only with 4 Mbit VRAM | with 8 Mbit VRAM the full 15 bits are used; the bitmap and character addressing use the same VRAMSZ mask, verified by reading `word_mask` use only |
 | V2-P1-21 | Bitmap size decode | 4.5: NBG0/NBG1 use two bits (00=512x256, 01=512x512, 10=1024x256, 11=1024x512); RBG0 uses one bit (0=512x256, 1=512x512) | matches: NBG sizes are decoded through `bitmap_size & 2` (width) and `& 1` (height), RBG0 stores the single bit so its width is always 512. Only the register-block comment still says "*guessed*" (stale comment) |
+
+### 6.5 Planes, maps and map offsets (ST-058 4.6-4.8, Table 4.8)
+
+Compared: PNCN0-3/PNCR bit layout, PLSZ (18003Ah), MPOFN/MPOFR (18003Ch/18003Eh), MPABN0..MPCDN3 (180040h-18004Eh),
+`vdp2_scroll_pixel` page/plane/map addressing, `map_offset[]` assembly.
+
+Matches the manual:
+- PNCN layout: PNB bit 15 (1 = one word), CNSM bit 14, SPR bit 9, SCC bit 8, SPLT6-4 bits 7-5, SCN4-0 bits 4-0.
+- PLSZ layout: N0..N3 at bits 1-0/3-2/5-4/7-6, RA at bits 9-8, RB at bits 13-12; 00 = 1x1 page, 01 = 2x1, 11 = 2x2.
+- MPOFN: N0 bits 2-0, N1 bits 6-4, N2 bits 10-8, N3 bits 14-12; each map register byte holds two 6-bit plane fields (A/C low byte, B/D high byte). The map value is `MPx | (offset << 6)`, a 9-bit selector.
+- Table 4.8: the page address is `(selector & mask) & ~(pages-1)` in page units, with masks of 6, 7, 8 or 9 bits depending on (one/two word, 1x1/2x2 character) — recomputed: one word 2x2 uses bits 8-0 (x800h), one word 1x1 bits 6-0 (x2000h), two words 2x2 bits 7-0 (x1000h), two words 1x1 bits 5-0 (x4000h); for larger planes the low bit(s) are dropped (e.g. 2x2 pages, 2 words, 1x1: bits 5-2 x10000h). For 4 Mbit VRAM the top selector bit is dropped by the VRAM word mask.
+- Bitmap boundary = map offset x 20000h.
+- Page sizes 8192/2048/16384/4096 bytes (Table 4.4) follow from `page_bytes`.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-22 | Invalid plane size 10b | 4.7: PLSZ=10 is invalid, do not set | decoded as 1 page wide by 2 pages tall (`plane_size & 2` gives 2 V pages); no manual behaviour to compare |
+| V2-P1-23 | 2x2 pages with 1/4 reduction | 4.7/4.8: do not set 2x2 pages when NBG0/NBG1 reduce to 1/4; the map becomes "normal" size | not enforced or specially handled (`map_count == 4` for NBG0/1); the manual text about the reduced map (Figure 4.16) is ambiguous |
+| V2-P1-24 | RBG1 plane size source | 4.5: NBG0 registers apply to RBG1 for colour/character control | `current_tilemap.plane_size = R1ON ? RBPLSZ : N0PLSZ` uses rotation parameter B's plane size for RBG1; whether ST-058 chapter 6 assigns RBG1's plane and map to parameter B is checked in the rotation section |
+| V2-P1-25 | Comment "guessed" registers | n/a | the macro comments still say "*guessed*" for bitmap sizes (stale) |
