@@ -314,3 +314,24 @@ size = field + 1 dot); rotation surfaces mosaic horizontally only (`mosaic_width
 | V2-P1-16 | Stale "missing mosaic" statement | n/a | the header TODO list at the top of `saturn.cpp` still lists "Missing mosaic effect", but mosaic is implemented in the NBG and RBG scanline renderers (`mosaic_x/mosaic_y`); the legacy `vdp2_draw_mosaic` post-pass is compiled out by `TEST_FUNCTIONS 0`. The comment is stale (this is the earlier V2-D item) |
 | V2-P1-17 | Interlace and mosaic | 4.17: vertical size table gives doubled sizes for interlace but the note says there is no relationship with the interlace setting; with double-density interlace, mosaic screens display as single-density interlace | code doubles the vertical size when LSMD=3 (`(MZSZV+1) * 2`) and does not switch the screen to single-density; the manual text is self-contradictory on the doubling and the behaviour is not settled by ST-058 alone |
 | V2-P1-18 | BGON with R1ON but not R0ON, and RBG with NBG | 4.1: R1ON must not be set without R0ON; when R0ON and R1ON are both 1 the normal scroll screens cannot display and their ON bits should be 0 | `vdp2_prepare_vram_access` treats R1ON as owning B0/B1 and skips their cycle registers, but the renderers are not shown to suppress NBG output when both are on; not checked further |
+
+### 6.4 Cell/bitmap dot formats, transparency, pattern name data (ST-058 4.3-4.6, Tables 4.1-4.6, Figures 4.9-4.11)
+
+Compared: `vdp2_dot_pixel`, `vdp2_pattern_pixel`, `vdp2_scroll_pixel`, CHCTLA/CHCTLB and PNCN0-3/PNCR field decode.
+
+Matches the manual (each item checked field by field):
+- CHCTLA/CHCTLB layout: N0CHCN bits 6-4, N0BMSZ 3-2, N0BMEN 1, N0CHSZ 0; N1CHCN bits 13-12, N1BMSZ 11-10, N1BMEN 9, N1CHSZ 8; N2CHCN bit 1, N2CHSZ bit 0, N3CHCN bit 5, N3CHSZ bit 4; R0CHCN bits 14-12, R0BMSZ bit 10, R0BMEN bit 9, R0CHSZ bit 8.
+- Dot sizes and cell bytes: 4, 8, 16, 32 bits per dot with 32/64/128/256 bytes per cell on 20h boundaries (`bytes_per_cell = 32 << ...`); 4-bit dots take the high nibble first.
+- Transparent code: 4-bit and 8-bit dots are transparent at zero, 2048-colour dots at zero in the low 11 bits (`raw &= 0x7ff`), 32768- and 16.77M-colour dots when the MSB is 0; xxTPON=1 draws them (`STV_TRANSPARENCY_NONE`).
+- Palette bits: 16-colour uses the 4-bit (one-word) or 7-bit (two-word) palette number shifted left by 4, 256-colour uses the top 3 palette bits (`& 0x700`), 2048-colour ignores the palette number, RGB formats ignore it (Figure 4.11).
+- Two-word pattern name: vertical flip bit 31, horizontal flip bit 30, PR bit 29, CC bit 28, palette bits 22-16, character number bits 14-0.
+- One-word pattern name (Table 4.6): for all eight size/colour/supplement combinations the character-number assembly (10-bit or 12-bit field from the name, plus supplement bits 1-0 and 4-2 as the table requires, with bits 4-2 supplying character bits 14-12 and bit 4 alone supplying bit 14 for the 2x2/mode 1 case) matches; flips are only honoured in supplement mode 0.
+- 4 Mbit VRAM: character number bit 14 is unused (the address is masked by `word_mask`).
+- 2x2 characters flip the whole 16x16 character, not each cell.
+- RGB555 to RGB888 appends three zero bits; 24-bit dots use bits 23-0 with the MSB as the transparent flag.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-19 | Prohibited colour counts | 4.5: N0CHCN 101/110/111 setting not allowed; 16.77M colours prohibited in exclusive monitor for some layers; RBG1 not displayable in exclusive mode | prohibited depths return transparent (`depth > 4`); the per-layer mode restrictions of the CHCTL tables are not enforced |
+| V2-P1-20 | VRAM 4 Mbit vs 8 Mbit character number | 4.6: bit 14 unused only with 4 Mbit VRAM | with 8 Mbit VRAM the full 15 bits are used; the bitmap and character addressing use the same VRAMSZ mask, verified by reading `word_mask` use only |
+| V2-P1-21 | Bitmap size decode | 4.5 (N0BMSZ) | comment in the register block says "*guessed*"; the values (00=512x256, 01=512x512, 10=1024x256, 11=1024x512) are read back through `bitmap_size & 2` (width 1024) and `& 1` (height 512), which matches the manual text; the stale "guessed" comment remains |
