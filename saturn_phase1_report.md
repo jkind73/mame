@@ -436,3 +436,21 @@ Matches the manual (each window-control field checked against the bit tables in 
 | V2-P1-41 | Single-density interlace line tables | 8.1 Figure 8.4: one entry per two lines in single-density interlace | one entry per output row in every mode (`m_vdp2_vram[... + y]`); comments assert the output bitmap has one row per picture line in single-density |
 | V2-P1-42 | Rotation parameter window bits | 8.2 WCTLD: RPSWE and RPSWA are unused ("~") | `vdp2_roz_mode3_window` decodes RPSWE (bit 5) and RPSWA (bit 4) as a sprite-window enable/area for the rotation parameter window; software that leaves them 0 is unaffected |
 | V2-P1-43 | Window on RBG0 | 8.2: transparency window per screen including RBG0 | the RBG0 tilemap setup zeroes its window control ("we apply them in the roz routines") and applies `vdp2_roz_window` per dot; RBG1 uses the NBG0 window bits, as the manual assigns ("NBG0 (or RBG1)") |
+
+### 6.10 Sprite data, priority and colour calculation ratio registers (ST-058 chapter 9, Figure 9.1, Tables 9.1-9.3)
+
+Compared: SPCTL (1800E0h), PRISA-PRISD (1800F0h-1800F6h), CCRSA-CCRSD (180100h-180106h), and `draw_sprites` with its five
+per-type tables.
+
+Matches the manual (all sixteen sprite types were checked against Figure 9.1, bit by bit):
+- Type 0: PR1-0 bits 15-14, CC2-0 bits 13-11, DC10-0; type 1: PR2-0 bits 15-13, CC1-0 bits 12-11; type 2: SD 15, PR0 14, CC2-0 13-11; type 3: SD, PR1-0 14-13, CC1-0 12-11; type 4: SD, PR1-0 14-13, CC2-0 12-10, DC9-0; type 5: SD, PR2-0 14-12, CC0 11, DC10-0; type 6: SD, PR2-0 14-12, CC1-0 11-10, DC9-0; type 7: SD, PR2-0 14-12, CC2-0 11-9, DC8-0. The `priority_shift/mask`, `ccrr_shift/mask`, `colormask` and `shadow_mask` tables agree for types 0-7.
+- 8-bit types: type 8 PR0 bit 7 with a 7-bit dot; type 9 PR0 bit 7, CC0 bit 6, 6-bit dot; type A PR1-0 bits 7-6; type B CC1-0 bits 6-7 region (bits 7-6), no priority bit; types C-F have the shared bits (SP/SC are also part of the 8-bit dot): C SP0 bit 7, D SP0/SC0 bits 7/6, E SP1-0 bits 7-6, F SC1-0 bits 7-6. Bits that a type lacks read as 0, so the missing priority selects register 0 and the missing ratio selects register 0.
+- Priority register selection (Table 9.2) and ratio register selection (Table 9.3) use the value of the type's PR/CC bits as the register index; RGB sprites (mixed mode, MSB=1, SPCLMD=1) always use register 0 for priority and ratio; a priority number of 0 is not displayed.
+- Sprite colour calculation condition: 0 = priority <= condition number, 1 = equal, 2 = >=, 3 = colour data MSB (RGB sprites always calculate with SPCCCS=3); enabled only with SPCCEN.
+- The sprite palette address is `dot + SPCAOS x 256`, bit 10 masked at 0x7ff; SD is bit 15 for types 2-7 and is not present for other types.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-44 | Mixed RGB/palette mode with 8-bit sprites | 9.2: do not set SPCLMD=1 with 8-bit pixels | `direct = (pix & 0x8000) && SPCLMD` is evaluated for 8-bit types too, where the display word can only be 0-255; harmless for compliant software |
+| V2-P1-45 | Sprite data with types selected inconsistently with the VDP1 depth | 9.1: 16-bit frame buffer must use types 0-7, 8-bit types 8-F | not enforced; the type table is applied to whatever value the VDP1 display pipeline returns |
+| V2-P1-46 | Colour RAM address bit 10 in modes 0/2 | 10.1 Figure 10.2: the MSB is ignored in modes 0 and 2 | `& 0x7ff` retains bit 10; same open point as V2-P1-37 |
