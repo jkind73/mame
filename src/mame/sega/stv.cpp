@@ -1226,6 +1226,11 @@ void stv_state::stv_mem(address_map &map) {
       .rom()
       .mirror(0x20000000)
       .region("abus", 0); // cartridge
+  // A-Bus dummy area: reads float high, writes (the boot ROM's mode words at
+  // 057FFFFCH) go nowhere, as on the console map
+  map(0x05000000, 0x057fffff)
+      .lr32(NAME([](offs_t offset, u32 mem_mask) { return u32(~0); }))
+      .nopw();
   /* Sound */
   map(0x05a00000, 0x05a7ffff)
       .rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w))
@@ -1262,6 +1267,8 @@ void stv_state::stv_mem(address_map &map) {
   map(0x05fe0000, 0x05fe00cf).m(m_scu, FUNC(saturn_scu_device::regs_map));
 
   map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
+  // cache associative purge space (SH7604 table 7.3: H'40000000-H'47FFFFFF)
+  map(0x40000000, 0x47ffffff).nopw();
   map(0x60000000, 0x600003ff).nopw();
   map(0xc0000000, 0xc0000fff).ram(); // cache data array, 4KiB on the SH-2
 }

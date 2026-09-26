@@ -708,7 +708,7 @@ void sat_console_state::saturn_mem(address_map &map) {
   map(0x05fe0000, 0x05fe00cf).m(m_scu, FUNC(saturn_scu_device::regs_map));
 
   map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
-  map(0x40000000, 0x46ffffff).nopw(); // associative purge page
+  map(0x40000000, 0x47ffffff).nopw(); // associative purge space (SH7604 table 7.3)
   map(0x60000000, 0x600003ff).nopw(); // cache address array
   map(0xc0000000, 0xc0000fff)
       .ram(); // cache data array, Dragon Ball Z sprites relies on this
