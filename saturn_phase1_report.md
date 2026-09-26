@@ -244,3 +244,33 @@ Summary of the VDP1 review (§5-5e): the register file, frame-change modes, comm
 except for the items V1-P1-01 to -03 (erase of degenerate areas, BEF at draw start, PTMR bit mask), which are defects, and
 V1-P1-08 to -11, -13, -14, -20 and -21, where the code follows the reference emulators for cases the manual calls
 prohibited or defines differently. The remaining items are accuracy limits.
+
+## 6. VDP2 (ST-058 against `saturn_vdp2.cpp` and the VDP2 half of `saturn.cpp`)
+
+VDP2 is the largest document. It is compared chapter by chapter; each subsection below says exactly which registers and
+rules were read, and what was left for the next one. Numbers are V2-P1-nn.
+
+### 6.1 TV screen mode, external signals, status and counters (ST-058 chapter 2, 3.1 VRSIZE)
+
+Compared: TVMD (180000h), EXTEN (180002h), TVSTAT (180004h), VRSIZE (180006h), HCNT (180008h), VCNT (18000Ah), resolution and
+blanking geometry in `reconfigure_crtc`.
+
+Matches the manual:
+- Reset value 0 for TVMD, EXTEN and VRAMSZ; VRSIZE version field reads 0 ("the first is 0"); HCNT/VCNT/TVSTAT are read-only.
+- TVMD decode: DISP bit 15, BDCLMD bit 8, LSMD bits 7-6, VRESO bits 5-4, HRESO bits 2-0; widths 320/352/640/704 by HRESO bits 1-0; VRESO 224/240/256 lines, VRESO=3 not allowed; exclusive monitor modes (HRESO bit 2) force 480 lines regardless of VRESO; double-density interlace doubles the vertical size.
+- EXTEN: EXLTEN=0 latches the H/V counters when EXTEN is read; EXLTEN=1 latches from the external signal (`external_latch`, light gun); EXLTFG is set by a latch and cleared by reading TVSTAT.
+- TVSTAT bit layout: EXLTFG bit 9, EXSYFG bit 8, VBLANK bit 3, HBLANK bit 2, ODD bit 1, PAL bit 0. Exclusive modes force ODD to 1.
+- HCNT: normal modes return the H counter shifted left by one (HCT0 invalid); the exclusive-normal mode masks 9 bits.
+- VCNT double density: VCT9..1 hold the field line count and VCT0 is 0 for an odd field and 1 for an even field.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-01 | ODD flag in non-interlace | 2.5: "the non-interlace mode is always 1" | `m_odd_bit` toggles every frame (`sync_timer_cb`) in every mode and TVSTAT returns it; comments cite STV seabass, grdforce, finlarch, sasissu and magzun as requiring the toggling. The manual is contradicted by the code on the strength of game behaviour; not arbitrated against MiSTer/Ymir/Mednafen in this pass |
+| V2-P1-02 | VCNT non-interlace layout | Table 2.4 shows the counter in VCT9..1 with VCT0 invalid for non-interlace | code returns the unshifted table value (comment: "docs says << 1, but according to HW tests it's a typo"). Mednafen `GetNLVCounter` also shifts only in double-density interlace, so the reference agrees with the code and disagrees with the manual text |
+| V2-P1-03 | HCNT in hi-res and exclusive hi-res | Table 2.3: bit positions differ per mode | hi-res returns `hpos & 0x3ff` unshifted and exclusive hi-res returns `(hpos >> 1) & 0x1ff`; Mednafen returns `HCounter << 1` in every mode. Table 2.3's text extraction is garbled, so the required layout was not derived from ST-058 alone; the modes differ between code and Mednafen and need arbitration |
+| V2-P1-04 | TVSTAT VBLANK with DISP=0 | not in ST-058 | code forces VBLANK=1 when DISP=0, citing Technical Bulletin 12. Documented outside ST-058; accepted |
+| V2-P1-05 | LSMD=1 (setting not allowed) and single-density interlace | 2.4: LSMD=01 prohibited, LSMD=10 single-density interlace | only LSMD=3 changes timing (`m_lsmd == 3`); single-density interlace (2) is treated as non-interlace, with no per-field parity/pixel difference, and 01 is treated as non-interlace |
+| V2-P1-06 | TVMD/EXTEN readback | 2.4/2.5: unused bits are "~" | both registers store and return all 16 bits written, including unused bits; hardware behaviour of the unused bits is not specified |
+| V2-P1-07 | EXSYEN/EXSYFG, EXBGEN, DASEL | 2.5: external sync and external screen input | stored only; EXSYFG never set, EXBGEN/DASEL have no effect on rendering (no external screen input on Saturn hardware exists in the driver). Accepted limit |
+| V2-P1-08 | Resolution change rules | 2.4: change DISP 0 to 1 during VBLANK; exclusive to normal mode needs a VDP2 reset; special high-resolution needs other registers set | none enforced (`reconfigure_crtc` accepts any transition). Software-side rules; no hardware behaviour is defined |
+| V2-P1-09 | Blanking geometry | Tables 2.1/2.2 (line counts, dot clocks) | H total 427/455 (x2 for hi-res), V total 263/313 (525/561 exclusive); pixel clock is `clock/8` with halving for hi-res, double density and exclusive; the code comment marks the exclusive-mode clock as unknown. To be verified against ST-058 chapter 2 tables in §6.2 |
