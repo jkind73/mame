@@ -401,3 +401,15 @@ Matches the manual (field widths checked against Figure 6.2 and Figure 6.3):
 | V2-P1-33 | Prohibited RAMCTL combinations | 6.2/6.4: RBG1 requires RDBSB fields 00, CRKTE=1 requires colour RAM mode 1 and forbids the coefficient RAM role in bank 4 | not enforced beyond the fetch gating of 6.2 |
 | V2-P1-34 | Rotation in exclusive monitor modes | 4.5 notes: RBG0/RBG1 "cannot display" for some colour counts in exclusive monitor | not enforced (same as V2-P1-19) |
 | V2-P1-35 | Per-line rotation parameter timing | 6.3: parameters are read once per line; software changes take effect from the next read | latched per output line at scanline callbacks (`vdp2_latch_rotation_parameters`), interlace stepping preserved; the exact hardware read position within the line is not modelled |
+
+### 6.8 Line colour screen and back screen (ST-058 chapter 7)
+
+Compared: LCTAU/LCTAL (1800A8h/1800AAh), BKTAU/BKTAL (1800ACh/1800AEh), `vdp2_line_color`, `vdp2_back_screen_color`, `vdp2_draw_back`.
+
+Matches the manual: LCCLMD/BKCLMD are bit 15 of the upper word (0 = single colour from the first entry, 1 = one entry per line); table address is the 19-bit register value x 2 with the top bit dropped for 4 Mbit VRAM (`base_mask` on BKTA, `mask` on the line colour address, per-row wrap); back screen data is 5-5-5 RGB expanded by appending three zero bits; line colour data is an 11-bit colour RAM address (`& 0x7ff`) and replaces its low seven bits with the coefficient colour bits when a rotation coefficient table carries line colour (p.164); the line colour has no colour RAM address offset added; DISP=0 with BDCLMD=1 still shows the back screen and DISP=0 with BDCLMD=0 shows black (2.4).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-36 | Single-density interlace entry pairing | 7.1/7.2: in single-density interlace one table entry covers two lines | both functions index by the output row `y` with one entry per row for every mode; the comments state that the output bitmap already carries one row per picture line in single-density, which would make the code equivalent, but that mapping was not independently verified |
+| V2-P1-37 | Colour RAM mode 0/2 address MSB | 7.1 Figure 7.3: in modes 0 and 2 the MSB of the 11-bit address is ignored | `& 0x7ff` keeps bit 10; in mode 0 the two 1K-word halves mirror each other, but in mode 2 the palette lookup of an address with bit 10 set may address the other bank instead of wrapping |
+| V2-P1-38 | Back screen border area | 2.4: with per-line back screen the border takes the colour of the last display line | the whole clip rectangle is filled row by row; the horizontal/vertical border area outside the active area is not separately drawn |
