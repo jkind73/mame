@@ -454,3 +454,23 @@ Matches the manual (all sixteen sprite types were checked against Figure 9.1, bi
 | V2-P1-44 | Mixed RGB/palette mode with 8-bit sprites | 9.2: do not set SPCLMD=1 with 8-bit pixels | `direct = (pix & 0x8000) && SPCLMD` is evaluated for 8-bit types too, where the display word can only be 0-255; harmless for compliant software |
 | V2-P1-45 | Sprite data with types selected inconsistently with the VDP1 depth | 9.1: 16-bit frame buffer must use types 0-7, 8-bit types 8-F | not enforced; the type table is applied to whatever value the VDP1 display pipeline returns |
 | V2-P1-46 | Colour RAM address bit 10 in modes 0/2 | 10.1 Figure 10.2: the MSB is ignored in modes 0 and 2 | `& 0x7ff` retains bit 10; same open point as V2-P1-37 |
+
+### 6.11 Pixel formats, colour RAM address offset, special function codes and priority (ST-058 chapters 10 and 11.1-11.2)
+
+Compared: CRAOFA/CRAOFB (1800E4h-1800E6h), SFSEL (180024h), SFCODE (180026h), SFPRMD (1800EAh), PRINA/PRINB/PRIR
+(1800F8h-1800FCh), `vdp2_special_priority_pixel`, `vdp2_special_color_pixel`, `vdp2_priority_pass_matches`,
+`screen_update_vdp2` layer ordering.
+
+Matches the manual:
+- Priority registers: N0PRIN bits 2-0 and N1PRIN bits 10-8 in PRINA, N2/N3 in PRINB, R0PRIN in PRIR; a priority of 0 is transparent; screens are drawn per priority number 1-7 in the order NBG3, NBG2, NBG1, NBG0, RBG0, sprite, so equal priorities resolve as sprite > RBG0 > NBG0 > NBG1 > NBG2 > NBG3 (Table 11.1); RBG1 shares the NBG0 slot and is drawn before RBG0.
+- Special function code select: bit n of SFSEL picks code A (low byte) or B (high byte) of SFCODE for layer n; code bit k corresponds to the dot codes 2k and 2k+1, so the code is indexed by `(dot >> 1) & 7`; only palette formats use it.
+- Special priority mode (SFPRMD, two bits per screen, R0 at bits 9-8): mode 0 keeps the register value, mode 1 uses the pattern-name special priority bit as the priority LSB, mode 2 sets the LSB only for dots whose code matches while the special priority bit is 1; the two upper bits always come from the register; a resulting priority of 0 is transparent; RGB formats ignore mode 2.
+- CRAOFA/CRAOFB layout: N0 bits 2-0, N1 bits 6-4, N2 bits 10-8, N3 bits 14-12, R0 bits 2-0 and sprite bits 6-4 of CRAOFB; the offset is added to the top three bits of the 11-bit colour address (`<< 8`).
+- RGB formats append three zero bits to each 5-bit component; the back screen does the same.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-47 | Colour RAM address offset scale | 10.1: mode 0/2 offset = register x 200h, mode 1 offset = register x 400h (byte addresses, per the text) | the code adds `offset << 8` to the 11-bit palette index in every mode (top-three-bits rule of Figures 10.2/10.4, also used by the reference emulators); the byte-address formulas in the manual (which differ by mode and by entry size) were not reconciled with the entry-index formula |
+| V2-P1-48 | Special priority in bitmap layers | 11.2: for bitmap formats the special priority bit comes from the bitmap palette number register (BMPNA/BMPNB), not the pattern name | implemented (`bitmap_flags & 0x20` for priority, `& 0x10` for colour calculation) |
+| V2-P1-49 | EXBG restrictions | 11.2: EXBG must be in special priority mode 0 | external screen input is not modelled (V2-P1-07) |
+| V2-P1-50 | Equal-priority order with two rotation screens or external input | Table 11.1: separate orderings for RBG1 and EXBG | RBG1 order follows Table 11.1; the EXBG orders cannot apply |
