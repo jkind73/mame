@@ -145,6 +145,19 @@ change it if a hardware trace shows the transfer completes.
 Unverified in this pass: exact mirror extents (work RAM-L mirrored at 00300000H, work RAM-H mirror span, SCSP register
 mirror stride, VDP1 register window 20h vs documented 18h) against a hardware read-back.
 
+## N. ST-V I/O audit (2026-09-26, `315_5649.cpp`, `stv.cpp` legacy `ioga_r/w`)
+
+No IOGA (315-5649) documentation exists in `docs` (SDK, cartridge notes, MiSTer and Ymir do not cover ST-V), so this
+chip can only be checked for internal consistency, not against a hardware reference. Observed:
+
+| ID | Item |
+|---|---|
+| IO-01 | The device implements ports A-G with a direction register, port G 4x16-bit counter mode with auto-increment and reset latch, the analog mux with auto-increment, two RS-422 channels with holding registers and loopback, and the mode register. Serial timing is byte-level (transmit register drains immediately) and the status error/enable bits (RX IE, framing) always read 0 |
+| IO-02 | `stv.cpp` still carries a duplicate legacy `ioga_r/w` (marked TODO "remove this legacy fallback") used by the per-game maps for critcrsh, stvmp and the hopper games; it reimplements the port G counter and the mode/serial-status reads separately from the device (the serial status read there is a constant 0) |
+| IO-03 | Port D coin counter/lockout mapping and the billboard write are inferred from game behaviour, not from a document |
+
+Phase 2 candidates that need no new hardware data: route the legacy per-game maps through the device (removing the divergence in IO-02).
+
 ## H2. VDP2 verification plan
 
 Name-based coverage grep of the VDP2 register set in `saturn.cpp` found the registers implemented (RPMD/RPRCTL/KTCTL,
