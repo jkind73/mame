@@ -1209,6 +1209,19 @@ void saturn_cd_hle_device::finish_get_delete() {
     sectorstore = 0;
 }
 
+// 05h Open Tray (ST-38 function 1.7, Table 4.2 OPEN_TRAY): the drive command
+// answers <BUSY> and then enters <OPEN> (Figure 4.1); DCHG and EFLS are
+// raised as when the tray is opened by hand. The disc stays in the drive.
+// Opening an already open tray only completes the command.
+void saturn_cd_hle_device::cmd_open_tray() {
+  LOGCMD("%s: Open Tray\n", machine().describe_context());
+  if (tray_is_closed)
+    open_tray(false);
+  cr_standard_return(cd_stat);
+  hirqreg |= CMOK;
+  update_hirq();
+}
+
 void saturn_cd_hle_device::cmd_end_data_transfer() {
   // end data transfer (TODO: needs to be worked on!)
   // returns # of bytes transferred (24 bits) in
@@ -3625,6 +3638,9 @@ void saturn_cd_hle_device::cd_exec_command() {
   case 0x04:
     cmd_init_cdsystem();
     break;
+  case 0x05:
+    cmd_open_tray();
+    break;
   case 0x06:
     cmd_end_data_transfer();
     break;
@@ -4638,6 +4654,15 @@ void saturn_cd_hle_device::set_tray_open() {
   if (!tray_is_closed)
     return;
 
+  // User request: the medium is removed together with the tray opening.
+  open_tray(true);
+  popmessage("Tray Open");
+}
+
+// Common tray-opening sequence. The OPEN_TRAY command (ST-38 function 1.7)
+// opens the tray with the disc still in the drive, so closing it again
+// restores PAUSE (set_tray_close); a user request also unloads the image.
+void saturn_cd_hle_device::open_tray(bool unload_image) {
   // ST-162 section 6.2.2: a disc change invalidates filesystem information.
   // Retain its backing cache for an outstanding host transfer, but reject
   // new file accesses until a directory is freshly loaded.
@@ -4658,12 +4683,10 @@ void saturn_cd_hle_device::set_tray_open() {
 
   cd_change_status(CD_STAT_OPEN);
 
-  // unmount the existing image, pretend that's what user wants if we are there.
-  m_cdrom_image->unload();
+  if (unload_image)
+    m_cdrom_image->unload();
 
   tray_is_closed = 0;
-
-  popmessage("Tray Open");
 }
 
 void saturn_cd_hle_device::set_tray_close() {

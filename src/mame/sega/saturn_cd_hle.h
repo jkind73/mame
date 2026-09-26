@@ -344,6 +344,8 @@ private:
   void cmd_get_toc();
   void cmd_get_session_info();
   void cmd_init_cdsystem();
+  void open_tray(bool unload_image);
+  void cmd_open_tray();
   void cmd_end_data_transfer();
   void finish_get_delete();
   void finish_put();
