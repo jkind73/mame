@@ -648,6 +648,9 @@ void sat_console_state::saturn_mem(address_map &map) {
      here rather than just for consistency: MINIT and SINIT are write-only
      triggers, so a title that wants the write to reach the bus rather than sit
      in the SH-2's write-back cache has to use the alias. */
+  // The manual lists MINIT/SINIT as 4-byte registers; the bus decodes the whole
+  // 8 MB window and Mednafen (01000000-017FFFFF) and Ymir (01000000-01FFFFFF)
+  // trigger the FRT on any address inside it
   map(0x01000000, 0x017fffff)
       .mirror(0x20000000)
       .lr16(NAME([](offs_t offset, u16 mem_mask) { return u16(0xffff); }))
@@ -660,11 +663,17 @@ void sat_console_state::saturn_mem(address_map &map) {
   //  map(0x02400000, 0x027fffff).ram(); // External Data RAM area
   //  map(0x04000000, 0x047fffff).ram(); // External Battery RAM area
   map(0x04ffffff, 0x04ffffff).r(FUNC(sat_console_state::saturn_cart_type_r));
-  map(0x05000000, 0x057fffff).r(FUNC(sat_console_state::abus_dummy_r));
+  // A-Bus dummy space: not chip-selected, so writes (the boot ROM writes mode
+  // words to 057FFFFCH) have no effect and reads float high
+  map(0x05000000, 0x057fffff)
+      .r(FUNC(sat_console_state::abus_dummy_r))
+      .nopw();
   // extended RAM cartridge initialisation strobe (Technical Bulletin #47 sec
   // 4): a word write of exactly 1 to 257EFFFEh, step 3 of the access procedure
   map(0x057efffe, 0x057effff).w(FUNC(sat_console_state::ext_ram_init_w));
-  map(0x05800000, 0x0589ffff)
+  // A-Bus CS2 is a 1 MB space (memory map, SCU manual Figure 1.3); the CD
+  // block decodes its registers and data port inside it
+  map(0x05800000, 0x058fffff)
       .m(m_saturn_cd_hle, FUNC(saturn_cd_hle_device::amap));
   /* Sound */
   map(0x05a00000, 0x05a7ffff)
@@ -685,7 +694,9 @@ void sat_console_state::saturn_mem(address_map &map) {
           FUNC(sat_console_state::
                    vdp1_framebuffer0_w)); // only the back buffer is visible,
                                           // mirrored across the 512KB window
-  map(0x05d00000, 0x05d0001f)
+  // ST-013 section 4: the register file is TVMR (100000h) to MODR (100016h),
+  // 24 bytes; the memory map lists 05D00000H-05D00017H
+  map(0x05d00000, 0x05d00017)
       .rw(FUNC(sat_console_state::vdp1_regs_r),
           FUNC(sat_console_state::vdp1_regs_w));
   /* VDP2 */
