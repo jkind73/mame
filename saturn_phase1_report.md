@@ -474,3 +474,32 @@ Matches the manual:
 | V2-P1-48 | Special priority in bitmap layers | 11.2: for bitmap formats the special priority bit comes from the bitmap palette number register (BMPNA/BMPNB), not the pattern name | implemented (`bitmap_flags & 0x20` for priority, `& 0x10` for colour calculation) |
 | V2-P1-49 | EXBG restrictions | 11.2: EXBG must be in special priority mode 0 | external screen input is not modelled (V2-P1-07) |
 | V2-P1-50 | Equal-priority order with two rotation screens or external input | Table 11.1: separate orderings for RBG1 and EXBG | RBG1 order follows Table 11.1; the EXBG orders cannot apply |
+
+### 6.12 Line colour insertion, colour calculation, gradation, colour offset and shadow (ST-058 chapters 11.3, 12, 13, 14)
+
+Compared: LNCLEN, CCCR (1800ECh: BOKEN bit 15, BOKN 14-12, EXCCEN bit 10, CCRTMD bit 9, CCMD bit 8, N0-N3/R0/LC/SP CCEN bits 0-6),
+CCRNA/CCRNB/CCRR/CCRLB (180108h-18010Eh), SFCCMD (1800EEh), CLOFEN/CLOFSL (180110h/180112h), COAR-COBB (180114h-18011Eh), SDCTL (1800E2h),
+and `vdp2_compose_pixel`, `vdp2_begin_composition`, `vdp2_extended_color`, `vdp2_gradation_color`, `vdp2_shadow_pixel`,
+`vdp2_compute_color_offset`, `vdp2_calculation_window`.
+
+Matches the manual:
+- Ratio: 5-bit value n gives top:second = (31-n):(n+1) (`vdp2_cc_blend_level`, `(31-n) x 8` of 256, exact), n=15 gives 16:16 and n=31 gives 0:32; CCRTMD=0 uses the top screen's ratio, CCRTMD=1 the second screen's (line colour screen and back screen use LCCCRT/BKCCRT); CCMD=1 adds the colours as is with saturation and ignores the ratio registers; calculation is enabled by the top image's CCEN bit.
+- Table 12.1 (hi-res and exclusive modes): with colour RAM mode 1 or 2 a palette second image cannot be used, mode 0 always can (`hreso & 6`, `VDP2_CRMD`, second image palette flag).
+- Extended colour calculation: only in normal modes and only when BOKEN is 0 (`(CCCR & 0x8400) == 0x400`); fixed 1/2, 1/4 weights per Table 12.2, truncating each component before adding; the line colour screen is the extra second input when inserted.
+- Gradation: only with BOKEN=1, colour RAM mode 0 and normal mode; BOKN selects sprite (0), RBG0 (1), NBG0/RBG1 (2), NBG1 (4), NBG2 (5), NBG3 (6); the calculation is 1:1:2 of two-left, one-left and current dot per component; the designated screen is forced into the second image; incompatible with line colour insertion and extended calculation.
+- Colour offset: A/B selected per screen by CLOFSL; each component is a 9-bit two's-complement value clamped to 0..255; applied after colour calculation and only with the top image's enable bit; the back screen offset affects only the visible back (`VDP2_CLOFEN & 0x20`).
+- Shadow: normal shadow when the sprite dot equals the type's dot mask minus one; MSB shadow only for types 2-7 with the sprite window off; transparent shadow (MSB set, remaining 15 bits zero) only when TPSDSL is 1; normal shadow takes precedence over MSB shadow; scroll and back screens are shadowed only when their SDEN bit is set; a sprite shadow always shades its own dot; the shadow halves each component and is applied after colour calculation and colour offset.
+- Colour RAM MSB special colour calculation (mode 3) reads the physical colour RAM MSB including mode-0 aliasing (`vdp2_palette_color_msb`).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-51 | Extended calculation ratio 2:1:0 | Table 12.2 lists 2:1:0 for one row and Figure 12.3 shows a fourth input | the code uses 2:1:1 (`(a >> 1) + (b >> 2) + (c >> 2)`) in that row; its comment cites the Figure and both reference emulators for the change; the manual's own table and figure disagree |
+| V2-P1-52 | Gradation left-edge policy | 12.2: pixels outside the left display edge are not specified | x=0 keeps the current dot, x=1 averages current and left; policy taken from Ymir |
+| V2-P1-53 | BOKEN with unusable modes | 12.2: gradation requires normal mode and colour RAM mode 0 | the function is silently disabled outside that condition rather than showing an error state; no manual behaviour defined |
+| V2-P1-54 | Line colour insertion with gradation | 11.3: cannot be used together | insertion is forced off when gradation is active (`if (gradation) insert_line = false`) |
+| V2-P1-55 | Shadow "highest priority" rule | 14.1: the shadow applies when the shadow sprite's priority is the highest | implemented per sprite pass: the shadow darkens the composed image below the sprite and higher-priority layers drawn afterwards overwrite it; equivalence with the manual's top-image wording was reasoned, not tested |
+| V2-P1-56 | Colour offset clamp detail | 13.1: values below 00h read as 00h, above FFh as FFh | matches (`vdp2_compute_color_offset`) |
+
+VDP2 items not compared in this pass: exact VRAM bank timing (Tables 3.2-3.4, V2-P1-11), CRAM layout for the coefficient table in
+colour RAM (CRKTE) at the byte level, and the framebuffer/VDP1 to VDP2 handoff for the 8-bit and 16-bit sprite word delivery in
+hi-res and rotation modes (VDP1 `vdp1_display_pixel`, checked only for the type decode).
