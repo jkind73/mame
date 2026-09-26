@@ -163,6 +163,17 @@ bool sh_common_execution::frontend::describe(opcode_desc &desc, const opcode_des
 	desc.length = 2;
 	desc.cycles = 1;
 
+	// An instruction that rewrites the PC in a delay slot is an illegal slot
+	// instruction: it raises an exception instead of branching, so it has no
+	// delay slots of its own and the description must not recurse into any.
+	if (desc.in_delay_slot() && m_sh->slot_illegal_applies() && m_sh->is_slot_illegal_opcode(opcode))
+	{
+		desc.cycles = 5;
+		desc.set_will_cause_exception();
+		desc.set_can_cause_exception();
+		return true;
+	}
+
 	switch (opcode>>12)
 	{
 	case  0:

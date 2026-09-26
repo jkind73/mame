@@ -1966,6 +1966,7 @@ void sh_common_execution::execute_one(const uint16_t opcode)
 
 // DRC / UML related
 void cfunc_unimplemented(void *param) { ((sh_common_execution *)param)->func_unimplemented(); }
+void cfunc_slot_illegal(void *param) { ((sh_common_execution *)param)->func_slot_illegal(); }
 void cfunc_MAC_W(void *param) { ((sh_common_execution *)param)->func_MAC_W(); }
 void cfunc_MAC_L(void *param) { ((sh_common_execution *)param)->func_MAC_L(); }
 void cfunc_DIV1(void *param) { ((sh_common_execution *)param)->func_DIV1(); }
@@ -2495,7 +2496,11 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 	{
 		// otherwise, unless this is a virtual no-op, it's a regular instruction
 		// compile the instruction
-		if (!generate_opcode(block, compiler, desc, ovrpc))
+		if (desc->in_delay_slot() && slot_illegal_applies() && is_slot_illegal_opcode(desc->opptr))
+		{
+			generate_slot_illegal(block, compiler, desc, ovrpc);
+		}
+		else if (!generate_opcode(block, compiler, desc, ovrpc))
 		{
 			// take the illegal instruction exception immediately
 			UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);                            // mov     [pc],desc->pc
@@ -2551,6 +2556,45 @@ void sh_common_execution::func_unimplemented()
 	m_sh2_state->evec = read_long(m_sh2_state->vbr + 4 * 4);
 	m_sh2_state->evec &= m_am;
 	m_sh2_state->irqsr = m_sh2_state->sr;
+}
+
+// Slot illegal instruction (SH7604 manual section 4.5.3): SR and the jump
+// address of the delayed branch immediately before the offending instruction
+// are stacked, then the vector 6 handler is entered. The branch itself is not
+// taken and the jump that occurs is not a delayed branch.
+void sh_common_execution::func_slot_illegal()
+{
+	m_sh2_state->evec = read_long(m_sh2_state->vbr + 6 * 4);
+	m_sh2_state->evec &= m_am;
+	m_sh2_state->irqsr = m_sh2_state->sr;
+}
+
+bool sh_common_execution::generate_slot_illegal(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint32_t ovrpc)
+{
+	UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);                            // mov     [pc],desc->pc
+	UML_MOV(block, mem(&m_sh2_state->arg0), desc->opptr);                       // mov     [arg0],opcode
+
+	UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
+	UML_MOV(block, I0, R32(15));                            // mov     r0, R15
+	UML_MOV(block, I1, mem(&m_sh2_state->sr));              // mov     r1, sr
+	UML_CALLH(block, *m_write32);                           // call    write32
+
+	UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
+	UML_MOV(block, I0, R32(15));                            // mov     r0, R15
+	if (ovrpc == SH_OVRPC_DYNAMIC)
+		UML_MOV(block, I1, mem(&m_sh2_state->target));      // mov     r1, target (register/PR-based jump address)
+	else
+		UML_MOV(block, I1, ovrpc + 2);                      // mov     r1, jump address of the static branch
+	UML_CALLH(block, *m_write32);                           // call    write32
+
+	// Fetch the vector after stacking, as for the general illegal instruction
+	UML_CALLC(block, cfunc_slot_illegal, this);
+
+	// evec is clobbered by the interrupt check inside generate_update_cycles
+	UML_MOV(block, mem(&m_sh2_state->target), mem(&m_sh2_state->evec));         // mov target, evec
+	generate_update_cycles(block, compiler, uml::mem(&m_sh2_state->target), true);
+	UML_HASHJMP(block, 0, mem(&m_sh2_state->target), *m_nocode);                // hashjmp target
+	return true;
 }
 
 void sh_common_execution::func_MAC_W()

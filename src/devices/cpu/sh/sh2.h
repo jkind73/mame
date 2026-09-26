@@ -81,6 +81,7 @@ private:
 	virtual void TRAPA(uint32_t i) override;
 	virtual void RTE() override;
 	virtual void ILLEGAL() override;
+	void ILLEGAL_SLOT();
 
 	virtual void execute_one_f000(uint16_t opcode) override;
 

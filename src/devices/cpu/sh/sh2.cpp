@@ -288,6 +288,26 @@ inline void sh2_device::ILLEGAL()
 	m_sh2_state->icount -= 5;
 }
 
+/*  ILLEGAL SLOT INSTRUCTION */
+// SH7604 manual section 4.5.3: an instruction that rewrites the PC in a delay
+// slot is not executed. SR and the jump address of the delayed branch are
+// stacked and the vector 6 handler is entered (not a delayed branch).
+inline void sh2_device::ILLEGAL_SLOT()
+{
+	debugger_exception_hook(6);
+
+	m_sh2_state->r[15] -= 4;
+	write_long(m_sh2_state->r[15], m_sh2_state->sr);
+	m_sh2_state->r[15] -= 4;
+	write_long(m_sh2_state->r[15], m_sh2_state->m_delay);
+	m_sh2_state->m_delay = 0;
+
+	m_sh2_state->pc = read_long(m_sh2_state->vbr + 6 * 4) & m_am;
+
+	// same timing estimate as the general illegal instruction
+	m_sh2_state->icount -= 5;
+}
+
 void sh2_device::execute_one_f000(uint16_t opcode)
 {
 	ILLEGAL();
@@ -314,15 +334,22 @@ void sh2_device::execute_run()
 
 		const uint16_t opcode = m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
 
-		if (m_sh2_state->m_delay)
+		if (m_sh2_state->m_delay && is_slot_illegal_opcode(opcode))
 		{
-			m_sh2_state->pc = m_sh2_state->m_delay;
-			m_sh2_state->m_delay = 0;
+			ILLEGAL_SLOT();
 		}
 		else
-			m_sh2_state->pc += 2;
+		{
+			if (m_sh2_state->m_delay)
+			{
+				m_sh2_state->pc = m_sh2_state->m_delay;
+				m_sh2_state->m_delay = 0;
+			}
+			else
+				m_sh2_state->pc += 2;
 
-		execute_one(opcode);
+			execute_one(opcode);
+		}
 
 		if (m_test_irq && !m_sh2_state->m_delay)
 		{

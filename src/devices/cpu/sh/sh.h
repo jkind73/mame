@@ -431,8 +431,34 @@ public:
 	bool generate_group_12(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint16_t opcode, int in_delay_slot, uint32_t ovrpc);
 	virtual bool generate_group_15(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint16_t opcode, int in_delay_slot, uint32_t ovrpc);
 
+	// SH-1/SH-2 programming manual (Delay_Slot): these instructions are illegal slot
+	// instructions when they occupy the slot of a delayed branch.
+	static constexpr bool is_slot_illegal_opcode(uint16_t opcode)
+	{
+		switch (opcode >> 12)
+		{
+		case 0x0: return (opcode & 0xf0ff) == 0x000b   // RTS
+				|| (opcode & 0xf0ff) == 0x002b         // RTE
+				|| (opcode & 0xf0ff) == 0x0003         // BSRF
+				|| (opcode & 0xf0ff) == 0x0023;        // BRAF
+		case 0x4: return (opcode & 0xf0ff) == 0x400b   // JSR
+				|| (opcode & 0xf0ff) == 0x402b;        // JMP
+		case 0x8: return (opcode & 0xff00) == 0x8900   // BT
+				|| (opcode & 0xff00) == 0x8b00         // BF
+				|| (opcode & 0xff00) == 0x8d00         // BT/S
+				|| (opcode & 0xff00) == 0x8f00;        // BF/S
+		case 0xa:                                      // BRA
+		case 0xb: return true;                         // BSR
+		case 0xc: return (opcode & 0xff00) == 0xc300;  // TRAPA
+		default:  return false;
+		}
+	}
+	bool slot_illegal_applies() const { return m_cpu_type <= CPU_TYPE_SH2; }
+	bool generate_slot_illegal(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint32_t ovrpc);
+
 	void func_printf_probe();
 	void func_unimplemented();
+	void func_slot_illegal();
 	void func_MAC_W();
 	void func_MAC_L();
 	void func_DIV1();
