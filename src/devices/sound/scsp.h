@@ -74,12 +74,13 @@ private:
   };
 
   struct SCSP_LFO_t {
-    // 32-bit phase accumulator: one wrap is one LFO cycle, so the 8-bit
-    // table index is phase >> LFO_PHASE_SHIFT. 24 fractional bits keep every
-    // Table 4.21 frequency (down to 0.17 Hz) a non-zero per-sample increment,
-    // which the old 8.8 accumulator truncated to zero below 0.68 Hz.
-    u32 phase;
-    u32 phase_step;
+    // The hardware LFO advances its 8-bit waveform position once every
+    // `interval` output samples (LFOF selects one of 32 sample counts, ST-077
+    // table 4.21), so a full cycle is 256 * interval samples. The position is
+    // the table index.
+    u32 interval;
+    u32 cycles;
+    u32 step;
     int *table;
     int *scale;
     bool noise; // noise waveform, taken from the LFSR instead of a table
@@ -225,6 +226,7 @@ private:
   // LFO
   void LFO_Init();
   bool LFO_ResetHold(SCSP_SLOT *slot);
+  void LFO_Advance(SCSP_LFO_t *LFO, bool hold);
   s32 PLFO_Step(SCSP_LFO_t *LFO, bool hold);
   s32 ALFO_Step(SCSP_LFO_t *LFO, bool hold);
   void LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS, u32 LFOS,

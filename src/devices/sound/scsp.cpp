@@ -55,8 +55,6 @@ static constexpr u32 SAMPLE_CLOCKS = 512;
 
 #define SHIFT 12
 #define LFO_SHIFT 8
-// fractional bits of the LFO phase accumulator (see SCSP_LFO_t::phase)
-#define LFO_PHASE_SHIFT 24
 #define FIX(v) ((u32)((float)(1 << SHIFT) * (v)))
 
 /*
@@ -259,10 +257,12 @@ void scsp_device::device_start() {
     save_item(NAME(m_Slots[slot].EG.prev_level), slot);
     save_item(NAME(m_Slots[slot].EG.state), slot);
     save_item(NAME(m_Slots[slot].EG.attack_bug), slot);
-    save_item(NAME(m_Slots[slot].PLFO.phase), slot);
-    save_item(NAME(m_Slots[slot].PLFO.phase_step), slot);
-    save_item(NAME(m_Slots[slot].ALFO.phase), slot);
-    save_item(NAME(m_Slots[slot].ALFO.phase_step), slot);
+    save_item(NAME(m_Slots[slot].PLFO.interval), slot);
+    save_item(NAME(m_Slots[slot].PLFO.cycles), slot);
+    save_item(NAME(m_Slots[slot].PLFO.step), slot);
+    save_item(NAME(m_Slots[slot].ALFO.interval), slot);
+    save_item(NAME(m_Slots[slot].ALFO.cycles), slot);
+    save_item(NAME(m_Slots[slot].ALFO.step), slot);
   }
 
   for (int i = 0; i < 0x30 / 2; i++) {
@@ -853,17 +853,18 @@ bool scsp_device::LFO_ResetHold(SCSP_SLOT *slot) {
   if (!LFORE(slot))
     return false;
   if (!slot->PLFO.noise)
-    slot->PLFO.phase = 0;
+    slot->PLFO.step = 0;
   if (!slot->ALFO.noise)
-    slot->ALFO.phase = 0;
+    slot->ALFO.step = 0;
   return true;
 }
 
 void scsp_device::Compute_LFO(SCSP_SLOT *slot) {
-  if (PLFOS(slot) != 0)
-    LFO_ComputeStep(&(slot->PLFO), LFOF(slot), PLFOWS(slot), PLFOS(slot), 0);
-  if (ALFOS(slot) != 0)
-    LFO_ComputeStep(&(slot->ALFO), LFOF(slot), ALFOWS(slot), ALFOS(slot), 1);
+  // The LFO runs at its LFOF rate whether or not a depth is programmed (a
+  // zero depth just scales its output to nothing), so a later depth change
+  // finds it at the position it has reached.
+  LFO_ComputeStep(&(slot->PLFO), LFOF(slot), PLFOWS(slot), PLFOS(slot), 0);
+  LFO_ComputeStep(&(slot->ALFO), LFOF(slot), ALFOWS(slot), ALFOS(slot), 1);
 }
 
 void scsp_device::StartSlot(SCSP_SLOT *slot) {
@@ -1382,7 +1383,11 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot) {
   u32 *addr[2] = {&addr1, &addr2}; // used for linear interpolation
   u32 *slot_addr[2] = {&(slot->cur_addr), &(slot->nxt_addr)}; //
 
+  // Both waveforms are stepped by the slot's one LFO every sample, whether or
+  // not either depth is programmed, so they stay in step with each other.
   bool const lfo_hold = LFO_ResetHold(slot);
+  LFO_Advance(&(slot->PLFO), lfo_hold);
+  LFO_Advance(&(slot->ALFO), lfo_hold);
 
   if (PLFOS(slot) != 0) {
     step = step * PLFO_Step(&(slot->PLFO), lfo_hold);
@@ -1783,10 +1788,15 @@ void scsp_device::rcv_complete() {
 // Convert cents to step increment
 #define CENTS(v) LFIX(powf(2.0f, v / 1200.0f))
 
-static const float LFOFreq[32] = {
-    0.17f, 0.19f, 0.23f, 0.27f, 0.34f, 0.39f, 0.45f, 0.55f, 0.68f, 0.78f, 0.92f,
-    1.10f, 1.39f, 1.60f, 1.87f, 2.27f, 2.87f, 3.31f, 3.92f, 4.79f, 6.15f, 7.18f,
-    8.60f, 10.8f, 14.4f, 17.2f, 21.5f, 28.7f, 43.1f, 57.4f, 86.1f, 172.3f};
+// Output samples per LFO waveform step for each LFOF setting (ST-077 table
+// 4.21). The hardware counts whole samples, so the resulting frequencies
+// 44100 / (256 * interval) are only approximately the rounded Hz values the
+// manual prints (e.g. 0.169 Hz, 0.193 Hz ... 172.3 Hz). Same table as Ymir's
+// s_lfoStepTbl.
+static const u32 LFOStepInterval[32] = {
+    1020, 892, 764, 636, 508, 444, 380, 316, 252, 220, 188,
+    156,  124, 108, 92,  76,  60,  52,  44,  36,  28,  24,
+    20,   16,  12,  10,  8,   6,   4,   3,   2,   1};
 static const float ASCALE[8] = {0.0f, 0.4f, 0.8f,  1.5f,
                                 3.0f, 6.0f, 12.0f, 24.0f};
 static const float PSCALE[8] = {0.0f,  7.0f,   13.5f,  27.0f,
@@ -1847,46 +1857,34 @@ void scsp_device::LFO_Init() {
   }
 }
 
+// One LFO tick: the position advances every `interval` samples and LFORE holds
+// it at zero (Ymir IncrementLFO). A held LFO reports its reset-position output.
+void scsp_device::LFO_Advance(SCSP_LFO_t *LFO, bool hold) {
+  if (hold && !LFO->noise)
+    LFO->step = 0;
+  else if (++LFO->cycles >= LFO->interval) {
+    LFO->cycles = 0;
+    LFO->step = (LFO->step + 1) & 0xff;
+  }
+}
+
 s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO, bool hold) {
   int p;
-  // A held LFO reports its reset-phase output, so the accumulator must not run.
-  if (hold && !LFO->noise)
-    LFO->phase = 0;
-  else
-    LFO->phase += LFO->phase_step; // wraps at 2^32 == one cycle
-  p = LFO->noise ? (int)(s8)(m_lfsr & ~1)
-                 : LFO->table[LFO->phase >> LFO_PHASE_SHIFT];
+  p = LFO->noise ? (int)(s8)(m_lfsr & ~1) : LFO->table[LFO->step];
   p = LFO->scale[p + 128];
   return p << (SHIFT - LFO_SHIFT);
 }
 
 s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO, bool hold) {
   int p;
-  // A held LFO reports its reset-phase output, so the accumulator must not run.
-  if (hold && !LFO->noise)
-    LFO->phase = 0;
-  else
-    LFO->phase += LFO->phase_step; // wraps at 2^32 == one cycle
-  p = LFO->noise ? (int)(u8)(m_lfsr & ~1)
-                 : LFO->table[LFO->phase >> LFO_PHASE_SHIFT];
+  p = LFO->noise ? (int)(u8)(m_lfsr & ~1) : LFO->table[LFO->step];
   p = LFO->scale[p];
   return p << (SHIFT - LFO_SHIFT);
 }
 
 void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO, u32 LFOF, u32 LFOWS,
                                   u32 LFOS, int ALFO) {
-  // Steps are per output sample: use the actual stream rate instead of
-  // assuming 44100 (ST-V runs the chip slightly faster, and the rate is
-  // programmable through the clock). The accumulator wraps once per LFO
-  // cycle and the 8-bit table index is the top byte (phase >> LFO_PHASE_SHIFT),
-  // so one cycle is 2^32 phase units and the per-sample increment is
-  // frequency * 2^32 / rate. Round to nearest so the slow end of Table 4.21
-  // survives: at 0.17 Hz the increment is ~16552/2^32 per sample, which the
-  // old 8.8 accumulator truncated to zero. Beetle and MiSTer both reach the
-  // same low frequencies with an integer sample divider instead.
-  double const rate = double(clock()) / SAMPLE_CLOCKS;
-  LFO->phase_step = (u32)std::llround(
-      double(LFOFreq[LFOF]) * 4294967296.0 / rate);
+  LFO->interval = LFOStepInterval[LFOF];
   if (ALFO) {
     switch (LFOWS) {
     case 0:
