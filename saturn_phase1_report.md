@@ -503,3 +503,39 @@ Matches the manual:
 VDP2 items not compared in this pass: exact VRAM bank timing (Tables 3.2-3.4, V2-P1-11), CRAM layout for the coefficient table in
 colour RAM (CRKTE) at the byte level, and the framebuffer/VDP1 to VDP2 handoff for the 8-bit and 16-bit sprite word delivery in
 hi-res and rotation modes (VDP1 `vdp1_display_pixel`, checked only for the type decode).
+
+## 7. SCU (ST-097 SCU User's Manual and ST-210 SCU Final Specifications: Precautions against `saturn_scu.cpp`)
+
+The DSP (ST-097 chapter 4 and the DSP assembler manual) is compared in §7.2. Numbers are SCU-P1-nn.
+
+### 7.1 DMA, timers, interrupts, A-Bus registers
+
+Compared: DMA set registers (25FE0000h-25FE0057h), DSTP (25FE0060h), DSTA (25FE007Ch), timers (25FE0090h-25FE0098h), IMS/IST
+(25FE00A0h/25FE00A4h), AIACK (25FE00A8h), ASR0/ASR1/AREF (25FE00B0h-25FE00B8h), RSEL (25FE00C4h), version (25FE00C8h), the
+interrupt table (Table 2.1), the DMA engine and indirect table, and precautions No.01-36 of ST-210.
+
+Matches the manual:
+- DxR/DxW store 27 bits; D0C is 20 bits and D1C/D2C are 12 bits; DxAD read add value is bit 8 (0 = none, 1 = 4 bytes) and write add value is bits 2-0 (0 none, 1 = 2, 2 = 4, ... 7 = 128 bytes); DxEN enable is bit 8 and DxGO bit 0; DxMD indirect bit 24, RUP bit 16, WUP bit 8, start factor bits 2-0 (Tables 3.2-3.4, ST-210 No.21: 0 V-BLANK-IN, 1 V-BLANK-OUT, 2 H-BLANK-IN, 3 Timer 0, 4 Timer 1, 5 sound request, 6 sprite draw end, 7 enable+GO).
+- DMA status DSTA bit layout: level 0 wait/move bits 5/4, level 1 bits 9/8, level 2 bits 13/12, DSP wait/move bits 1/0, level 0/1 interrupted (background) bits 16/17, bus-access bits 20-22; higher levels pre-empt lower ones and a lower level waits (Figure 3.12).
+- Interrupt table: bit n vector 40h+n and levels F, E, D, C, B, A, 9, 8, 8, 6, 6, 5, 3, 2 for bits 0-13; A-Bus external interrupts bits 16-31 use vectors 50h-5Fh at levels 7 (0-3), 4 (4-7) and 1 (8-15); IMS reset value 0000BFFFh; masks are active-high; IST bits are cleared by writing 0.
+- Indirect DMA table (ST-210 No.25): three longwords (byte count, write address, read address with bit 31 as the last-entry flag), 12 bytes per entry.
+- ST-210 No.01/02: A-Bus writes and VDP2 reads are rejected as DMA-illegal (IST bit set, nothing moves); No.04 (work RAM-L, and BIOS/backup RAM as sources) rejected; a start trigger during a running transfer is held once and re-run at the end (No.22); AREF initial ARFEN=1 (No.33); RSEL resets to 0 (No.34); ASR0/ASR1 preread bits 31 and 15 are forced 0 (No.09).
+- Timer 0: cleared at V-Blank-OUT, incremented at H-Blank-IN, compare register is 10 bits; T0C=0 fires at V-Blank-OUT and T0C>263 never fires (No.30). Timer 1: loaded from the 9-bit T1S at H-Blank-IN when stopped, counts down at 7.16 MHz (clock/8), T1MD=1 restricts the interrupt to the Timer 0 line, T1S=0 means 512 (No.31); TENB gates both timers.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| SCU-P1-01 | Interrupt mask reset on vector fetch | ST-097 gives only the IMS initial value 0000BFFFh (Figure 3.21); nothing in ST-097 or ST-210 says the mask is reset when an interrupt is acknowledged | `irq_ack_cb` sets `m_ism = 0xbfff` at every vector fetch; the code comment attributes this to ST-097 figure 3.21, but the behaviour comes from the Mednafen `SCU_MSH2VectorFetch` and Ymir `AcknowledgeExternalInterrupt` implementations (both set the mask to BFFFh). It is reference-emulator behaviour, not a manual rule, and the comment should say so |
+| SCU-P1-02 | IST bit cleared at delivery | Table 3.8: IST bit 1 = interrupt occurs, writing 0 resets, writing 1 keeps; the manual does not say the bit clears when the CPU takes the interrupt | `test_pending_irqs` clears the IST bit as soon as it asserts the SH-2 line (`m_ist &= ~(1 << internal)`), so software cannot read a taken interrupt as pending; not established by the manual |
+| SCU-P1-03 | Timer 0 counter width | 3.4: T0C is 10 bits; the counter counts H-Blank-IN from V-Blank-OUT | the counter is masked to 9 bits (`& 0x1ff`); with <= 525/562 lines per frame and the counter cleared each V-Blank-OUT this only matters for compare values 512-1023, which never fire in either case (ST-210 No.30) |
+| SCU-P1-04 | Write-only registers readable | Figure 3.1-3.4: DxR/DxW/DxC listed R/W in ST-097 but ST-210 No.15 says DxC is write-only and reads are not guaranteed; D0AD/D0EN/D0MD are write-only | DxR, DxW and DxC are readable in `dma_map`; the other registers read as 0 (`nopr`) |
+| SCU-P1-05 | DSTA reads | ST-210 No.13: the DMA status register function was deleted (only the bits left in the 2nd version manual remain valid) | DSTA is readable at 25FE007Ch and also mirrored at 25FE005Ch ("undocumented ... mirror?" in the code) for stv smleague/shinmtaz |
+| SCU-P1-06 | DSTP | ST-210 No.14: the force-stop register function was deleted, writes prohibited | `dma_force_stop_w` implements the ST-097 behaviour (idle all levels, keep registers) |
+| SCU-P1-07 | Writing DMA registers while running | ST-097 3.2 and ST-210 No.23: prohibited (the SCU hangs) | not modelled; writes are accepted |
+| SCU-P1-08 | Level 2 started during level 1 | ST-210 No.35: malfunction possible | not modelled |
+| SCU-P1-09 | Address add restrictions | ST-210 No.16-19: read add must be 1 (4 bytes) except in the A-Bus CS2 space; write add restrictions per bus; RUP/WUP require the matching add value | not enforced; illegal combinations are accepted and run |
+| SCU-P1-10 | DMA illegal interrupt in indirect mode | ST-210 No.24: does not occur during an indirect transfer | the illegal check runs at `trigger_dma_direct` only, so indirect setups never raise it (consistent) |
+| SCU-P1-11 | A-Bus timing registers | 3.6: ASR0/ASR1 fields (pre-charge, external wait, burst wait/length, bus size, normal wait) and AREF | only A0NW/A1NW/A3NW normal-wait counts are used (as `n + 3`) for DMA penalties; burst, precharge, bus size and refresh are stored but unused; A-Bus and B-Bus wait states remain a listed TODO in the file header |
+| SCU-P1-12 | RSEL effect | ST-210 No.34: selects the SDRAM size (2 Mbit x 2 or 4 Mbit x 2) | stored only; work RAM-H is always 1 MiB |
+| SCU-P1-13 | SCU version register | 3.7: version register | returns 4 "correct for stock Saturn at least" (comment); not verifiable against ST-097 from the extraction |
+| SCU-P1-14 | External interrupt sources | 1.3/3.6: A-Bus interrupts and the PAD interrupt (bit 8) | only the CD block raises an external interrupt; PAD interrupt from SMPC lightgun/mouse is a TODO in the header; SMPC interrupt is wired to the system-manager bit (7) |
+| SCU-P1-15 | DMA speed | 2.1: DMA moves one longword per SCU clock; ST-097 timing tables not applied | one 16-bit unit per tick with a 1-cycle steal cost (`dma_hog_bus`), the code comment says the clock choice disagrees with the manual ("FIXME: should be /4"); accuracy limit |
