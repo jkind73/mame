@@ -355,3 +355,25 @@ Matches the manual:
 | V2-P1-23 | 2x2 pages with 1/4 reduction | 4.7/4.8: do not set 2x2 pages when NBG0/NBG1 reduce to 1/4; the map becomes "normal" size | not enforced or specially handled (`map_count == 4` for NBG0/1); the manual text about the reduced map (Figure 4.16) is ambiguous |
 | V2-P1-24 | RBG1 plane size source | 4.5: NBG0 registers apply to RBG1 for colour/character control | `current_tilemap.plane_size = R1ON ? RBPLSZ : N0PLSZ` uses rotation parameter B's plane size for RBG1; whether ST-058 chapter 6 assigns RBG1's plane and map to parameter B is checked in the rotation section |
 | V2-P1-25 | Comment "guessed" registers | n/a | the macro comments still say "*guessed*" for bitmap sizes (stale) |
+
+### 6.6 Normal scroll screens: scroll, zoom, reduction, line and vertical cell scroll (ST-058 chapter 5)
+
+Compared: SCXIN0-SCYN3 (180070h-180096h), ZMXIN0-ZMYDN1 (180078h-18008Eh), ZMCTL (180098h), SCRCTL (18009Ah), LSTA0/1
+(1800A0h-1800A6h), VCSTA (18009Ch-18009Eh), and the scanline renderer in `vdp2_draw_scroll_screen`.
+
+Matches the manual:
+- NBG0/NBG1 scroll values are 11-bit integer + 8-bit fraction (fraction in bits 15-8 of the second word); NBG2/NBG3 are 11-bit integers. Coordinate increments have a 3-bit integer part and 8-bit fraction (`0x7ff00` mask); NBG2/NBG3 increments are fixed at 1.0 (0x10000).
+- Display coordinate = increment x counter + scroll value, fraction kept through the calculation and discarded for the final coordinate (p.126, `int64` 16.16 accumulation).
+- ZMCTL bits: N0ZMHF bit 0, N0ZMQT bit 1, N1ZMHF bit 8, N1ZMQT bit 9. Table 5.2 exclusions are enforced (§6.4 V2-P1-19).
+- SCRCTL: N0VCSC bit 0, N0LSCX bit 1, N0LSCY bit 2, N0LZMX bit 3, N0LSS bits 5-4; NBG1 fields at bits 8-13.
+- Line scroll tables: entries hold horizontal scroll (11.8, signed relative), vertical scroll (11.8) and horizontal increment (3.8), in that order, only for the enabled fields (`stride`); one table entry per interval of 1/2/4/8 lines, the vertical scroll for lines inside an interval advancing by the vertical increment (p.131).
+- Line and vertical cell scroll table addresses: register value x 4 (`(U<<16|L) * 2` bytes in the code's bit layout, which places LSTA1 at bit 1); the MSB is ignored for 4 Mbit VRAM.
+- Vertical cell scroll table entries: 32-bit (11.8) per cell; when both NBG0 and NBG1 use it, entries alternate NBG0/NBG1 (`cell_stride = 2`); vertical cell scroll is ignored when mosaic is on.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-26 | Line scroll interval in interlace | 5.3 SCRCTL table: the interval in lines depends on the interlace mode (non-interlace 1/2/4/8, single-density and double-density differ) | the code uses `1 << LSS` bitmap rows for every mode; comments state a single-density field repeats the picture. The garbled table in the text extraction was not fully reconstructed, so equivalence with the manual is not established for single- and double-density interlace |
+| V2-P1-27 | Coordinate increment above the reduction range | 5.2 Table 5.1: increments above 1, 2, 4 are prohibited for none/half/quarter reduction | no clamp: a larger increment is applied as written |
+| V2-P1-28 | Negative scroll values | 5.1: scroll values must be positive; the display area repeats | scroll and line-scroll tables are decoded as signed when relative (line scroll data is relative and sign-extended); register scroll values are used as 11-bit positive numbers |
+| V2-P1-29 | Reduction of a bitmap layer and cell-scroll granularity | 5.3: vertical cell scroll operates in 8-dot columns also in bitmap format | cell boundaries are counted in source-cell columns (`>> 19`), matching the manual's 8-dot cells |
+| V2-P1-30 | RBG1 plane size (resolves V2-P1-24) | ST-058 chapter 6 intro and Table 6.1: RBG1 always uses rotation parameter B | `plane_size = R1ON ? RBPLSZ : N0PLSZ` is consistent with the manual |
