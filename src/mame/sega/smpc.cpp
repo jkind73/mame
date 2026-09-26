@@ -446,11 +446,15 @@ void smpc_hle_device::command_register_w(uint8_t data) {
 
     timing = 8;
 
+    // SMPC User's Manual p.17: SMPC status acquisition ends approximately
+    // 300 us after the INTBACK command is issued, when the status is placed
+    // in OREG and the SMPC interrupt is requested
     if (m_ireg[0] != 0) // non-peripheral data
-      timing += 8;
-
+      timing = 300;
     // TODO: OPE scheduling and per-device wire timing (ST-169 pp.55-57).
-    if (m_ireg[1] & 8) // peripheral data
+    // Peripheral-only collection; with a status report the peripheral phase
+    // starts at the continue request and does not delay the status interrupt.
+    else if (m_ireg[1] & 8)
       timing += 700;
 
     // TODO: check against ireg2, must be 0xf0
