@@ -6,7 +6,7 @@ compared with the current source. Earlier audit notes in this repository (`satur
 are NOT used as evidence. Every finding cites the document page or section and the code location. Runtime observations from
 the disc/ST-V sweep are recorded separately and only as symptoms. No code is changed in Phase 1.
 
-Status per subsystem: SMPC and memory map (done below); SH-2 dual-CPU, SCU, SH-2 chip, VDP1, VDP2, SCSP, CD block, ST-V I/O (pending).
+Status per subsystem: SMPC, memory map, SH-2 dual-CPU/exceptions/cache (done below, chapters listed per section); SCU, remaining SH7604 modules, VDP1, VDP2, SCSP, CD block, ST-V I/O (pending).
 
 ## 1. SMPC (`src/mame/sega/smpc.cpp`, `smpc.h`, client glue `saturn.cpp`/`sat_console.cpp`)
 
@@ -72,3 +72,30 @@ associative purge space 40000000-47FFFFFF (writes ignored).
 | MM-P1-05 | MINIT/SINIT regions are 4 bytes | memory map | decoded as 8 MB windows starting at 01000000/01800000; decoding beyond 4 bytes is not specified by the document |
 | MM-P1-06 | Undocumented mappings exist: 00400000 (reads FFFFh, "unknown device"), 05FC0000-05FDFFFF (reads 000E0000h constant), 04FFFFFF (cartridge ID byte) | none of the documents lists them | present in code; 04FFFFFF is documented by the cartridge notes, the other two have no document |
 | MM-P1-07 | Mirror extents of work RAM-L (mirrored at 00300000), work RAM-H, SCSP register window, VDP2 register window | memory map gives the primary extents only | code mirrors them; the documents do not state mirror behaviour, so this cannot be judged from documentation |
+
+## 3. SH-2 master/slave: dual-CPU operation, exceptions, cache (`sh.cpp`, `sh2.cpp`, `sh7604.cpp`, `saturn_dcc.cpp`, `sat_console.cpp`)
+
+Documents: Dual CPU User's Guide ST-202-R1 (all of it), SH7604 Hardware Manual chapters 4 (exceptions, address errors 4.3,
+illegal slot 4.5) and 8 (cache, Table 8.2, 8.4.7-8.4.9), SH-1/SH-2 Programming Manual (Delay_Slot, exception notes).
+Not yet compared in this pass: SH7604 INTC, UBC, BSC register behaviour, DMAC, DIVU, FRT/WDT/SCI details, SBY, instruction
+timing tables.
+
+### 3.1 Confirmed consistent
+
+| Item | Document | Code |
+|---|---|---|
+| A 16-bit write to 21000000h raises FRT input capture on the slave; a 16-bit write to 21800000h raises it on the master; data ignored | ST-202 1.2, 5.1, 6.1 | `saturn_dcc_device::minit_w/sinit_w` (16-bit masks only), cache-through aliases mapped |
+| The clock change command puts the slave in reset; it must be restarted with SSHON | ST-202 3.0 | SMPC CKCHG path asserts `m_sshres` |
+| Slave is held in reset until SSHON; both CPUs execute the same shared address space | ST-202 1.1, 4.3 | slave `INPUT_LINE_RESET` driven by `slave_sh2_reset_w`, one `saturn_mem` for both CPUs |
+| Illegal slot instruction (BF, BT, BRA, BSR, JMP, JSR, RTS, RTE, TRAPA, BF/S, BT/S, BRAF, BSRF in a delay slot) and general illegal instruction exceptions with the stacked values of Table 4.11 | SH7604 4.5.3/4.5.4, SH-1/SH-2 PM | implemented in interpreter and DRC (commits 73816db, 296a657) |
+
+### 3.2 Discrepancies and gaps
+
+| ID | Finding | Document | Code |
+|---|---|---|---|
+| SH-P1-01 | Each SH-2 has its own on-chip cache data array. In two-way mode (CCR.TW=1) ways 0 and 1 are 2 KB of RAM addressed at C0000000h; "programs placed in internal RAM are not shared" between the CPUs | SH7604 8.2 (CCR bit 3), Table 8.2, ST-202 4.1 | `saturn_mem` maps C0000000-C0000FFF as ordinary RAM in the one address map used by both CPUs, so master and slave see the same 4 KB and overwrite each other |
+| SH-P1-02 | The cache has no bus snoop; a CPU reading data written by the other CPU or by DMA sees stale data unless it reads through 20000000h or purges (40000000h) | ST-202 7.0-7.2, SH7604 8.4.7 | CCR is stored only (`ccr_w`); there is no cache array, purge or replacement, so every access is coherent |
+| SH-P1-03 | Address errors (vector 9) are raised for: odd-address instruction fetch; instruction fetch from on-chip peripheral space; odd-address word access; longword access not on a longword boundary; PC-relative access to purge/address-array/on-chip space; TAS.B to purge, address array, data array or on-chip space; byte access to FFFFFF00-FFFFFFFF; longword access to FFFFFE00-FFFFFEFF | SH7604 4.3.1 Table 4.6, 4.3.2 | the CPU cores never raise it (only the DMAC sets DMAOR.AE, `dmac_address_error`); misaligned accesses complete |
+| SH-P1-04 | When the two CPUs compete for an external access one waits, so execution slows; cycle cost of an access depends on the bus state controller settings | ST-202 1.1, SH7604 chapter 7 | instruction cost is a fixed table value (`icount` per instruction); no per-access wait states and no arbitration between the CPUs. Relative CPU timing is therefore approximate; a documented example of software sensitive to it is the master/slave queue protocol seen in Pulirula |
+| SH-P1-05 | The two documents disagree on the associative-purge access: ST-202 7.2 says a 16-bit write of 0; SH7604 8.4.7 says access should be a longword | ST-202, SH7604 | writes to 40000000-47FFFFFF are ignored (`nopw`), so neither is emulated; consequence follows from SH-P1-02 |
+| SH-P1-06 | Address array (60000000-7FFFFFFF) and data array (C0000000-C0000FFF) are read/write spaces | SH7604 Table 8.2 | address array: write-only 1 KB window; data array: RAM (see SH-P1-01) |
