@@ -602,3 +602,77 @@ Matches ST-38:
 | CD-P1-12 | Read error and retry states | 4.1 Table 4.1: RETRY, ERROR, FATAL; 4.1(5) error routine "not yet documented" | never entered (no read errors are modelled) |
 | CD-P1-13 | Subcode | 8.2.3: Get Subcode Q (10 bytes minus CRC) and R-W | `cmd_get_subcode_q_rw_channel` exists; R-W content is not produced from the image (checked only by reading the function head) |
 | CD-P1-14 | File system functions | 8.2.8: ChgDir, ReadDir (254 files), GetFileScope, GetFileInfo (fid = CDC_NUL_FID for all), GetOneFileInfo, ReadFile | present; the argument encodings and error conditions are not in ST-38, so behaviour rests on the firmware notes (see the `m_file_info_invalidated` and beyond-directory comments in `cmd_read_directory`) |
+
+## 9. Remaining SH7604 modules (SH7604 hardware manual ADE-602-085C against `sh7604*.cpp`)
+
+Chapters 5-14 of the manual. The SH-2 core, exceptions, dual-CPU signalling and cache are in section 3. This section covers the
+on-chip modules not covered there: DIVU (chapter 10), FRT (11), DMAC (9), BSC (7), UBC (6), INTC (5), WDT (12) and SCI (13). The
+SH7604 files cite manual sections and pages throughout; each item says how far the check went. Numbers are SH-P1-nn.
+
+### 9.1 DIVU (chapter 10)
+
+Matches the manual: registers at FFFFFF00h (DVSR), 04h (DVDNT), 08h (DVCR), 0Ch (VCRDIV), 10h (DVDNTH), 14h (DVDNTL); DVCR bit 1
+OVFIE and bit 0 OVF, both read/write, reserved bits read 0; VCRDIV bits 6-0 form the vector; writing DVDNT starts a 32/32 signed
+division and sign-extends into DVDNTH, writing DVDNTL starts the 64/32 division; remainder in DVDNTH, quotient in DVDNTL (DVDNT); a
+zero divisor or a quotient outside signed 32 bits sets OVF; with OVFIE=0 the quotient saturates to 7FFFFFFFh (positive overflow) or
+80000000h (negative overflow) while DVDNTH holds the result of the 3+3 steps of the six-cycle overflow (Table 10.2); with OVFIE=1 the
+partial result stays in the registers and the interrupt is raised; OVF is not cleared by the unit.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| SH-P1-01 | DIVU timing | 10.1: 39 cycles (6 on overflow); 10.4.1: register reads and writes are extended until the operation finishes, the first read after a write is extended by one cycle, a write immediately after a start write may be lost | results are instant; the busy stall and the one-cycle read extension are not modelled (the file comment says the DRC does not expose the cycle time to peripherals) |
+| SH-P1-02 | 64/32 quotient of exactly +2^31 | 10.3.3: overflow when the result exceeds signed 32 bits | `dvdntl_w` treats a quotient of 0x80000000 as overflow but writes 7FFFFFFF to both DVDNTL and DVDNTH instead of running the six-cycle path; the code comment says hardware evidence is missing |
+| SH-P1-03 | Word accesses | 10.4.1: word accesses to registers other than DVCR/VCRDIV read or write undefined values | not modelled; 16-bit handling exists only for DVCR and VCRDIV |
+| SH-P1-04 | Shadow registers | Table 10.1 lists only DVDNTH (10h) and DVDNTL (14h) | 18h/1Ch shadows (`dvdnth2`/`dvdntl2`) come from Mednafen and MiSTer, not from the manual |
+| SH-P1-05 | DIVU interrupt level and vector | 5.3: DIVU priority is IPRA bits 15-12, vector from VCRDIV | `m_irq_vector.divu` is loaded from VCRDIV; a comment in `vcrdiv_w` says the level is "seemingly not documented/settable"; the IPRA field decode was not re-traced |
+
+### 9.2 FRT (chapter 11)
+
+Matches the manual (checked against the table and figure references in the source): registers FFFFFE10h-19h (TIER, FTCSR, FRC, OCRA/B,
+TCR, TOCR, ICR); TIER bits 7, 3, 2, 1 with bit 0 reading 1; FTCSR flags ICF/OCFA/OCFB/OVF are read-one/write-zero and clear only after a
+read that saw them set, CCLRA is plain read/write; TOCR OCRS selects the OCR window, OLVLA/OLVLB select the output level at compare (no
+toggle); word registers use the single TEMP latch; prescalers /8, /32, /128 keep their phase across FRC reads; the external clock counts
+FTCI rising edges; compare uses the count before its update (Figure 11.11); MSTP1 (SBYCR bit 1) resets the FRT and stops counting;
+input capture from FTI is the path used by MINIT/SINIT in section 3.
+
+SH-P1-06: FRC timing is derived from the CPU cycle counter (`total_cycles()`), so wait states (SH-P1-10) and DMA bus stalls are not
+reflected in the counter. Accuracy limit.
+
+### 9.3 DMAC (chapter 9)
+
+Matches the manual: SAR/DAR/TCR/CHCR at FFFFFF80h-9Ch, VCRDMA0/1 at FFFFFFA0h/A8h, DMAOR at FFFFFFB0h, DRCR0/1 at FFFFFE71h/72h; sizes
+byte/word/longword/16-byte with the 16-byte block reading four longwords before writing (Figures 9.43/9.52); SM/DM increment and
+decrement; TCR of 0 meaning 2^24; auto-request, DREQ (edge/level per DS/DL) and SCI RXI/TXI requests (Table 9.3); single-address mode;
+DACK level (AL); round-robin or fixed priority (DMAOR PR); address error rules of Table 4.6 (DMAOR AE set, transfers stopped until it is
+cleared); TE and interrupt at completion; MSTP4 halts the DMAC.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| SH-P1-07 | DMAC bus timing | 9.3: cycle-steal and burst transfers take bus cycles from the BSC state | each unit is a fixed two-cycle service (`adjust(cycles_to_attotime(2))`); burst mode suspends the CPU wholesale (`SUSPEND_REASON_DMAC`); bus cycle counts and CPU/DMAC interleave are not modelled |
+| SH-P1-08 | NMIF | 9.2.7: NMIF is set by an NMI and blocks DMA until cleared | only the AE path was read in `dmac_address_error`/`sh2_dmac_check` (`(m_dmaor & 0x07) == 0x01` covers NMIF/AE); the NMI setting of NMIF was not traced |
+| SH-P1-09 | SCU DMA and SH-2 DMAC | Saturn wiring | the SCU DMA and DSP DMA (section 7) do not arbitrate against the SH-2 DMAC, so the two models cannot interfere with each other |
+
+### 9.4 BSC and refresh (chapter 7)
+
+Matches the manual: BCR1/BCR2/WCR/MCR accept writes only as a 32-bit access with A55Ah in the upper half (Table 7.2); reads return the
+readable bits with reserved bits zero; the slave flag reads in BCR1 bit 15; the synchronous-DRAM mode-register window at
+FFFF8000h-FFFFBFFFh accepts writes with no side effect; RTCSR/RTCNT/RTCOR form the refresh timer (CKS divisors 4 to 4096, CMF,
+compare-clear, RTCOR of 0 meaning 256).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| SH-P1-10 | Bus wait states | 7.x: BCR1/BCR2/WCR/MCR set area sizes, wait states, SDRAM CAS latency and refresh | the values are stored but never charge memory cycles; refresh has no bus cost. This is the missing model behind the master/slave queue race seen in the Pulirula runtime survey |
+| SH-P1-11 | Refresh compare-match interrupt | 7.2.5: CMIE and CMF raise an interrupt | `rtcsr_w` handles CMF/CMIE; delivery of the interrupt was not traced |
+
+### 9.5 UBC (chapter 6)
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| SH-P1-12 | User break controller | 6.x: BARA/BAMRA/BBRA, BARB/BAMRB/BBRB, BDRB/BDMRB and BRCR; a matching bus cycle raises the user break exception | only BARA (FFFFFF40h/42h) and BARB (FFFFFF60h/62h) are stored (`barah_w` etc.; the comment says "bare-bones"); BAMR, BBR, BDR, BDMR and BRCR are commented out in `sh7604_map`; no break is ever generated |
+
+### 9.6 INTC (chapter 5), WDT (12), SCI (13)
+
+- INTC: IPRA, IPRB, VCRA-VCRD, VCRWDT, VCRDMA and VCRDIV are mapped. ICR reads NMIL from the pin level for either edge selection and ICR.NMIE selects the NMI edge (`intc_icr_r/w`, section 5.3.8), so an older note that NMIE/NMIL were unimplemented no longer applies to this tree. The priority resolution (5.4) was exercised by the sweeps but not re-derived line by line.
+- WDT: WTCSR/WTCNT/RSTCSR use the write-key protocol; watchdog and interval-timer modes and the reset output are implemented (`sh7604_wdt.cpp`, `wdtovf_callback`); the counter is advanced lazily from CPU cycles, with the same accuracy limit as the FRT.
+- SCI: SMR/BRR/SCR/TDR/SSR/RDR at FFFFFE00h-05h, the bit-rate generator, TXI/RXI/ERI/TEI with ERI > RXI > TXI > TEI priority and the VCRA/VCRB vectors are implemented in `sh7604_sci.cpp` with page references; the Saturn does not connect the SCI to a device, so software rarely exercises it. The file header lists SCI DMA request/acknowledge routing and whole-chip standby as TODO.
+- Standby: SBYCR bit 6 and standby entry/exit (chapter 14) are not modelled beyond the module stops MSTP0, MSTP1 and MSTP4.
