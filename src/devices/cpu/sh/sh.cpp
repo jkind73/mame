@@ -2487,20 +2487,18 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 	}
 
 
-	if (desc->invalid_opcode())
+	// Undefined code is not a host error: it takes the general illegal
+	// instruction exception, or the illegal slot instruction exception when it
+	// sits in a delay slot (SH7604 manual sections 4.5.3 and 4.5.4).
+	if (desc->invalid_opcode() || !desc->virtual_noop())
 	{
-		// if this is an invalid opcode, die
-		fatalerror("SH2DRC: invalid opcode!\n");
-	}
-	else if (!desc->virtual_noop())
-	{
-		// otherwise, unless this is a virtual no-op, it's a regular instruction
+		// unless this is a virtual no-op, it's a regular instruction
 		// compile the instruction
-		if (desc->in_delay_slot() && slot_illegal_applies() && is_slot_illegal_opcode(desc->opptr))
+		if (desc->in_delay_slot() && slot_illegal_applies() && (desc->invalid_opcode() || is_slot_illegal_opcode(desc->opptr)))
 		{
 			generate_slot_illegal(block, compiler, desc, ovrpc);
 		}
-		else if (!generate_opcode(block, compiler, desc, ovrpc))
+		else if (desc->invalid_opcode() || !generate_opcode(block, compiler, desc, ovrpc))
 		{
 			// take the illegal instruction exception immediately
 			UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);                            // mov     [pc],desc->pc
