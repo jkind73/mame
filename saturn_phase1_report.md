@@ -607,7 +607,7 @@ Matches ST-38:
 
 Chapters 5-14 of the manual. The SH-2 core, exceptions, dual-CPU signalling and cache are in section 3. This section covers the
 on-chip modules not covered there: DIVU (chapter 10), FRT (11), DMAC (9), BSC (7), UBC (6), INTC (5), WDT (12) and SCI (13). The
-SH7604 files cite manual sections and pages throughout; each item says how far the check went. Numbers are SH-P1-nn.
+SH7604 files cite manual sections and pages throughout; each item says how far the check went. Numbers are SHM-P1-nn (SH7604 modules).
 
 ### 9.1 DIVU (chapter 10)
 
@@ -620,11 +620,11 @@ partial result stays in the registers and the interrupt is raised; OVF is not cl
 
 | ID | Finding | Manual | Code |
 |---|---|---|---|
-| SH-P1-01 | DIVU timing | 10.1: 39 cycles (6 on overflow); 10.4.1: register reads and writes are extended until the operation finishes, the first read after a write is extended by one cycle, a write immediately after a start write may be lost | results are instant; the busy stall and the one-cycle read extension are not modelled (the file comment says the DRC does not expose the cycle time to peripherals) |
-| SH-P1-02 | 64/32 quotient of exactly +2^31 | 10.3.3: overflow when the result exceeds signed 32 bits | `dvdntl_w` treats a quotient of 0x80000000 as overflow but writes 7FFFFFFF to both DVDNTL and DVDNTH instead of running the six-cycle path; the code comment says hardware evidence is missing |
-| SH-P1-03 | Word accesses | 10.4.1: word accesses to registers other than DVCR/VCRDIV read or write undefined values | not modelled; 16-bit handling exists only for DVCR and VCRDIV |
-| SH-P1-04 | Shadow registers | Table 10.1 lists only DVDNTH (10h) and DVDNTL (14h) | 18h/1Ch shadows (`dvdnth2`/`dvdntl2`) come from Mednafen and MiSTer, not from the manual |
-| SH-P1-05 | DIVU interrupt level and vector | 5.3: DIVU priority is IPRA bits 15-12, vector from VCRDIV | `m_irq_vector.divu` is loaded from VCRDIV; a comment in `vcrdiv_w` says the level is "seemingly not documented/settable"; the IPRA field decode was not re-traced |
+| SHM-P1-01 | DIVU timing | 10.1: 39 cycles (6 on overflow); 10.4.1: register reads and writes are extended until the operation finishes, the first read after a write is extended by one cycle, a write immediately after a start write may be lost | results are instant; the busy stall and the one-cycle read extension are not modelled (the file comment says the DRC does not expose the cycle time to peripherals) |
+| SHM-P1-02 | 64/32 quotient of exactly +2^31 | 10.3.3: overflow when the result exceeds signed 32 bits | `dvdntl_w` treats a quotient of 0x80000000 as overflow but writes 7FFFFFFF to both DVDNTL and DVDNTH instead of running the six-cycle path; the code comment says hardware evidence is missing |
+| SHM-P1-03 | Word accesses | 10.4.1: word accesses to registers other than DVCR/VCRDIV read or write undefined values | not modelled; 16-bit handling exists only for DVCR and VCRDIV |
+| SHM-P1-04 | Shadow registers | Table 10.1 lists only DVDNTH (10h) and DVDNTL (14h) | 18h/1Ch shadows (`dvdnth2`/`dvdntl2`) come from Mednafen and MiSTer, not from the manual |
+| SHM-P1-05 | DIVU interrupt level and vector | 5.3: DIVU priority is IPRA bits 15-12, vector from VCRDIV | `m_irq_vector.divu` is loaded from VCRDIV; a comment in `vcrdiv_w` says the level is "seemingly not documented/settable"; the IPRA field decode was not re-traced |
 
 ### 9.2 FRT (chapter 11)
 
@@ -635,7 +635,7 @@ toggle); word registers use the single TEMP latch; prescalers /8, /32, /128 keep
 FTCI rising edges; compare uses the count before its update (Figure 11.11); MSTP1 (SBYCR bit 1) resets the FRT and stops counting;
 input capture from FTI is the path used by MINIT/SINIT in section 3.
 
-SH-P1-06: FRC timing is derived from the CPU cycle counter (`total_cycles()`), so wait states (SH-P1-10) and DMA bus stalls are not
+SHM-P1-06: FRC timing is derived from the CPU cycle counter (`total_cycles()`), so wait states (SHM-P1-10) and DMA bus stalls are not
 reflected in the counter. Accuracy limit.
 
 ### 9.3 DMAC (chapter 9)
@@ -648,9 +648,9 @@ cleared); TE and interrupt at completion; MSTP4 halts the DMAC.
 
 | ID | Finding | Manual | Code |
 |---|---|---|---|
-| SH-P1-07 | DMAC bus timing | 9.3: cycle-steal and burst transfers take bus cycles from the BSC state | each unit is a fixed two-cycle service (`adjust(cycles_to_attotime(2))`); burst mode suspends the CPU wholesale (`SUSPEND_REASON_DMAC`); bus cycle counts and CPU/DMAC interleave are not modelled |
-| SH-P1-08 | NMIF | 9.2.7: NMIF is set by an NMI and blocks DMA until cleared | only the AE path was read in `dmac_address_error`/`sh2_dmac_check` (`(m_dmaor & 0x07) == 0x01` covers NMIF/AE); the NMI setting of NMIF was not traced |
-| SH-P1-09 | SCU DMA and SH-2 DMAC | Saturn wiring | the SCU DMA and DSP DMA (section 7) do not arbitrate against the SH-2 DMAC, so the two models cannot interfere with each other |
+| SHM-P1-07 | DMAC bus timing | 9.3: cycle-steal and burst transfers take bus cycles from the BSC state | each unit is a fixed two-cycle service (`adjust(cycles_to_attotime(2))`); burst mode suspends the CPU wholesale (`SUSPEND_REASON_DMAC`); bus cycle counts and CPU/DMAC interleave are not modelled |
+| SHM-P1-08 | NMIF | 9.2.7: NMIF is set by an NMI and blocks DMA until cleared | only the AE path was read in `dmac_address_error`/`sh2_dmac_check` (`(m_dmaor & 0x07) == 0x01` covers NMIF/AE); the NMI setting of NMIF was not traced |
+| SHM-P1-09 | SCU DMA and SH-2 DMAC | Saturn wiring | the SCU DMA and DSP DMA (section 7) do not arbitrate against the SH-2 DMAC, so the two models cannot interfere with each other |
 
 ### 9.4 BSC and refresh (chapter 7)
 
@@ -661,14 +661,14 @@ compare-clear, RTCOR of 0 meaning 256).
 
 | ID | Finding | Manual | Code |
 |---|---|---|---|
-| SH-P1-10 | Bus wait states | 7.x: BCR1/BCR2/WCR/MCR set area sizes, wait states, SDRAM CAS latency and refresh | the values are stored but never charge memory cycles; refresh has no bus cost. This is the missing model behind the master/slave queue race seen in the Pulirula runtime survey |
-| SH-P1-11 | Refresh compare-match interrupt | 7.2.5: CMIE and CMF raise an interrupt | `rtcsr_w` handles CMF/CMIE; delivery of the interrupt was not traced |
+| SHM-P1-10 | Bus wait states | 7.x: BCR1/BCR2/WCR/MCR set area sizes, wait states, SDRAM CAS latency and refresh | the values are stored but never charge memory cycles; refresh has no bus cost. This is the missing model behind the master/slave queue race seen in the Pulirula runtime survey |
+| SHM-P1-11 | Refresh compare-match interrupt | 7.2.5: CMIE and CMF raise an interrupt | `rtcsr_w` handles CMF/CMIE; delivery of the interrupt was not traced |
 
 ### 9.5 UBC (chapter 6)
 
 | ID | Finding | Manual | Code |
 |---|---|---|---|
-| SH-P1-12 | User break controller | 6.x: BARA/BAMRA/BBRA, BARB/BAMRB/BBRB, BDRB/BDMRB and BRCR; a matching bus cycle raises the user break exception | only BARA (FFFFFF40h/42h) and BARB (FFFFFF60h/62h) are stored (`barah_w` etc.; the comment says "bare-bones"); BAMR, BBR, BDR, BDMR and BRCR are commented out in `sh7604_map`; no break is ever generated |
+| SHM-P1-12 | User break controller | 6.x: BARA/BAMRA/BBRA, BARB/BAMRB/BBRB, BDRB/BDMRB and BRCR; a matching bus cycle raises the user break exception | only BARA (FFFFFF40h/42h) and BARB (FFFFFF60h/62h) are stored (`barah_w` etc.; the comment says "bare-bones"); BAMR, BBR, BDR, BDMR and BRCR are commented out in `sh7604_map`; no break is ever generated |
 
 ### 9.6 INTC (chapter 5), WDT (12), SCI (13)
 
@@ -702,3 +702,40 @@ Matches the manual:
 | SC-P1-08 | DSP micro-program semantics | chapter 5 of ST-077 lists only the DSP RAMs (EXTS, MIXS 20 bits, MEMS 24 bits, TEMP 128 words of 24 bits, COEF 13 bits, MADRS 16 bits, MPRO 64 bits, EFREG 16 bits) and Figure 5.1; there is no instruction encoding or timing | `scspdsp.cpp` implements the instruction set from other sources (ring addressing, ADREB, shifters); its behaviour cannot be compared with ST-077 |
 | SC-P1-09 | MIDI transmission | 4.x: 31.25 kbps serial interface; "a MIDI peripheral circuit and MIDI DIN connector are not included" | bytes are sent on a bit clock through `m_midi_out_cb`; no receiver is attached; behaviour matches the register-level contract |
 | SC-P1-10 | Not compared in this pass | slot status registers (MSLC/CA/SGC/EG readback, p.35), MEM4MB sound memory size bit and its effect on the address map, DAC 18-bit output bit, MONO bit | the readback (`m_latched_MSLC_data`) and the register exist; effects of MEM4MB and DAC18B on the output path were not traced |
+
+## 11. Peripherals (SMPC manual 3.2-3.3) and ST-V I/O
+
+### 11.1 Control-port devices (`src/devices/bus/sat_ctrl/`, `smpc.cpp` `read_saturn_ports`)
+
+Compared: the port status byte (Figure 3.14, Tables 3.5-3.7), the SATURN peripheral ID (Figures 3.15-3.20), the four standard formats
+(Tables 3.10-3.13), and the Mega Drive pad, mouse and multitap formats for SMPC control mode (Tables 3.14-3.17) with the device IDs and
+data bytes produced by the emulated controllers.
+
+Matches the manual:
+- Port status: low nibble 1 for a directly connected device, the tap count for a multitap, 0 for none or an unrecognised device; high nibble 0Fh for direct/none, the multitap ID (SEGA Tap 0, 6P multitap 1) for taps, or the Mega Drive peripheral ID for an unknown device. The unrecognised light gun reports `A0h` (MD PID A, zero connectors) so INTBACK collects nothing from it. An unconnected port reports `F0h`, an unconnected tap slot `FFh`.
+- Peripheral ID = type in the high nibble, size in the low nibble; a device of 16 to 255 bytes reports size 0 followed by a separate length byte (Figures 3.17/3.18), truncated to 15 bytes in 15-byte mode; unknown taps (F0h-FEh) carry no payload (`read_saturn_ports`). Port mode 3 (0 bytes) is not queried.
+- Digital pad (ID 02h): first byte Right, Left, Down, Up, Start, A, C, B and second byte R, X, Y, Z, L with the low three bits high, all active low (Table 3.10); analog devices (type 1) use IDs 13h/15h/16h (wheel 3 bytes, mission stick 5 bytes, 3D pad in analog mode 6 bytes with the digital identity 02h otherwise); keyboard 34h (type 3, 4 bytes); trackball/pointer 23h (type 2, 3 bytes); Mega Drive 3-button pad E1h and 6-button pad E2h; Mega Drive mouse E3h.
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| PER-P1-01 | Mouse motion encoding | Table 3.12/3.16: XD/YD are the absolute value of the movement with separate sign and overflow bits | `saturn_mouse_device::read_ctrl` returns the low byte of the signed movement (two's complement) together with the sign and overflow bits; a negative movement of -5 reports 0xFB with X sign set rather than 0x05. The manual text and the code differ; the code matches how the reference emulators and the hardware are usually described, but that is not established by this document |
+| PER-P1-02 | Analog device data size | Table 3.11: analog device standard size is 5 bytes (buttons, AX, AY, AZ) | the 3D pad reports ID 16h (six data bytes: two button bytes, X, Y, R trigger, L trigger) and a wheel 13h (three); extra and missing bytes are allowed by the "expansion of standard formats" paragraph, so this is compatible, but the standard analog mapping of R/L triggers to a fourth analog axis is not in the manual |
+| PER-P1-03 | Keyboard data | Table 3.13: second data byte carries the extension digital bits, third byte lock LEDs and Make/Break flags, fourth byte the key number D7-D0 | implemented in `keybd.cpp`; the make/break sequencing and repeat behaviour are not specified by the SMPC manual |
+| PER-P1-04 | Peripheral polling time | 3.1: the collection time per peripheral is device dependent | fixed 700 us per INTBACK (see §1, SMPC-04); not derived from device type |
+| PER-P1-05 | Devices not in the manual | Justifier/light gun handled "by using the SH-2 direct mode after port status acquisition" (3.1 port status) | `gun.cpp` implements a light gun with a sensor timer and latches the VDP2 H/V counters through `m_latch_cb`; the direct-mode timing contract is not in the SMPC manual |
+| PER-P1-06 | Direct-mode readback | 1.x/3.1: PDR reads the pins; SR/DDR/IOSEL/EXLE semantics | `read_pdr` per device; the SR=0x00 versus 0x60 difference seen in the steamgea/nobutens/rayman runtime findings is the SMPC status side (§1), not the device formats |
+
+### 11.2 ST-V I/O and boards
+
+There is no official ST-V or 315-5649 (IOGA) documentation in the provided document set (`docs/` has SDK, SH-2, SMPC, SCU, VDP1/2,
+SCSP, CD block, system, cartridge and BIOS material only). Consequently no code-versus-document comparison is possible for the ST-V
+I/O device (`stv.cpp`, the IOGA device, the serial/COM port at 0040001Bh, the EEPROM/coin/lockout handling, the per-game input
+mappings, or the board memory map for the ST-V cartridge area). What can be recorded is behaviour observed in the runtime sweep
+(all 107 sets run without a host crash; the twelve Print Club sets stall in a poll of 0040001Bh; a set of titles show blank frames after
+65 s in both trees). Those are symptoms and are handled as runtime validation work in Phase 3, not as documented defects.
+
+### 11.3 Cartridge and BIOS documentation
+
+The `docs/cartridge` and `docs/bios` directories were not compared in this pass (A-Bus cartridge handling, backup RAM/DRAM cartridge
+types in `bus/saturn/`, BIOS calls). They are candidates for a follow-up comparison if the Phase 3 sweeps show cartridge-related
+failures.
