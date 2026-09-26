@@ -413,3 +413,26 @@ Matches the manual: LCCLMD/BKCLMD are bit 15 of the upper word (0 = single colou
 | V2-P1-36 | Single-density interlace entry pairing | 7.1/7.2: in single-density interlace one table entry covers two lines | both functions index by the output row `y` with one entry per row for every mode; the comments state that the output bitmap already carries one row per picture line in single-density, which would make the code equivalent, but that mapping was not independently verified |
 | V2-P1-37 | Colour RAM mode 0/2 address MSB | 7.1 Figure 7.3: in modes 0 and 2 the MSB of the 11-bit address is ignored | `& 0x7ff` keeps bit 10; in mode 0 the two 1K-word halves mirror each other, but in mode 2 the palette lookup of an address with bit 10 set may address the other bank instead of wrapping |
 | V2-P1-38 | Back screen border area | 2.4: with per-line back screen the border takes the colour of the last display line | the whole clip rectangle is filled row by row; the horizontal/vertical border area outside the active area is not separately drawn |
+
+### 6.9 Windows (ST-058 chapter 8)
+
+Compared: WPSX0..WPEY1 (1800C0h-1800CEh), LWTA0/1 (1800D8h-1800DEh), SPCTL SPWINEN, WCTLA-D (1800D0h-1800D6h), the
+window evaluation in `vdp2_window_process_pixel`, `vdp2_roz_window`, `vdp2_roz_mode3_window`, `vdp2_calculation_window`,
+`vdp2_sprite_window`.
+
+Matches the manual (each window-control field checked against the bit tables in 8.2):
+- WCTL bit layout: per screen W0A/W0E/W1A/W1E/SWA/SWE/LOG at bits 0-5 and 7 of each byte (NBG0/RBG1 low byte of WCTLA, NBG1 high byte; NBG2/NBG3 in WCTLB; RBG0/sprite in WCTLC; rotation-parameter/colour-calculation in WCTLD).
+- The window logic is implemented on "drawn" flags, so De Morgan applies: LOG=0 (OR of valid areas) ANDs the per-window drawn flags and LOG=1 (AND of valid areas) ORs them; with no window enabled LOG=0 leaves the screen unaffected and LOG=1 makes the whole screen a valid area (`vdp2_window_all_disabled`). This matches the manual (p.193) and Ymir's `0=OR, 1=AND`.
+- Area bit A=0 selects the inside and A=1 the outside; the boundary line belongs to the inside; a start coordinate greater than the end coordinate gives an empty inside (whole screen outside), because the inclusive comparison fails.
+- The colour calculation window suppresses calculation only (`vdp2_calculation_window`, p.190) with its own W0/W1/SW enables and logic; the rotation parameter window selects between A and B in RPMD mode 3 with its own W0/W1 enables.
+- Sprite window: valid only when SPWINEN=1, SPCLMD=0 and sprite type 2-7; it tests the MSB of the VDP1 frame buffer word.
+- Line window table: entries of start (high half) and end (low half), the address is the register value x 4 with the top bit dropped for 4 Mbit; enable bit W0LWE/W1LWE is bit 15 of the upper word.
+- Vertical coordinates: nine bits; in double-density interlace of the normal/hi-res modes bit 0 is ignored for the start and set for the end so both fields are covered (Table 8.2).
+
+| ID | Finding | Manual | Code |
+|---|---|---|---|
+| V2-P1-39 | Negative window coordinates | 8.1: only 10 bits (X) and 9 bits (Y) are defined; the shaded upper bits of the registers and table entries are ignored | `vdp2_get_window*_coordinates` reads `(int16_t)` values and `fixup_window_x` treats a set bit 15 as a negative coordinate (start clamped to 0, an end below zero forces the start to 3FFh). Not in ST-058; bits 15-10 should be ignored |
+| V2-P1-40 | Horizontal coordinate mapping per graphics mode | Table 8.1 (garbled in the extraction): normal and hi-res use 9 bits H8-H0 with the LSB invalid, exclusive normal uses ten bits, exclusive hi-res drops the top bit | normal `(v & 0x3fe) >> 1`, hi-res `v & 0x3ff`, exclusive normal `v & 0x1ff`, exclusive hi-res `(v & 0x1ff) << 1`; the exclusive normal mode masks nine bits although the table lists ten. Table 8.1 could not be reconstructed with certainty from the extraction, so this needs a check against the original PDF |
+| V2-P1-41 | Single-density interlace line tables | 8.1 Figure 8.4: one entry per two lines in single-density interlace | one entry per output row in every mode (`m_vdp2_vram[... + y]`); comments assert the output bitmap has one row per picture line in single-density |
+| V2-P1-42 | Rotation parameter window bits | 8.2 WCTLD: RPSWE and RPSWA are unused ("~") | `vdp2_roz_mode3_window` decodes RPSWE (bit 5) and RPSWA (bit 4) as a sprite-window enable/area for the rotation parameter window; software that leaves them 0 is unaffected |
+| V2-P1-43 | Window on RBG0 | 8.2: transparency window per screen including RBG0 | the RBG0 tilemap setup zeroes its window control ("we apply them in the roz routines") and applies `vdp2_roz_window` per dot; RBG1 uses the NBG0 window bits, as the manual assigns ("NBG0 (or RBG1)") |
