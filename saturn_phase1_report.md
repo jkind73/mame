@@ -6,7 +6,7 @@ compared with the current source. Earlier audit notes in this repository (`satur
 are NOT used as evidence. Every finding cites the document page or section and the code location. Runtime observations from
 the disc/ST-V sweep are recorded separately and only as symptoms. No code is changed in Phase 1.
 
-Status per subsystem: SMPC, memory map, SH-2 dual-CPU/exceptions/cache and SCSP (partial) done below, chapters listed per section; SCU, remaining SH7604 modules, VDP1, VDP2, CD block, ST-V I/O (pending).
+Status per subsystem: SMPC (§1), memory map (§2), SH-2 dual-CPU/exceptions/cache (§3), SCSP (§4, partial), VDP1 (§5), VDP2 (§6) and SCU with its DSP (§7) are done below, chapters listed per section; remaining SH7604 modules (INTC, UBC, BSC, DMAC, DIVU, FRT/WDT/SCI), the CD block, ST-V I/O, peripherals and the unfinished SCSP parts (EG, pitch, FM, MIDI, DMA, DSP) are pending.
 
 ## 1. SMPC (`src/mame/sega/smpc.cpp`, `smpc.h`, client glue `saturn.cpp`/`sat_console.cpp`)
 
