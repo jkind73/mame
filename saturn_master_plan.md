@@ -116,15 +116,27 @@ flip, local coordinates, 16 and 8 bpp frame buffers. Result: **581/600 pixel-ide
 Phase 2 items: extend the generator to
 command chains and the remaining frame-buffer modes; keep `FZ_ECD` runs to isolate Ymir's end-code divergence.
 
-## H2. VDP2 verification plan
+## H2. VDP2 verification (register-mutation differential against Ymir; tooling in `regtests/saturn/vdp2_fuzz`)
 
-Name-based coverage grep of the VDP2 register set in `saturn.cpp` found the registers implemented (RPMD/RPRCTL/KTCTL,
-coefficient tables, colour-calc, line colour, shadow, window, mosaic, zoom, cycle patterns); name matching cannot prove
-behaviour. Plan: extend the same capture-and-replay oracle (MAME injects random VRAM/CRAM/register state, Ymir renders
-it) with randomized static VDP2 states per feature group (NBG0-3 cell/bitmap in every colour depth, RBG0/1 with both
-coefficient modes, priority/colour-calc/extended-CC, windows, line-colour and back screen, mosaic, hi-res/interlace).
-Limits already known: mid-frame register changes cannot be reproduced, so per-line effects are checked separately by
-reading the code against ST-058.
+Method: four captured states (BIOS logo, BIOS menu, After Burner II, Daytona USA attract) x 400 random register
+mutations each (sprite layer hidden). Baselines are pixel-identical for all four. Racing-game captures with mid-frame
+register changes (OutRun) were excluded. Result: 3, 14, 4 and 17 of 401 mutated states differ (BIOS logo, BIOS menu,
+AB2, Daytona); interlace toggles (TVMD LSMD) differ in size only (Ymir 448 lines vs MAME 224) and are not counted.
+Every remaining difference was isolated to a single register:
+
+| ID | Register (word idx) | Observation | Verdict so far |
+|---|---|---|---|
+| VDP2-D1 | CYCA0L/CYCA1U/CYCB0L/CYCB1L/CYCB1U (8, 11, 12, 14, 15) | VRAM cycle patterns that leave a layer with fewer character-pattern reads than ST-058 Table 3.3 requires (e.g. a 256-colour NBG with one read): Ymir hides the layer, MAME keeps drawing it. MAME's `vdp2_check_vram_cycle_pattern_registers` is documented in the code as a presence gate ("not fetch-address matching or a slot arbiter"): any PN and any CP command in any bank enables the layer; Table 3.3 counts (1/2/4/8 by colour depth and reduction), Table 3.4 timing limits and the pattern-name access limits are not enforced | ST-058 p.33: "the access number must be the same as ... determined by the conditions" and p.32: the correct screen "will not be displayed" otherwise; the hardware failure picture is not documented. Open: Phase 2 needs a rule for the illegal case (MiSTer RTL is the arbiter) |
+| VDP2-D2 | BKTAU/BKTAL (86/87) | Per-line back screen colour table (BKCLMD=1): Ymir reads the same entry for every line (its per-line branch increments the line-screen address instead of the back-screen address, `vdp_renderer_sw.cpp:2606-2612`); MAME reads `BKTA*2 + 2*y` | **Ymir defect**; MAME correct |
+| VDP2-D3 | PNCN2, MPABN2 (26, 36) | With NBG2 pattern-name mode/map address changed Ymir draws a garbage tile layer that MAME does not draw. Needs arbitration: check whether MAME still honours these for NBG2 or hides the layer through the D1 gate | undecided |
+| VDP2-D4 | CHCTLA, CHCTLB (20, 21) | Character size/colour-depth changes: MAME and Ymir differ (probably D1 again for changed colour depth, and character number supplement handling) | undecided |
+| VDP2-D5 | WCTLB (105) | Window control for NBG2/NBG3 with random window enable/logic bits: a few thousand pixels differ in three captures | undecided; window logic to be read against ST-058 window chapter |
+| VDP2-D6 | ZMCTL (76) | Zoom control (NBG0/NBG1 reduction) with NBG0/1 disabled changes the display in MAME versus Ymir by the same 5759 pixels in every capture (likely the D1 gate again: reduction changes the required access count) | undecided |
+| VDP2-D7 | SCRCTL (77) | Line/vertical-cell scroll enables: 25k pixels differ | undecided |
+
+Limits: VRAM 4-Mbit layout only (both emulators wrap the upper half), single static states, one-to-three-register
+mutations, no mid-frame changes. Phase 2: arbitrate D3-D7 by reading MiSTer `VDP2*.sv` and ST-058 chapters, then add
+targeted (non-random) generators for windows, line scroll and colour calculation.
 
 ## I. Remaining Phase 1 coverage (not yet audited)
 
