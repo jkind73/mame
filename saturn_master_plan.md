@@ -138,12 +138,108 @@ Limits: VRAM 4-Mbit layout only (both emulators wrap the upper half), single sta
 mutations, no mid-frame changes. Phase 2: arbitrate D3-D7 by reading MiSTer `VDP2*.sv` and ST-058 chapters, then add
 targeted (non-random) generators for windows, line scroll and colour calculation.
 
-## I. Remaining Phase 1 coverage (not yet audited)
+## I. Phase 1 coverage status (updated 2026-09-26)
 
-VDP2 (all layers, rotation, colour calculation, line/back screens, windows, mosaic, interlace) against Ymir and MiSTer;
-VDP1 drawing rules above; SCU DMA legality decision (SCU-D1: peers allow A-bus writes and VDP2 reads, MAME rejects);
-CD block, SMPC (commands, timings, peripherals), IOGA/cartridge/ST-V I/O, SH-2 dual-CPU synchronisation, memory map
-versus `saturn_memory_map.md`. Sections A-E above remain the only completed audits; F and G are complete for the parts stated.
+Audited: A (SCU DMA/timers), E (SH7604), F (SCSP), G (SCU DSP), H (VDP1, differential), H2 (VDP2 register mutations),
+K (SMPC), L (CD block dispatch), M (memory map), N (ST-V I/O), O (dual-CPU sync), P (runtime sweep).
+Not yet audited: VDP2 rotation/colour-calculation/window logic against MiSTer RTL (only register-mutation differential
+done), VDP1 command chains and rotation frame-buffer modes, CD-block sector filtering/selector semantics beyond the
+dispatch table, SMPC peripheral timing, SCSP 1Fs interrupt granularity measurement.
+
+## K. SMPC audit (2026-09-26, `sega/smpc.cpp` against Ymir `smpc.cpp` and Mednafen `smpc.cpp`)
+
+Command set, INTBACK staging, SETTIME/SETSMEM/STE, RESENAB/RESDISA, CKCHG halt/NMI sequence and command timing table
+are implemented and are a superset of Ymir (which lacks CDON/CDOFF and NETLINK). Defects/gaps recorded:
+
+| ID | Item | Evidence |
+|---|---|---|
+| SMPC-01 | SYSRES scope: `system_reset_w` resets SCU/VDP1/VDP2, clears RAMs and pulses only the master SH-2 reset. The slave SH-2 (and its SSHON/SSHOFF shadow), the SCSP/68K, the CD block and the clock ratio (return to 320) are not reset. Ymir's soft reset resets both SH-2s (slave off), SCU, VDP, SMPC, SCSP, CD block and clock; Mednafen's CKCHG path also resets the sound CPU/SCSP | Ymir `Saturn::Reset(false)`, Mednafen `smpc.cpp` |
+| SMPC-02 | The RAM clearing in SYSRES (work RAM, sound RAM, VRAM) is asserted by a comment ("only backup RAM and SMPC RAM are retained"); Ymir does not clear RAM on soft reset | decide from ST-169 text before changing |
+| SMPC-03 | NETLINK on/off only logs; undocumented SEC_GETSEED/SEC_VERIFY (0x1E/0x1F) unhandled | no reference behaviour available |
+| SMPC-04 | Command timing for INTBACK peripheral collection is a fixed 700 us (TODO per device) | ST-169 pp.55-57 |
+
+## L. CD block audit (2026-09-26, HLE `saturn_cd_hle.cpp` command dispatch against ST-162, `docs/cdblock`, Mednafen `cdb.cpp`)
+
+| ID | Item | Evidence |
+|---|---|---|
+| CD-01 | **Defect**: commands 0x65 and 0x66 are swapped. The dispatch calls `cmd_move_sector_data()` for 0x65 and `cmd_copy_sector_data()` for 0x66; 0x65 is Copy Sector Data and 0x66 is Move Sector Data | `docs/cdblock/saturn_cdblock_commands.md` lines 725/736, `saturn_cdblock_firmware.md` 637-638, Mednafen `COMMAND_COPY_SECDATA = 0x65`, `COMMAND_MOVE_SECDATA = 0x66` |
+| CD-02 | 0x05 Open Tray is not dispatched; it falls to the unknown-command path (popmessage, only CMOK set) | Mednafen `COMMAND_OPEN`, Ymir `CmdOpenTray` |
+| CD-03 | 0x55 Execute FAD Search and 0x56 Get FAD Search Results are commented out | Mednafen implements both |
+| CD-04 | Remaining MPEG commands are partly stubbed (0xA7-0xAD reject by design); 0xE2 handled | acceptable per ST-162 text quoted in code |
+
+## M. Memory map audit (2026-09-26, `sat_console.cpp` `saturn_mem` against `docs/system/saturn_memory_map.md`)
+
+Every region of the documented map is present with the documented bus behaviour: BIOS/SMPC/backup RAM/work RAM-L in the
+CPU-local space, MINIT/SINIT windows (cache-through aliases included), A-Bus dummy area, CS2/CD block, SCSP RAM and
+registers, VDP1 VRAM/frame buffer/registers, VDP2 VRAM/CRAM/registers, SCU registers, work RAM-H with mirrors, purge
+space, cache address and data arrays. Cartridge areas (CS0/CS1) are mapped dynamically in `device_start` per cartridge ID
+(battery RAM 21h, data RAM 5Ah, ROM), which is why the static map lines are commented out.
+
+Decision input for SCU-D1 (DMA legality, section C): `saturn_memory_map.md` cites ST-210 No.01 (A-bus writes by SCU-DMA
+prohibited) and No.02 (reading VDP2 by SCU-DMA prohibited), which is exactly what MAME rejects. The peers' permissive
+behaviour is therefore not supported by the SDK text; recommendation for Phase 2: keep the current rejection, and only
+change it if a hardware trace shows the transfer completes.
+
+Unverified in this pass: exact mirror extents (work RAM-L mirrored at 00300000H, work RAM-H mirror span, SCSP register
+mirror stride, VDP1 register window 20h vs documented 18h) against a hardware read-back.
+
+## N. ST-V I/O audit (2026-09-26, `315_5649.cpp`, `stv.cpp` legacy `ioga_r/w`)
+
+No IOGA (315-5649) documentation exists in `docs` (SDK, cartridge notes, MiSTer and Ymir do not cover ST-V), so this
+chip can only be checked for internal consistency, not against a hardware reference. Observed:
+
+| ID | Item |
+|---|---|
+| IO-01 | The device implements ports A-G with a direction register, port G 4x16-bit counter mode with auto-increment and reset latch, the analog mux with auto-increment, two RS-422 channels with holding registers and loopback, and the mode register. Serial timing is byte-level (transmit register drains immediately) and the status error/enable bits (RX IE, framing) always read 0 |
+| IO-02 | `stv.cpp` still carries a duplicate legacy `ioga_r/w` (marked TODO "remove this legacy fallback") used by the per-game maps for critcrsh, stvmp and the hopper games; it reimplements the port G counter and the mode/serial-status reads separately from the device (the serial status read there is a constant 0) |
+| IO-03 | Port D coin counter/lockout mapping and the billboard write are inferred from game behaviour, not from a document |
+
+Phase 2 candidates that need no new hardware data: route the legacy per-game maps through the device (removing the divergence in IO-02).
+
+## O. SH-2 dual-CPU synchronisation audit (2026-09-26, `saturn_dcc.cpp`, `sat_console.cpp` config, `sh2.cpp` cycle accounting)
+
+Implemented: MINIT/SINIT as 16-bit-only write triggers into the other CPU's FRT input capture (byte/longword writes
+ignored), a temporary tighter scheduler quantum around each trigger, per-CPU interrupt acknowledge (master through the SCU
+with IMS reset, slave through the DCC vector table 41h-43h), SMPC SSHON/SSHOFF as a reset line, SCU DMA/system halt lines
+shared with SMPC clock change.
+
+| ID | Item |
+|---|---|
+| DUAL-01 | The core charges a fixed cycle count per instruction from a table; no per-access memory wait states (SDRAM CAS latency, SCU bus, A/B-bus penalties) and no bus arbitration between the two CPUs for work RAM-H/SCU are modelled, so relative timing of the two CPUs is approximate. The two SH-2s are interleaved by the scheduler quantum, not by shared-bus contention |
+| DUAL-02 | The tighter quantum after MINIT/SINIT is a constant (`INTERLEAVE_DIV`/`INTERLEAVE_DURATION`), not derived from hardware timing |
+| DUAL-03 | Cache is not modelled (Section E), so cache-coherency-sensitive code paths (cached vs cache-through alias) behave as if always coherent |
+
+These need measured bus timing (see C: SCU-04/BUS-01) rather than a guess; recorded as accuracy limits, not defects.
+
+## P. Runtime sweep and Phase 2 master plan (2026-09-26)
+
+Sweep: 1163 Saturn softlist discs (region-matched console, per-run NVRAM copy with clock/language valid) and 107 ST-V sets,
+26-30 s each, headless. Result: 1151/1163 Saturn discs load and run game code; all 107 ST-V sets run without host crash.
+Harness: `satbatch/` (outside the repo). Fixed during the sweep (committed): CD Init soft reset now resets host information
+(ST-38 / Mednafen `SWReset`) - `6caee70`; SH-2 illegal slot instruction exception in interpreter and DRC and the general
+illegal exception for undefined DRC opcodes (SH7604 4.5.3/4.5.4) - `73816db`, `296a657`; CD periodic report gating restored
+to the CR4-read rule - `8899421`; CR1 bit 7 = data track (Mednafen `MakeReport`) - `0d40097`.
+
+Open runtime findings (each to be closed or explicitly recorded):
+
+| ID | Finding | Evidence / lead |
+|---|---|---|
+| RT-01 | `steamgea`, `nobutens`, `rayman` request the BIOS CD player on this tree, run on upstream | after an INTBACK peripheral BREAK the status register reads 00h here and 60h upstream; the game then probes the direct-mode port. `-ctrl1 joy_md3` avoids it |
+| RT-02 | 12 Print Club sets stall in the 1,000,000-iteration timeout of a poll of I/O status byte 0040001Bh; upstream reaches the "call attendant" screen | status byte reads 0 in both trees; see N |
+| RT-03 | Pulirula master/slave command-queue race (slave finishes a handler after the master rewound the queue) | missing bus wait states (DUAL-01) |
+| RT-04 | `machi`, `gaxeduel` fail on upstream as well | likely disc-specific |
+| RT-05 | `dukenk3d` asmjit InvalidInstruction once in the sweep, not reproducible | intermittent |
+
+Phase 2 order (one subsystem at a time; each item gets a commit with its documented source):
+
+1. CD block: CD-01 (0x65/0x66 swap), CD-02 (Open Tray), CD-03 (FAD search 0x55/0x56).
+2. SMPC: RT-01 (BREAK / status register / INTBACK termination against ST-169 text), SMPC-01 (SYSRES scope), SMPC-02.
+3. ST-V I/O: IO-02 (route legacy per-game maps through the 315-5649 device), RT-02.
+4. SH-2: address errors (E), NMIL edge select, then DUAL-01/RT-03 only with a documented bus-cycle model.
+5. VDP2: VDP2-D1 access-pattern rule, D3-D7 arbitration against ST-058 and RTL; stale TODO reconciliation (B.1).
+6. VDP1: VDP1-D3, command chains.
+7. SCSP: SCSP-04 (1Fs interrupt granularity).
+8. Validation: rerun the disc and ST-V sweeps; promote only what the sweep and the audit support.
 
 ## J. Process note
 
