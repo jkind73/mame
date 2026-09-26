@@ -353,3 +353,9 @@ PL-V2-01, PL-V2-03, PL-V2-06; PL-SH-02, PL-SH-03, PL-SH-04, PL-MM-03; PL-SCU-03;
 ## J. Process note
 
 Phases: 1 = analysis (sections A-P), 2 = this master plan (section Q, no code changes), 3 = execution, one item at a time with a commit per item. One SCSP LFO change (81812edad51) and the disc-sweep fixes listed in P were made before the plan was written; Q accounts for them.
+
+## R. Phase 3 progress log
+- PL-CD-01 (65h Copy / 66h Move) and PL-CD-02 (Open Tray 05h): done, `test_cd_copy_move_tray.py` passes.
+- PL-SMPC-01 (SYSRES scope): done, `test_smpc_sysres.py` passes.
+- PL-SMPC-02 (INTBACK status 300 us) and PL-SMPC-03 (OPE optimization): done, `test_smpc_intback_time.py` and `test_smpc_ope.py` pass.
+- PL-SMPC-05: after PL-SMPC-01..03, steamgea, nobutens and rayman (previously falling to the CD player without `joy_md3`) boot to game code with the default controller (satbatch probe: shell=false, game header loaded); Dracula X unchanged. The RT-01 symptom is closed by the documented INTBACK status timing.
