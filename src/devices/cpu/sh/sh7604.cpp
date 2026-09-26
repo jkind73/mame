@@ -44,7 +44,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_frt_out_a(false), m_frt_out_b(false)
 	, m_write_ftoa(*this), m_write_ftob(*this), m_write_wdtovf(*this)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false), m_nmi_pin_low(false)
-	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
+	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0), m_dvdntl2(0), m_dvdnth2(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0), m_wdt_read(0)
 	, m_dmaor(0)
 	, m_write_dack(*this), m_write_dma_data(*this), m_read_dma_data(*this, 0)
@@ -63,6 +63,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
 	std::fill(std::begin(m_dreq_pin), std::end(m_dreq_pin), false);
+	std::fill(std::begin(m_chcr_te_read), std::end(m_chcr_te_read), false);
 	std::fill(std::begin(m_dreq_edge), std::end(m_dreq_edge), false);
 	std::fill(std::begin(m_dma_irq), std::end(m_dma_irq), 0);
 	std::fill(std::begin(m_active_dma_incs), std::end(m_active_dma_incs), 0);
@@ -192,6 +193,8 @@ void sh7604_device::device_start()
 
 	// DIVU
 	save_item(NAME(m_divu_ovf));
+	save_item(NAME(m_dvdntl2));
+	save_item(NAME(m_dvdnth2));
 	save_item(NAME(m_divu_ovfie));
 	save_item(NAME(m_dvsr));
 	save_item(NAME(m_dvdntl));
@@ -221,6 +224,7 @@ void sh7604_device::device_start()
 	// used by their callbacks must accompany the visible register image.
 	save_item(NAME(m_dma_timer_active));
 	save_item(NAME(m_dreq_pin));
+	save_item(NAME(m_chcr_te_read));
 	save_item(NAME(m_dreq_edge));
 	save_item(NAME(m_dmac_top));
 	save_item(NAME(m_dma_irq));
@@ -325,6 +329,7 @@ void sh7604_device::reset_chip(bool manual, bool watchdog)
 	// round-robin mode (section 9.2.7), and DACK is idle (CHCR.AL=0: high).
 	m_dmac_top = 1;
 	m_dmac_access = false;
+	m_chcr_te_read[0] = m_chcr_te_read[1] = false;
 	m_dreq_edge[0] = m_dreq_edge[1] = false;
 	dmac_dack_idle(0);
 	dmac_dack_idle(1);
@@ -430,8 +435,8 @@ void sh7604_device::sh7604_map(address_map &map)
 	// DIVU continued (64-bit plus mirrors)
 	map(0xffffff10, 0xffffff13).rw(FUNC(sh7604_device::dvdnth_r), FUNC(sh7604_device::dvdnth_w));
 	map(0xffffff14, 0xffffff17).rw(FUNC(sh7604_device::dvdntl_r), FUNC(sh7604_device::dvdntl_w));
-	map(0xffffff18, 0xffffff1b).r(FUNC(sh7604_device::dvdnth_r));
-	map(0xffffff1c, 0xffffff1f).r(FUNC(sh7604_device::dvdntl_r));
+	map(0xffffff18, 0xffffff1b).rw(FUNC(sh7604_device::dvdnth2_r), FUNC(sh7604_device::dvdnth2_w));
+	map(0xffffff1c, 0xffffff1f).rw(FUNC(sh7604_device::dvdntl2_r), FUNC(sh7604_device::dvdntl2_w));
 
 	// UBC
 	map(0xffffff40, 0xffffff41).rw(FUNC(sh7604_device::barah_r), FUNC(sh7604_device::barah_w));
@@ -968,7 +973,6 @@ void sh7604_device::sh2_do_dma(int dmach)
 		bool const single = BIT(m_dmac[dmach].chcr, 3);
 		bool const device_to_memory = single && BIT(m_dmac[dmach].chcr, 8);
 		bool const memory_to_device = single && !BIT(m_dmac[dmach].chcr, 8);
-		bool const use_dack = single || (!BIT(m_dmac[dmach].chcr, 9) && !(m_dmac[dmach].drcr & 3));
 
 		int const size = m_active_dma_size[dmach];
 		unsigned const bytes = size == 0 ? 1 : size == 1 ? 2 : 4;
@@ -996,8 +1000,9 @@ void sh7604_device::sh2_do_dma(int dmach)
 		// Retain the existing service deadline, not bus-cycle timing.
 		m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
 
-		if (use_dack)
-			dmac_dack(dmach);
+		// DACK pulses for every transfer unit, in the read or write cycle
+		// selected by CHCR.AM (MiSTer DMAC.sv DACKn)
+		dmac_dack(dmach);
 
 		if (size != 3)
 		{
@@ -2056,6 +2061,12 @@ void sh7604_device::vcrdiv_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 /*
  * DIVU
+ *
+ * Results are produced when the dividend is written. The 39 cycle (6 for an
+ * overflow) latency, the busy-stall of register accesses during it (Mednafen
+ * divide_finish_timestamp, MiSTer DIVU.sv IBUS_BUSY) and the ignored writes
+ * while it runs are not modelled: they need the exact cycle time inside a
+ * DRC block, which the recompiler does not expose to peripherals.
  */
 
 uint32_t sh7604_device::dvcr_r()
@@ -2100,9 +2111,20 @@ void sh7604_device::dvdnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	LOG("SH2 div32+mod %d/%d\n", a, b);
 	if (b)
 	{
-		m_dvdntl = a / b;
-		m_dvdnth = a % b;
-		// TODO: 40 cycles
+		// INT32_MIN / -1 does not fit a host int32_t division (it traps);
+		// the DIVU returns quotient H'80000000 and remainder 0 without
+		// overflow (Mednafen DIVU_S32_S32, MiSTer DIVU.sv)
+		if (b == -1)
+		{
+			m_dvdntl = uint32_t(0) - uint32_t(a);
+			m_dvdnth = 0;
+		}
+		else
+		{
+			m_dvdntl = a / b;
+			m_dvdnth = a % b;
+		}
+		divu_latch_shadow();
 	}
 	else
 	{
@@ -2113,8 +2135,8 @@ void sh7604_device::dvdnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		uint64_t const partial = (uint64_t(int64_t(a)) << 3) | (a < 0 ? 0 : 7);
 		m_dvdnth = uint32_t(partial >> 32);
 		m_dvdntl = m_divu_ovfie ? uint32_t(partial) : (a < 0 ? 0x80000000 : 0x7fffffff);
+		divu_latch_shadow();
 		sh2_recalc_irq();
-		// TODO: 6 cycles
 	}
 }
 
@@ -2161,8 +2183,8 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		m_dvdnth = uint32_t(partial >> 32);
 		m_dvdntl = m_divu_ovfie ? uint32_t(partial) :
 			((a < 0) != divisor_negative ? 0x80000000 : 0x7fffffff);
+		divu_latch_shadow();
 		sh2_recalc_irq();
-		// TODO: 6 cycles
 	};
 
 	// This positive quotient exceeds even the host signed 64-bit range.
@@ -2179,6 +2201,7 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 				m_divu_ovf = true;
 				m_dvdntl = 0x7fffffff;
 				m_dvdnth = 0x7fffffff;
+				divu_latch_shadow();
 				sh2_recalc_irq();
 			}
 			else
@@ -2188,11 +2211,41 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		{
 			m_dvdntl = q;
 			m_dvdnth = a % b;
-			// TODO: 39 cycles
+			divu_latch_shadow();
 		}
 	}
 	else
 		overflow();
+}
+
+// The +0x18/+0x1C registers are separate from DVDNTH/DVDNTL: the DIVU copies
+// its 64-bit result into them when an operation completes (Mednafen
+// DVDNTH_Shadow/DVDNTL_Shadow, MiSTer DIVU.sv DVDNTH2/DVDNTL2) and software
+// can also write them directly.
+void sh7604_device::divu_latch_shadow()
+{
+	m_dvdnth2 = m_dvdnth;
+	m_dvdntl2 = m_dvdntl;
+}
+
+uint32_t sh7604_device::dvdnth2_r()
+{
+	return m_dvdnth2;
+}
+
+void sh7604_device::dvdnth2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	COMBINE_DATA(&m_dvdnth2);
+}
+
+uint32_t sh7604_device::dvdntl2_r()
+{
+	return m_dvdntl2;
+}
+
+void sh7604_device::dvdntl2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	COMBINE_DATA(&m_dvdntl2);
 }
 
 /*
@@ -2471,22 +2524,20 @@ void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 }
 
 // Refresh timer (section 7.2.5-7.2.7). RTCNT counts at CLK/4 ... CLK/4096
-// as selected by RTCSR.CKS2-0; 000 stops it. Each count tick advances RTCNT;
-// the tick that brings it to RTCOR sets CMF, and the following tick clears
-// it to zero, so the match period is RTCOR + 1 counts. Like the FRT, the
-// counter is advanced lazily from the CPU cycle count when it is observed.
+// as selected by RTCSR.CKS; 000 stops it. Each count tick increments RTCNT
+// and, when the new value equals RTCOR, sets CMF and clears the counter in
+// the same tick, so a match repeats every RTCOR counts (256 for RTCOR=0).
+// This is how the SH7604 RTL behaves (MiSTer BSC.sv: RTCNT_NEW == RTCOR
+// clears RTCNT); the manual only says that RTCNT is cleared on a match. Like
+// the FRT, the counter is advanced lazily from the CPU cycle count when it
+// is observed.
 static constexpr int rtc_shift_tab[8] = { 0, 2, 4, 6, 8, 10, 11, 12 };
 
-// Count ticks until the tick that sets CMF, from the current counter value.
+// Count ticks until the tick that produces a match, from the current value.
 uint32_t sh7604_device::rtc_ticks_to_match() const
 {
-	uint32_t const c = m_rtcnt & 0xff;
-	uint32_t const r = m_rtcor & 0xff;
-	if (c < r)
-		return r - c;
-	if (c == r)
-		return r ? r + 1 : 1;
-	return (256 - c) + (r ? r : 0);
+	uint32_t const distance = (m_rtcor - m_rtcnt) & 0xff;
+	return distance ? distance : 256;
 }
 
 void sh7604_device::rtc_resync()
@@ -2505,29 +2556,16 @@ void sh7604_device::rtc_resync()
 	if (!n)
 		return;
 
-	uint32_t c = m_rtcnt & 0xff;
-	uint32_t const r = m_rtcor & 0xff;
 	uint32_t const first = rtc_ticks_to_match();
 	if (n < first)
-	{
-		if (c < r)
-			c += uint32_t(n);
-		else if (c == r)
-			c = uint32_t(n) - 1;
-		else
-			c = (c + uint32_t(n)) & 0xff;
-	}
+		m_rtcnt = (m_rtcnt + uint32_t(n)) & 0xff;
 	else
 	{
 		m_rtcsr |= 0x80;
 		n -= first;
-		// From RTCOR the counter needs one tick to clear, then RTCOR more
-		// to match again, so every following match is RTCOR + 1 ticks apart.
-		uint32_t const period = r ? r + 1 : 1;
-		uint32_t const rem = uint32_t(n % period);
-		c = rem ? rem - 1 : r;
+		uint32_t const period = (m_rtcor & 0xff) ? (m_rtcor & 0xff) : 256;
+		m_rtcnt = uint32_t(n % period);
 	}
-	m_rtcnt = c;
 }
 
 void sh7604_device::rtc_activate()
@@ -2664,24 +2702,23 @@ void sh7604_device::sh2_recalc_irq()
 		}
 	}
 
-	// DMA irqs
-	if ((m_dmac[0].chcr & 6) == 6 && m_dma_irq[0])
+	// DMAC transfer-end request: TE and IE both set, held until software clears
+	// TE (section 9.2.4; MiSTer DMAC.sv DMACn_IRQ = TE & IE). Channel 0 wins.
+	if ((m_dmac[0].chcr & 6) == 6)
 	{
 		level = m_irq_level.dmac & 15;
 		if (level > irq)
 		{
 			irq = level;
-			m_dma_irq[0] &= ~1;
 			vector = m_irq_vector.dmac[0] & 0x7f;
 		}
 	}
-	else if ((m_dmac[1].chcr & 6) == 6 && m_dma_irq[1])
+	else if ((m_dmac[1].chcr & 6) == 6)
 	{
 		level = m_irq_level.dmac & 15;
 		if (level > irq)
 		{
 			irq = level;
-			m_dma_irq[1] &= ~1;
 			vector = m_irq_vector.dmac[1] & 0x7f;
 		}
 	}
@@ -2833,17 +2870,26 @@ template <int Channel>
 uint32_t sh7604_device::chcr_r()
 {
 	// CHCR bits 31-16 are reserved and always read zero (section 9.2.4).
+	// TE can only be cleared by writing 0 after it was read as 1.
+	if (!machine().side_effects_disabled())
+		m_chcr_te_read[Channel] = BIT(m_dmac[Channel].chcr, 1);
 	return m_dmac[Channel].chcr & 0x0000ffff;
 }
 
 template <int Channel>
 void sh7604_device::chcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	uint32_t old;
-	old = m_dmac[Channel].chcr;
+	uint32_t const old = m_dmac[Channel].chcr;
 	COMBINE_DATA(&m_dmac[Channel].chcr);
-	m_dmac[Channel].chcr = (data & ~2) | (old & m_dmac[Channel].chcr & 2);
+
+	// TE is a read-one/write-zero flag: software cannot set it, and a write
+	// of 0 only clears it when the last CHCR read returned it as 1.
+	bool const clear_te = ACCESSING_BITS_0_7 && !BIT(data, 1) && m_chcr_te_read[Channel];
+	if (clear_te)
+		m_chcr_te_read[Channel] = false;
+	m_dmac[Channel].chcr = (m_dmac[Channel].chcr & ~2) | (BIT(old, 1) && !clear_te ? 2 : 0);
 	sh2_dmac_check(Channel);
+	sh2_recalc_irq();
 }
 
 uint32_t sh7604_device::dmaor_r()

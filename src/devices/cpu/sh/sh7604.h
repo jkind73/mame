@@ -159,6 +159,11 @@ private:
 	void dvdnth_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	uint32_t dvdntl_r();
 	void dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+	uint32_t dvdnth2_r();
+	void dvdnth2_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+	uint32_t dvdntl2_r();
+	void dvdntl2_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
+	void divu_latch_shadow();
 
 	uint32_t dvcr_r();
 	void dvcr_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
@@ -284,6 +289,7 @@ private:
 	// DIVU
 	bool m_divu_ovf, m_divu_ovfie;
 	uint32_t m_dvsr, m_dvdntl, m_dvdnth;
+	uint32_t m_dvdntl2, m_dvdnth2; // DVDNTL/H shadow registers (H'FFFFFF18/1C), copied after each division
 
 	// WTC
 	uint8_t m_wtcnt, m_wtcsr;
@@ -309,6 +315,7 @@ private:
 	devcb_write32::array<2> m_write_dma_data;
 	devcb_read32::array<2> m_read_dma_data;
 	bool m_dreq_pin[2];   // DREQn input level
+	bool m_chcr_te_read[2]; // CHCR.TE was read as 1 (needed before it can be cleared)
 	bool m_dreq_edge[2];  // latched active DREQ edge (edge detection)
 	uint8_t m_dmac_top;   // channel with top priority in round-robin mode
 	bool m_dmac_access;   // the DMAC itself is accessing the bus (SCI flag clearing)
