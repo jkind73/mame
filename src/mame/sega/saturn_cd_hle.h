@@ -308,6 +308,9 @@ private:
   int cur_track;
   uint8_t cmd_pending;
   uint8_t cd_speed;
+  // ST-38 1.6: seconds in PAUSE before the drive is regarded as STANDBY, and the 60 Hz ticks spent in PAUSE so far
+  uint32_t m_standby_time = 180;
+  uint32_t m_pause_idle_ticks = 0;
   uint8_t cdda_maxrepeat;
   uint8_t cdda_repeat_count;
   uint8_t tray_is_closed;
@@ -345,6 +348,7 @@ private:
   void cmd_get_session_info();
   void cmd_init_cdsystem();
   void open_tray(bool unload_image);
+  void close_tray();
   void cmd_open_tray();
   void cmd_end_data_transfer();
   void finish_get_delete();

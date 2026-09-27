@@ -174,6 +174,8 @@ void saturn_cd_hle_device::device_start() {
   save_item(NAME(cur_track));
   save_item(NAME(cmd_pending));
   save_item(NAME(cd_speed));
+  save_item(NAME(m_standby_time));
+  save_item(NAME(m_pause_idle_ticks));
   save_item(NAME(cdda_maxrepeat));
   save_item(NAME(cdda_repeat_count));
   save_item(NAME(tray_is_closed));
@@ -444,6 +446,8 @@ void saturn_cd_hle_device::device_reset() {
   }
 
   cd_speed = 2;
+  m_standby_time = 180;
+  m_pause_idle_ticks = 0;
   m_scan_reverse = m_scan_audible = false;
 
   m_sector_timer->adjust(
@@ -1032,6 +1036,7 @@ void saturn_cd_hle_device::cd_change_status(u16 new_status) {
   cd_stat = CD_STAT_BUSY;
   cd_next_stat = new_status;
   m_status_change_in_progress = true;
+  m_pause_idle_ticks = 0;
   // A new drive operation invalidates the old converter range. The PLAY
   // entry phase rearms it at the resulting pickup position if appropriate.
   if (m_cdda->audio_active())
@@ -1161,6 +1166,9 @@ void saturn_cd_hle_device::cmd_init_cdsystem() {
     // initial state; without it those settings survive the command.
     if (cr1 & 1)
       cd_reset_host_information();
+    // ST-38 1.6: Init closes an open tray.
+    if (!tray_is_closed)
+      close_tray();
     if (((cd_stat & 0x0f00) != CD_STAT_NODISC) &&
         ((cd_stat & 0x0f00) != CD_STAT_OPEN)) {
       cd_fad_seek = 150;
@@ -1173,7 +1181,19 @@ void saturn_cd_hle_device::cmd_init_cdsystem() {
     buffull_temp_pause = false;
     hirqreg &= 0xffe5;
     update_hirq();
-    cd_speed = (cr1 & 0x10) ? 1 : 2;
+    // The initial flags take effect only when bit 7 (the "no change" request:
+    // NCHG_INIT_FLAG in the SDK, "No change?" in Mednafen) is clear; bit 4
+    // selects fixed single speed (ST-38 1.6).
+    if (!(cr1 & 0x80))
+      cd_speed = (cr1 & 0x10) ? 1 : 2;
+
+    // Standby time (CR2): 0 selects the default of 180 s, FFFFh leaves the
+    // setting unchanged, anything else is the time in seconds.
+    if (cr2 == 0)
+      m_standby_time = 180;
+    else if (cr2 != 0xffff)
+      m_standby_time = cr2;
+    m_pause_idle_ticks = 0;
   }
 
   // TODO: ESEL happens at the end of the actual reset phase
@@ -4551,6 +4571,12 @@ void saturn_cd_hle_device::cd_playdata() {
     if (buffull_temp_pause && !buffull && fadstoplay) {
       buffull_temp_pause = false;
       cd_change_status(CD_STAT_PLAY);
+    } else if (!buffull_temp_pause &&
+               ++m_pause_idle_ticks >= uint64_t(m_standby_time) * 60) {
+      // ST-38 1.6 / Figure 4.1: "If the standby time passes while in the
+      // <PAUSE> state, it is regarded as <STANDBY>." The idle timer runs at
+      // the 60 Hz response cycle of a stopped drive.
+      cd_change_status(CD_STAT_STANDBY);
     }
     break;
   }
@@ -4695,6 +4721,14 @@ void saturn_cd_hle_device::set_tray_close() {
   if (tray_is_closed)
     return;
 
+  close_tray();
+  popmessage("Tray Close");
+}
+
+// Closing the tray, by hand or by the Init command (ST-38 1.6): the drive
+// leaves OPEN for PAUSE when it holds a disc, NODISC otherwise.
+void saturn_cd_hle_device::close_tray() {
+
   hirqreg |= DCHG;
   update_hirq();
 
@@ -4709,6 +4743,4 @@ void saturn_cd_hle_device::set_tray_close() {
   cd_speed = 2;
   cdda_repeat_count = 0;
   tray_is_closed = 1;
-
-  popmessage("Tray Close");
 }
