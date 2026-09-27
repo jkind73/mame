@@ -30,6 +30,7 @@ methods = '\n'.join(extract(s) for s in (
     'void scudsp_cpu_device::device_reset()',
     'void scudsp_cpu_device::set_dest_dma_mem(',
     'void scudsp_cpu_device::set_dest_mem_reg_2(',
+    'void scudsp_cpu_device::update_execution_state()',
     'uint32_t scudsp_cpu_device::get_mem_source_dma('))
 fields = re.findall(r'save_item\(NAME\((m_dma\.[a-z_]+|m_dma_state)\)\)', src)
 restore = '\n'.join(f' d.{field}=s.{field};' for field in fields)
@@ -79,6 +80,8 @@ harness = r'''
 #define INPUT_LINE_HALT 1
 #define ASSERT_LINE 1
 #define CLEAR_LINE 0
+#define BIT(x,n) (((x)>>(n))&1)
+#define SUSPEND_REASON_HALT 1
 #define scudsp_writeop(a,v) pram[(a)]=(v)
 #define scudsp_writemem(a,b,v) ram[(a)|((b)<<6)]=(v)
 #define scudsp_readmem(a,b) ram[(a)|((b)<<6)]
@@ -86,13 +89,17 @@ using emu_fatalerror=std::runtime_error;
 struct attotime {static constexpr int never=-1;static int from_ticks(int n,int){return n;}};
 struct timer {int delay=-1;void adjust(int n){delay=n;}};
 struct scudsp_cpu_device {
- enum {DMA_STATE_IDLE,DMA_STATE_WAIT,DMA_STATE_MOVE,T0F=23};
+ // EXF matches scudsp.h's private enum (LEF=15, EXF=16, ...).
+ enum {DMA_STATE_IDLE,DMA_STATE_WAIT,DMA_STATE_MOVE,EXF=16,T0F=23};
  struct {uint32_t src=0,dst=0;uint8_t program_address=0;uint16_t add=0,write_stride=0,size=0,update=0,ex=0,dir=0,count=0;bool stalled=false;} m_dma;
- uint8_t m_pc=0,m_top=0;
+ uint8_t m_pc=0,m_top=0,m_ra=0;
  bool m_delay_pending=false;uint32_t m_delay_opcode=0;uint8_t m_delay=0;
  uint8_t m_dma_state=0,m_ct0=0,m_ct1=0,m_ct2=0,m_ct3=0;
- uint32_t m_ra0=0,m_wa0=0,m_flags=0,count_source=1;
- bool m_paused=false;int m_icount=0;bool halt=false;int ddwt=0,ddmv=0;
+ // A real chip only ever reaches op_dma while the host has EX set, so start
+ // "already executing"; device_reset() clears m_flags like the real one.
+ uint32_t m_ra0=0,m_wa0=0,m_flags=1u<<EXF,count_source=1;
+ bool m_paused=false,m_step_pending=false,m_lps_active=false;
+ int m_icount=0;bool halt=false;int ddwt=0,ddmv=0;
  timer t;timer *m_dma_timer=&t;
  std::array<uint32_t,256> ram{},pram{};
  std::vector<std::pair<uint32_t,uint16_t>> writes;
@@ -100,11 +107,15 @@ struct scudsp_cpu_device {
  int clock(){return 1;}
  uint32_t get_source_mem_value(unsigned){return count_source;}
  void set_input_line(int line,int state){assert(line==INPUT_LINE_HALT);halt=state;}
+ void suspend(int reason,bool){assert(reason==SUSPEND_REASON_HALT);halt=true;}
+ void resume(int reason){assert(reason==SUSPEND_REASON_HALT);halt=false;}
  void m_out_ddwt_cb(int n){ddwt=n;}void m_out_ddmv_cb(int n){ddmv=n;}
+ void m_out_irq_cb(int){}
  uint16_t m_in_dma_cb(uint32_t addr){reads.push_back(addr);return uint16_t(addr^0xabcd);}
  void m_out_dma_cb(uint32_t addr,uint16_t data){writes.emplace_back(addr,data);}
  void set_dest_mem_reg(uint32_t,uint32_t){assert(false);}
  void set_dest_mem_reg_2(uint32_t,uint32_t);
+ void update_execution_state();
  void op_dma(uint32_t);void exec_dma();void dma_tick_cb(int);void device_reset();
  void set_dest_dma_mem(uint32_t,uint32_t);uint32_t get_mem_source_dma(uint32_t);
  void tick(){dma_tick_cb(0);}
@@ -186,7 +197,10 @@ int main(){
    scudsp_cpu_device r;r.m_wa0=0x05a00000/4;r.count_source=count;r.op_dma(op);
    for(unsigned i=0;i<cut;++i)r.tick();
    r.device_reset();
-   assert(!r.halt&&!r.m_dma.ex&&!r.ddwt&&!r.ddmv&&r.t.delay==attotime::never);
+   // Reset clears EX (m_flags=0), and update_execution_state() now folds
+   // "not executing" into the same HALT suspend as a DMA stall, so a reset
+   // chip stays halted until the host writes EX again (ST-097 pp.51/53).
+   assert(r.halt&&!r.m_dma.ex&&!r.ddwt&&!r.ddmv&&r.t.delay==attotime::never);
    assert(r.m_dma_state==r.DMA_STATE_IDLE&&!(r.m_flags&(1<<r.T0F)));
   }
   ++cases;
@@ -208,8 +222,11 @@ int main(){
   scudsp_cpu_device s;s.m_ra0=0x06010000/4;s.count_source=count;s.m_pc=2;
   s.op_dma(0xc0010400|(hold<<14)|(indirect<<13)|(indirect?0:(count&255)));
   assert(s.m_dma.dst==4&&!s.halt);
-  // Model the post-fetch PC of the required following MVI-to-PC instruction.
-  s.m_pc=3;s.set_dest_mem_reg_2(12,target);
+  // Model the already-latched delay slot of the required following MVI-to-PC
+  // instruction: set_dest_mem_reg_2's PC case now takes TOP from m_delay
+  // (the fetched-but-not-yet-executed word), not from m_pc (commit "saturn:
+  // latch DSP instructions before execution").
+  s.m_delay=3;s.set_dest_mem_reg_2(12,target);
   assert(s.halt&&s.m_pc==target&&s.m_top==3);
   for(unsigned cut:{0u,1u,2u,count/2+1,count+1}){
    scudsp_cpu_device a=s;a.m_dma_timer=&a.t;
