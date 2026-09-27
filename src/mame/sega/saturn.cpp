@@ -10101,10 +10101,15 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   current_tilemap.incy = VDP2_ZMYN0;
 
   current_tilemap.linescroll_enable = VDP2_N0LSCX;
-  // ST-058 pp.17/137: single-density fields repeat the same picture.
-  // Our bitmap has one row per picture line, not both interlaced raster
-  // positions, so its table interval is the same as non-interlace.
-  current_tilemap.linescroll_interval = 1U << VDP2_N0LSS;
+  // ST-058 chapter 5 SCRCTL table: single-density interlace reads the line
+  // scroll table at double the interval of non-interlace/double-density for
+  // the same LSS setting (1/2/4/8 lines becomes 2/4/8/16). Table 2.4 groups
+  // single-density with non-interlace for the V counter's own bit layout (no
+  // shift/parity bit, unlike double-density), so the V counter - and this
+  // table's "lines" - already count picture rows 1:1 in single-density, the
+  // same units our bitmap uses; the doubled interval is a real requirement,
+  // not a raster-vs-picture unit mismatch that would cancel out.
+  current_tilemap.linescroll_interval = (m_vdp2->get_lsmd() == 2 ? 2U : 1U) << VDP2_N0LSS;
   current_tilemap.linescroll_table_address =
       (((VDP2_LSTA0U << 16) | VDP2_LSTA0L) & base_mask) * 2;
   current_tilemap.vertical_linescroll_enable = VDP2_N0LSCY;
@@ -10225,8 +10230,9 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
   current_tilemap.incy = VDP2_ZMYN1;
 
   current_tilemap.linescroll_enable = VDP2_N1LSCX;
-  // Interval is in bitmap rows, as for NBG0 (not physical interlace lines).
-  current_tilemap.linescroll_interval = 1U << VDP2_N1LSS;
+  // See the identical NBG0 case above: single-density interlace doubles the
+  // SCRCTL table's read interval relative to non-interlace/double-density.
+  current_tilemap.linescroll_interval = (m_vdp2->get_lsmd() == 2 ? 2U : 1U) << VDP2_N1LSS;
   current_tilemap.linescroll_table_address =
       (((VDP2_LSTA1U << 16) | VDP2_LSTA1L) & base_mask) * 2;
   current_tilemap.vertical_linescroll_enable = VDP2_N1LSCY;
