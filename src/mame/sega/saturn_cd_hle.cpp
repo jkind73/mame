@@ -1932,7 +1932,18 @@ void saturn_cd_hle_device::cmd_reset_selector() {
     sectorstore = 0;
   }
 
-  // TODO: bit 3, initialize all partition output connectors
+  // ST-38 5.9: bit 3 sets every partition output connector to unconnected.
+  // A partition output connector leads to a device input connector (ST-38
+  // Figure 5.2 and Table 5.1); the device input that takes a partition stream
+  // is the MPEG decoder, whose connection records (current and next, audio and
+  // video layer, Set Connection $9A) name the partition it consumes. $FF is
+  // the unconnected value. The partition contents are not touched.
+  if (BIT(cr1, 3)) {
+    for (int layer = 0; layer < 2; layer++) {
+      mpeg.layer[layer].partition = 0xff;
+      mpeg.next_layer[layer].partition = 0xff;
+    }
+  }
 
   // reset all filter conditions
   if (BIT(cr1, 4)) {

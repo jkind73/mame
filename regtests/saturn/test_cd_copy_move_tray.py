@@ -42,6 +42,10 @@ local function test()
     put(2);writebytes(ab,4704);finish(2352)
     eq('two sectors in partition 1',count(1),2)
 
+    -- 48h Reset Selector bit 3 (ST-38 5.9) only disconnects the partition output connectors: the data stays.
+    cmd(0x4808,0,0,0)
+    eq('reset selector bit 3 keeps the partition data',count(1),2)
+
     -- 65h Copy Sector Data: destination filter 2, offset 0, two sectors.
     -- The source keeps its sectors and the destination receives copies.
     sp:write_u16(HIRQ,0xfeff)
