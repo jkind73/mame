@@ -170,7 +170,8 @@ static inline s32 MD_Shift(s32 zd, u32 mdl)
 #define DAC18B() ((m_udata.data[0] >> 0x0) & 0x0100)
 #define MVOL() ((m_udata.data[0] >> 0x0) & 0x000F)
 #define RBL() ((m_udata.data[1] >> 0x7) & 0x0003)
-#define RBP() ((m_udata.data[1] >> 0x0) & 0x003F)
+// ST-077 p.101-102: RBP is a seven-bit field (register 402h bits 6-0), the ring buffer base in 4K-word units
+#define RBP() ((m_udata.data[1] >> 0x0) & 0x007F)
 // The MIDI status bits are derived from FIFO occupancy in UpdateRegR, not read
 // back from the register file; the old MOFULL/MOEMPTY/MIOVF/MIFULL/MIEMPTY
 // macros were unused and only reported stale written bits.
