@@ -10970,7 +10970,12 @@ void saturn_state::vdp2_cram_w(offs_t offset, uint32_t data,
   mark_fade_effects_dirty();
 
   switch (VDP2_CRMD) {
-  /*Mode 2/3*/
+  // ST-058 3.4: mode 3 (CRMD=3) is a prohibited setting; no document
+  // describes hardware behaviour for it. Decoding it identically to mode 2
+  // (24-bit colour, the same physical layout) is a documented decision
+  // (V2-P1-14/PL-V2-02), not an oversight: it is the same choice already made
+  // for other prohibited register combinations in this driver (see SCU-04 in
+  // saturn_master_plan.md) rather than inventing unverifiable behaviour.
   case 2:
   case 3: {
     // offset &= (0xfff) >> 2;
