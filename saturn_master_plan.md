@@ -359,3 +359,6 @@ Phases: 1 = analysis (sections A-P), 2 = this master plan (section Q, no code ch
 - PL-SMPC-01 (SYSRES scope): done, `test_smpc_sysres.py` passes.
 - PL-SMPC-02 (INTBACK status 300 us) and PL-SMPC-03 (OPE optimization): done, `test_smpc_intback_time.py` and `test_smpc_ope.py` pass.
 - PL-SMPC-05: after PL-SMPC-01..03, steamgea, nobutens and rayman (previously falling to the CD player without `joy_md3`) boot to game code with the default controller (satbatch probe: shell=false, game header loaded); Dracula X unchanged. The RT-01 symptom is closed by the documented INTBACK status timing.
+- PL-SC-01 (1 Fs interrupt per sample): done (`ccbd00a1bca`), `test_scsp_1fs.lua`: 482 requests/s before, 44274 after.
+- PL-SC-02 (RBP seven bits): done (`a8b1368a061`), `test_scsp_rbp.lua`.
+- PL-SH-05 (DIVU overflow boundary): done (`4ae640ff108`); reference is the MiSTer divider (`DIVU.sv`), not only the text: exact quotients of +-2^31 complete only for a negative dividend, everything else outside -(2^31-1)..2^31-1 takes the six-cycle path; `test_sh7604_divu_rtl.py` 0 of 40938 cases differ (106 before).
