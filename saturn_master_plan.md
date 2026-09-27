@@ -362,3 +362,4 @@ Phases: 1 = analysis (sections A-P), 2 = this master plan (section Q, no code ch
 - PL-SC-01 (1 Fs interrupt per sample): done (`ccbd00a1bca`), `test_scsp_1fs.lua`: 482 requests/s before, 44274 after.
 - PL-SC-02 (RBP seven bits): done (`a8b1368a061`), `test_scsp_rbp.lua`.
 - PL-SH-05 (DIVU overflow boundary): done (`4ae640ff108`); reference is the MiSTer divider (`DIVU.sv`), not only the text: exact quotients of +-2^31 complete only for a negative dividend, everything else outside -(2^31-1)..2^31-1 takes the six-cycle path; `test_sh7604_divu_rtl.py` 0 of 40938 cases differ (106 before).
+- PL-SH-01 (address errors) and PL-SH-10 (DRC/interpreter parity suite): CLAIMED by the session that committed PL-SC-01/02 and PL-SH-05 (touches sh.cpp/sh2.cpp/sh2fe.cpp only); the VDP1/VDP2 items in saturn.cpp are left to the other session.
