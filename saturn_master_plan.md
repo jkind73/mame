@@ -194,7 +194,14 @@ chip can only be checked for internal consistency, not against a hardware refere
 | IO-02 | `stv.cpp` still carries a duplicate legacy `ioga_r/w` (marked TODO "remove this legacy fallback") used by the per-game maps for critcrsh, stvmp and the hopper games; it reimplements the port G counter and the mode/serial-status reads separately from the device (the serial status read there is a constant 0) |
 | IO-03 | Port D coin counter/lockout mapping and the billboard write are inferred from game behaviour, not from a document |
 
-Phase 2 candidates that need no new hardware data: route the legacy per-game maps through the device (removing the divergence in IO-02).
+Phase 3 attempt (2026-09-27): routing critcrsh/stvmp/hopper through `sega_315_5649_device` was scoped and deferred rather than
+done blind. The legacy `ioga_r/w` index registers as `offset & 0xf` with `offset*2+1` selecting the byte lane (a
+pre-device decode), while the device's `read(offs_t offset)`/`write` already take the 0-0xF register index directly
+from the `umask32` mapping used for every other ST-V board (`stv.cpp:1207-1211`). The three legacy maps would need
+their own case statements (lightgun latch, mahjong mux, hopper motor) rewritten against the device's register numbers
+and reconnected to its callbacks, not just a call-site swap, and none of the three games has a regtest that exercises
+its input hardware (lightgun coordinates, mahjong panel, hopper motor) to check the result. Left as documented,
+verified-by-code-reading-only debt (IO-02) rather than an unverified behavioural change.
 
 ## O. SH-2 dual-CPU synchronisation audit (2026-09-26, `saturn_dcc.cpp`, `sat_console.cpp` config, `sh2.cpp` cycle accounting)
 
