@@ -161,6 +161,9 @@ private:
 
   SCSP_TIMER m_timers[3];
 
+  // 1Fs: one output sample period elapsed (interrupt source 10)
+  emu_timer *m_sample_timer = nullptr;
+
   // MVOL derived master volume, Q8 fixed point (0x100 == unity gain)
   u32 m_master_volume;
 
@@ -202,6 +205,8 @@ private:
   void update_main_irq();
   void ResetInterrupts();
   TIMER_CALLBACK_MEMBER(timer_cb);
+  TIMER_CALLBACK_MEMBER(sample_tick_cb);
+  void arm_sample_timer();
   void timer_sync(int idx);
   void timer_arm(int idx);
   void timer_write(int idx, u16 data, u16 mem_mask);

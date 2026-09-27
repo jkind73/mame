@@ -346,6 +346,7 @@ void scsp_device::device_reset() {
 
   reset_midi();
   reset_irq_timers();
+  arm_sample_timer();
 
   // the noise generator restarts from a known state
   m_lfsr = 1;
@@ -402,6 +403,8 @@ void scsp_device::device_post_load() {
 
 void scsp_device::device_clock_changed() {
   m_stream->set_sample_rate(clock() / SAMPLE_CLOCKS);
+  if (m_sample_timer)
+    arm_sample_timer();
   // LFO phase steps are per output sample, so they must be recomputed when
   // the sample rate changes
   for (int i = 0; i < 32; ++i)
@@ -432,14 +435,27 @@ void scsp_device::sound_stream_update(sound_stream &stream) {
   // saturn:toughtrk will hang on Human logo otherwise
   m_latched_MSLC_data = /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
 
-  // 1Fs: one output sample has been produced.  Hardware requests this every
-  // sample (44.1 kHz); samples are generated in batches here, so request it
-  // once per update, like Yabause does.
-  if (stream.samples() > 0) {
-    m_udata.data[0x20 / 2] |= 0x400;
-    CheckPendingIRQ();
-    MainCheckPendingIRQ(0x400);
-  }
+}
+
+//-------------------------------------------------
+//  sample_tick_cb - 1Fs interrupt request
+//-------------------------------------------------
+
+// ST-077: the sample interval interrupt (source 10) is requested by the
+// hardware once per output sample. Audio is generated in batches by the
+// stream, so this is driven by its own periodic timer at the sample rate
+// rather than from the stream update, otherwise the sound CPU and the main
+// CPU would see one request per batch (and none while nothing updates the
+// stream).
+TIMER_CALLBACK_MEMBER(scsp_device::sample_tick_cb) {
+  m_udata.data[0x20 / 2] |= 0x400;
+  CheckPendingIRQ();
+  MainCheckPendingIRQ(0x400);
+}
+
+void scsp_device::arm_sample_timer() {
+  attotime const period = attotime::from_ticks(SAMPLE_CLOCKS, clock());
+  m_sample_timer->adjust(period, 0, period);
 }
 
 void scsp_device::CheckPendingIRQ() {
@@ -910,6 +926,7 @@ void scsp_device::init() {
   m_DSP.space = &this->space();
   for (i = 0; i < 3; i++)
     m_timers[i].timer = timer_alloc(FUNC(scsp_device::timer_cb), this);
+  m_sample_timer = timer_alloc(FUNC(scsp_device::sample_tick_cb), this);
 
   for (i = 0; i < 0x400; ++i) {
     float envDB = ((float)(3 * (i - 0x3ff))) / 32.0f;
