@@ -29,6 +29,7 @@ sh_common_execution::sh_common_execution(const machine_config &mconfig, device_t
 	, m_write16(nullptr)
 	, m_read32(nullptr)
 	, m_write32(nullptr)
+	, m_write32_stack(nullptr)
 	, m_interrupt(nullptr)
 	, m_nocode(nullptr)
 	, m_out_of_cycles(nullptr)
@@ -1134,6 +1135,7 @@ void sh_common_execution::MOVWI(uint32_t d, uint32_t n)
 {
 	uint32_t disp = d & 0xff;
 	m_sh2_state->ea = m_sh2_state->pc + disp * 2 + 2;
+	pcrel_access_check(m_sh2_state->ea);
 	m_sh2_state->r[n] = (uint32_t)util::sext(read_word(m_sh2_state->ea), 16);
 }
 
@@ -1142,6 +1144,7 @@ void sh_common_execution::MOVLI(uint32_t d, uint32_t n)
 {
 	uint32_t disp = d & 0xff;
 	m_sh2_state->ea = ((m_sh2_state->pc + 2) & ~3) + disp * 4;
+	pcrel_access_check(m_sh2_state->ea);
 	m_sh2_state->r[n] = read_long(m_sh2_state->ea);
 }
 
@@ -1580,6 +1583,7 @@ void sh_common_execution::SWAPW(uint32_t m, uint32_t n)
 void sh_common_execution::TAS(uint32_t n)
 {
 	m_sh2_state->ea = m_sh2_state->r[n];
+	tas_access_check(m_sh2_state->ea);
 
 	/* Bus Lock enable */
 	uint32_t temp = read_byte(m_sh2_state->ea);
@@ -2141,6 +2145,8 @@ void sh_common_execution::code_flush_cache()
 		static_generate_memory_accessor(2, true,  "write16", m_write16);
 		static_generate_memory_accessor(4, false, "read32", m_read32);
 		static_generate_memory_accessor(4, true,  "write32", m_write32);
+		if (!m_write32_stack)
+			m_write32_stack = m_write32;
 	}
 	catch (drcuml_block::abort_compilation &)
 	{
@@ -2168,7 +2174,9 @@ void sh_common_execution::execute_run_drc()
 		/* if we need to recompile, do it */
 		if (execute_result == EXECUTE_MISSING_CODE)
 		{
-			code_compile_block(0, m_sh2_state->pc);
+			// odd or on-chip peripheral space fetch address: the exception replaces the compile
+			if (!fetch_address_error(m_sh2_state->pc))
+				code_compile_block(0, m_sh2_state->pc);
 		}
 		else if (execute_result == EXECUTE_UNMAPPED_CODE)
 		{
@@ -2193,6 +2201,15 @@ void sh_common_execution::code_compile_block(uint8_t mode, offs_t pc)
 	const opcode_desc *seqhead, *seqlast;
 	const opcode_desc *desclist;
 	bool override = false;
+
+	// literal pool reads at compile time are not guest accesses
+	struct no_addr_error_scope
+	{
+		no_addr_error_scope(uint32_t &flag) : m_flag(flag), m_old(flag) { flag = 1; }
+		~no_addr_error_scope() { m_flag = m_old; }
+		uint32_t &m_flag;
+		uint32_t m_old;
+	} const no_addr_error(m_no_addr_error);
 
 	auto profile = g_profiler.start(PROFILER_DRC_COMPILE);
 
@@ -2507,12 +2524,12 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
 			UML_MOV(block, I1, mem(&m_sh2_state->sr));              // mov     r1, sr
-			UML_CALLH(block, *m_write32);                           // call    write32
+			UML_CALLH(block, *m_write32_stack);                           // call    write32
 
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
 			UML_MOV(block, I1, desc->pc);                           // mov     r1, desc->pc
-			UML_CALLH(block, *m_write32);                           // call    write32
+			UML_CALLH(block, *m_write32_stack);                           // call    write32
 
 			// Fetch the exception vector after stacking SR and PC, as the
 			// interpreter does. The stack writes may overlap the vector table.
@@ -2575,7 +2592,7 @@ bool sh_common_execution::generate_slot_illegal(drcuml_block &block, compiler_st
 	UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 	UML_MOV(block, I0, R32(15));                            // mov     r0, R15
 	UML_MOV(block, I1, mem(&m_sh2_state->sr));              // mov     r1, sr
-	UML_CALLH(block, *m_write32);                           // call    write32
+	UML_CALLH(block, *m_write32_stack);                           // call    write32
 
 	UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 	UML_MOV(block, I0, R32(15));                            // mov     r0, R15
@@ -2583,7 +2600,7 @@ bool sh_common_execution::generate_slot_illegal(drcuml_block &block, compiler_st
 		UML_MOV(block, I1, mem(&m_sh2_state->target));      // mov     r1, target (register/PR-based jump address)
 	else
 		UML_MOV(block, I1, ovrpc + 2);                      // mov     r1, jump address of the static branch
-	UML_CALLH(block, *m_write32);                           // call    write32
+	UML_CALLH(block, *m_write32_stack);                           // call    write32
 
 	// Fetch the vector after stacking, as for the general illegal instruction
 	UML_CALLC(block, cfunc_slot_illegal, this);
@@ -2762,6 +2779,7 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 			{
 				UML_ADD(block, I0, mem(&m_sh2_state->target), ((opcode & 0xff) * 2) + 2); // add r0, target, disp*2+2
 				SETEA(0);                                              // set ea for debug
+				generate_special_access_check(block, compiler, false);
 				UML_CALLH(block, *m_read16);                           // read16(r0, r1)
 				UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);            // sext Rn, r0, WORD
 			}
@@ -2776,6 +2794,7 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 				{
 					UML_MOV(block, I0, scratch);                       // mov r0, scratch
 					SETEA(0);                                          // set ea for debug
+					generate_special_access_check(block, compiler, false);
 					UML_CALLH(block, *m_read16);                       // read16(r0, r1)
 					UML_SEXT(block, R32(REG_N), I0, SIZE_WORD);        // sext Rn, r0, WORD
 				}
@@ -2823,6 +2842,7 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 				UML_ADD(block, I0, mem(&m_sh2_state->target), 2);      // add r0, target, #2
 				UML_AND(block, I0, I0, 0xfffffffc);                    // and r0, r0, ~3
 				UML_ADD(block, I0, I0, (opcode & 0xff) * 4);           // add r0, r0, disp*4
+				generate_special_access_check(block, compiler, false);
 				UML_CALLH(block, *m_read32);                           // read32(r0, r1)
 				UML_MOV(block, R32(REG_N), I0);                        // mov Rn, r0
 			}
@@ -2840,6 +2860,7 @@ bool sh_common_execution::generate_opcode(drcuml_block &block, compiler_state &c
 				if (m_drcoptions & SH2DRC_STRICT_PCREL)
 				{
 					UML_MOV(block, I0, scratch);                       // mov r0, scratch
+					generate_special_access_check(block, compiler, false);
 					UML_CALLH(block, *m_read32);                       // read32(r0, r1)
 					UML_MOV(block, R32(REG_N), I0);                    // mov Rn, r0
 				}
@@ -3438,12 +3459,12 @@ bool sh_common_execution::generate_group_12_TRAPA(drcuml_block &block, compiler_
 	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 	UML_MOV(block, I0, R32(15));                // mov r0, R15
 	UML_MOV(block, I1, mem(&m_sh2_state->sr));              // mov r1, sr
-	UML_CALLH(block, *m_write32);                    // write32
+	UML_CALLH(block, *m_write32_stack);                    // write32
 
 	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 	UML_MOV(block, I0, R32(15));                // mov r0, R15
 	UML_MOV(block, I1, desc->pc + 2);             // mov r1, pc+2
-	UML_CALLH(block, *m_write32);                    // write32
+	UML_CALLH(block, *m_write32_stack);                    // write32
 
 	UML_MOV(block, I0, mem(&m_sh2_state->ea));              // mov r0, ea
 	UML_CALLH(block, *m_read32);                 // read32
@@ -4101,6 +4122,7 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 	case 0x1b: // TAS(Rn);
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		SETEA(0);
+		generate_special_access_check(block, compiler, true);
 		UML_CALLH(block, *m_read8);          // call read8
 
 		UML_AND(block, mem(&m_sh2_state->sr), mem(&m_sh2_state->sr), ~SH_T);   // and sr, sr, ~T

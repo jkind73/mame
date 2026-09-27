@@ -25,6 +25,7 @@ public:
 	void set_frt_input(int state) override {} // not every CPU needs this, let the ones that do override it
 
 	void func_fastirq(); // required for DRC, needs to be public to be accessible through non-classed static trampoline function
+	void func_data_address_error(); // DRC memory accessor error path
 
 protected:
 	class sh2_frontend;
@@ -64,6 +65,12 @@ protected:
 	address_space *m_decrypted_program;
 
 	uint32_t m_test_irq;
+	// CPU address errors (SH7604 4.3): recorded when the faulting bus cycle happens and accepted at the next
+	// instruction boundary that may accept exceptions, not between a delayed branch and its delay slot (Table 4.10)
+	uint32_t m_addr_error;
+	int32_t m_addr_error_icount;    // DRC: cycles left when the error forced the block to leave at the next update
+	uint32_t m_addr_error_ea;       // DRC scratch, survives the C call in the accessor error path
+	uint32_t m_addr_error_data;
 	int32_t m_internal_irq_vector;
 	int8_t m_nmi_line_state;
 
@@ -84,6 +91,15 @@ private:
 	void ILLEGAL_SLOT();
 
 	virtual void execute_one_f000(uint16_t opcode) override;
+
+	offs_t data_access_check(offs_t offset, unsigned size);
+	void note_address_error();
+	void address_error_exception();
+	virtual bool fetch_address_error(offs_t pc) override;
+	virtual void pcrel_access_check(offs_t ea) override;
+	virtual void tas_access_check(offs_t ea) override;
+	void generate_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr, bool checked);
+	virtual void generate_special_access_check(drcuml_block &block, compiler_state &compiler, bool tas) override;
 
 	virtual void init_drc_frontend() override;
 	virtual const opcode_desc* get_desclist(offs_t pc) override;

@@ -30,6 +30,22 @@
 
 constexpr int SH2_INT_15 = 15;
 
+namespace {
+
+// SH7604 4.8.3: address errors are not accepted while an exception stacks SR and PC (an odd SP would otherwise
+// loop forever); the same suppression covers code compilation, whose literal pool reads are not guest accesses.
+struct addr_error_scope
+{
+	explicit addr_error_scope(uint32_t &flag) : m_flag(flag), m_old(flag) { flag = 1; }
+	~addr_error_scope() { m_flag = m_old; }
+	uint32_t &m_flag;
+	uint32_t m_old;
+};
+
+} // anonymous namespace
+
+static void cfunc_data_address_error(void *param) { ((sh2_device *)param)->func_data_address_error(); }
+
 sh2_device::sh2_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines, uint32_t address_mask)
 	: sh_common_execution(mconfig, type, tag, owner, clock, ENDIANNESS_BIG, internal_map)
 	, m_program_config("program", ENDIANNESS_BIG, 32, addrlines, 0, internal_map)
@@ -39,6 +55,10 @@ sh2_device::sh2_device(const machine_config &mconfig, device_type type, const ch
 	m_cpu_type = cpu_type;
 	m_am = address_mask;
 	m_isdrc = allow_drc();
+	m_addr_error = 0;
+	m_addr_error_icount = 0;
+	m_addr_error_ea = 0;
+	m_addr_error_data = 0;
 }
 
 sh2_device::~sh2_device()
@@ -73,6 +93,8 @@ void sh2_device::device_start()
 	save_item(NAME(m_irq_line_state));
 	save_item(NAME(m_nmi_line_state));
 	save_item(NAME(m_internal_irq_vector));
+	save_item(NAME(m_addr_error));
+	save_item(NAME(m_addr_error_icount));
 
 	state_add(STATE_GENPC, "PC", m_sh2_state->pc).mask(m_am).callimport();
 	state_add(STATE_GENPCBASE, "CURPC", m_sh2_state->pc).callimport().noshow();
@@ -98,6 +120,7 @@ void sh2_device::device_reset()
 	load_reset_vectors(false);
 
 	m_test_irq = 0;
+	m_addr_error = 0;
 	m_cpu_off = 0;
 	m_internal_irq_vector = 0;
 	m_cache_dirty = true;
@@ -130,8 +153,103 @@ std::unique_ptr<util::disasm_interface> sh2_device::create_disassembler()
 	return std::make_unique<sh_disassembler>(false);
 }
 
+// SH7604 Table 4.6: CPU data accesses raise an address error for a word access at an odd address, a longword
+// access off a longword boundary, a byte access to FFFFFF00-FFFFFFFF and a longword access to FFFFFE00-FFFFFEFF.
+// The bus cycle itself still happens (at the aligned address), the exception is accepted after the instruction.
+offs_t sh2_device::data_access_check(offs_t offset, unsigned size)
+{
+	bool error;
+	switch (size)
+	{
+	case 1:
+		error = offset >= 0xffffff00;
+		break;
+	case 2:
+		error = (offset & 1) != 0;
+		break;
+	default:
+		error = (offset & 3) != 0 || (offset >= 0xfffffe00 && offset < 0xffffff00);
+		break;
+	}
+
+	if (error)
+	{
+		note_address_error();
+		return offset & ~offs_t(size - 1);
+	}
+	return offset;
+}
+
+void sh2_device::note_address_error()
+{
+	if (m_no_addr_error || m_addr_error)
+		return;
+
+	m_addr_error = 1;
+	if (m_isdrc)
+	{
+		// Leave the translated block at the next cycle update, which is the end of the faulting instruction
+		// (or of the delayed branch that owns it: nothing is accepted between a branch and its delay slot).
+		m_addr_error_icount = m_sh2_state->icount;
+		m_sh2_state->icount = -0x40000000;
+	}
+}
+
+void sh2_device::func_data_address_error()
+{
+	note_address_error();
+}
+
+// 4.3.2: SR and the address of the next instruction are stacked, then vector 9 is entered (not a delayed branch)
+void sh2_device::address_error_exception()
+{
+	debugger_exception_hook(9);
+	m_addr_error = 0;
+
+	addr_error_scope const stacking(m_no_addr_error);
+	m_sh2_state->r[15] -= 4;
+	write_long(m_sh2_state->r[15], m_sh2_state->sr);
+	m_sh2_state->r[15] -= 4;
+	write_long(m_sh2_state->r[15], m_sh2_state->pc);
+	m_sh2_state->pc = read_long(m_sh2_state->vbr + 9 * 4) & m_am;
+
+	// same timing estimate as the general illegal instruction
+	m_sh2_state->icount -= 5;
+
+	if (m_sh2_state->sleep_mode == 1)
+		m_sh2_state->sleep_mode = 2;
+}
+
+// Table 4.6: an instruction fetched from an odd address or from the on-chip peripheral module space, which is
+// FFFFFE00-FFFFFFFF (Table 7.3); the rest of the area 111 is reserved and has no defined behaviour.
+bool sh2_device::fetch_address_error(offs_t pc)
+{
+	if (!(pc & 1) && pc < 0xfffffe00)
+		return false;
+
+	address_error_exception();
+	return true;
+}
+
+// Table 4.6: PC-relative access of the cache purge, address array or on-chip I/O space
+void sh2_device::pcrel_access_check(offs_t ea)
+{
+	// associative purge space 40000000-47FFFFFF, address array 60000000-7FFFFFFF, on-chip modules FFFFFE00-FFFFFFFF
+	if ((ea >> 27) == 8 || (ea >> 29) == 3 || ea >= 0xfffffe00)
+		note_address_error();
+}
+
+// Table 4.6: TAS.B of the cache purge, address array, data array or on-chip I/O space
+void sh2_device::tas_access_check(offs_t ea)
+{
+	// as above plus the data array C0000000-C0000FFF
+	if ((ea >> 27) == 8 || (ea >> 29) == 3 || (ea >> 12) == 0xc0000 || ea >= 0xfffffe00)
+		note_address_error();
+}
+
 uint8_t sh2_device::read_byte(offs_t offset)
 {
+	offset = data_access_check(offset, 1);
 	if (offset < 0x40000000)
 		return m_program->read_byte(offset & m_am);
 
@@ -140,6 +258,7 @@ uint8_t sh2_device::read_byte(offs_t offset)
 
 uint16_t sh2_device::read_word(offs_t offset)
 {
+	offset = data_access_check(offset, 2);
 	if (offset < 0x40000000)
 		return m_program->read_word(offset & m_am);
 
@@ -148,6 +267,7 @@ uint16_t sh2_device::read_word(offs_t offset)
 
 uint32_t sh2_device::read_long(offs_t offset)
 {
+	offset = data_access_check(offset, 4);
 	// The cached (0x00000000) and cache-through (0x20000000) windows
 	// end up mirroring each other
 	if (offset < 0x40000000)
@@ -164,6 +284,7 @@ uint16_t sh2_device::decrypted_read_word(offs_t offset)
 
 void sh2_device::write_byte(offs_t offset, uint8_t data)
 {
+	offset = data_access_check(offset, 1);
 	if (offset < 0x40000000)
 	{
 		m_program->write_byte(offset & m_am, data);
@@ -175,6 +296,7 @@ void sh2_device::write_byte(offs_t offset, uint8_t data)
 
 void sh2_device::write_word(offs_t offset, uint16_t data)
 {
+	offset = data_access_check(offset, 2);
 	if (offset < 0x40000000)
 	{
 		m_program->write_word(offset & m_am, data);
@@ -186,6 +308,7 @@ void sh2_device::write_word(offs_t offset, uint16_t data)
 
 void sh2_device::write_long(offs_t offset, uint32_t data)
 {
+	offset = data_access_check(offset, 4);
 	if (offset < 0x40000000)
 	{
 		m_program->write_dword(offset & m_am, data);
@@ -257,6 +380,7 @@ inline void sh2_device::TRAPA(uint32_t i)
 {
 	uint32_t imm = i & 0xff;
 	debugger_exception_hook(imm);
+	addr_error_scope const stacking(m_no_addr_error);
 
 	m_sh2_state->ea = m_sh2_state->vbr + imm * 4;
 
@@ -275,6 +399,7 @@ inline void sh2_device::ILLEGAL()
 {
 	//logerror("Illegal opcode at %08x\n", m_sh2_state->pc - 2);
 	debugger_exception_hook(4);
+	addr_error_scope const stacking(m_no_addr_error);
 
 	m_sh2_state->r[15] -= 4;
 	write_long(m_sh2_state->r[15], m_sh2_state->sr);     /* push SR onto stack */
@@ -295,6 +420,7 @@ inline void sh2_device::ILLEGAL()
 inline void sh2_device::ILLEGAL_SLOT()
 {
 	debugger_exception_hook(6);
+	addr_error_scope const stacking(m_no_addr_error);
 
 	m_sh2_state->r[15] -= 4;
 	write_long(m_sh2_state->r[15], m_sh2_state->sr);
@@ -317,7 +443,17 @@ void sh2_device::execute_run()
 {
 	if (m_isdrc)
 	{
-		execute_run_drc();
+		// A CPU address error forces the translated code out at the end of the faulting instruction with the
+		// cycles saved; the exception is taken here and execution resumes at the handler.
+		do
+		{
+			execute_run_drc();
+			if (!m_addr_error)
+				break;
+
+			m_sh2_state->icount = m_addr_error_icount;
+			address_error_exception();
+		} while (m_sh2_state->icount > 0);
 		return;
 	}
 
@@ -331,6 +467,9 @@ void sh2_device::execute_run()
 	do
 	{
 		debugger_instruction_hook(m_sh2_state->pc);
+
+		if (fetch_address_error(m_sh2_state->pc))
+			continue;
 
 		const uint16_t opcode = m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
 
@@ -350,6 +489,10 @@ void sh2_device::execute_run()
 
 			execute_one(opcode);
 		}
+
+		// Table 4.10: an address error raised by a delay slot instruction is held until the branch has completed
+		if (m_addr_error && !m_sh2_state->m_delay)
+			address_error_exception();
 
 		if (m_test_irq && !m_sh2_state->m_delay)
 		{
@@ -513,6 +656,7 @@ void sh2_device::sh2_exception_internal(const char *message, int irqline, int ve
 	}
 	else
 	{
+		addr_error_scope const stacking(m_no_addr_error);
 		m_sh2_state->r[15] -= 4;
 		write_long(m_sh2_state->r[15], m_sh2_state->sr);     /* push SR onto stack */
 		m_sh2_state->r[15] -= 4;
@@ -561,6 +705,7 @@ void sh2_device::static_generate_entry_point()
 	/* forward references */
 	alloc_handle(m_nocode, "nocode");
 	alloc_handle(m_write32, "write32");     // necessary?
+	alloc_handle(m_write32_stack, "write32_stack");
 	alloc_handle(m_entry, "entry");
 	UML_HANDLE(block, *m_entry);                         // handle  entry
 
@@ -607,12 +752,12 @@ void sh2_device::static_generate_entry_point()
 	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 	UML_MOV(block, I0, R32(15));                // mov r0, R15
 	UML_MOV(block, I1, mem(&m_sh2_state->irqsr));           // mov r1, irqsr
-	UML_CALLH(block, *m_write32);                    // call write32
+	UML_CALLH(block, *m_write32_stack);                    // call write32
 
 	UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 	UML_MOV(block, I0, R32(15));                // mov r0, R15
 	UML_MOV(block, I1, mem(&m_sh2_state->pc));              // mov r1, pc
-	UML_CALLH(block, *m_write32);                    // call write32
+	UML_CALLH(block, *m_write32_stack);                    // call write32
 
 	UML_MOV(block, mem(&m_sh2_state->pc), mem(&m_sh2_state->evec));             // mov pc, evec
 
@@ -680,12 +825,12 @@ void sh2_device::generate_update_cycles(drcuml_block &block, compiler_state &com
 		UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 		UML_MOV(block, I0, R32(15));                // mov r0, R15
 		UML_MOV(block, I1, mem(&m_sh2_state->irqsr));           // mov r1, irqsr
-		UML_CALLH(block, *m_write32);                    // call write32
+		UML_CALLH(block, *m_write32_stack);                    // call write32
 
 		UML_SUB(block, R32(15), R32(15), 4);            // sub R15, R15, #4
 		UML_MOV(block, I0, R32(15));                // mov r0, R15
 		UML_MOV(block, I1, param);              // mov r1, nextpc
-		UML_CALLH(block, *m_write32);                    // call write32
+		UML_CALLH(block, *m_write32_stack);                    // call write32
 
 		UML_HASHJMP(block, 0, mem(&m_sh2_state->evec), *m_nocode);       // hashjmp m_sh2_state->evec
 
@@ -710,6 +855,48 @@ void sh2_device::generate_update_cycles(drcuml_block &block, compiler_state &com
 
 void sh2_device::static_generate_memory_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr)
 {
+	generate_accessor(size, iswrite, name, handleptr, true);
+
+	// exception stacking writes the stack whatever its alignment (4.8.3)
+	if (size == 4 && iswrite)
+		generate_accessor(size, iswrite, "write32_stack", m_write32_stack, false);
+}
+
+// Emitted before a PC-relative or TAS.B access whose address is in I0 (which is preserved)
+void sh2_device::generate_special_access_check(drcuml_block &block, compiler_state &compiler, bool tas)
+{
+	uml::code_label const ok = compiler.labelnum++;
+	uml::code_label const err = compiler.labelnum++;
+
+	UML_SHR(block, I1, I0, 27);                         // shr r1, r0, #27
+	UML_CMP(block, I1, 8);                              // 40000000-47FFFFFF: associative purge space
+	UML_JMPc(block, COND_E, err);
+	UML_SHR(block, I1, I0, 29);                         // shr r1, r0, #29
+	UML_CMP(block, I1, 3);                              // 60000000-7FFFFFFF: cache address array
+	UML_JMPc(block, COND_E, err);
+	UML_CMP(block, I0, 0xfffffe00);                     // FFFFFE00-FFFFFFFF: on-chip peripheral modules
+	UML_JMPc(block, COND_AE, err);
+	if (tas)
+	{
+		UML_SHR(block, I1, I0, 12);                     // shr r1, r0, #12
+		UML_CMP(block, I1, 0xc0000);                    // C0000000-C0000FFF: cache data array (TAS.B only)
+		UML_JMPc(block, COND_NE, ok);
+	}
+	else
+	{
+		UML_JMP(block, ok);
+	}
+
+	UML_LABEL(block, err);
+	UML_MOV(block, mem(&m_addr_error_ea), I0);
+	UML_CALLC(block, cfunc_data_address_error, this);
+	UML_MOV(block, I0, mem(&m_addr_error_ea));
+
+	UML_LABEL(block, ok);
+}
+
+void sh2_device::generate_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr, bool checked)
+{
 	/* on entry, address is in I0; data for writes is in I1 */
 	/* on exit, read result is in I0 */
 	/* routine trashes I0 */
@@ -721,6 +908,49 @@ void sh2_device::static_generate_memory_accessor(int size, int iswrite, const ch
 	/* add a global entry for this */
 	alloc_handle(handleptr, name);
 	UML_HANDLE(block, *handleptr);                         // handle  *handleptr
+
+	// SH7604 Table 4.6 data access address errors. The bus cycle still happens at the aligned address; the
+	// C helper only records the error and makes the block leave at the next cycle update.
+	if (checked)
+	{
+		uint32_t const ok = label++;
+		uint32_t const err = label++;
+
+		switch (size)
+		{
+		case 1:
+			UML_CMP(block, I0, 0xffffff00);             // byte access to FFFFFF00-FFFFFFFF
+			UML_JMPc(block, COND_B, ok);
+			break;
+
+		case 2:
+			UML_TEST(block, I0, 1);                     // word access at an odd address
+			UML_JMPc(block, COND_Z, ok);
+			break;
+
+		default:
+			UML_TEST(block, I0, 3);                     // longword access off a longword boundary
+			UML_JMPc(block, COND_NZ, err);
+			UML_CMP(block, I0, 0xfffffe00);             // longword access to FFFFFE00-FFFFFEFF
+			UML_JMPc(block, COND_B, ok);
+			UML_CMP(block, I0, 0xffffff00);
+			UML_JMPc(block, COND_AE, ok);
+			break;
+		}
+
+		UML_LABEL(block, err);
+		UML_MOV(block, mem(&m_addr_error_ea), I0);
+		if (iswrite)
+			UML_MOV(block, mem(&m_addr_error_data), I1);
+		UML_CALLC(block, cfunc_data_address_error, this);
+		UML_MOV(block, I0, mem(&m_addr_error_ea));
+		if (iswrite)
+			UML_MOV(block, I1, mem(&m_addr_error_data));
+		if (size > 1)
+			UML_AND(block, I0, I0, ~uint32_t(size - 1));
+
+		UML_LABEL(block, ok);
+	}
 
 	// with internal handlers this becomes easier.
 	// if addr < 0x40000000 AND it with AM and do the read/write, else just do the read/write

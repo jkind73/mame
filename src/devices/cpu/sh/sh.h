@@ -350,6 +350,10 @@ protected:
 	virtual void LDCMSR(const uint16_t opcode) = 0;
 	virtual void TRAPA(uint32_t i) = 0;
 	virtual void ILLEGAL() = 0;
+	// CPU address errors are an SH-2 feature: the other cores leave these hooks empty
+	virtual bool fetch_address_error(offs_t pc) { return false; }
+	virtual void pcrel_access_check(offs_t ea) { }
+	virtual void tas_access_check(offs_t ea) { }
 
 	drc_cache           m_cache;                  /* pointer to the DRC code cache */
 
@@ -396,6 +400,7 @@ public:
 	uml::code_handle *  m_write16;                    /* write half */
 	uml::code_handle *  m_read32;                 /* read word */
 	uml::code_handle *  m_write32;                    /* write word */
+	uml::code_handle *  m_write32_stack;              /* write word for exception stacking: no address error checks */
 
 	uml::code_handle *  m_interrupt;              /* interrupt */
 	uml::code_handle *  m_nocode;                 /* nocode */
@@ -414,6 +419,7 @@ public:
 	virtual void sh2_exception(const char *message, int irqline) { fatalerror("sh2_exception in base classs\n"); }
 
 	virtual void generate_update_cycles(drcuml_block &block, compiler_state &compiler, uml::parameter param, bool allow_exception) = 0;
+	virtual void generate_special_access_check(drcuml_block &block, compiler_state &compiler, bool tas) { }
 
 	virtual bool generate_group_0_RTE(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint16_t opcode, int in_delay_slot, uint32_t ovrpc);
 	virtual bool generate_group_4_LDCSR(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint16_t opcode, int in_delay_slot, uint32_t ovrpc);
@@ -468,6 +474,7 @@ public:
 	int m_cpu_type;
 	uint32_t m_am;
 	bool m_isdrc;
+	uint32_t m_no_addr_error = 0;   // exception stacking and code compilation must not raise address errors
 
 	void sh2drc_set_options(uint32_t options);
 	void sh2drc_add_pcflush(offs_t address);
