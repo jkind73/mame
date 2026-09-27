@@ -635,7 +635,29 @@ void sat_console_state::saturn_mem(address_map &map) {
           FUNC(sat_console_state::backupram_w))
       .mirror(0x20070000)
       .share("share1"); // mirrored across the 512KB window
-  map(0x00200000, 0x002fffff).ram().mirror(0x20100000).share("workram_l");
+  map(0x00200000, 0x002fffff).ram().mirror(0x20000000).share("workram_l");
+  // Yabause wiki SH-2CPU memory map (crediting Charles MacDonald's hardware
+  // notes): the 1MB Work RAM Low window (00200000-002FFFFF) is immediately
+  // followed by a distinct, unpopulated 1MB hole that reads back random data,
+  // mostly $00 - not a mirror of work RAM. The previous mirror(0x20100000) on
+  // the map entry above folded this hole into work RAM (an unexplained bit
+  // present since the driver's 2013 MESS/MAME split, src/mame/drivers/saturn.c
+  // AM_MIRROR(0x20100000)); modelled here as a fixed $00000000 return rather
+  // than genuine bus noise, since only "mostly $00" is documented, not an
+  // exact distribution.
+  map(0x00300000, 0x003fffff)
+      .mirror(0x20000000)
+      .lr32(NAME([](offs_t offset, u32 mem_mask) { return 0x00000000; }));
+  // Same source: 00800000-00FFFFFF is a second, separate hole that always
+  // returns the repeating pattern $0000,0001,0002,...,0007 (each 16-bit half
+  // reads its own index, mod 8) - previously unmapped here (defaulting to a
+  // silent 0 read for the whole 8MB range).
+  map(0x00800000, 0x00ffffff)
+      .mirror(0x20000000)
+      .lr32(NAME([](offs_t offset, u32 mem_mask) {
+        const unsigned idx = (offset & 3) * 2;
+        return (idx << 16) | (idx + 1);
+      }));
   map(0x00400000, 0x00400001).lr16(NAME([this](offs_t offset, u16 mem_mask) {
     // avoid trying to test an unknown device in A-Bus CS2 area with -bios 1
     // https://github.com/mamedev/mame/issues/15891#issuecomment-5319402851
