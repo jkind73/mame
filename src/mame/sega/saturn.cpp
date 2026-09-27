@@ -6293,16 +6293,52 @@ bool saturn_state::vdp2_rotation_vram_access(uint32_t address, bool pattern_name
   return ((VDP2_RAMCTL >> (effective * 2)) & 3) == (pattern_name ? 2 : 3);
 }
 
+// ST-058 pp.33-34, Tables 3.2 and 3.3: the number of pattern name and
+// character/bitmap pattern read accesses required in one cycle. Table 3.2
+// (pattern name) depends only on the reduction range enabled for the layer;
+// Table 3.3 (character pattern) also depends on the colour depth. Above
+// 256 colours the table lists a single, reduction-independent count, so
+// those depths ignore the reduction bits. Returns false (no requirement
+// available) for the one combination the table does not list - quarter
+// reduction with 256 colours - rather than inventing a count for it.
+static bool vdp2_required_cycle_pattern_counts(uint8_t colour_depth,
+                                               bool reduction_quarter,
+                                               bool reduction_half,
+                                               unsigned &pnmdr_count,
+                                               unsigned &cpdr_count) {
+  pnmdr_count = reduction_quarter ? 4 : reduction_half ? 2 : 1;
+  switch (colour_depth) {
+  case 0: // 16 colours
+    cpdr_count = reduction_quarter ? 4 : reduction_half ? 2 : 1;
+    return true;
+  case 1: // 256 colours: no quarter-reduction entry in Table 3.3
+    if (reduction_quarter)
+      return false;
+    cpdr_count = reduction_half ? 4 : 2;
+    return true;
+  case 2: // 2048 colours
+  case 3: // 32768 colours
+    cpdr_count = 4;
+    return true;
+  case 4: // 16,770,000 colours (NBG0 only)
+    cpdr_count = 8;
+    return true;
+  default:
+    return false;
+  }
+}
+
 uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
     uint8_t access_command_pnmdr, uint8_t access_command_cpdr,
-    uint8_t bitmap_enable) {
+    uint8_t bitmap_enable, uint8_t colour_depth, bool reduction_quarter,
+    bool reduction_half) {
   // ST-058 pp.31-32,149: unpartitioned memories use only A0/B0;
   // high-resolution/exclusive modes use T0-T3, not the upper registers.
   // Rotation-owned banks do not execute normal-screen access commands.
   uint16_t const cycles[] = {VDP2_CYCA0L, VDP2_CYCA0U, VDP2_CYCA1L, VDP2_CYCA1U,
                             VDP2_CYCA2L, VDP2_CYCA2U, VDP2_CYCA3L, VDP2_CYCA3U};
   unsigned const slots = (m_vdp2->get_hreso() & 6) ? 4 : 8;
-  unsigned found = bitmap_enable ? 1 : 0;
+  unsigned pnmdr_seen = 0, cpdr_seen = 0;
   for (unsigned bank = 0; bank < 4; ++bank) {
     if ((bank & 1) && !(VDP2_RAMCTL & (0x100U << (bank / 2))))
       continue;
@@ -6311,13 +6347,22 @@ uint8_t saturn_state::vdp2_check_vram_cycle_pattern_registers(
     for (unsigned slot = 0; slot < slots; ++slot) {
       unsigned const command = (cycles[bank * 2 + slot / 4] >> (12 - (slot % 4) * 4)) & 15;
       if (command == access_command_pnmdr)
-        found |= 1;
+        ++pnmdr_seen;
       if (command == access_command_cpdr)
-        found |= 2;
+        ++cpdr_seen;
     }
   }
-  // This is a presence gate, not fetch-address matching or a slot arbiter.
-  return found == 3;
+  if (bitmap_enable)
+    return true; // bitmap layers have no pattern name table to fetch
+  // ST-058 p.33: "the number of accesses must be exactly as determined by
+  // the conditions"; require at least that many rather than an exact match,
+  // since extra provisioned slots do not stop the layer from displaying.
+  unsigned required_pnmdr, required_cpdr;
+  if (!vdp2_required_cycle_pattern_counts(colour_depth, reduction_quarter,
+                                          reduction_half, required_pnmdr,
+                                          required_cpdr))
+    return pnmdr_seen != 0 && cpdr_seen != 0; // undocumented combination: presence gate only
+  return pnmdr_seen >= required_pnmdr && cpdr_seen >= required_cpdr;
 }
 
 // ST-058 p.43: RGB555 becomes RGB888 by appending three zero bits.
@@ -10087,7 +10132,8 @@ void saturn_state::vdp2_draw_NBG0(bitmap_rgb32 &bitmap,
   // Normal-screen cycle commands apply only to NBG0 here.
   if (current_tilemap.enabled && !VDP2_R1ON) {
     current_tilemap.enabled = vdp2_check_vram_cycle_pattern_registers(
-        VDP2_CP_NBG0_PNMDR, VDP2_CP_NBG0_CPDR, current_tilemap.bitmap_enable);
+        VDP2_CP_NBG0_PNMDR, VDP2_CP_NBG0_CPDR, current_tilemap.bitmap_enable,
+        VDP2_N0CHCN, VDP2_N0ZMQT, VDP2_N0ZMHF);
   }
 
   current_tilemap.roz_mode3 = false;
@@ -10206,7 +10252,8 @@ void saturn_state::vdp2_draw_NBG1(bitmap_rgb32 &bitmap,
 
   if (current_tilemap.enabled) {
     current_tilemap.enabled = vdp2_check_vram_cycle_pattern_registers(
-        VDP2_CP_NBG1_PNMDR, VDP2_CP_NBG1_CPDR, current_tilemap.bitmap_enable);
+        VDP2_CP_NBG1_PNMDR, VDP2_CP_NBG1_CPDR, current_tilemap.bitmap_enable,
+        VDP2_N1CHCN, VDP2_N1ZMQT, VDP2_N1ZMHF);
   }
 
   vdp2_check_tilemap(bitmap, cliprect);
@@ -10317,8 +10364,10 @@ void saturn_state::vdp2_draw_NBG2(bitmap_rgb32 &bitmap,
   current_tilemap.plane_size = VDP2_N2PLSZ;
 
   if (current_tilemap.enabled) {
+    // NBG2 has no reduction capability (ST-058 Table 1.4: "Scale: None").
     current_tilemap.enabled = vdp2_check_vram_cycle_pattern_registers(
-        VDP2_CP_NBG2_PNMDR, VDP2_CP_NBG2_CPDR, current_tilemap.bitmap_enable);
+        VDP2_CP_NBG2_PNMDR, VDP2_CP_NBG2_CPDR, current_tilemap.bitmap_enable,
+        VDP2_N2CHCN, false, false);
   }
 
   vdp2_check_tilemap(bitmap, cliprect);
@@ -10427,8 +10476,10 @@ void saturn_state::vdp2_draw_NBG3(bitmap_rgb32 &bitmap,
   current_tilemap.plane_size = VDP2_N3PLSZ;
 
   if (current_tilemap.enabled) {
+    // NBG3 has no reduction capability (ST-058 Table 1.4: "Scale: None").
     current_tilemap.enabled = vdp2_check_vram_cycle_pattern_registers(
-        VDP2_CP_NBG3_PNMDR, VDP2_CP_NBG3_CPDR, current_tilemap.bitmap_enable);
+        VDP2_CP_NBG3_PNMDR, VDP2_CP_NBG3_CPDR, current_tilemap.bitmap_enable,
+        VDP2_N3CHCN, false, false);
   }
 
   vdp2_check_tilemap(bitmap, cliprect);
