@@ -90,9 +90,8 @@ backgrounds (TODO: reinvestigate this), dinoisl;
 - VRAM cycle pattern section needs to be better encapsulated and investigated
 thru real HW also cfr. several "minor GFX" glitches scattered across, kingbox on
 gameplay, columns Sega Ages logo;
-- Missing mosaic effect
-  cfr. Saturn BIOS memory screens, capgen2 Choh Makai Mura map transitions
-(obviously);
+- Mosaic effect is implemented in the NBG/RBG scanline renderers
+  (mosaic_x/mosaic_y); this line used to say it was missing (V2-P1-16).
 - Per-scanline raster effects, at very least Color Offset section is eligible to
 those cfr. elevact2, ogrebatl, probably htheros missing crowd;
 - ODD and H/V Counters needs to be fine tuned with real HW tests.
@@ -3903,7 +3902,7 @@ N0BMEN   | N0CHSZ   |
     111 - invalid   */
 #define VDP2_N0CHCN ((VDP2_CHCTLA & 0x0070) >> 4)
 
-/*  N0BMSZx - NBG0 Bitmap Size *guessed*
+/*  N0BMSZx - NBG0 Bitmap Size (ST-058 Table 1.4)
     00 - 512 x 256
     01 - 512 x 512
     10 - 1024 x 256
@@ -3930,7 +3929,7 @@ N0BMEN   | N0CHSZ   |
     11 - 32768 Colours (RGB5)  */
 #define VDP2_N1CHCN ((VDP2_CHCTLA & 0x3000) >> 12)
 
-/*  N1BMSZx - NBG1 Bitmap Size *guessed*
+/*  N1BMSZx - NBG1 Bitmap Size (ST-058 Table 1.4)
     00 - 512 x 256
     01 - 512 x 512
     10 - 1024 x 256
@@ -3974,7 +3973,7 @@ N2CHCN   | N2CHSZ   |
     111 - invalid   */
 #define VDP2_R0CHCN ((VDP2_CHCTLB & 0x7000) >> 12)
 
-/*  R0BMSZx - RBG0 Bitmap Size *guessed*
+/*  R0BMSZx - RBG0 Bitmap Size (ST-058 Table 1.4)
     00 - 512 x 256
     01 - 512 x 512  */
 #define VDP2_R0BMSZ ((VDP2_CHCTLB & 0x0400) >> 10)
