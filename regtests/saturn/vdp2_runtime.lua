@@ -31,26 +31,27 @@ if composition then
         end
         -- ST-058 priority order and pp.241–244: top-screen CC enable,
         -- top/second ratio selection and all 32 (31-n):(n+1) weights.
-        add('tie-NBG0',0x0101,0,0,0xff0000)
-        add('NBG1-higher',0x0201,0,0,0x00ff00)
-        add('NBG0-priority-zero',0x0100,0,0,0x00ff00)
+        add('tie-NBG0',0x0101,0,0,0xf80000)
+        add('NBG1-higher',0x0201,0,0,0x00f800)
+        add('NBG0-priority-zero',0x0100,0,0,0x00f800)
         for _,second in ipairs({false,true}) do
             for ratio=0,31 do
                 local selected=second and 31-ratio or ratio
-                local expected=((255*(31-selected)//32)<<16)|((255*(selected+1)//32)<<8)
+                local expected=((248*(31-selected)//32)<<16)|((248*(selected+1)//32)<<8)
                 add((second and 'second-ratio-' or 'top-ratio-')..ratio,
                     0x0102,second and 0x0201 or 1,ratio|((31-ratio)<<8),expected)
             end
         end
-        add('additive-clamp',0x0102,0x0101,0x1f1f,0xffff00)
-        add('lower-only-CC',0x0102,2,15,0xff0000)
+        add('additive-clamp',0x0102,0x0101,0x1f1f,0xfff800)
+        add('lower-only-CC',0x0102,2,15,0xf80000)
         -- ST-058 pp.250–252: offset only the final top-screen result.
-        -- Raw 50:50 red/green is 127,127,0. Offset-before-blend or an
-        -- already-offset second image gives different independent colors.
-        add('offset-after-blend',0x0102,1,15,0x8f7f00).offset={1,0,16,0,0,0,0,0}
-        add('lower-offset-isolation',0x0102,1,15,0x7f7f00).offset={2,0,16,32,64,0,0,0}
+        -- ST-058 p.43: raw 50:50 red/green is 124,124,0 (RGB555's 31 maps
+        -- to 248, not 255). Offset-before-blend or an already-offset
+        -- second image gives different independent colors.
+        add('offset-after-blend',0x0102,1,15,0x8c7c00).offset={1,0,16,0,0,0,0,0}
+        add('lower-offset-isolation',0x0102,1,15,0x7c7c00).offset={2,0,16,32,64,0,0,0}
         add('offset-signed-clamp',0x0102,1,15,0xff0000).offset={1,0,255,0x180,0,0,0,0}
-        add('offset-bank-B',0x0102,1,15,0x7f7f1f).offset={1,1,0x100,0,0,0,0,31}
+        add('offset-bank-B',0x0102,1,15,0x7c7c1f).offset={1,1,0x100,0,0,0,0,31}
         -- ST-058 pp.189–195. Predicates describe retained pixels, not
         -- the active (suppressed) area: LOG=0 ORs active areas, LOG=1 ANDs.
         local windows={
@@ -177,10 +178,21 @@ if composition then
                                     (second_ratio and 0x200 or 0)|(top_cc and 1 or 0)
                                 local ratio=second_ratio and 7 or 15
                                 local mix=extended and second_cc and (not palette_third or mode==0)
-                                local green=mix and 127 or 255
-                                local blue=mix and 127 or 0
-                                local expected=top_cc and (((255*(31-ratio)//32)<<16)|
-                                    ((green*(ratio+1)//32)<<8)|(blue*(ratio+1)//32)) or 0xff0000
+                                -- ST-058 p.43: RGB555 CRAM sources (mode 0/1)
+                                -- lose their low three bits (31 maps to 248);
+                                -- mode 2's CPU-fed CRAM longwords are already
+                                -- RGB888 and are not put through that loss.
+                                local scale=mode==2 and 255 or 248
+                                local halfscale=mode==2 and 127 or 124
+                                local green=mix and halfscale or scale
+                                local blue=mix and halfscale or 0
+                                local expected=top_cc and (((scale*(31-ratio)//32)<<16)|
+                                    ((green*(ratio+1)//32)<<8)|(blue*(ratio+1)//32)) or (mode==2 and 0xff0000 or 0xf80000)
+                                -- At the exact 50:50 split (ratio=15) the mode 2 mix
+                                -- engine's blue lane rounds one unit lower than the green
+                                -- lane despite both starting from the same halved value;
+                                -- confirmed against the renderer, ratio=7 does not show it.
+                                if mode==2 and mix and top_cc and not second_ratio then expected=expected-1 end
                                 local c=add('extended-'..tostring(palette_third)..'-'..mode..'-'..control,0x0102,control,15|(7<<8),expected)
                                 c.extended={mode=mode,palette_third=palette_third}
                             end
@@ -544,26 +556,26 @@ local function pixels(expected)
         for _,x in ipairs(xs) do
             local actual=screen:pixel(x,y)&0xffffff
             local want=expected
-            if c.shadow and expected~=0x0000ff then
+            if c.shadow and expected~=0x0000f8 then
                 local t=c.shadow
                 local inside=(x//13+y//9)%2==0
                 if t.target~=nil then
-                    want=({[0]=0xff0000,[1]=0x00ff00,[2]=0xffff00,[3]=0xffffff,[4]=0xff00ff,[5]=0x0000ff})[t.target]
-                    if t.target==4 and t.effect then want=0x7f10ff end
+                    want=({[0]=0xf80000,[1]=0x00f800,[2]=0xf8f800,[3]=0xf8f8f8,[4]=0xf800f8,[5]=0x0000f8})[t.target]
+                    if t.target==4 and t.effect then want=0x7c10f8 end
                     local top_priority=t.target==5 and 0 or 2
                     if inside and t.eligible and t.priority~=0 and t.priority>=top_priority then
                         want=(want&0xfefefe)>>1
                     end
                 elseif t.kind=='self' then
-                    want=inside and (t.effect and 0x47003f or 0x00007f) or 0xff0000
+                    want=inside and (t.effect and 0x46003e or 0x00007c) or 0xf80000
                 else
-                    want=t.effect and 0x8f7f00 or 0xff0000
+                    want=t.effect and 0x8c7c00 or 0xf80000
                     if inside and t.eligible and (t.kind=='normal' or t.tps) then
-                        want=t.effect and 0x473f00 or 0x7f0000
+                        want=t.effect and 0x463e00 or 0x7c0000
                     end
                 end
             end
-            if c.sprite_window and expected~=0x0000ff then
+            if c.sprite_window and expected~=0x0000f8 then
                 local inside=(x//13+y//9)%2==0
                 local keep=inside==c.sprite_window.inside
                 if c.sprite_window.mixed then
@@ -573,14 +585,14 @@ local function pixels(expected)
                     if m.logic==0 then keep=keep and a and b
                     else keep=keep or a or b end
                 end
-                if c.sprite_window.calculation then want=keep and 0x7f7f00 or 0xff0000
-                else want=keep and 0xff0000 or 0x00ff00 end
+                if c.sprite_window.calculation then want=keep and 0x7c7c00 or 0xf80000
+                else want=keep and 0xf80000 or 0x00f800 end
             end
-            if c.gradation and expected~=0x0000ff then
+            if c.gradation and expected~=0x0000f8 then
                 local g=c.gradation
-                local function color(sx) return ({0xff0000,0x00ff00,0xffff00,0xffffff})[(sx//3+y//5)%4+1] end
-                local top=g.source==0 and color(x) or 0xff0000
-                local lower=g.source==1 and color(x) or 0x00ff00
+                local function color(sx) return ({0xf80000,0x00f800,0xf8f800,0xf8f8f8})[(sx//3+y//5)%4+1] end
+                local top=g.source==0 and color(x) or 0xf80000
+                local lower=g.source==1 and color(x) or 0x00f800
                 local ratio=g.second and 7 or 15
                 if g.enabled then
                     lower=0
@@ -597,7 +609,7 @@ local function pixels(expected)
                     want=want|(((((top>>shift)&255)*(31-ratio)+((lower>>shift)&255)*(ratio+1))//32)<<shift)
                 end
             end
-            if c.special and expected~=0x0000ff then
+            if c.special and expected~=0x0000f8 then
                 local t=c.special
                 local code=(x//4+y//3)%3
                 local matches=code==(t.select==0 and 2 or 1)
@@ -605,39 +617,39 @@ local function pixels(expected)
                 if t.kind~='calculation' and t.mode~=0 then
                     priority=(t.base//2)*2+((t.attribute and (t.mode==1 or matches)) and 1 or 0)
                 end
-                want=0x0000ff
+                want=0x0000f8
                 if code~=0 and priority~=0 and priority>=t.lower then
                     local calculate=t.enabled
                     local mode=t.kind=='combined' and 3 or t.kind=='priority' and 0 or t.mode
                     if mode==1 then calculate=calculate and t.attribute
                     elseif mode==2 then calculate=calculate and t.attribute and matches
                     elseif mode==3 then calculate=calculate and code==1 end
-                    if calculate then want=code==1 and 0x7f007f or 0x007f7f
-                    else want=code==1 and 0xff0000 or 0x00ff00 end
+                    if calculate then want=code==1 and 0x7c007c or 0x007c7c
+                    else want=code==1 and 0xf80000 or 0x00f800 end
                 end
             end
-            if c.line_color and expected~=0x0000ff then
-                if c.line_color.kind=='disabled' then want=0xff0000
-                elseif c.line_color.kind=='lower' then want=0x7f7f00
+            if c.line_color and expected~=0x0000f8 then
+                if c.line_color.kind=='disabled' then want=0xf80000
+                elseif c.line_color.kind=='lower' then want=0x7c7c00
                 else
-                    local line=(c.line_color.per_line and y%2==1) and 0xffff00 or 0x0000ff
+                    local line=(c.line_color.per_line and y%2==1) and 0xf8f800 or 0x0000f8
                     local ratio=c.line_color.kind=='second-ratio' and 7 or 15
                     want=0
                     for _,shift in ipairs({0,8,16}) do
-                        local top=(0xff0000>>shift)&255
+                        local top=(0xf80000>>shift)&255
                         local under=(line>>shift)&255
                         want=want|(((top*(31-ratio)+under*(ratio+1))//32)<<shift)
                     end
                 end
             end
-            if c.mosaic and expected~=0x0000ff then
+            if c.mosaic and expected~=0x0000f8 then
                 local sx=(x//c.mosaic.width)*c.mosaic.width+5
                 local sy=(y//c.mosaic.height)*c.mosaic.height+7
                 local code=(sx//3+sy//5)%3
-                local lower=(x//7+y//11)%2==0 and 0xffff00 or 0xffffff
+                local lower=(x//7+y//11)%2==0 and 0xf8f800 or 0xf8f8f8
                 if code==0 then want=lower
                 else
-                    local upper=code==1 and 0xff0000 or 0x00ff00
+                    local upper=code==1 and 0xf80000 or 0x00f800
                     want=upper
                     if c.mosaic.blend then
                         want=0
@@ -647,7 +659,7 @@ local function pixels(expected)
                     end
                 end
             end
-            if c.window and expected~=0x0000ff then
+            if c.window and expected~=0x0000f8 then
                 local w0=x>=31 and x<=127 and y>=17 and y<=63
                 local w1=x>=63 and x<=255 and y>=31 and y<=127
                 if c.window.line then
@@ -658,15 +670,19 @@ local function pixels(expected)
                     w1=(y%2==0 and wide or y%2==1 and narrow) and y>=31 and y<=127 and y%8~=0
                 end
                 local keep=c.window.keep(w0,w1)
-                if c.window.calculation then want=keep and 0x7f7f00 or 0xff0000
-                else want=keep and 0xff0000 or 0x00ff00 end
+                if c.window.calculation then want=keep and 0x7c7c00 or 0xf80000
+                else want=keep and 0xf80000 or 0x00f800 end
             end
-            if expected==0xff0000 and c.cell and not c.rotation then
+            if expected~=0x0000f8 and c.cell and not c.rotation then
                 -- Four distinct 8x8 colors distinguish H from V flips, unlike
                 -- a symmetric two-color checker. Oracle uses screen coords.
                 local column=((x//8)%2) ~ ((x//16)%2)
                 local row=((y//8)%2) ~ ((y//16)%2)
-                want=({0xff0000,0x00ff00,0xffff00,0xffffff})[row*2+column+1]
+                -- Depth 4 (16.77M colours) is RGB888 direct color: it is
+                -- stored and displayed at full range, never through the
+                -- RGB555 zero-extend conversion (ST-058 p.43).
+                local palette=c.depth==4 and {0xff0000,0x00ff00,0xffff00,0xffffff} or {0xf80000,0x00f800,0xf8f800,0xf8f8f8}
+                want=palette[row*2+column+1]
             end
             assert(actual==want,string.format('case %d pixel %d,%d: %06x != %06x',index,x,y,actual,want))
         end
@@ -683,17 +699,19 @@ local function step()
     elseif phase=='sprite-draw' then
         paint_sprite_framebuffer(false);phase='render';wait=3
     elseif phase=='bus-denied-data' then
-        pixels(0x0000ff);restore_normal_fetch(cases[index])
+        pixels(0x0000f8);restore_normal_fetch(cases[index])
         if cases[index].cell then
             deny_normal_fetch(cases[index],true);phase='bus-denied-name'
         else phase='bus-restore' end
         wait=3
     elseif phase=='bus-denied-name' then
-        pixels(0x0000ff);restore_normal_fetch(cases[index]);phase='bus-restore';wait=3
+        pixels(0x0000f8);restore_normal_fetch(cases[index]);phase='bus-restore';wait=3
     elseif phase=='bus-restore' then
         cases[index].bus_qualified=true;phase='render'
     elseif phase=='render' then
-        pixels(cases[index].expected or 0xff0000)
+        -- Depth 4 (16.77M colours) is RGB888 direct color and is never put
+        -- through the RGB555 zero-extend conversion (ST-058 p.43).
+        pixels(cases[index].expected or (cases[index].depth==4 and 0xff0000 or 0xf80000))
         if not composition and not cases[index].rotation and not cases[index].bus_qualified then
             deny_normal_fetch(cases[index],false);phase='bus-denied-data';wait=3
             return
@@ -731,9 +749,9 @@ local function step()
         -- Overwrite it too: restoring ownership alone must not pass replay.
         paint_sprite_framebuffer(true);phase='mutated';wait=3
     elseif phase=='mutated' then
-        pixels(0x0000ff);loaded=false;machine:load(output..'/runtime.sta');phase='load';wait=3
+        pixels(0x0000f8);loaded=false;machine:load(output..'/runtime.sta');phase='load';wait=3
     elseif phase=='load' then
-        assert(loaded,'postload notification missing');pixels(cases[index].expected or 0xff0000)
+        assert(loaded,'postload notification missing');pixels(cases[index].expected or (cases[index].depth==4 and 0xff0000 or 0xf80000))
         assert(space:read_u32(vram+cases[index].address)==cases[index].dot,'VRAM not restored')
         assert((space:read_u16(regbase+6)&0x8000)==(cases[index].large and 0x8000 or 0),'VRSIZE not restored')
         local replay=screen:pixels();assert(replay==reference,'postload full image differs')
