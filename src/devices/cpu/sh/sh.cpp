@@ -2517,6 +2517,13 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 		}
 		else if (desc->invalid_opcode() || !generate_opcode(block, compiler, desc, ovrpc))
 		{
+			if (desc->in_delay_slot() && slot_illegal_applies())
+			{
+				// undefined code in a delay slot is an illegal slot instruction (4.5.3)
+				generate_slot_illegal(block, compiler, desc, ovrpc);
+				return;
+			}
+
 			// take the illegal instruction exception immediately
 			UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);                            // mov     [pc],desc->pc
 			UML_MOV(block, mem(&m_sh2_state->arg0), desc->opptr);                  // mov     [arg0],opcode

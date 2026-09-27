@@ -67,6 +67,7 @@ protected:
 	uint32_t m_test_irq;
 	// CPU address errors (SH7604 4.3): recorded when the faulting bus cycle happens and accepted at the next
 	// instruction boundary that may accept exceptions, not between a delayed branch and its delay slot (Table 4.10)
+	uint32_t m_slot_target;         // interpreter: jump address of the delayed branch while its delay slot executes, else 0
 	uint32_t m_addr_error;
 	int32_t m_addr_error_icount;    // DRC: cycles left when the error forced the block to leave at the next update
 	uint32_t m_addr_error_ea;       // DRC scratch, survives the C call in the accessor error path
@@ -89,6 +90,7 @@ private:
 	virtual void RTE() override;
 	virtual void ILLEGAL() override;
 	void ILLEGAL_SLOT();
+	void illegal_slot_entry(uint32_t target);
 
 	virtual void execute_one_f000(uint16_t opcode) override;
 

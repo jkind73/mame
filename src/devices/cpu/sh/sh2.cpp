@@ -56,6 +56,7 @@ sh2_device::sh2_device(const machine_config &mconfig, device_type type, const ch
 	m_am = address_mask;
 	m_isdrc = allow_drc();
 	m_addr_error = 0;
+	m_slot_target = 0;
 	m_addr_error_icount = 0;
 	m_addr_error_ea = 0;
 	m_addr_error_data = 0;
@@ -398,6 +399,14 @@ inline void sh2_device::TRAPA(uint32_t i)
 inline void sh2_device::ILLEGAL()
 {
 	//logerror("Illegal opcode at %08x\n", m_sh2_state->pc - 2);
+
+	// undefined code in a delay slot is an illegal slot instruction, not a general illegal instruction
+	if (m_slot_target)
+	{
+		illegal_slot_entry(m_slot_target);
+		return;
+	}
+
 	debugger_exception_hook(4);
 	addr_error_scope const stacking(m_no_addr_error);
 
@@ -419,14 +428,21 @@ inline void sh2_device::ILLEGAL()
 // stacked and the vector 6 handler is entered (not a delayed branch).
 inline void sh2_device::ILLEGAL_SLOT()
 {
+	illegal_slot_entry(m_sh2_state->m_delay);
+}
+
+// Also taken by undefined code in a delay slot (4.5.3: "undefined code placed immediately after a delayed branch").
+void sh2_device::illegal_slot_entry(uint32_t target)
+{
 	debugger_exception_hook(6);
 	addr_error_scope const stacking(m_no_addr_error);
 
 	m_sh2_state->r[15] -= 4;
 	write_long(m_sh2_state->r[15], m_sh2_state->sr);
 	m_sh2_state->r[15] -= 4;
-	write_long(m_sh2_state->r[15], m_sh2_state->m_delay);
+	write_long(m_sh2_state->r[15], target);
 	m_sh2_state->m_delay = 0;
+	m_slot_target = 0;
 
 	m_sh2_state->pc = read_long(m_sh2_state->vbr + 6 * 4) & m_am;
 
@@ -482,10 +498,14 @@ void sh2_device::execute_run()
 			if (m_sh2_state->m_delay)
 			{
 				m_sh2_state->pc = m_sh2_state->m_delay;
+				m_slot_target = m_sh2_state->m_delay;
 				m_sh2_state->m_delay = 0;
 			}
 			else
+			{
 				m_sh2_state->pc += 2;
+				m_slot_target = 0;
+			}
 
 			execute_one(opcode);
 		}
