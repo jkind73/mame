@@ -752,20 +752,13 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	else
 	{
 		m_dma.size = opcode & 0xff;
-		switch( add )
-		{
-			// TODO: why this calculation diverges vs. SCU DMA?
-			// is it for concealing that it should use the same rules instead?
-			// i.e. Work RAM H always in dword unit etc.
-			case 0: m_dma.add = 0; break;  /* 0 */
-			case 1: m_dma.add = 4; break;  /* 1 */
-			case 2: m_dma.add = 4; break;  /* 2 */
-			case 3: m_dma.add = 16; break; /* 4 */
-			case 4: m_dma.add = 16; break;  /* 8 */
-			case 5: m_dma.add = 64; break; /* 16 */
-			case 6: m_dma.add = 128; break; /* 32 */
-			case 7: m_dma.add = 256; break; /* 64 */
-		}
+		// ST-097 pp.148-149 (DMA D0,[RAM],SImm / DMA [RAM],D0,SImm): the 3-bit
+		// address-add field selects 0, 1, 2, 4, 8, 16, 32 or 64 long words,
+		// i.e. that value times 4 bytes. Fields 2 and 4 used to read back the
+		// values for fields 1 and 3 (4 and 16 bytes) instead of their own
+		// (8 and 32 bytes); the other six entries were already correct.
+		static constexpr uint32_t k_dma_add_bytes[8] = {0, 4, 8, 16, 32, 64, 128, 256};
+		m_dma.add = k_dma_add_bytes[add & 7];
 	}
 
 	// The eight-bit transfer counter decrements with wrap: zero means 256.
