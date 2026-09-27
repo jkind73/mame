@@ -146,7 +146,7 @@ Matches the manual:
 Differences found:
 | ID | Finding | Manual | Code |
 |---|---|---|---|
-| V1-P1-01 | Degenerate erase area not erased | 4.4: if X1>=X3 or Y1>Y3, erase still covers 1 dot (8 dots in rotation/HDTV) as if X3=X1+1, Y3=Y1 | `vdp1_clear_framebuffer` and `vdp1_advance_vblank_erase` end at once when `left >= right` or `y > bottom`, so nothing is erased |
+| V1-P1-01 | (retracted) Degenerate erase area | Re-read from the PDF (2026-09-27): Figure 4.2 shows (a) X1<X3, Y1<=Y3 -> erase-write happens, (b) X1>=X3, Y1>Y3 -> No erase-write. The original finding had this backwards (claimed the manual requires erasing 1 dot for a degenerate area) | `vdp1_advance_vblank_erase`/`vdp1_begin_display_erase` already return without erasing when `left >= right` or the Y range is empty, which is exactly Figure 4.2(b). **Verified correct, no defect.** A code change implementing the original (wrong) finding was drafted in an earlier session, never committed, and has been discarded |
 | V1-P1-02 | BEF is not written when drawing starts | 4.6: BEF takes CEF "when the frame buffer is changed or at the start of drawing" | `vdp1_process_list` clears CEF only; BEF changes only in `vdp1_change_framebuffers` |
 | V1-P1-03 | PTMR compared as a whole register | 4.3: only bits 1-0 are PTM | `vdp1_regs_w` tests `VDP1_PTMR == 1`, so a write of 0x0101 does not start drawing, while MODR and PTM=2 decode use the masked value |
 | V1-P1-04 | Write-only registers readable | 4.1-4.5 and 4.9: TVMR, FBCR, PTMR, EWDR, EWLR, EWRR, ENDR are write-only, values not readable; FBCR read returns 0 in code, but the others return the stored word and log a warning | `vdp1_regs_r` default path returns `m_vdp1_regs[offset]` (marked TODO in code). The manual does not define the value, so this is an accuracy limit, not a defect |
@@ -241,7 +241,7 @@ Matches the manual:
 | V1-P1-28 | Timing | chapter 7 gives no per-command timing; Table 4.4/4.5 and the "6 times slower" notes are the only figures | per-pixel cost of colour calculation and command fetch are approximations (`vdp1_raster_slice_cycles`, 16-cycle fetch from Ymir); acknowledged as incomplete in the code comments |
 
 Summary of the VDP1 review (§5-5e): the register file, frame-change modes, command list and colour paths agree with ST-013
-except for the items V1-P1-01 to -03 (erase of degenerate areas, BEF at draw start, PTMR bit mask), which are defects, and
+except for the items V1-P1-02 and -03 (BEF at draw start, PTMR bit mask), which are defects (V1-P1-01 was retracted after re-reading the source PDF: the existing code is correct), and
 V1-P1-08 to -11, -13, -14, -20 and -21, where the code follows the reference emulators for cases the manual calls
 prohibited or defines differently. The remaining items are accuracy limits.
 
@@ -750,7 +750,7 @@ Class A. The code contradicts a stated rule of the official document (candidates
 - Memory map: MM-P1-01 (VDP1 window size), MM-P1-02 (CS2 extent), MM-P1-03 (cache address array), MM-P1-04 (A-Bus dummy writes), MM-P1-05 (MINIT/SINIT extent).
 - SH-2 core: SH-P1-01 (per-CPU cache data array), SH-P1-02 (no cache model, no stale data), SH-P1-03 (address errors, vector 9).
 - SH7604 modules: SHM-P1-12 (UBC), SHM-P1-02 (DIVU +2^31 quotient), SHM-P1-01 (DIVU busy stall, documented timing).
-- VDP1: V1-P1-01 (degenerate erase), V1-P1-02 (BEF at draw start), V1-P1-03 (PTMR bit mask), V1-P1-13 (END with non-zero command), V1-P1-09/10 (list termination without CEF).
+- VDP1: V1-P1-01 (degenerate erase, retracted: existing code is correct, see above), V1-P1-02 (BEF at draw start), V1-P1-03 (PTMR bit mask), V1-P1-13 (END with non-zero command), V1-P1-09/10 (list termination without CEF).
 - VDP2: V2-P1-11 (VRAM cycle pattern rules, Tables 3.2-3.4), V2-P1-14 (RAMCTL/colour RAM mode 3 decoded as mode 2), V2-P1-39 (window coordinate sign handling), V2-P1-37 and V2-P1-46 (colour RAM address MSB in modes 0/2), V2-P1-16 and V2-P1-25 (stale comments and TODO block).
 - SCU: SCU-P1-07/08/09 (prohibited operations accepted), SCU-P1-16/17 (DSP DMA address-add mapping), SCU-P1-01 (mask reset attributed to the manual), SCU-P1-02 (IST cleared at delivery).
 - CD block: CD-P1-01 (Open Tray), CD-P1-02 (Copy/Move dispatch), CD-P1-03 (Init parameters), CD-P1-04 (standby timeout), CD-P1-05 (Init closes the tray), CD-P1-07 (reset selector bit 3), CD-P1-06 (init flag bit 7).

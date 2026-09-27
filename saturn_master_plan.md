@@ -296,7 +296,7 @@ the text extraction of the table was garbled (Phase 1 marks each one).
 ### Q5. VDP1 (`saturn.cpp` VDP1 section)
 | ID | Source | Change | Verification |
 |---|---|---|---|
-| PL-V1-01 | V1-P1-01 | erase at least one dot (eight in rotation/HDTV) when X1>=X3 or Y1>Y3 in both the immediate and V-blank erase paths | VDP1 erase regtest with degenerate rectangles |
+| PL-V1-01 | V1-P1-01 (retracted) | **Retracted 2026-09-27.** ST-013 p.48 Figure 4.2 was misread: (b) X1>=X3, Y1>Y3 -> *No* erase-write, the opposite of the original finding. The existing `left >= right` / empty-Y-range early-out in `vdp1_advance_vblank_erase` and `vdp1_begin_display_erase` already matches this. A draft implementation of the wrong finding was sitting uncommitted in the tree from an earlier session; it has been discarded (not committed) rather than landed | none: verified correct by direct re-reading of the PDF text |
 | PL-V1-02 | V1-P1-02 | write BEF from CEF at the start of drawing as well as at frame change | EDSR readback regtest across PTM=01 |
 | PL-V1-03 | V1-P1-03 | decode PTMR through bits 1-0 | regtest writing 0x0101 |
 | PL-V1-04 | V1-P1-13, V1-P1-09/10 | END with a non-zero command select, prohibited command codes and unmatched return: DECISION per Ymir/Mednafen evidence, then make list termination consistent with CEF/interrupt behaviour | command-list regtests for each case |
