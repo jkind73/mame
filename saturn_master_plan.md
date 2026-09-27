@@ -287,7 +287,7 @@ the text extraction of the table was garbled (Phase 1 marks each one).
 ### Q4. SCU and DSP (`saturn_scu.cpp`, `scudsp.cpp`)
 | ID | Source | Change | Verification |
 |---|---|---|---|
-| PL-SCU-01 | SCU-P1-01 | DECISION: keep the mask reset at vector fetch (Mednafen/Ymir); correct the source comment so it no longer cites ST-097 figure 3.21 | none |
+| PL-SCU-01 | SCU-P1-01 | **Already done before this plan was written** (commit `fd61d181e47a`, 2026-09-13): the mask resets to 0xBFFF at vector fetch (Mednafen/Ymir behaviour) and the comment already separates that from the manual-sourced power-on value it cites ST-097 fig 3.21 for. No action needed; the Phase 1 finding predates this fix | none |
 | PL-SCU-02 | SCU-P1-02 | DECISION: whether IST bits stay set until software clears them (Table 3.8) or clear at delivery; compare with Mednafen and Ymir before touching; keep if the references agree with the code | regtest reading IST after a taken interrupt |
 | PL-SCU-03 | SCU-P1-16, SCU-P1-17 | DSP DMA address-add: derive the mapping of the 3-bit field (0,1,2,4,8,16,32,64) per ST-097 pp.134-140 and reconcile the immediate and RAM count forms; arbiter Ymir/Mednafen for the bus-specific cases | DSP DMA regtest for each add value and bus |
 | PL-SCU-04 | SCU-P1-07/08/09 | DECISION: prohibited operations are documented as hangs; keep accepting them and record instead of inventing behaviour | none |
