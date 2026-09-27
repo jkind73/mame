@@ -2198,20 +2198,18 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (b && !(a == INT64_MIN && b == -1))
 	{
 		int64_t q = a / b;
-		if (q != (int32_t)q)
+		// The divider decides overflow from its first steps (MiSTer DIVU.sv,
+		// Mednafen DIVU_S64_S32), which is not "the quotient fits an int32".
+		// A quotient of exactly +-2^31 (remainder 0) completes normally only
+		// for a negative dividend; every other quotient outside
+		// -(2^31-1)..2^31-1 overflows. The boundary set was compared with the
+		// RTL divider (test_sh7604_divu_rtl.py).
+		bool const exact = (a % b) == 0;
+		bool const fits = (q >= -0x7fffffffLL && q <= 0x7fffffffLL) ||
+				((q == 0x80000000LL || q == -0x80000000LL) && exact && a < 0);
+		if (!fits)
 		{
-			// The exact +2^31 quotient boundary still needs hardware evidence;
-			// leave its legacy outputs as well as its classification unchanged.
-			if (q == 0x80000000LL)
-			{
-				m_divu_ovf = true;
-				m_dvdntl = 0x7fffffff;
-				m_dvdnth = 0x7fffffff;
-				divu_latch_shadow();
-				sh2_recalc_irq();
-			}
-			else
-				overflow();
+			overflow();
 		}
 		else
 		{
