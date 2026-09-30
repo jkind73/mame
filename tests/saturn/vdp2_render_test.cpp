@@ -258,7 +258,8 @@ int main()
 			m.c15(i, i * 2, 0, 0);
 		m.regs[0x20 / 2] = 0x0010;            // BGON: RBG0
 		m.regs[0x2a / 2] = 0x0000;            // CHCTLB: 16 colours 1x1 tiles
-		m.regs[0x38 / 2] = 0x8000;            // PNCR: 1 word patterns
+		m.regs[0x38 / 2] = 0x8008;            // PNCR: 1 word, supplement 8 -> characters at +0x2000 (bank B)
+		m.regs[0x0e / 2] = 0x0032;            // RAMCTL: bank A pattern names (2), bank B character patterns (3), ST-058 6.2
 		m.regs[0xfc / 2] = 4;                 // PRIR
 		m.regs[0xbc / 2] = 0;                 // RPTAU
 		m.regs[0xbe / 2] = 0x10000 >> 1;      // RPTAL: table at 0x10000
@@ -267,7 +268,7 @@ int main()
 		// character 0x100: row r has colour r + 1 across
 		for (unsigned row = 0; row < 8; row++)
 			for (unsigned px = 0; px < 4; px++)
-				m.w8(0x100 * 32 + row * 4 + px, ((row + 1) << 4) | (row + 1));
+				m.w8(0x2100 * 32 + row * 4 + px, ((row + 1) << 4) | (row + 1));
 		auto w32 = [&](uint32_t a, uint32_t v) { m.w16(a, v >> 16); m.w16(a + 2, v & 0xffff); };
 		auto table = [&](uint32_t a, uint32_t A, uint32_t B, uint32_t D, uint32_t E) {
 			w32(a + 0x0c, 0);                 // dXst
@@ -283,6 +284,10 @@ int main()
 		run(m, sp, line, 0);
 		CHECK_EQ(line[0], rgb555(2, 0, 0));   // (0,0) -> row 0 -> colour 1
 		CHECK_EQ(line[5], rgb555(2, 0, 0));
+		m.regs[0x0e / 2] = 0x0000;            // no bank owned by RBG0: nothing is read
+		run(m, sp, line, 0);
+		CHECK_EQ(line[5], rgb555(0, 31, 0));   // back screen shows through
+		m.regs[0x0e / 2] = 0x0032;
 		run(m, sp, line, 2);
 		CHECK_EQ(line[5], rgb555(6, 0, 0));   // line 2 -> row 2 -> colour 3
 		table(0x10000, 0, 1 << 16, 1 << 16, 0);
