@@ -1106,3 +1106,35 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 }
 
 } // namespace saturn_vdp2_render
+
+/*
+  Game observations carried over from the legacy renderer, kept because they
+  say which titles exercise which VDP2 corner cases:
+
+  - batmanfr: resetting after the character selection screen and returning
+    to it left garbage floating behind Batman.
+  - elandore: priorities on the VS screen look wrong, but do so on the real
+    Saturn version too.
+  - hanagumi: ending screens had corrupt graphics; a red dragon logo sits in
+    tile RAM (base 0x64000, 4bpp 8x8 tiles) but is not displayed because its
+    priority is 0.
+  - kiwames: the alpha blended flames on the title screen depend on a line
+    scroll quirk; the VDP1 refresh must be fast enough for "draw by request".
+  - pblbeach: sprites are offset because the game does not clear the VDP1
+    local coordinates set by the BIOS.
+  - prikura: attract mode graphics corrupt in places (framebuffer erase).
+  - seabass: player sprite corruption came from framebuffer switching.
+  - shienryu: level 2 statue background colours depend on per-dot special
+    colour calculation.
+  - scud (Saturn): zooming on the melee attack turns the background pink.
+  - virtual hydlide (Saturn): transparent pens on most VDP1 items should be
+    black, and the "press start button" text is the other way around.
+  - The test mode / BIOS screen is drawn with NBG3.
+  - The H-Blank bit is independent of the V-Blank bit; changing that during
+    V-Blank breaks gameplay speed in Golden Axe: The Duel.
+  - Bitmap screens use transparency pens (elandore energy bars, mausuke's
+    playfield foreground, shanhigw's tile based sprites): dot code 0 for 16,
+    256 and 2048 colours, MSB clear for 32768 and 16.7M colours.
+  - Scroll values are masked by the screen resolution.
+  - Double density interlace (LSMD == 3) changes several graphics sizes.
+*/
