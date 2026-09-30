@@ -1075,9 +1075,9 @@ void stv_state::stv_mem(address_map &map)
 	map(0x05a00000, 0x05afffff).rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w));
 	map(0x05b00000, 0x05b00fff).rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
 	/* VDP1 */
-	map(0x05c00000, 0x05c7ffff).rw(FUNC(stv_state::vdp1_vram_r), FUNC(stv_state::vdp1_vram_w));
-	map(0x05c80000, 0x05cbffff).rw(FUNC(stv_state::vdp1_framebuffer0_r), FUNC(stv_state::vdp1_framebuffer0_w));
-	map(0x05d00000, 0x05d0001f).rw(FUNC(stv_state::vdp1_regs_r), FUNC(stv_state::vdp1_regs_w));
+	map(0x05c00000, 0x05c7ffff).rw(m_vdp1, FUNC(saturn_vdp1_device::vram_r), FUNC(saturn_vdp1_device::vram_w));
+	map(0x05c80000, 0x05cbffff).mirror(0x40000).rw(m_vdp1, FUNC(saturn_vdp1_device::fb_r), FUNC(saturn_vdp1_device::fb_w));
+	map(0x05d00000, 0x05d0001f).rw(m_vdp1, FUNC(saturn_vdp1_device::regs_r), FUNC(saturn_vdp1_device::regs_w));
 	/* VDP2 */
 	map(0x05e00000, 0x05e7ffff).mirror(0x80000).rw(FUNC(stv_state::vdp2_vram_r), FUNC(stv_state::vdp2_vram_w));
 	map(0x05f00000, 0x05f7ffff).rw(FUNC(stv_state::vdp2_cram_r), FUNC(stv_state::vdp2_cram_w));
@@ -1258,6 +1258,9 @@ void stv_state::stv(machine_config &config)
 	m_screen->set_video_attributes(VIDEO_UPDATE_AFTER_VBLANK);
 	m_screen->set_raw(MASTER_CLOCK_320/8, 427, 0, 352, 263, 0, 224);
 	m_screen->set_screen_update(FUNC(stv_state::screen_update_vdp2));
+	SATURN_VDP1(config, m_vdp1, MASTER_CLOCK_320 / 2);
+	m_vdp1->draw_end_cb().set(m_scu, FUNC(saturn_scu_device::vdp1_end_w));
+
 	SATURN_VDP2(config, m_vdp2, MASTER_CLOCK_320);
 	m_vdp2->set_screen_tag("screen");
 	m_vdp2->set_is_pal(false);
