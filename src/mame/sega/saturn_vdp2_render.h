@@ -158,6 +158,8 @@ public:
 	static constexpr unsigned MAX_WIDTH = 704;
 
 	void begin_frame(memory const &mem, screen_config const &cfg);
+	// refresh the memory views and screen settings between lines of a frame
+	void set_config(memory const &mem, screen_config const &cfg) { m_mem = mem; m_cfg = cfg; }
 	// RPRCTL was written: re-read Xst/Yst/KAst from the parameter table on the next line
 	void rprctl_written(uint16_t data) { m_rprctl_pending |= data; }
 	// dest receives cfg.width dots as 0x00RRGGBB

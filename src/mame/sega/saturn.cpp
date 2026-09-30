@@ -321,6 +321,8 @@ TIMER_DEVICE_CALLBACK_MEMBER(saturn_state::saturn_scanline)
 	int scanline = param;
 	int y_step, vblank_line;
 
+	vdp2_scanline(scanline);
+
 	vblank_line = m_vdp2->get_vblank_start_position();
 	y_step = m_vdp2->get_ystep_count();
 
@@ -2630,6 +2632,7 @@ int saturn_state::vdp2_start()
 	m_vdp2_regs = make_unique_clear<uint16_t[]>(0x040000 / 2);
 	m_vdp2_vram = make_unique_clear<uint32_t[]>(0x100000 / 4);
 	m_vdp2_cram = make_unique_clear<uint32_t[]>(0x080000 / 4);
+	m_vdp2_frame = make_unique_clear<uint32_t[]>(saturn_vdp2_render::renderer::MAX_WIDTH * 512);
 
 	save_pointer(NAME(m_vdp2_regs), 0x040000 / 2);
 	save_pointer(NAME(m_vdp2_vram), 0x100000 / 4);
@@ -2673,9 +2676,15 @@ private:
 	bool m_double_x;
 };
 
-uint32_t saturn_state::screen_update_vdp2(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+// Called at the start of every scanline: draws that line of the VDP2 picture
+// with the registers and memories as they are now, so raster effects done by
+// changing registers between lines show up.
+void saturn_state::vdp2_scanline(int scanline)
 {
 	static constexpr unsigned widths[4] = { 320, 352, 640, 704 };
+	if (scanline < 0 || scanline >= 512 || scanline > m_screen->visible_area().bottom())
+		return;
+
 	uint8_t const hreso = m_vdp2->get_hreso();
 
 	saturn_vdp2_render::memory mem;
@@ -2692,23 +2701,28 @@ uint32_t saturn_state::screen_update_vdp2(screen_device &screen, bitmap_rgb32 &b
 	cfg.bdclmd = m_vdp2->get_bdclmd();
 	cfg.pal = m_vdp2->is_pal();
 
+	if (scanline == 0)
+		m_vdp2_renderer.begin_frame(mem, cfg);
+	else
+		m_vdp2_renderer.set_config(mem, cfg);
+
 	vdp2_sprite_fb const sprites(
 			m_vdp1_legacy.framebuffer_display_lines.get(),
 			m_vdp1_legacy.framebuffer_width ? m_vdp1_legacy.framebuffer_width : 1,
 			cfg.lsmd == 3 && m_vdp1_legacy.framebuffer_double_interlace == 0,
 			VDP1_TVM() == 0 && cfg.hires);
 
-	m_vdp2_renderer.begin_frame(mem, cfg);
-	uint32_t line[saturn_vdp2_render::renderer::MAX_WIDTH];
-	for (int y = 0; y <= cliprect.bottom(); y++)
+	m_vdp2_renderer.render_line(scanline, sprites, &m_vdp2_frame[scanline * saturn_vdp2_render::renderer::MAX_WIDTH]);
+}
+
+uint32_t saturn_state::screen_update_vdp2(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	for (int y = cliprect.top(); y <= cliprect.bottom() && y < 512; y++)
 	{
-		m_vdp2_renderer.render_line(y, sprites, line);
-		if (y >= cliprect.top())
-		{
-			uint32_t *const dest = &bitmap.pix(y);
-			for (int x = cliprect.left(); x <= cliprect.right() && x < int(cfg.width); x++)
-				dest[x] = 0xff000000 | line[x];
-		}
+		uint32_t const *const src = &m_vdp2_frame[y * saturn_vdp2_render::renderer::MAX_WIDTH];
+		uint32_t *const dest = &bitmap.pix(y);
+		for (int x = cliprect.left(); x <= cliprect.right() && x < int(saturn_vdp2_render::renderer::MAX_WIDTH); x++)
+			dest[x] = 0xff000000 | src[x];
 	}
 
 	return 0;
