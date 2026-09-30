@@ -28,6 +28,8 @@ void saturn_vdp1_device::device_start()
 	m_vram = make_unique_clear<uint16_t []>(VRAM_WORDS);
 	m_fb[0] = make_unique_clear<uint16_t []>(FB_WORDS);
 	m_fb[1] = make_unique_clear<uint16_t []>(FB_WORDS);
+	m_field_copy[0] = make_unique_clear<uint16_t []>(FB_WORDS);
+	m_field_copy[1] = make_unique_clear<uint16_t []>(FB_WORDS);
 
 	m_engine.vram = m_vram.get();
 	m_engine.fb = m_fb[0].get();
@@ -39,6 +41,13 @@ void saturn_vdp1_device::device_start()
 	save_pointer(NAME(m_vram), VRAM_WORDS);
 	save_pointer(NAME(m_fb[0]), FB_WORDS);
 	save_pointer(NAME(m_fb[1]), FB_WORDS);
+	save_pointer(NAME(m_field_copy[0]), FB_WORDS);
+	save_pointer(NAME(m_field_copy[1]), FB_WORDS);
+	save_item(NAME(m_field_cur));
+	save_item(NAME(m_disp_die));
+	save_item(NAME(m_disp_dil));
+	save_item(NAME(m_prev_die));
+	save_item(NAME(m_prev_dil));
 	save_item(NAME(m_tvmr));
 	save_item(NAME(m_fbcr));
 	save_item(NAME(m_ptmr));
@@ -85,6 +94,7 @@ void saturn_vdp1_device::device_reset()
 	m_tvmr = m_fbcr = m_ptmr = 0;
 	m_edsr = 0;
 	m_die = m_dil = false;
+	m_disp_die = m_disp_dil = m_prev_die = m_prev_dil = false;
 	m_drawing = false;
 	m_budget = 0;
 	m_last_time = machine().time();
@@ -306,6 +316,15 @@ void saturn_vdp1_device::frame_change()
 		m_draw_fb ^= 1;
 		m_engine.fb = m_fb[m_draw_fb].get();
 
+		// the buffer just drawn is displayed from now on: m_die/m_dil still hold what it was drawn with
+		m_prev_die = m_disp_die;
+		m_prev_dil = m_disp_dil;
+		m_disp_die = m_die;
+		m_disp_dil = m_dil;
+		m_field_cur ^= 1;
+		if (m_disp_die)
+			std::copy_n(display_buffer(), FB_WORDS, m_field_copy[m_field_cur].get());
+
 		m_edsr = m_edsr >> 1;         // BEF = CEF, CEF = 0
 		m_lopr = uint16_t(m_cmd_addr >> 2);
 		m_die = m_fbcr & FBCR_DIE;
@@ -374,6 +393,25 @@ uint16_t saturn_vdp1_device::display_pixel(unsigned x, unsigned y) const
 		return 0xff00 | ((row[x >> 1] >> (((x & 1) ^ 1) << 3)) & 0xff);
 	}
 	return row[x & 0x1ff];
+}
+
+// A line of a double density interlace frame (0..447): one buffer row serves the two lines of a
+// pair, and the line takes it from the field that was drawn for its parity (ST-013 4.2: DIL
+// selects which lines a field plots; the two fields are different pictures). The field
+// displayed now has its own parity; the other parity comes from the previous field.
+uint16_t saturn_vdp1_device::display_pixel_field(unsigned x, unsigned line) const
+{
+	unsigned const row = line >> 1;
+	bool const parity = line & 1;
+	if (m_disp_die && parity != m_disp_dil && m_prev_die && parity == m_prev_dil) {
+		uint16_t const *r = m_field_copy[m_field_cur ^ 1].get() + ((row & 0xff) << 9);
+		if (bpp8()) {
+			x &= 0x3ff;
+			return 0xff00 | ((r[x >> 1] >> (((x & 1) ^ 1) << 3)) & 0xff);
+		}
+		return r[x & 0x1ff];
+	}
+	return display_pixel(x, row);
 }
 
 uint16_t saturn_vdp1_device::display_rotated_pixel(int32_t x, int32_t y) const

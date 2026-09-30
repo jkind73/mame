@@ -591,6 +591,11 @@ saturn_vdp2_fetch::schedule renderer::fetch_schedule(decoded const &d)
 // VDP2.sv, see saturn_vdp2_fetch.h).
 void renderer::draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s)
 {
+	// the other field of a double density frame is not shown: the VDP2 only reads its VRAM for the
+	// lines of the field being scanned, so nothing is fetched for these lines
+	if (m_skip_output)
+		return;
+
 	namespace f = saturn_vdp2_fetch;
 	nbg_params const &p = d.nbg[n];
 
@@ -1114,10 +1119,11 @@ static unsigned layer_priority(decoded const &d, layer_ctl const &c, bool pr, un
 //  Line composition
 //--------------------------------------------------------------------------
 
-void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *dest)
+void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *dest, bool skip_output)
 {
 	decoded d;
 	decode(d);
+	m_skip_output = skip_output;
 
 	unsigned const width = m_cfg.width;
 	bool const ddi = m_cfg.lsmd == 3;
@@ -1134,7 +1140,7 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	}
 
 	bool const rbg_any = d.r0on || d.r1on;
-	calc_rotation(d, y, rbg_any && m_cfg.disp);
+	calc_rotation(d, y, rbg_any && m_cfg.disp && !skip_output);
 
 	if (!m_cfg.disp) {
 		std::fill_n(dest, width, m_cfg.bdclmd ? m_back : 0U);
@@ -1156,6 +1162,12 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	for (unsigned n = 0; n < 4; n++)
 		if (nbg_on[n] && !(n == 0 && d.r1on))
 			draw_nbg(d, n, y);
+
+	if (skip_output) {
+		for (unsigned n = 0; n < 4; n++)
+			finish_nbg(d, n);
+		return;
+	}
 
 	// window geometry and hits for this line
 	bool wy_hit[2];
@@ -1229,38 +1241,42 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 				stat_sprite_dots++;
 			if (in_spr.on)
 				stat_sprite_shown++;
-			in_spr.priority = sprin;
-			t.caos = d.sp_caos;
-			bool cond;
-			switch (d.sp_cccs) {
-			case 0: cond = sprin <= d.sp_ccn; break;
-			case 1: cond = sprin == d.sp_ccn; break;
-			case 2: cond = sprin >= d.sp_ccn; break;
-			default: cond = true; break;
-			}
-			t.ccen = d.sp.ccen && !ccw && cond;
-			t.ccm3 = d.sp_cccs == 3;
-			t.ccrt = d.sp_ccrt[sd.cc];
-			t.coen = d.sp.coen;
-			t.cosl = d.sp.cosl;
-			t.sden = sd.sd;
-			t.boken = bok_ok && d.bokn == 0;
-			t.lcen = d.sp.lcen;
-			t.palette = sd.palette;
-			if (sd.palette) {
-				bool m;
-				t.dc = cram_rgb(d.crmd, (sd.dc + (d.sp_caos << 8)) & 0x7ff, m);
-				t.msb = m;
-			} else {
-				t.dc = sd.dc;
-				t.msb = true;
+			if (in_spr.on) {
+				in_spr.priority = sprin;
+				t.caos = d.sp_caos;
+				bool cond;
+				switch (d.sp_cccs) {
+				case 0: cond = sprin <= d.sp_ccn; break;
+				case 1: cond = sprin == d.sp_ccn; break;
+				case 2: cond = sprin >= d.sp_ccn; break;
+				default: cond = true; break;
+				}
+				t.ccen = d.sp.ccen && !ccw && cond;
+				t.ccm3 = d.sp_cccs == 3;
+				t.ccrt = d.sp_ccrt[sd.cc];
+				t.coen = d.sp.coen;
+				t.cosl = d.sp.cosl;
+				t.sden = sd.sd;
+				t.boken = bok_ok && d.bokn == 0;
+				t.lcen = d.sp.lcen;
+				t.palette = sd.palette;
+				if (sd.palette) {
+					bool m;
+					t.dc = cram_rgb(d.crmd, (sd.dc + (d.sp_caos << 8)) & 0x7ff, m);
+					t.msb = m;
+				} else {
+					t.dc = sd.dc;
+					t.msb = true;
+				}
 			}
 		}
 
 		// a scroll or rotation screen's contribution
 		auto const layer_in = [&](nbg_params const &p, layer_dot const &ld, bool enabled, unsigned boken_n) {
 			layer_input li;
-			li.on = enabled && ld.opaque && !hidden(p.ctl.win);
+			if (!enabled || !ld.opaque)
+				return li;   // an off or transparent dot does not take part in the stack
+			li.on = !hidden(p.ctl.win);
 			li.priority = layer_priority(d, p.ctl, ld.pr, ld.code);
 			screen_dot &t = li.dot;
 			bool const sfc = (d.sfcd[p.ctl.sfcs] >> ((ld.code >> 1) & 7)) & 1;

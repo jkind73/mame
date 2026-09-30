@@ -337,7 +337,8 @@ public:
 
 	virtual uint16_t sprite_word(unsigned x, unsigned y) const override
 	{
-		return m_vdp1.display_pixel((x << (m_half_res ? 1 : 0)) >> (m_double_res ? 1 : 0), y >> (m_half_lines ? 1 : 0));
+		unsigned const dx = (x << (m_half_res ? 1 : 0)) >> (m_double_res ? 1 : 0);
+		return m_half_lines ? m_vdp1.display_pixel_field(dx, y) : m_vdp1.display_pixel(dx, y);
 	}
 
 	virtual uint16_t sprite_word_rotated(int32_t x, int32_t y) const override
@@ -409,7 +410,10 @@ void saturn_state::vdp2_scanline(int scanline)
 			plain && m_vdp1->bpp8() && (hreso & 6) == 0,
 			(plain && !m_vdp1->bpp8() && (hreso & 6) == 2) || BIT(hreso, 2));
 
-	m_vdp2_renderer.render_line(scanline, sprites, &m_vdp2_frame[scanline * saturn_vdp2_render::renderer::MAX_WIDTH]);
+	// double density interlace: each 1/60 s field shows the lines of one parity, the lines of the
+	// other parity keep what the previous field drew (the two fields are different pictures)
+	bool const other_field = cfg.lsmd == 3 && !cfg.exclusive && ((scanline & 1) != int(m_screen->frame_number() & 1));
+	m_vdp2_renderer.render_line(scanline, sprites, &m_vdp2_frame[scanline * saturn_vdp2_render::renderer::MAX_WIDTH], other_field);
 	// the erase of the displayed buffer follows the read-out one buffer row at a time; in double
 	// density two frame lines read the same row, so it advances on every second line
 	if (cfg.lsmd != 3 || (scanline & 1))

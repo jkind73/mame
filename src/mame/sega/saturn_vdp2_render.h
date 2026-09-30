@@ -175,7 +175,9 @@ public:
 	// RPRCTL was written: re-read Xst/Yst/KAst from the parameter table on the next line
 	void rprctl_written(uint16_t data) { m_rprctl_pending |= data; }
 	// dest receives cfg.width dots as 0x00RRGGBB
-	void render_line(unsigned y, sprite_source const &sprite, uint32_t *dest);
+	// skip_output: only advance the per line state (fetch, rotation, line scroll and mosaic
+	// counters) without producing the line. Used for the lines of the other field in double density.
+	void render_line(unsigned y, sprite_source const &sprite, uint32_t *dest, bool skip_output = false);
 
 private:
 	// A layer's dot before priority resolution.
@@ -229,6 +231,7 @@ private:
 	rot_line m_rot_line[2];
 	layer_dot m_rbg[2][MAX_WIDTH];
 	int16_t m_r0_lcsd[MAX_WIDTH];
+	bool m_skip_output = false;
 	int32_t m_spr_x[MAX_WIDTH], m_spr_y[MAX_WIDTH];   // frame buffer rotation coordinates per dot
 	bool m_w_hit[2][MAX_WIDTH];
 	unsigned m_rprctl_pending = 0;
