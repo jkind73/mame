@@ -1164,7 +1164,10 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		wsx[w] = d.wsx[w];
 		wex[w] = d.wex[w];
 		if (d.lwe[w]) {
-			uint32_t const e = vram32(d.lwta[w] + (ddi ? (y >> 1) : y) * 4);
+			// one entry per line; in double density the table holds the lines of both fields
+			// together, so it is indexed by the frame line too (ST-058 Fig 8.4, MiSTer VDP2.sv
+			// LW_ADDR adds one entry for the even field)
+			uint32_t const e = vram32(d.lwta[w] + y * 4);
 			wsx[w] = bits(e, 25, 16);
 			wex[w] = bits(e, 9, 0);
 		}
