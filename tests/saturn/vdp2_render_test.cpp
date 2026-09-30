@@ -291,6 +291,31 @@ int main()
 		CHECK_EQ(line[6], rgb555(14, 0, 0));  // sy = 6 -> colour 7
 	}
 
+	// 10. VDP1 frame buffer rotation: sprite dots are read at parameter A's coordinates
+	{
+		struct rot_source : sprite_source {
+			uint16_t sprite_word(unsigned, unsigned) const override { return 0; }
+			uint16_t sprite_word_rotated(int32_t x, int32_t y) const override { return (y == 2 && x >= 0 && x < 15) ? uint16_t(x + 1) : 0; }
+		} sp;
+		machine m;
+		make(m);
+		m.regs[0xf0 / 2] = 5;                 // sprites above NBG0
+		m.regs[0xbc / 2] = 0;
+		m.regs[0xbe / 2] = 0x10000 >> 1;      // rotation parameter table at 0x10000
+		auto w32 = [&](uint32_t a, uint32_t v) { m.w16(a, v >> 16); m.w16(a + 2, v & 0xffff); };
+		w32(0x10000 + 0x10, 1 << 16);         // dYst = 1.0: one frame buffer line per screen line
+		w32(0x10000 + 0x14, 1 << 16);         // dX = 1.0: one frame buffer dot per screen dot
+		screen_config cfg;
+		cfg.fb_rotate = true;
+		renderer r;
+		r.begin_frame(m.mem(), cfg);
+		uint32_t line[704];
+		for (unsigned y = 0; y <= 2; y++)
+			r.render_line(y, sp, line);
+		CHECK_EQ(line[3], rgb555(8, 0, 0));   // frame buffer dot (3, 2) = colour 4
+		CHECK_EQ(line[0], rgb555(2, 0, 0));   // dot (0, 2) = colour 1
+	}
+
 	std::puts("ok");
 	return 0;
 }

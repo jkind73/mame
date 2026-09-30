@@ -836,11 +836,13 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 		rot_state &st = m_rot_state[i];
 		uint32_t const t = d.rpta + i * 0x80;
 
-		int32_t const xst = scrn_start(vram32(t + 0x00));
-		int32_t const yst = scrn_start(vram32(t + 0x04));
+		uint32_t const xw = vram32(t + 0x00), yw = vram32(t + 0x04);
+		uint32_t const dxw = vram32(t + 0x0c), dyw = vram32(t + 0x10);
+		int32_t const xst = scrn_start(xw);
+		int32_t const yst = scrn_start(yw);
 		int32_t const zst = scrn_start(vram32(t + 0x08));
-		int32_t const dxst = scrn_inc(vram32(t + 0x0c));
-		int32_t const dyst = scrn_inc(vram32(t + 0x10));
+		int32_t const dxst = scrn_inc(dxw);
+		int32_t const dyst = scrn_inc(dyw);
 		int32_t const dx = scrn_inc(vram32(t + 0x14));
 		int32_t const dy = scrn_inc(vram32(t + 0x18));
 
@@ -854,6 +856,30 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 			st.yst = yst;
 		else
 			st.yst = add_rc(st.yst, dyst);
+		// VDP1 frame buffer rotation (11.9 fixed point, the VDP1 readout of parameter set A)
+		if (i == 0) {
+			int32_t const sx = sext((((xw >> 28) & 1) << 10) | ((xw >> 16) & 0x3ff), 11) * 512 + int32_t((xw >> 7) & 0x1ff);
+			int32_t const sy = sext((((yw >> 28) & 1) << 10) | ((yw >> 16) & 0x3ff), 11) * 512 + int32_t((yw >> 7) & 0x1ff);
+			int32_t const isx = sext((dxw >> 16) & 7, 3) * 512 + int32_t((dxw >> 7) & 0x1ff);
+			int32_t const isy = sext((dyw >> 16) & 7, 3) * 512 + int32_t((dyw >> 7) & 0x1ff);
+			if (y == 0 || (pend & 1))
+				st.spr_xst = sx;
+			else
+				st.spr_xst += isx;
+			if (y == 0 || (pend & 2))
+				st.spr_yst = sy;
+			else
+				st.spr_yst += isy;
+			if (m_cfg.fb_rotate) {
+				int32_t const dxa = sext((vram32(t + 0x14) >> 16) & 7, 3) * 512 + int32_t((vram32(t + 0x14) >> 7) & 0x1ff);
+				int32_t const dya = sext((vram32(t + 0x18) >> 16) & 7, 3) * 512 + int32_t((vram32(t + 0x18) >> 7) & 0x1ff);
+				for (unsigned x = 0; x < rpx; x++) {
+					m_spr_x[x] = (st.spr_xst + int32_t(x) * dxa) >> 9;
+					m_spr_y[x] = (st.spr_yst + int32_t(x) * dya) >> 9;
+				}
+			}
+		}
+
 		bool const kast_reread = y == 0 || (pend & 4);
 		m_rprctl_pending &= ~(7U << (8 * i));
 
@@ -1130,7 +1156,7 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	unsigned const boken_layer_n[5] = { 2, 4, 5, 6, 1 };
 
 	for (unsigned x = 0; x < width; x++) {
-		sprite_dot const sd = decode_sprite(d, sprite.sprite_word(x, y));
+		sprite_dot const sd = decode_sprite(d, m_cfg.fb_rotate ? sprite.sprite_word_rotated(m_spr_x[x >> (hires ? 1 : 0)], m_spr_y[x >> (hires ? 1 : 0)]) : sprite.sprite_word(x, y));
 		bool const spwin = d.sp_winen;
 
 		auto const hidden = [&](window_ctl c) {

@@ -47,6 +47,7 @@ struct screen_config {
 	bool disp = true;       // TVMD.DISP
 	bool bdclmd = false;    // TVMD.BDCLMD: DISP=0 shows the back screen instead of black
 	bool pal = false;
+	bool fb_rotate = false; // VDP1 frame buffer rotation: sprite dots come from rotation parameter A's coordinates
 };
 
 // Sprite frame buffer readout, supplied by the driver: the 16-bit VDP1 word
@@ -55,6 +56,8 @@ class sprite_source {
 public:
 	virtual ~sprite_source() = default;
 	virtual uint16_t sprite_word(unsigned x, unsigned y) const = 0;
+	// frame buffer rotation mode: the word at frame buffer position (x, y)
+	virtual uint16_t sprite_word_rotated(int32_t x, int32_t y) const { (void)x; (void)y; return 0; }
 };
 
 // Decoded register state (implementation detail, public so helpers can use it)
@@ -206,6 +209,7 @@ private:
 	struct rot_state {
 		int32_t xst = 0, yst = 0;  // 16.16 start coordinates for the current line
 		int64_t ka_y = 0;          // 19.16 coefficient address accumulated per line
+		int32_t spr_xst = 0, spr_yst = 0;   // frame buffer rotation start, 11.9 fixed point
 	};
 
 	struct rot_line {
@@ -221,6 +225,7 @@ private:
 	rot_line m_rot_line[2];
 	layer_dot m_rbg[2][MAX_WIDTH];
 	int16_t m_r0_lcsd[MAX_WIDTH];
+	int32_t m_spr_x[MAX_WIDTH], m_spr_y[MAX_WIDTH];   // frame buffer rotation coordinates per dot
 	bool m_w_hit[2][MAX_WIDTH];
 	unsigned m_rprctl_pending = 0;
 	uint32_t m_back = 0, m_line_rgb = 0;

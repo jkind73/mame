@@ -338,6 +338,11 @@ public:
 		return m_vdp1.display_pixel((x << (m_half_res ? 1 : 0)) >> (m_double_res ? 1 : 0), y >> (m_half_lines ? 1 : 0));
 	}
 
+	virtual uint16_t sprite_word_rotated(int32_t x, int32_t y) const override
+	{
+		return m_vdp1.display_rotated_pixel(x, y);
+	}
+
 private:
 	saturn_vdp1_device const &m_vdp1;
 	bool m_half_lines;
@@ -371,6 +376,7 @@ void saturn_state::vdp2_scanline(int scanline)
 	cfg.disp = m_vdp2->get_disp();
 	cfg.bdclmd = m_vdp2->get_bdclmd();
 	cfg.pal = m_vdp2->is_pal();
+	cfg.fb_rotate = m_vdp1->rotate();
 
 	if (scanline == 0)
 		m_vdp2_renderer.begin_frame(mem, cfg);
