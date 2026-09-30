@@ -11,6 +11,8 @@
 #include "emu.h"
 #include "saturn_vdp1.h"
 
+#include <cstdlib>
+
 using namespace saturn_vdp1;
 
 DEFINE_DEVICE_TYPE(SATURN_VDP1, saturn_vdp1_device, "saturn_vdp1", "Sega Saturn VDP1 (315-5689)")
@@ -32,6 +34,7 @@ void saturn_vdp1_device::device_start()
 	m_engine.reset();
 	m_last_time = machine().time();
 	m_vbe_timer = timer_alloc(FUNC(saturn_vdp1_device::vbe_sample), this);
+	m_log = std::getenv("SATURN_VDP1_LOG") != nullptr;
 
 	save_pointer(NAME(m_vram), VRAM_WORDS);
 	save_pointer(NAME(m_fb[0]), FB_WORDS);
@@ -167,15 +170,20 @@ void saturn_vdp1_device::run()
 			if (!(m_cmd[0] & 0xc000)) {
 				if ((m_cmd[0] & 0xf) >= 0xc) {
 					// not a command: drawing stops without the end flag
+					m_stats.invalid++;
 					stop_drawing();
 					return;
 				}
+				m_stats.cmd[m_cmd[0] & 0xf]++;
 				m_budget -= m_engine.execute(m_cmd);
 			} else if (m_cmd[0] & 0x8000) {
+				m_stats.ended++;
 				stop_drawing();
 				m_edsr |= 2;              // CEF
 				m_draw_end_cb(1);
 				return;
+			} else {
+				m_stats.skipped++;
 			}
 			m_phase = phase::next;
 			break;
@@ -184,14 +192,17 @@ void saturn_vdp1_device::run()
 			m_cmd_addr = (m_cmd_addr + 0x10) & (VRAM_WORDS - 1);
 			switch ((m_cmd[0] >> 12) & 3) {
 			case 1:   // jump
+				m_stats.jumps++;
 				m_cmd_addr = (uint32_t(m_cmd[1]) << 2) & ~0xfU;
 				break;
 			case 2:   // call: the first call remembers the return address
+				m_stats.calls++;
 				if (m_ret_addr < 0)
 					m_ret_addr = int32_t(m_cmd_addr);
 				m_cmd_addr = (uint32_t(m_cmd[1]) << 2) & ~0xfU;
 				break;
 			case 3:   // return
+				m_stats.returns++;
 				if (m_ret_addr >= 0) {
 					m_cmd_addr = uint32_t(m_ret_addr);
 					m_ret_addr = -1;
@@ -253,9 +264,29 @@ void saturn_vdp1_device::erase_limited(int64_t budget)
 }
 
 // Vblank ends: erase for the vblank erase mode, then the frame buffer change
+void saturn_vdp1_device::log_frame()
+{
+	auto const &st = m_stats;
+	logerror("VDP1 frame: TVMR=%x FBCR=%02x PTMR=%x DIE/DIL latched=%d%d drawing=%d EDSR=%x COPR=%04x "
+			"sysclip=%d,%d user=%d,%d-%d,%d local=%d,%d | cmds n=%u s=%u d=%u p=%u pl=%u l=%u uc=%u sc=%u lc=%u "
+			"| skip=%u jump=%u call=%u ret=%u end=%u bad=%u | dots=%u clipped=%u\n",
+			m_tvmr, m_fbcr, m_ptmr, m_die ? 1 : 0, m_dil ? 1 : 0, m_drawing ? 1 : 0, m_edsr, unsigned(m_cmd_addr >> 2),
+			m_engine.sys_x, m_engine.sys_y, m_engine.user_x0, m_engine.user_y0, m_engine.user_x1, m_engine.user_y1,
+			m_engine.local_x, m_engine.local_y,
+			st.cmd[0], st.cmd[1], st.cmd[2] + st.cmd[3], st.cmd[4], st.cmd[5], st.cmd[6] + st.cmd[7],
+			st.cmd[8] + st.cmd[0xb], st.cmd[9], st.cmd[0xa],
+			st.skipped, st.jumps, st.calls, st.returns, st.ended, st.invalid,
+			m_engine.stat_dots, m_engine.stat_clipped);
+}
+
 void saturn_vdp1_device::frame_change()
 {
 	update();
+	if (m_log) {
+		log_frame();
+		m_stats = frame_stats();
+		m_engine.stat_dots = m_engine.stat_clipped = 0;
+	}
 	latch_erase_params();
 
 	if (m_vb_erase_active) {
