@@ -489,7 +489,21 @@ renderer::layer_dot renderer::make_dot(decoded const &d, nbg_params const &p, ui
 // Ideal (unconstrained) dot lookup for source dot (sx, sy). Rotation screens
 // use it directly; normal screens use it when the VRAM access model does not
 // apply.
-renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const
+// RBG0 data bank ownership. The rotation data bank bits (RAMCTL 7-0) give each
+// VRAM bank one role: 1 coefficient table, 2 pattern name table, 3 character
+// pattern / bitmap. RBG0 accesses go only to banks holding the matching role;
+// a read outside them is not performed (Developer's Manual ST-058-R2, VDP2
+// 6.2 "Rotation data bank specification bit": "If the image data read address
+// is not in the specified bank, the data will not be read"). VDP2.sv 739-760
+// gates the same way. Without bank division, bank A0 / B0 bits cover A / B.
+bool renderer::rdbs_allows(decoded const &d, uint32_t address, unsigned role)
+{
+	unsigned const bank = (address >> 17) & 3;
+	unsigned const effective = (d.ramctl & (0x100U << (bank / 2))) ? bank : (bank & ~1U);
+	return ((d.ramctl >> (effective * 2)) & 3) == role;
+}
+
+renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn, bool rdbs_gated) const
 {
 	uint32_t base;         // cell / bitmap byte address
 	unsigned dot_x, dot_y; // within cell (8x8) or bitmap
@@ -514,7 +528,7 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geo
 			ch = decode_pn(one_word, unsigned(repeat_pn));
 		} else {
 			uint32_t const a = pn_address(p, g, sx, sy);
-			ch = decode_pn(p, p.one_word ? vram16(a) : vram32(a));
+			ch = (rdbs_gated && !rdbs_allows(d, a, 2)) ? decode_pn(p, 0) : decode_pn(p, p.one_word ? vram16(a) : vram32(a));
 		}
 		pal = ch.pal;
 		cc = ch.cc;
@@ -532,6 +546,8 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geo
 
 	unsigned const off = dot_x + dot_y * pitch;
 	uint32_t raw;
+	if (rdbs_gated && !rdbs_allows(d, base + off * 4, 3))
+		return make_dot(d, p, 0, pal, pr, cc);
 	switch (p.cf) {
 	case 0: raw = (vram8(base + (off >> 1)) >> ((~dot_x & 1) * 4)) & 0xf; break;
 	case 1: raw = vram8(base + off); break;
@@ -934,6 +950,8 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 						raw = m_mem.cram[ca >> 2];
 						if (rp.kdbs)
 							raw = (raw >> (16 - 16 * ((byte_addr >> 1) & 1))) & 0xffff;
+					} else if (!d.r1on && !rdbs_allows(d, byte_addr, 1)) {
+						raw = 0; // outside the banks owned for coefficient data (ST-058 6.2)
 					} else if (rp.kdbs) {
 						raw = vram16(byte_addr);
 					} else {
@@ -1023,9 +1041,9 @@ void renderer::draw_rbg(decoded const &d, unsigned layer, unsigned y, bool const
 			}
 			bool const inside = sx >= 0 && sy >= 0 && unsigned(sx) < max_x && unsigned(sy) < max_y;
 			if (inside || rp.over == 0)
-				dot = nbg_dot(d, p, g, uint32_t(sx), uint32_t(sy), -1);
+				dot = nbg_dot(d, p, g, uint32_t(sx), uint32_t(sy), -1, layer == 0);
 			else if (rp.over == 1 && !p.bitmap)
-				dot = nbg_dot(d, p, g, uint32_t(sx), uint32_t(sy), int(rp.ovpn));
+				dot = nbg_dot(d, p, g, uint32_t(sx), uint32_t(sy), int(rp.ovpn), layer == 0);
 		}
 		out[x] = dot;
 	}
