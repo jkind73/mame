@@ -49,6 +49,7 @@ public:
 	bool hdtv() const { return m_tvmr & saturn_vdp1::TVMR_HDTV; }
 	// pixel x of line y of the displayed frame buffer (16 bit word, or 0xff00 | byte in 8bpp)
 	uint16_t display_pixel(unsigned x, unsigned y) const;
+	uint16_t display_pixel_field(unsigned x, unsigned line) const;
 	// the VDP2 has read display line y: the frame erase steps on
 	void display_line_done();
 	// a word of the displayed buffer addressed by its rotated position (rotation mode readout)
@@ -67,6 +68,12 @@ private:
 
 	std::unique_ptr<uint16_t []> m_vram;
 	std::unique_ptr<uint16_t []> m_fb[2];
+	// double density interlace: each field of a displayed frame holds only the lines of one parity, so
+	// a copy of the field that was displayed before is kept (the erase follows the display)
+	std::unique_ptr<uint16_t []> m_field_copy[2];
+	unsigned m_field_cur = 0;
+	bool m_disp_die = false, m_disp_dil = false;   // DIE/DIL the displayed buffer was drawn with
+	bool m_prev_die = false, m_prev_dil = false;   // the same for the copy of the previous field
 	saturn_vdp1::draw_engine m_engine;
 
 	// registers
