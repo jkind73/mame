@@ -39,8 +39,9 @@ struct screen_dot {
 	bool sden = false;    // shadow enable
 	bool boken = false;   // border-on colour calculation (extended mode)
 	bool lcen = false;    // line colour screen insertion
-	bool palette = false; // dc is a palette index rather than direct RGB
-	uint32_t dc = 0;      // palette index or 24-bit RGB
+	bool palette = false; // colour came from colour RAM (not direct RGB)
+	bool msb = false;     // colour data MSB (colour RAM bit 15/31)
+	uint32_t dc = 0;      // resolved 24-bit RGB (0x00RRGGBB)
 };
 
 struct rgb {
