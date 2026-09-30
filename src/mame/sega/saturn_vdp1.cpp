@@ -434,10 +434,26 @@ void saturn_vdp1_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	}
 }
 
+// A CPU access to VRAM while the VDP1 is drawing waits for the VDP1's current
+// burst: the system controller has priority over drawing, and the CPU "may
+// have more than 10 wait cycles" at its 28 MHz clock (ST-013 "VRAM", VDP1
+// User's Manual p.19). The manual gives only that lower bound, so it is used as
+// the wait. The frame buffer is different: there drawing is interrupted and
+// the CPU is not stalled (same manual, "Frame Buffer"), and draw time lost to
+// such interruptions is not specified, so none is charged.
+void saturn_vdp1_device::vram_access_wait()
+{
+	if (m_drawing && !machine().side_effects_disabled()) {
+		if (device_execute_interface *const cpu = machine().scheduler().currently_executing())
+			cpu->adjust_icount(-VRAM_CPU_WAIT);
+	}
+}
+
 uint32_t saturn_vdp1_device::vram_r(offs_t offset)
 {
 	if (!machine().side_effects_disabled())
 		update();
+	vram_access_wait();
 	offset &= (VRAM_WORDS / 2) - 1;
 	return (uint32_t(m_vram[offset * 2]) << 16) | m_vram[offset * 2 + 1];
 }
@@ -445,6 +461,7 @@ uint32_t saturn_vdp1_device::vram_r(offs_t offset)
 void saturn_vdp1_device::vram_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	update();
+	vram_access_wait();
 	offset &= (VRAM_WORDS / 2) - 1;
 	if (ACCESSING_BITS_16_31)
 		m_vram[offset * 2] = uint16_t((m_vram[offset * 2] & ~(mem_mask >> 16)) | ((data >> 16) & (mem_mask >> 16)));

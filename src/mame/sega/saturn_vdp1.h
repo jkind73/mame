@@ -59,8 +59,9 @@ protected:
 	virtual void device_reset() override ATTR_COLD;
 
 private:
-	static constexpr int32_t UPDATE_GRANULARITY = 64;
-	static constexpr int VBE_SAMPLE_DELAY_US = 64;      // about one scanline   // clocks of drawing time that can be banked
+	static constexpr int32_t UPDATE_GRANULARITY = 64;   // clocks of drawing time that can be banked
+	static constexpr int VRAM_CPU_WAIT = 10;             // CPU clocks lost per VRAM access while drawing (ST-013 p.19)
+	static constexpr int VBE_SAMPLE_DELAY_US = 64;      // about one scanline
 
 	devcb_write_line m_draw_end_cb;
 
@@ -105,6 +106,7 @@ private:
 	emu_timer *m_vbe_timer = nullptr;
 	TIMER_CALLBACK_MEMBER(vbe_sample);
 
+	void vram_access_wait();
 	void start_drawing();
 	void stop_drawing();
 	void run();
