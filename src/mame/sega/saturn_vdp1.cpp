@@ -31,6 +31,7 @@ void saturn_vdp1_device::device_start()
 	m_engine.fb = m_fb[0].get();
 	m_engine.reset();
 	m_last_time = machine().time();
+	m_vbe_timer = timer_alloc(FUNC(saturn_vdp1_device::vbe_sample), this);
 
 	save_pointer(NAME(m_vram), VRAM_WORDS);
 	save_pointer(NAME(m_fb[0]), FB_WORDS);
@@ -56,6 +57,7 @@ void saturn_vdp1_device::device_start()
 	save_item(NAME(m_manual_pending));
 	save_item(NAME(m_vb_erase_pending));
 	save_item(NAME(m_vb_erase_active));
+	save_item(NAME(m_vblank_start));
 	save_item(NAME(m_erase_y));
 	save_item(NAME(m_erase.x_start));
 	save_item(NAME(m_erase.x_bound));
@@ -228,10 +230,26 @@ void saturn_vdp1_device::erase_row(unsigned y)
 		row[x & m_erase.x_mask] = m_erase.data;
 }
 
-void saturn_vdp1_device::erase_all()
+// Vblank erase: the dots it can clear are limited by the time vblank lasts,
+// (dots per raster - 200) * (vblank rasters) (ST-013 4.4 and Table 4.5); when it
+// runs out the rest of the area is left as it was and games fill it with
+// polygons. `budget` is in dots (VDP1 clocks).
+void saturn_vdp1_device::erase_limited(int64_t budget)
 {
-	for (unsigned y = m_erase.y_start; y <= m_erase.y_end; y++)
-		erase_row(y);
+	unsigned const width = m_erase.x_bound > m_erase.x_start ? m_erase.x_bound - m_erase.x_start : 1;
+	for (unsigned y = m_erase.y_start; y <= m_erase.y_end && budget > 0; y++) {
+		if (budget >= width) {
+			erase_row(y);
+			budget -= width;
+		} else {
+			uint16_t *row = display_buffer() + ((y & 0xff) << 9);
+			if (m_erase.rot8)
+				row += (y & 0x100);
+			for (unsigned x = m_erase.x_start; budget > 0 && x < m_erase.x_start + width; x++, budget--)
+				row[x & m_erase.x_mask] = m_erase.data;
+			break;
+		}
+	}
 }
 
 // Vblank ends: erase for the vblank erase mode, then the frame buffer change
@@ -241,7 +259,11 @@ void saturn_vdp1_device::frame_change()
 	latch_erase_params();
 
 	if (m_vb_erase_active) {
-		erase_all();
+		// 1708 clocks per raster at 320 dots, 1820 at 352 (ST-013 Table 4.4)
+		int64_t const line_clocks = clock() > 27500000 ? 1820 : 1708;
+		int64_t const clocks = (machine().time() - m_vblank_start).as_ticks(clock());
+		int64_t const rasters = (clocks + line_clocks / 2) / line_clocks;
+		erase_limited(rasters * (line_clocks - 200));
 		m_vb_erase_active = false;
 	}
 
@@ -281,12 +303,21 @@ void saturn_vdp1_device::vblank_w(int state)
 		return;
 
 	if (m_vblank) {
-		if ((m_tvmr & TVMR_VBE) || m_vb_erase_pending) {
-			m_vb_erase_pending = false;
-			m_vb_erase_active = true;
-		}
+		m_vblank_start = machine().time();
+		// ST-013: VBE is set from the vblank-in handler and erase starts after it, so
+		// it is looked at about a line after vblank starts, not at the edge
+		m_vbe_timer->adjust(attotime::from_usec(VBE_SAMPLE_DELAY_US));
 	} else {
+		m_vbe_timer->adjust(attotime::never);
 		frame_change();
+	}
+}
+
+TIMER_CALLBACK_MEMBER(saturn_vdp1_device::vbe_sample)
+{
+	if (m_vblank && ((m_tvmr & TVMR_VBE) || m_vb_erase_pending)) {
+		m_vb_erase_pending = false;
+		m_vb_erase_active = true;
 	}
 }
 

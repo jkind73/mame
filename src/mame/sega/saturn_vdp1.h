@@ -59,7 +59,8 @@ protected:
 	virtual void device_reset() override ATTR_COLD;
 
 private:
-	static constexpr int32_t UPDATE_GRANULARITY = 64;   // clocks of drawing time that can be banked
+	static constexpr int32_t UPDATE_GRANULARITY = 64;
+	static constexpr int VBE_SAMPLE_DELAY_US = 64;      // about one scanline   // clocks of drawing time that can be banked
 
 	devcb_write_line m_draw_end_cb;
 
@@ -91,6 +92,7 @@ private:
 	bool m_manual_pending = false;
 	bool m_vb_erase_pending = false;
 	bool m_vb_erase_active = false;
+	attotime m_vblank_start;
 
 	struct erase_params {
 		unsigned x_start = 0, x_bound = 0, y_start = 0, y_end = 0;
@@ -100,13 +102,16 @@ private:
 	} m_erase;
 	unsigned m_erase_y = ~0U;     // next row of the frame erase, ~0 when none is running
 
+	emu_timer *m_vbe_timer = nullptr;
+	TIMER_CALLBACK_MEMBER(vbe_sample);
+
 	void start_drawing();
 	void stop_drawing();
 	void run();
 	void frame_change();
 	void latch_erase_params();
 	void erase_row(unsigned y);
-	void erase_all();
+	void erase_limited(int64_t budget);
 	uint32_t fb_word_index(uint32_t word) const;
 	uint16_t *display_buffer() const { return m_fb[m_draw_fb ^ 1].get(); }
 };
