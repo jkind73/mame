@@ -52,6 +52,8 @@ static uint32_t rgb555(unsigned r, unsigned g, unsigned b) { return (r << 19) | 
 // NBG0: 16 colour cells, 1 word pattern names, one 64x64 page at VRAM 0
 static void setup_nbg0(machine &m)
 {
+	m.regs[0x10 / 2] = 0x0fff;      // CYCA0L: T0 pattern name read of NBG0
+	m.regs[0x12 / 2] = 0x4fff;      // CYCA0U: T4 character pattern read of NBG0
 	m.regs[0x20 / 2] = 0x0001;      // BGON: NBG0 on
 	m.regs[0x28 / 2] = 0x0000;      // CHCTLA: 16 colours, 1x1 cells, tile mode
 	m.regs[0x30 / 2] = 0x8000;      // PNCN0: 1 word patterns
@@ -234,6 +236,17 @@ int main()
 		CHECK_EQ(line[0], rgb555(6, 0, 0));   // line 1 -> row 2 -> colour 3
 		run(m, sp, line, 3);
 		CHECK_EQ(line[0], rgb555(14, 0, 0));  // line 3 -> row 6 -> colour 7
+	}
+
+	// 8b. VRAM access model: without a character pattern read slot the layer gets no dots
+	{
+		machine m;
+		make(m);
+		m.regs[0x12 / 2] = 0xffff;            // CYCA0U: no CP0 read scheduled
+		sprite_fb sp;
+		uint32_t line[704];
+		run(m, sp, line);
+		CHECK_EQ(line[1], rgb555(0, 31, 0));  // shows the back screen only
 	}
 
 	// 9. RBG0 with an identity matrix, then with X and Y swapped

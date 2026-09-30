@@ -98,6 +98,9 @@ void renderer::decode(decoded &d) const
 
 	d.crmd = bits(R(RAMCTL), 13, 12);
 	d.crkte = flag(R(RAMCTL), 15);
+	d.ramctl = R(RAMCTL);
+	for (unsigned i = 0; i < 8; i++)
+		d.cyc[i] = R(0x10 + 2 * i);
 
 	unsigned const bgon = R(BGON);
 	unsigned const chctla = R(CHCTLA), chctlb = R(CHCTLB);
@@ -358,6 +361,7 @@ void renderer::begin_frame(memory const &mem, screen_config const &cfg)
 		s.mosaic_y = 0;
 		s.ls_addr = d.nbg[n].ls_base;
 		s.have_line = false;
+		s.carry.pn_fetched = false;
 	}
 	for (auto &r : m_rot_state)
 		r = rot_state();
@@ -368,73 +372,60 @@ void renderer::begin_frame(memory const &mem, screen_config const &cfg)
 //  Normal scroll screen dot fetch
 //--------------------------------------------------------------------------
 
-renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const
+// Pattern name data to character number (in 32 byte units), flips, palette
+// and the special priority / colour calculation bits (ST-058 pp.69-75).
+// `pn` is the 32-bit word for two-word names and the 16-bit word otherwise.
+renderer::char_info renderer::decode_pn(nbg_params const &p, uint32_t pn)
+{
+	char_info c;
+	if (!p.one_word) {
+		c.num = pn & 0x7fff;
+		c.pal = bits(pn, 22, 16) << 4;
+		c.cc = flag(pn, 28);
+		c.pr = flag(pn, 29);
+		c.flip_h = flag(pn, 30);
+		c.flip_v = flag(pn, 31);
+	} else {
+		unsigned const c2 = p.cell2x2 ? 1 : 0;
+		unsigned const ext = p.ext_char ? 1 : 0;
+		unsigned const base_num = bits(pn, 9 + 2 * ext, 0);
+		unsigned const supp_lo = 2 * c2 + 2 * ext;
+		c.num = (base_num << (2 * c2)) | (bits(p.supp_char, 4, supp_lo) << (10 + supp_lo));
+		if (c2)
+			c.num |= p.supp_char & 3;
+		unsigned pal;
+		if (p.cf == 0)
+			pal = bits(pn, 15, 12) | p.supp_pal;
+		else
+			pal = bits(pn, 14, 12) << 4;
+		c.pal = pal << 4;
+		c.cc = p.supp_cc;
+		c.pr = p.supp_pr;
+		c.flip_h = !ext && flag(pn, 10);
+		c.flip_v = !ext && flag(pn, 11);
+	}
+	return c;
+}
+
+// Byte address of the pattern name covering source dot (sx, sy)
+uint32_t renderer::pn_address(nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy)
+{
+	unsigned const psh_h = g.plsz & 1, psh_v = g.plsz >> 1;
+	unsigned const plane_mask = (1U << g.plane_bits) - 1;
+	unsigned const plane = ((sx >> (9 + psh_h)) & plane_mask) | (((sy >> (9 + psh_v)) & plane_mask) << g.plane_bits);
+	unsigned const page = ((sx >> 9) & psh_h) | (((sy >> 9) & psh_v) << 1);
+	unsigned const c2 = p.cell2x2 ? 1 : 0;
+	unsigned const cx = bits(sx, 8, 3) >> c2, cy = bits(sy, 8, 3) >> c2;
+	unsigned const index = cx + (cy << (6 - c2));
+	return g.map_base[plane] + (page << p.page_shift) + index * (p.one_word ? 2 : 4);
+}
+
+// A dot from its raw cell data: `raw` is 4/8/11 bits of colour code, a 15 bit
+// RGB word or a 24 bit RGB long (with the transparency bit) depending on the
+// colour format; `pal` is the palette number already in colour code position.
+renderer::layer_dot renderer::make_dot(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const
 {
 	layer_dot out;
-
-	uint32_t base;         // cell / bitmap byte address
-	unsigned dot_x, dot_y; // within cell (8x8) or bitmap
-	unsigned pitch;
-	unsigned pal = 0;      // colour code high bits, already positioned
-	bool pr = false, cc = false;
-
-	if (p.bitmap) {
-		dot_x = sx & (p.bitmap_w - 1);
-		dot_y = sy & (p.bitmap_h - 1);
-		base = g.bitmap_base;
-		pitch = p.bitmap_w;
-		pal = p.bitmap_pal;
-		pr = p.bitmap_pr;
-		cc = p.bitmap_cc;
-	} else {
-		unsigned const psh_h = g.plsz & 1, psh_v = g.plsz >> 1;
-		unsigned const plane_mask = (1U << g.plane_bits) - 1;
-		unsigned const plane = ((sx >> (9 + psh_h)) & plane_mask) | (((sy >> (9 + psh_v)) & plane_mask) << g.plane_bits);
-		unsigned const page = ((sx >> 9) & psh_h) | (((sy >> 9) & psh_v) << 1);
-		unsigned const c2 = p.cell2x2 ? 1 : 0;
-		unsigned const cx = bits(sx, 8, 3) >> c2, cy = bits(sy, 8, 3) >> c2;
-		unsigned const index = cx + (cy << (6 - c2));
-		uint32_t const page_addr = g.map_base[plane] + (page << p.page_shift);
-
-		unsigned char_num, flip_h, flip_v;
-		if (repeat_pn < 0 && !p.one_word) {
-			uint32_t const pn = vram32(page_addr + index * 4);
-			char_num = pn & 0x7fff;
-			pal = bits(pn, 22, 16) << 4;
-			cc = flag(pn, 28);
-			pr = flag(pn, 29);
-			flip_h = flag(pn, 30);
-			flip_v = flag(pn, 31);
-		} else {
-			unsigned const pn = repeat_pn >= 0 ? unsigned(repeat_pn) : vram16(page_addr + index * 2);
-			unsigned const ext = p.ext_char ? 1 : 0;
-			unsigned const base_num = bits(pn, 9 + 2 * ext, 0);
-			unsigned const supp_lo = 2 * c2 + 2 * ext;
-			char_num = (base_num << (2 * c2)) | (bits(p.supp_char, 4, supp_lo) << (10 + supp_lo));
-			if (c2)
-				char_num |= p.supp_char & 3;
-			if (p.cf == 0)
-				pal = bits(pn, 15, 12) | p.supp_pal;
-			else
-				pal = bits(pn, 14, 12) << 4;
-			pal <<= 4;
-			cc = p.supp_cc;
-			pr = p.supp_pr;
-			flip_h = p.ext_char ? 0 : flag(pn, 10);
-			flip_v = p.ext_char ? 0 : flag(pn, 11);
-		}
-
-		dot_x = sx & 7;
-		dot_y = sy & 7;
-		unsigned cell_x = (c2 && repeat_pn < 0) ? ((sx >> 3) & 1) : 0, cell_y = (c2 && repeat_pn < 0) ? ((sy >> 3) & 1) : 0;
-		if (flip_h) { dot_x ^= 7; cell_x ^= c2; }
-		if (flip_v) { dot_y ^= 7; cell_y ^= c2; }
-		static constexpr unsigned cell_units_shift[5] = { 0, 1, 2, 2, 3 };
-		base = (char_num + ((cell_x + (cell_y << 1)) << cell_units_shift[p.cf])) << 5;
-		pitch = 8;
-	}
-
-	unsigned const off = dot_x + dot_y * pitch;
 	unsigned code = 0;
 	bool opaque = true;
 	bool palette = true;
@@ -442,28 +433,28 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geo
 
 	switch (p.cf) {
 	case 0: {
-		unsigned const dot = (vram8(base + (off >> 1)) >> ((~dot_x & 1) * 4)) & 0xf;
+		unsigned const dot = raw & 0xf;
 		opaque = dot || p.ctl.tpon;
 		code = pal | dot;
 		out.code = dot;
 		break;
 	}
 	case 1: {
-		unsigned const dot = vram8(base + off);
+		unsigned const dot = raw & 0xff;
 		opaque = dot || p.ctl.tpon;
 		code = (pal & 0x700) | dot;
 		out.code = dot & 0xf;
 		break;
 	}
 	case 2: {
-		unsigned const dot = vram16(base + off * 2) & 0x7ff;
+		unsigned const dot = raw & 0x7ff;
 		opaque = dot || p.ctl.tpon;
 		code = dot;
 		out.code = dot & 0xf;
 		break;
 	}
 	case 3: {
-		unsigned const c = vram16(base + off * 2);
+		unsigned const c = raw & 0xffff;
 		opaque = (c & 0x8000) || p.ctl.tpon;
 		rgb = ((c & 0x1f) << 19) | (((c >> 5) & 0x1f) << 11) | (((c >> 10) & 0x1f) << 3);
 		palette = false;
@@ -472,9 +463,8 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geo
 		break;
 	}
 	default: {
-		uint32_t const c = vram32(base + off * 4);
-		opaque = (c & 0x80000000) || p.ctl.tpon;
-		rgb = ((c & 0xff) << 16) | (c & 0xff00) | ((c >> 16) & 0xff);
+		opaque = (raw & 0x80000000) || p.ctl.tpon;
+		rgb = ((raw & 0xff) << 16) | (raw & 0xff00) | ((raw >> 16) & 0xff);
 		palette = false;
 		out.msb = true;
 		out.code = rgb & 0xf;
@@ -494,6 +484,182 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geo
 		out.rgb = rgb;
 	}
 	return out;
+}
+
+// Ideal (unconstrained) dot lookup for source dot (sx, sy). Rotation screens
+// use it directly; normal screens use it when the VRAM access model does not
+// apply.
+renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const
+{
+	uint32_t base;         // cell / bitmap byte address
+	unsigned dot_x, dot_y; // within cell (8x8) or bitmap
+	unsigned pitch;
+	unsigned pal = 0;      // colour code high bits, already positioned
+	bool pr = false, cc = false;
+
+	if (p.bitmap) {
+		dot_x = sx & (p.bitmap_w - 1);
+		dot_y = sy & (p.bitmap_h - 1);
+		base = g.bitmap_base;
+		pitch = p.bitmap_w;
+		pal = p.bitmap_pal;
+		pr = p.bitmap_pr;
+		cc = p.bitmap_cc;
+	} else {
+		unsigned const c2 = p.cell2x2 ? 1 : 0;
+		char_info ch;
+		if (repeat_pn >= 0) {
+			nbg_params one_word = p;
+			one_word.one_word = true;
+			ch = decode_pn(one_word, unsigned(repeat_pn));
+		} else {
+			uint32_t const a = pn_address(p, g, sx, sy);
+			ch = decode_pn(p, p.one_word ? vram16(a) : vram32(a));
+		}
+		pal = ch.pal;
+		cc = ch.cc;
+		pr = ch.pr;
+
+		dot_x = sx & 7;
+		dot_y = sy & 7;
+		unsigned cell_x = (c2 && repeat_pn < 0) ? ((sx >> 3) & 1) : 0, cell_y = (c2 && repeat_pn < 0) ? ((sy >> 3) & 1) : 0;
+		if (ch.flip_h) { dot_x ^= 7; cell_x ^= c2; }
+		if (ch.flip_v) { dot_y ^= 7; cell_y ^= c2; }
+		static constexpr unsigned cell_units_shift[5] = { 0, 1, 2, 2, 3 };
+		base = (ch.num + ((cell_x + (cell_y << 1)) << cell_units_shift[p.cf])) << 5;
+		pitch = 8;
+	}
+
+	unsigned const off = dot_x + dot_y * pitch;
+	uint32_t raw;
+	switch (p.cf) {
+	case 0: raw = (vram8(base + (off >> 1)) >> ((~dot_x & 1) * 4)) & 0xf; break;
+	case 1: raw = vram8(base + off); break;
+	case 2:
+	case 3: raw = vram16(base + off * 2); break;
+	default: raw = vram32(base + off * 4); break;
+	}
+	return make_dot(d, p, raw, pal, pr, cc);
+}
+
+//--------------------------------------------------------------------------
+//  Normal scroll screen line through the VRAM access model
+//--------------------------------------------------------------------------
+
+// Access command schedule of the four VRAM banks (saturn_vdp2_fetch.h)
+saturn_vdp2_fetch::schedule renderer::fetch_schedule(decoded const &d)
+{
+	std::array<bool, 4> rotation_owned;
+	for (unsigned bank = 0; bank < 4; bank++) {
+		unsigned const effective = (d.ramctl & (0x100U << (bank / 2))) ? bank : (bank & ~1U);
+		rotation_owned[bank] = (bank >= 2 && d.r1on) || (d.r0on && ((d.ramctl >> (effective * 2)) & 3));
+	}
+	uint16_t cyc[8];
+	for (unsigned i = 0; i < 8; i++)
+		cyc[i] = d.cyc[i];
+	return saturn_vdp2_fetch::make_schedule(cyc, d.ramctl & 0x100, d.ramctl & 0x200, rotation_owned);
+}
+
+// The scroll screen's dots for this line come from what the cycle pattern
+// registers let the VDP2 read (pattern names, character patterns, vertical
+// cell scroll entries), not from an ideal lookup: characters whose reads are
+// not scheduled show the previous character's dots, and so on (MiSTer
+// VDP2.sv, see saturn_vdp2_fetch.h).
+void renderer::draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s)
+{
+	namespace f = saturn_vdp2_fetch;
+	nbg_params const &p = d.nbg[n];
+
+	unsigned const slots = m_cfg.hires ? f::HIRES_SLOTS : f::SLOTS;
+	int const cycles = ((m_cfg.hreso & 1) ? 360 : 328) / (m_cfg.hires ? 4 : 8);
+	f::schedule const schedule = fetch_schedule(d);
+	f::reduction const reduction{ n < 2 && p.zmhf, n < 2 && p.zmqt };
+
+	int64_t const start_x = int64_t(s.frac_x + p.scroll_x) << 8;
+	int64_t const start_y = int64_t(s.frac_y + p.scroll_y) << 8;
+	uint32_t const inc_x = s.inc_x << 8;
+	unsigned const mosaic_h = p.mosaic ? d.mosaic_h : 1;
+	geometry const g{ 1, p.map_base, p.plsz, p.bitmap_base };
+
+	struct access {
+		renderer const &r;
+		decoded const &d;
+		nbg_params const &p;
+		geometry const &g;
+		int64_t x;
+		uint32_t inc;
+		std::array<int32_t, 90> const &y;
+		uint32_t pn_address(unsigned sx, unsigned sy) const { return renderer::pn_address(p, g, sx, sy); }
+		f::pattern_name read_pn(uint32_t address) const
+		{
+			char_info const c = decode_pn(p, p.one_word ? r.vram16(address) : r.vram32(address));
+			f::pattern_name pn;
+			pn.character = c.num;
+			pn.palette = c.pal;
+			pn.hflip = c.flip_h;
+			pn.vflip = c.flip_v;
+			pn.priority = c.pr;
+			pn.colour_calc = c.cc;
+			return pn;
+		}
+		uint32_t read32(uint32_t address) const { return r.vram32(address); }
+		unsigned bank(uint32_t address) const { return (address >> 17) & 3; }
+		unsigned cycle_x(int cycle) const { return unsigned((x + int64_t(cycle) * 8 * inc) >> 16); }
+		unsigned cycle_y(int cycle) const { return unsigned(y[cycle]); }
+	};
+	struct vcs_access {
+		renderer const &r;
+		uint32_t base;
+		uint32_t vcs_address(unsigned index) const { return (base + index * 4) & r.m_mem.vram_mask; }
+		int32_t read_vcs(uint32_t address) const { return int32_t(uint32_t(r.vram32(address) & 0x07ffff00) << 5) >> 5; }
+		unsigned bank(uint32_t address) const { return (address >> 17) & 3; }
+	};
+
+	f::carry_state &carry = s.carry;
+	std::array<std::array<int32_t, 90>, 2> cell_offsets = {};
+	bool const cell_scroll = n < 2 && p.vcell;
+	if (cell_scroll) {
+		unsigned const vh = m_mem.regs[VCSTAU >> 1], vl = m_mem.regs[(VCSTAU + 2) >> 1];
+		vcs_access vcs{ *this, uint32_t((((vh & 7) << 16) | vl) << 1) & ~3U };
+		std::array<bool, 2> const enabled{ d.nbg[0].vcell && d.nbg[0].on && !d.r1on, d.nbg[1].vcell && d.nbg[1].on };
+		f::vertical_cell_scroll_line(schedule, enabled, cycles, vcs, carry.vcs_latch, cell_offsets, slots);
+	}
+	std::array<int32_t, 90> fetch_y;
+	for (int c = 0; c < cycles; c++)
+		fetch_y[c] = int32_t((start_y + ((cell_scroll && !p.mosaic) ? cell_offsets[n & 1][c] : 0)) >> 16);
+
+	f::bitmap_config bitmap;
+	if (p.bitmap && n < 2) {
+		bitmap.enabled = true;
+		bitmap.base = p.bitmap_base;
+		bitmap.size = (p.bitmap_w == 1024 ? 2 : 0) | (p.bitmap_h == 512 ? 1 : 0);
+		bitmap.attr.palette = p.bitmap_pal;
+		bitmap.attr.colour_calc = p.bitmap_cc;
+		bitmap.attr.priority = p.bitmap_pr;
+	}
+
+	access acc{ *this, d, p, g, start_x, inc_x, fetch_y };
+	f::fetch_line(schedule, n, p.cf, p.cell2x2, reduction, bitmap, cycles, acc, carry,
+			[this](int cycle, f::cycle_dots const &dots) { m_fetched[cycle] = dots; }, slots);
+
+	// Output stage: dot j of screen cycle g reads the buffers of cycles g and g + 1
+	// through an accumulator that starts at the cycle's source X modulo 8 and adds
+	// the horizontal increment per dot (VDP2.sv 2997-3135).
+	for (unsigned x = 0; x < m_cfg.width; x++) {
+		unsigned const sample_x = x - x % mosaic_h;
+		int const cycle = sample_x >> 3;
+		int64_t const cycle_x = start_x + int64_t(cycle) * 8 * inc_x;
+		uint32_t const offset = uint32_t(((cycle_x & 0x7ffff) + int64_t(sample_x & 7) * inc_x) >> 16);
+		f::dot_ref const ref = f::select_dot(n, p.cf, reduction, offset);
+		if (cycle + int(ref.buffer) < cycles) {
+			f::cycle_dots const &dots = m_fetched[cycle + ref.buffer];
+			f::pattern_name const &attr = dots.attr[ref.cell];
+			s.line[x] = make_dot(d, p, dots.dot[ref.cell][ref.dot], attr.palette, attr.priority, attr.colour_calc);
+		} else {
+			s.line[x] = layer_dot();
+		}
+	}
+	s.have_line = true;
 }
 
 //--------------------------------------------------------------------------
@@ -517,6 +683,11 @@ void renderer::draw_nbg(decoded const &d, unsigned n, unsigned y)
 	// mosaic: the first line of a group is drawn, the others repeat it
 	if (p.mosaic && s.mosaic_y > 0 && s.have_line)
 		return;
+
+	if (!m_cfg.exclusive) {
+		draw_nbg_fetched(d, n, s);
+		return;
+	}
 
 	// vertical cell scroll table (NBG0/1); with both enabled the entries alternate
 	bool const vcs = n < 2 && p.vcell;

@@ -2696,6 +2696,8 @@ void saturn_state::vdp2_scanline(int scanline)
 	saturn_vdp2_render::screen_config cfg;
 	cfg.width = widths[hreso & 3];
 	cfg.hires = BIT(hreso, 1);
+	cfg.hreso = hreso;
+	cfg.exclusive = BIT(hreso, 2);
 	cfg.lsmd = m_vdp2->get_lsmd();
 	cfg.disp = m_vdp2->get_disp();
 	cfg.bdclmd = m_vdp2->get_bdclmd();
