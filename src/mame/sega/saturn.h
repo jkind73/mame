@@ -43,9 +43,7 @@ public:
 		m_scu(*this, "scu"),
 		//m_vdp1(*this, "vdp1"),
 		m_vdp2(*this, "vdp2"),
-		m_gfxdecode(*this, "gfxdecode"),
-		m_screen(*this, "screen"),
-		m_palette(*this, "palette")
+		m_screen(*this, "screen")
 	{
 	}
 
@@ -95,11 +93,6 @@ protected:
 		emu_timer * draw_end_timer = nullptr;
 	} m_vdp1_legacy;
 
-	struct {
-		std::unique_ptr<uint8_t[]>      gfx_decode;
-		bitmap_rgb32 roz_bitmap[2];
-		int       old_crmd = 0;
-	} m_vdp2_legacy;
 
 	required_device<sh7604_device> m_maincpu;
 	required_device<sh7604_device> m_slave;
@@ -110,11 +103,8 @@ protected:
 	required_device<saturn_scu_device> m_scu;
 //  required_device<saturn_vdp1_device> m_vdp1;
 	required_device<saturn_vdp2_device> m_vdp2;
-	required_device<gfxdecode_device> m_gfxdecode;
 	required_device<screen_device> m_screen;
-	required_device<palette_device> m_palette;
 
-	bitmap_rgb32 m_tmpbitmap;
 	saturn_vdp2_render::renderer m_vdp2_renderer;
 
 	class vdp2_sprite_fb;
@@ -264,177 +254,8 @@ protected:
 
 	uint16_t m_sprite_colorbank = 0;
 
-	/* VDP1 Framebuffer handling */
-	int      vdp1_sprite_priorities_used[8]{};
-	int      vdp1_sprite_priorities_usage_valid = 0;
-	uint8_t    vdp1_sprite_priorities_in_fb_line[512][8]{};
-
-
 	/* VDP2 */
-
-	void refresh_palette_data();
-	inline int vdp2_window_process(int x,int y);
-	void vdp2_get_window0_coordinates(int *s_x, int *e_x, int *s_y, int *e_y, int y);
-	void vdp2_get_window1_coordinates(int *s_x, int *e_x, int *s_y, int *e_y, int y);
-	int get_window_pixel(int s_x,int e_x,int s_y,int e_y,int x, int y,uint8_t win_num);
-	int vdp2_apply_window_on_layer(rectangle &cliprect);
-
-	void vdp2_draw_basic_tilemap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_basic_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void draw_4bpp_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void draw_8bpp_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void draw_11bpp_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void draw_rgb15_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void draw_rgb32_bitmap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-
-	void vdp2_drawgfxzoom(bitmap_rgb32 &dest_bmp,const rectangle &clip,gfx_element *gfx, uint32_t code,uint32_t color,int flipx,int flipy,int sx,int sy,int transparency,int scalex, int scaley,int sprite_screen_width, int sprite_screen_height, int alpha);
-	void vdp2_drawgfxzoom_rgb555(bitmap_rgb32 &dest_bmp,const rectangle &clip,uint32_t code,uint32_t color,int flipx,int flipy,int sx,int sy,int transparency,int scalex, int scaley,int sprite_screen_width, int sprite_screen_height, int alpha);
-	void vdp2_drawgfx_rgb555(bitmap_rgb32 &dest_bmp, const rectangle &clip, uint32_t code, int flipx, int flipy, int sx, int sy, int transparency, int alpha);
-	void vdp2_drawgfx_rgb888(bitmap_rgb32 &dest_bmp, const rectangle &clip, uint32_t code, int flipx, int flipy, int sx, int sy, int transparency, int alpha);
-
-	void vdp2_drawgfx_alpha(bitmap_rgb32 &dest_bmp,const rectangle &clip,gfx_element *gfx, uint32_t code,uint32_t color, int flipx,int flipy,int offsx,int offsy, int transparency, int alpha);
-	void vdp2_drawgfx_transpen(bitmap_rgb32 &dest_bmp,const rectangle &clip,gfx_element *gfx, uint32_t code,uint32_t color, int flipx,int flipy,int offsx,int offsy, int transparency);
-
-
-	void vdp2_draw_rotation_screen(bitmap_rgb32 &bitmap, const rectangle &cliprect, int iRP);
-	void vdp2_check_tilemap_with_linescroll(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_check_tilemap(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_copy_roz_bitmap(bitmap_rgb32 &bitmap, bitmap_rgb32 &roz_bitmap, const rectangle &cliprect, int iRP, int planesizex, int planesizey, int planerenderedsizex, int planerenderedsizey);
-	inline bool vdp2_roz_window(int x, int y);
-	inline bool vdp2_roz_mode3_window(int x, int y, int rot_parameter);
-	inline int get_roz_window_pixel(int s_x,int e_x,int s_y,int e_y,int x, int y,uint8_t winenable,uint8_t winarea);
-	void vdp2_fill_rotation_parameter_table(uint8_t rot_parameter);
-	uint8_t vdp2_check_vram_cycle_pattern_registers(uint8_t access_command_pnmdr, uint8_t access_command_cpdr, uint8_t bitmap_enable);
-	uint8_t vdp2_is_rotation_applied();
-	uint8_t vdp2_are_map_registers_equal();
-	void vdp2_get_map_page(int x, int y, int *_map, int *_page);
-
-	void vdp2_draw_mosaic(bitmap_rgb32 &bitmap, const rectangle &cliprect, uint8_t is_roz);
-	void vdp2_fade_effects();
-	void vdp2_compute_color_offset(int *r, int *g, int *b, int cor);
-	void vdp2_compute_color_offset_UINT32(rgb_t *rgb, int cor);
-	void vdp2_check_fade_control_for_layer();
-
-	void vdp2_draw_line(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_back(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_NBG0(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_NBG1(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_NBG2(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_NBG3(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void vdp2_draw_RBG0(bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect, uint8_t pri);
-
-	void vdp2_state_save_postload();
-	void vdp2_exit();
 	int vdp2_start();
-
-	uint8_t m_vdpdebug_roz = 0;
-
-	struct vdp2_tilemap_capabilities
-	{
-		uint8_t  enabled = 0;
-		uint8_t  transparency = 0;
-		uint8_t  colour_calculation_enabled = 0;
-		uint8_t  colour_depth = 0;
-		uint8_t  alpha = 0;
-		uint8_t  tile_size = 0;
-		uint8_t  bitmap_enable = 0;
-		uint8_t  bitmap_size = 0;
-		uint8_t  bitmap_palette_number = 0;
-		uint8_t  bitmap_map = 0;
-		uint16_t map_offset[16]{};
-		uint8_t  map_count = 0;
-
-		uint8_t  pattern_data_size = 0;
-		uint8_t  character_number_supplement = 0;
-		uint8_t  special_priority_register = 0;
-		uint8_t  special_colour_control_register = 0;
-		uint8_t  supplementary_palette_bits = 0;
-		uint8_t  supplementary_character_bits = 0;
-
-		int16_t scrollx = 0;
-		int16_t scrolly = 0;
-		uint32_t incx = 0, incy = 0;
-
-		uint8_t   linescroll_enable = 0;
-		uint8_t   linescroll_interval = 0;
-		uint32_t  linescroll_table_address = 0;
-		uint8_t   vertical_linescroll_enable = 0;
-		uint8_t   vertical_cell_scroll_enable = 0;
-		uint8_t   linezoom_enable = 0;
-
-		uint8_t  plane_size = 0;
-		uint8_t  colour_ram_address_offset = 0;
-		uint8_t  fade_control = 0;
-		struct{
-			uint8_t logic = 0;
-			uint8_t enabled[2]{};
-			uint8_t area[2]{};
-		}window_control;
-
-		uint8_t  line_screen_enabled = 0;
-		uint8_t  mosaic_screen_enabled = 0;
-		bool roz_mode3 = false;
-
-		int layer_name = 0; /* just to keep track */
-	} current_tilemap;
-
-	struct rotation_table
-	{
-		int32_t   xst = 0;
-		int32_t   yst = 0;
-		int32_t   zst = 0;
-		int32_t   dxst = 0;
-		int32_t   dyst = 0;
-		int32_t   dx = 0;
-		int32_t   dy = 0;
-		int32_t   A = 0;
-		int32_t   B = 0;
-		int32_t   C = 0;
-		int32_t   D = 0;
-		int32_t   E = 0;
-		int32_t   F = 0;
-		int32_t   px = 0;
-		int32_t   py = 0;
-		int32_t   pz = 0;
-		int32_t   cx = 0;
-		int32_t   cy = 0;
-		int32_t   cz = 0;
-		int32_t   mx = 0;
-		int32_t   my = 0;
-		int32_t   kx = 0;
-		int32_t   ky = 0;
-		uint32_t  kast = 0;
-		int32_t   dkast = 0;
-		int32_t   dkax = 0;
-
-	} current_rotation_table;
-
-	struct _vdp2_layer_data
-	{
-		uint32_t  map_offset_min = 0;
-		uint32_t  map_offset_max = 0;
-		uint32_t  tile_offset_min = 0;
-		uint32_t  tile_offset_max = 0;
-		uint32_t  pen_min = 0;
-		uint32_t  pen_max = 0;
-	} vdp2_layer_data;
-
-	struct _RBG0_cache_data
-	{
-		uint8_t   watch_vdp2_vram_writes = 0;
-		uint8_t   is_cache_dirty = 0;
-
-		uint32_t  map_offset_min[2]{ 0, 0 };
-		uint32_t  map_offset_max[2]{ 0, 0 };
-		uint32_t  tile_offset_min[2]{ 0, 0 };
-		uint32_t  tile_offset_max[2]{ 0, 0 };
-		uint32_t  pen_min[2]{ 0, 0 };
-		uint32_t  pen_max[2]{ 0, 0 };
-
-		struct vdp2_tilemap_capabilities    layer_data[2];
-
-	} RBG0_cache_data;
 
 //  void scudsp_end_w(int state);
 //  uint16_t scudsp_dma_r(offs_t offset);
@@ -446,7 +267,5 @@ protected:
 #define MASTER_CLOCK_352 XTAL(14'318'181)*4
 #define MASTER_CLOCK_320 XTAL(14'318'181)*3.75
 
-
-extern gfx_decode_entry const gfx_stv[];
 
 #endif // MAME_SEGA_SATURN_H

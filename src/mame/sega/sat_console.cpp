@@ -876,10 +876,6 @@ void sat_console_state::saturn(machine_config &config)
 	m_vdp2->vint_cb().set(FUNC(sat_console_state::vint_callback));
 	m_vdp2->hint_cb().set(FUNC(sat_console_state::hint_callback));
 
-	PALETTE(config, m_palette).set_entries(2048+(2048*2)); //standard palette + extra memory for rgb brightness.
-
-	GFXDECODE(config, m_gfxdecode, m_palette, gfx_stv);
-
 	MCFG_VIDEO_START_OVERRIDE(sat_console_state,vdp2_video_start)
 
 	SPEAKER(config, "speaker", 2).front();
