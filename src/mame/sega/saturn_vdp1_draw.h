@@ -46,6 +46,10 @@ public:
 	// Runs the command table at cmd (16 words); returns the VDP1 clocks used
 	int32_t execute(const uint16_t *cmd);
 
+	// Diagnostics: dots the commands of this frame tried to plot and how many of those the
+	// clipping rejected; cleared by the device at every frame change
+	uint32_t stat_dots = 0, stat_clipped = 0;
+
 	// Clip and coordinate state, retained across commands within a frame
 	int32_t sys_x = 0, sys_y = 0;
 	int32_t user_x0 = 0, user_y0 = 0, user_x1 = 0, user_y1 = 0;
