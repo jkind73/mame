@@ -97,10 +97,31 @@ struct nbg_params {
 	uint32_t ls_base = 0;
 };
 
+// Rotation parameter set A or B
+struct rot_params {
+	bool kte = false;             // coefficient table enable
+	bool kdbs = false;            // coefficient data size: false 2 words, true 1 word
+	bool klce = false;            // coefficient line colour enable
+	unsigned kmd = 0;             // coefficient mode: 0 kx+ky, 1 kx, 2 ky, 3 viewpoint X
+	unsigned ktaos = 0;           // coefficient table address offset
+	unsigned plsz = 0;
+	unsigned over = 0;            // screen over: 0 repeat, 1 repeat character, 2 transparent, 3 fixed 512x512
+	unsigned ovpn = 0;
+	unsigned mpofr = 0;
+	unsigned map_index[16] = {};  // (MPOFR << 6) | MPx
+};
+
 struct decoded {
 	unsigned crmd = 0;
+	bool crkte = false;           // coefficient tables live in colour RAM
 	nbg_params nbg[4];
-	bool r1on = false;
+	bool r0on = false, r1on = false;
+	nbg_params rbg[2];            // RBG0 and RBG1 (RBG1 takes NBG0's settings)
+	rot_params rot[2];
+	uint32_t rbg_map_base[2][2][16] = {}; // [layer][parameter set][plane]
+	unsigned rpmd = 0;
+	window_ctl rpwin;
+	uint32_t rpta = 0;
 
 	// sprite
 	unsigned sp_type = 0;
@@ -137,6 +158,8 @@ public:
 	static constexpr unsigned MAX_WIDTH = 704;
 
 	void begin_frame(memory const &mem, screen_config const &cfg);
+	// RPRCTL was written: re-read Xst/Yst/KAst from the parameter table on the next line
+	void rprctl_written(uint16_t data) { m_rprctl_pending |= data; }
 	// dest receives cfg.width dots as 0x00RRGGBB
 	void render_line(unsigned y, sprite_source const &sprite, uint32_t *dest);
 
@@ -171,9 +194,26 @@ private:
 		layer_dot line[MAX_WIDTH];
 	};
 
+	struct rot_state {
+		int32_t xst = 0, yst = 0;  // 16.16 start coordinates for the current line
+		int64_t ka_y = 0;          // 19.16 coefficient address accumulated per line
+	};
+
+	struct rot_line {
+		int32_t x[MAX_WIDTH], y[MAX_WIDTH];
+		bool transparent[MAX_WIDTH];
+		uint8_t lcsd[MAX_WIDTH];
+	};
+
 	memory m_mem;
 	screen_config m_cfg;
 	nbg_state m_nbg[4];
+	rot_state m_rot_state[2];
+	rot_line m_rot_line[2];
+	layer_dot m_rbg[2][MAX_WIDTH];
+	int16_t m_r0_lcsd[MAX_WIDTH];
+	bool m_w_hit[2][MAX_WIDTH];
+	unsigned m_rprctl_pending = 0;
 	uint32_t m_back = 0, m_line_rgb = 0;
 
 	uint8_t vram8(uint32_t addr) const;
@@ -182,9 +222,18 @@ private:
 	uint32_t cram_rgb(unsigned crmd, unsigned index, bool &msb) const;
 
 	void decode(decoded &d) const;
-	layer_dot nbg_dot(decoded const &d, nbg_params const &p, uint32_t sx, uint32_t sy) const;
+	struct geometry {
+		unsigned plane_bits;        // log2 of planes per axis: 1 for NBG (2x2), 2 for RBG (4x4)
+		const uint32_t *map_base;   // byte address of each plane
+		unsigned plsz;              // plane size in pages: 0 1x1, 1 2x1, 3 2x2
+		uint32_t bitmap_base;
+	};
+
+	layer_dot nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const;
 	void draw_nbg(decoded const &d, unsigned n, unsigned y);
 	void finish_nbg(decoded const &d, unsigned n);
+	void calc_rotation(decoded const &d, unsigned y, bool need_lines);
+	void draw_rbg(decoded const &d, unsigned layer, unsigned y, bool const *rpw_hit);
 	sprite_dot decode_sprite(decoded const &d, uint16_t data) const;
 };
 
