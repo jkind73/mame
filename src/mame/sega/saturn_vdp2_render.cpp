@@ -1309,3 +1309,24 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
   - Scroll values are masked by the screen resolution.
   - Double density interlace (LSMD == 3) changes several graphics sizes.
 */
+
+/*
+  Game observations carried over from the legacy VDP2 core (check list):
+
+  - decathlt gameplay, dragndrm title, Data East logo in the Magical Drop
+    games: colour calculation enabled where it should not be.
+  - dokyuif title transition (reversed fade), shienryu stage 2 statues (per
+    dot special colour calculation), scud zoom-in on melee attacks (pink
+    background), dinoisl: colour calculation.
+  - gpanicss gal select, cknight2j map transition: window effects.
+  - kingbox gameplay, columns Sega Ages logo: VRAM cycle pattern effects.
+  - Saturn BIOS memory screens, capgen2 map transitions: mosaic.
+  - elevact2, ogrebatl, htheros crowd: per scanline register effects.
+  - mfpool and voiceido gameplay: shadows.
+  - gekkakis gameplay enables the undocumented BGON bit 6 (text layer alias).
+  - biohaz: back screen not drawn; vhydlid and other T&E Soft games: title
+    screen blinking.
+  - batmanfr before the final boss: the complicated rotation setup of the
+    Riddler screen; rsgun Xiga final boss: rotation read controls; sandor
+    (ST-V) dry towel sub-game screen setup.
+*/

@@ -452,3 +452,26 @@ void saturn_vdp1_device::fb_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		w = uint16_t((w & ~mem_mask) | (data & mem_mask));
 	}
 }
+
+/*
+  Game observations carried over from the legacy VDP1 core, kept as a check
+  list of the titles that exercise the corner cases:
+
+  - kiwames (ST-V), blaztorn (VS screen in player-vs-player): erase too early
+    while the game expects the idle/draw state to stay set.
+  - batmanfr (ST-V) gameplay, nightstr (draws in automatic mode): draw end
+    interrupt timing.
+  - Illegal sprite entries (timing?): needs tests on real hardware.
+  - Mixing with VDP2 priority per dot: basically any Mega Drive Sega Ages.
+  - blaztorn match intro, twcup98 (ST-V) team select, sandor (ST-V) moai
+    sub-game: polygon vertices in the wrong place.
+  - capgen4 Yoko/Tate modes: frame buffer rotation shared with the VDP2.
+  - groovef VS zoom-in animation, flag stripes in the Sega soccer/baseball
+    games: scaling rounding.
+  - gnine96 stadium select: stippled oblique polylines on wireframes.
+  - jeworaclj, vhydlid: transparent pixel flag.
+  - dariusg intro, 3dwarvesu after continue: colours.
+  - suikoenb (ST-V): wrong pitch set in special cases.
+  - Frame buffer erase/change: kiwames' "draw by request" needs a fast enough
+    refresh; pblbeach does not clear the local coordinates set by the BIOS.
+*/
