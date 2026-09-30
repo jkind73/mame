@@ -191,6 +191,8 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	m_TimCnt[0] = 0;
 	m_TimCnt[1] = 0;
 	m_TimCnt[2] = 0;
+	m_cur_irq_level = 0;
+	m_timerS = nullptr;
 }
 
 //-------------------------------------------------
@@ -250,6 +252,7 @@ void scsp_device::device_start()
 	save_item(NAME(m_IrqMidi));
 	save_item(NAME(m_IrqCPU));
 	save_item(NAME(m_IrqDMA));
+	save_item(NAME(m_cur_irq_level));
 
 	save_item(NAME(m_MidiOutStack));
 	save_item(NAME(m_MidiOutW));
@@ -344,8 +347,6 @@ void scsp_device::sound_stream_update(sound_stream &stream)
 	// NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
 	// saturn:toughtrk will hang on Human logo otherwise
 	m_latched_MSLC_data =  /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
-
-	// TODO: 1 sample (1Fs) 44.1 kHz irq here.
 }
 
 u8 scsp_device::DecodeSCI(u8 irq)
@@ -361,50 +362,40 @@ u8 scsp_device::DecodeSCI(u8 irq)
 	return SCI;
 }
 
+// Sound CPU interrupt. Every source that is pending and enabled asks for its own level
+// (SCILV0-2) and the CPU sees the highest one (ST-77 4.2 Interrupt Control Register).
+// Timer B, timer C, MIDI out and the 1 Fs interrupt share the level bits of bit 7.
 void scsp_device::CheckPendingIRQ()
 {
 	u32 pend = m_udata.data[0x20/2];
-	u32 en = m_udata.data[0x1e/2];
+	u32 const en = m_udata.data[0x1e/2];
 	if (m_MidiW != m_MidiR)
 	{
 		m_udata.data[0x20/2] |= 8;
 		pend |= 8;
 	}
-	if (!pend)
-		return;
-	if (pend & en & 0x20)
-	{
-		m_irq_cb(m_IrqCPU, ASSERT_LINE);
-		return;
-	}
-	if (pend & 0x40)
-		if (en & 0x40)
-		{
-			m_irq_cb(m_IrqTimA, ASSERT_LINE);
-			return;
-		}
-	if (pend & 0x80)
-		if (en & 0x80)
-		{
-			m_irq_cb(m_IrqTimBC, ASSERT_LINE);
-			return;
-		}
-	if (pend & 0x100)
-		if (en & 0x100)
-		{
-			m_irq_cb(m_IrqTimBC, ASSERT_LINE);
-			return;
-		}
-	if (pend & 8)
-		if (en & 8)
-		{
-			m_irq_cb(m_IrqMidi, ASSERT_LINE);
-			return;
-		}
 
-	m_irq_cb((offs_t)0, CLEAR_LINE);
+	u32 const active = pend & en;
+	u32 level = 0;
+	if (active & 0x008) level = std::max(level, m_IrqMidi);   // MIDI in
+	if (active & 0x010) level = std::max(level, m_IrqDMA);    // DMA transfer end
+	if (active & 0x020) level = std::max(level, m_IrqCPU);    // CPU interrupt
+	if (active & 0x040) level = std::max(level, m_IrqTimA);   // timer A
+	if (active & 0x780) level = std::max(level, m_IrqTimBC);  // timer B, C, MIDI out, 1 Fs
+
+	if (level != m_cur_irq_level)
+	{
+		// lower the line that was asserted by its own level: not every driver tracks the last one
+		if (m_cur_irq_level)
+			m_irq_cb((offs_t)m_cur_irq_level, CLEAR_LINE);
+		m_cur_irq_level = level;
+		if (level)
+			m_irq_cb((offs_t)level, ASSERT_LINE);
+	}
 }
 
+// Interrupt to the main CPU (SCU): pending flags are always kept, the enable register decides
+// whether the SCU is told (MCIEB)
 void scsp_device::MainCheckPendingIRQ(u16 irq_type)
 {
 	m_mcipd |= irq_type;
@@ -417,61 +408,81 @@ void scsp_device::MainCheckPendingIRQ(u16 irq_type)
 		m_main_irq_cb(0);
 }
 
+// An interrupt source fires: it is pending for both CPUs, each of them has its own enable
+// and level (ST-77: "all interrupts that can be applied to the sound CPU can be used as
+// interrupts for the main CPU")
+void scsp_device::SetPending(u16 mask)
+{
+	m_udata.data[0x20/2] |= mask;
+	CheckPendingIRQ();
+	MainCheckPendingIRQ(mask);
+}
+
 void scsp_device::ResetInterrupts()
 {
-	u32 reset = m_udata.data[0x22/2];
-
-	if (reset & 0x40)
-	{
-		m_irq_cb(m_IrqTimA, CLEAR_LINE);
-	}
-	if (reset & 0x180)
-	{
-		m_irq_cb(m_IrqTimBC, CLEAR_LINE);
-	}
-	if (reset & 0x20)
-	{
-		m_udata.data[0x20/2] &= ~0x20;
-		m_irq_cb(m_IrqCPU, CLEAR_LINE);
-	}
-
-	if (reset & 0x8)
-	{
-		m_irq_cb(m_IrqMidi, CLEAR_LINE);
-	}
-
+	// the pending flags were cleared by SCIRE, drop the lines that have nothing left
 	CheckPendingIRQ();
+}
+
+// The timers are free running 8 bit up counters: the first overflow comes (255 - TIM) count
+// cycles after the write (ST-77 Timer Register), then every 256 cycles. A count cycle is
+// 1, 2, 4 ... 128 samples (TxCTL). MiSTer SCSP.sv and Ymir scsp_timer.hpp do the same.
+void scsp_device::StartTimer(int n)
+{
+	static constexpr int regs[3] = { 0x18, 0x1a, 0x1c };
+	u16 const reg = m_udata.data[regs[n] / 2];
+	m_TimPris[n] = 1 << ((reg >> 8) & 0x7);
+	m_TimCnt[n] = (reg & 0xff) << 8;
+
+	emu_timer *const timer = n == 0 ? m_timerA : n == 1 ? m_timerB : m_timerC;
+	attotime const cycle = attotime::from_ticks(512 * u64(m_TimPris[n]), clock());
+	timer->adjust(cycle * std::max(1, 255 - int(reg & 0xff)));
+}
+
+void scsp_device::TimerExpired(int n)
+{
+	static constexpr int regs[3] = { 0x18, 0x1a, 0x1c };
+	emu_timer *const timer = n == 0 ? m_timerA : n == 1 ? m_timerB : m_timerC;
+
+	// keeps counting from 0: next overflow after 256 count cycles
+	timer->adjust(attotime::from_ticks(512 * u64(256) * u64(m_TimPris[n]), clock()));
+
+	m_TimCnt[n] = 0xFFFF;
+	m_udata.data[regs[n] / 2] = (m_udata.data[regs[n] / 2] & 0xff00) | 0xff;
+	SetPending(0x40 << n);
 }
 
 TIMER_CALLBACK_MEMBER(scsp_device::timerA_cb)
 {
-	m_TimCnt[0] = 0xFFFF;
-	m_udata.data[0x20/2] |= 0x40;
-	m_udata.data[0x18/2] &= 0xff00;
-	m_udata.data[0x18/2] |= m_TimCnt[0] >> 8;
-
-	CheckPendingIRQ();
-	MainCheckPendingIRQ(0x40);
+	TimerExpired(0);
 }
 
 TIMER_CALLBACK_MEMBER(scsp_device::timerB_cb)
 {
-	m_TimCnt[1] = 0xFFFF;
-	m_udata.data[0x20/2] |= 0x80;
-	m_udata.data[0x1a/2] &= 0xff00;
-	m_udata.data[0x1a/2] |= m_TimCnt[1] >> 8;
-
-	CheckPendingIRQ();
+	TimerExpired(1);
 }
 
 TIMER_CALLBACK_MEMBER(scsp_device::timerC_cb)
 {
-	m_TimCnt[2] = 0xFFFF;
-	m_udata.data[0x20/2] |= 0x100;
-	m_udata.data[0x1c/2] &= 0xff00;
-	m_udata.data[0x1c/2] |= m_TimCnt[2] >> 8;
+	TimerExpired(2);
+}
 
-	CheckPendingIRQ();
+// 1 Fs interrupt, once per sample. Only generated while one of the CPUs has it enabled
+// (running it all the time would cost a timer event per sample for everything using the chip).
+void scsp_device::UpdateSampleTimer()
+{
+	if ((m_udata.data[0x1e/2] | m_mcieb) & 0x400)
+	{
+		attotime const sample = attotime::from_ticks(512, clock());
+		m_timerS->adjust(sample, 0, sample);
+	}
+	else
+		m_timerS->adjust(attotime::never);
+}
+
+TIMER_CALLBACK_MEMBER(scsp_device::timerS_cb)
+{
+	SetPending(0x400);
 }
 
 int scsp_device::Get_AR(int base, int R)
@@ -623,6 +634,8 @@ void scsp_device::init()
 	m_timerA = timer_alloc(FUNC(scsp_device::timerA_cb), this);
 	m_timerB = timer_alloc(FUNC(scsp_device::timerB_cb), this);
 	m_timerC = timer_alloc(FUNC(scsp_device::timerC_cb), this);
+	m_timerS = timer_alloc(FUNC(scsp_device::timerS_cb), this);
+	m_cur_irq_level = 0;
 
 	for (i = 0; i < 0x400; ++i)
 	{
@@ -787,6 +800,12 @@ void scsp_device::UpdateReg(int reg)
 				}
 				m_MidiOutStack[m_MidiOutW++] = data;
 				m_MidiOutW &= 31;
+
+				// MIDI out interrupt (bit 9) is cancelled by writing the buffer (ST-77)
+				m_udata.data[0x20/2] &= ~0x200;
+				m_mcipd &= ~0x200;
+				CheckPendingIRQ();
+				MainCheckPendingIRQ(0);
 			}
 			break;
 		case 8:
@@ -816,78 +835,37 @@ void scsp_device::UpdateReg(int reg)
 		case 0x18:
 		case 0x19:
 			if (!m_irq_cb.isunset())
-			{
-				m_TimPris[0] = 1 << ((m_udata.data[0x18/2] >> 8) & 0x7);
-				m_TimCnt[0] = (m_udata.data[0x18/2] & 0xff) << 8;
-
-				if ((m_udata.data[0x18/2] & 0xff) != 255)
-				{
-					u32 time = (clock() / m_TimPris[0]) / (255 - (m_udata.data[0x18/2] & 0xff));
-					if (time)
-					{
-						m_timerA->adjust(attotime::from_ticks(512, time));
-					}
-				}
-			}
+				StartTimer(0);
 			break;
 		case 0x1a:
 		case 0x1b:
 			if (!m_irq_cb.isunset())
-			{
-				m_TimPris[1] = 1 << ((m_udata.data[0x1A/2] >> 8) & 0x7);
-				m_TimCnt[1] = (m_udata.data[0x1A/2] & 0xff) << 8;
-
-				if ((m_udata.data[0x1A/2] & 0xff) != 255)
-				{
-					u32 time = (clock() / m_TimPris[1]) / (255 - (m_udata.data[0x1A/2] & 0xff));
-					if (time)
-					{
-						m_timerB->adjust(attotime::from_ticks(512, time));
-					}
-				}
-			}
+				StartTimer(1);
 			break;
 		case 0x1c:
 		case 0x1d:
 			if (!m_irq_cb.isunset())
-			{
-				m_TimPris[2] = 1 << ((m_udata.data[0x1C/2] >> 8) & 0x7);
-				m_TimCnt[2] = (m_udata.data[0x1C/2] & 0xff) << 8;
-
-				if ((m_udata.data[0x1C/2] & 0xff) != 255)
-				{
-					u32 time = (clock() / m_TimPris[2]) / (255 - (m_udata.data[0x1C/2] & 0xff));
-					if (time)
-					{
-						m_timerC->adjust(attotime::from_ticks(512, time));
-					}
-				}
-			}
+				StartTimer(2);
 			break;
 		case 0x1e: // SCIEB
 		case 0x1f:
 			if (!m_irq_cb.isunset())
 			{
 				CheckPendingIRQ();
+				UpdateSampleTimer();
 
-				if (m_udata.data[0x1e/2] & 0x610)
+				// external interrupts INT0N-INT2N are not connected in Saturn
+				if (m_udata.data[0x1e/2] & 0x7)
 					popmessage("SCSP SCIEB enabled %04x",m_udata.data[0x1e/2]);
 			}
 			break;
 		case 0x20: // SCIPD
 		case 0x21:
+			// only bit 5 can be written (w16), it applies a CPU interrupt to the sound CPU.
+			// NOTE: arcadegh uses level 7, which the documentation reserves for the
+			// development board, and still has no sound
 			if (!m_irq_cb.isunset())
-			{
-				if (m_udata.data[0x1e/2] & m_udata.data[0x20/2] & 0x20)
-				{
-					// TODO: our use case (arcadegh) still doesn't have sound (but clearly executes irq 7s)
-					// log it anyway so we can validate the behaviour with anything else using this
-					// - documentation claims 7 to "not use because tied to dev board irq",
-					//   that doesn't stop this game using it anyway.
-					popmessage("SCSP SCIPD write CPU irq 0x20");
-					CheckPendingIRQ();
-				}
-			}
+				CheckPendingIRQ();
 			break;
 		case 0x22:  //SCIRE
 		case 0x23:
@@ -896,21 +874,10 @@ void scsp_device::UpdateReg(int reg)
 				m_udata.data[0x20/2] &= ~m_udata.data[0x22/2];
 				ResetInterrupts();
 
-				// behavior from real hardware: if you SCIRE a timer that's expired,
-				// it'll immediately pop up again in SCIPD.  cfr. saturn:sakurat
-				// TODO: crocj disagrees with this (keeps going spurious irqs)
-				if (m_TimCnt[0] == 0xffff)
-				{
-					m_udata.data[0x20/2] |= 0x40;
-				}
-				if (m_TimCnt[1] == 0xffff)
-				{
-					m_udata.data[0x20/2] |= 0x80;
-				}
-				if (m_TimCnt[2] == 0xffff)
-				{
-					m_udata.data[0x20/2] |= 0x100;
-				}
+				// NOTE: the timers used to be one-shot and an expired one was put back into
+				// SCIPD here to imitate saturn:sakurat (while saturn:crocj kept getting
+				// spurious interrupts from it). They run freely now, so the next overflow
+				// sets the flag again by itself.
 			}
 			break;
 		case 0x24:
@@ -926,6 +893,7 @@ void scsp_device::UpdateReg(int reg)
 				m_IrqMidi = DecodeSCI(SCIMID);
 				m_IrqCPU = DecodeSCI(SCIIRQ);
 				m_IrqDMA = DecodeSCI(SCIDMA);
+				CheckPendingIRQ();
 			}
 			break;
 		case 0x2a:
@@ -933,7 +901,8 @@ void scsp_device::UpdateReg(int reg)
 			m_mcieb = m_udata.data[0x2a/2];
 
 			MainCheckPendingIRQ(0);
-			if (m_mcieb & ~0x60)
+			UpdateSampleTimer();
+			if (m_mcieb & 0x7)
 				popmessage("SCSP MCIEB enabled %04x",m_mcieb);
 			break;
 		case 0x2c:
@@ -972,8 +941,10 @@ void scsp_device::UpdateRegR(int reg)
 				}
 				if (m_MidiR == m_MidiW)     // if the input FIFO is empty, clear the IRQ
 				{
-					m_irq_cb(m_IrqMidi, CLEAR_LINE);
 					m_udata.data[0x20 / 2] &= ~8;
+					m_mcipd &= ~8;
+					CheckPendingIRQ();
+					MainCheckPendingIRQ(0);
 				}
 				m_udata.data[0x4/2] = v;
 			}
@@ -1028,7 +999,7 @@ void scsp_device::w16(u32 addr, u16 val)
 		if (addr < 0x430)
 		{
 			// SCIPD and MCIPD are r/o except for bit 5 CPU irqs
-			if (addr == 0x420 || addr == 0x42e)
+			if (addr == 0x420 || addr == 0x42c)
 			{
 				*((u16 *) (m_udata.datab + ((addr & 0x3f)))) |= val & 0x20;
 			}
@@ -1461,13 +1432,8 @@ void scsp_device::exec_dma()
 
 	/* Job done */
 	m_udata.data[0x16/2] &= ~0x1000;
-	/* request a dma end irq */
-	// TODO: do it inside CheckPendingIRQ
-	if (m_udata.data[0x1e/2] & 0x10)
-	{
-		popmessage("SCSP DMA IRQ triggered lv%d", m_IrqDMA);
-		m_irq_cb(m_IrqDMA, HOLD_LINE);
-	}
+	/* DMA transfer end interrupt: pending for both CPUs, SCIEB / MCIEB decide who is told */
+	SetPending(0x10);
 }
 
 
@@ -1501,6 +1467,11 @@ void scsp_device::tra_complete()
 	{
 		transmit_register_setup(m_MidiOutStack[m_MidiOutR]);
 	}
+	else
+	{
+		// MIDI out buffer emptied: interrupt (bit 9), cancelled by the next write
+		SetPending(0x200);
+	}
 }
 
 void scsp_device::rcv_complete()
@@ -1509,7 +1480,7 @@ void scsp_device::rcv_complete()
 	m_MidiStack[m_MidiW++] = get_received_char();
 	m_MidiW &= 31;
 
-	CheckPendingIRQ();
+	SetPending(0x8);
 }
 
 //LFO handling
