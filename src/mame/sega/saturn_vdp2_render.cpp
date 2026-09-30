@@ -1225,6 +1225,10 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		{
 			screen_dot &t = in_spr.dot;
 			in_spr.on = !sd.tp && !hidden(d.sp.win);
+			if (!sd.tp)
+				stat_sprite_dots++;
+			if (in_spr.on)
+				stat_sprite_shown++;
 			in_spr.priority = sprin;
 			t.caos = d.sp_caos;
 			bool cond;

@@ -167,6 +167,9 @@ public:
 	static constexpr unsigned MAX_WIDTH = 704;
 
 	void begin_frame(memory const &mem, screen_config const &cfg);
+
+	// diagnostics: sprite layer dots read (non transparent) and left visible by the sprite window, this frame
+	unsigned stat_sprite_dots = 0, stat_sprite_shown = 0;
 	// refresh the memory views and screen settings between lines of a frame
 	void set_config(memory const &mem, screen_config const &cfg) { m_mem = mem; m_cfg = cfg; }
 	// RPRCTL was written: re-read Xst/Yst/KAst from the parameter table on the next line

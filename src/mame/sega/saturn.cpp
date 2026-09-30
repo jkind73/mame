@@ -382,6 +382,8 @@ void saturn_state::vdp2_scanline(int scanline)
 
 	if (scanline == 0)
 	{
+		unsigned const prev_dots = m_vdp2_renderer.stat_sprite_dots, prev_shown = m_vdp2_renderer.stat_sprite_shown;
+		m_vdp2_renderer.stat_sprite_dots = m_vdp2_renderer.stat_sprite_shown = 0;
 		m_vdp2_renderer.begin_frame(mem, cfg);
 
 		// diagnostics (environment variable SATURN_VDP1_LOG): what the VDP2 shows of the sprite layer
@@ -390,10 +392,11 @@ void saturn_state::vdp2_scanline(int scanline)
 		{
 			auto const r = [&mem](unsigned off) { return unsigned(mem.regs[off >> 1]); };
 			logerror("VDP2 frame: TVMD=%04x (lsmd=%u hreso=%u vreso=%u disp=%u) RAMCTL=%04x BGON=%04x SPCTL=%04x "
-					"PRISA=%04x,%04x,%04x,%04x CCCTL=%04x WCTL=%04x,%04x,%04x,%04x TVSTAT sprite fb: bpp8=%d rotate=%d hdtv=%d\n",
+					"PRISA=%04x,%04x,%04x,%04x CCCTL=%04x WCTL=%04x,%04x,%04x,%04x TVSTAT sprite fb: bpp8=%d rotate=%d hdtv=%d | PRINA=%04x PRINB=%04x PRIR=%04x CRAOFB=%04x SDCTL=%04x LNCLEN=%04x | prev frame sprite dots=%u shown=%u\n",
 					r(0x00), cfg.lsmd, cfg.hreso, m_vdp2->get_vreso(), cfg.disp ? 1 : 0, r(0x0e), r(0x20), r(0xe0),
 					r(0xf0), r(0xf2), r(0xf4), r(0xf6), r(0xec), r(0xd0), r(0xd2), r(0xd4), r(0xd6),
-					m_vdp1->bpp8() ? 1 : 0, m_vdp1->rotate() ? 1 : 0, m_vdp1->hdtv() ? 1 : 0);
+					m_vdp1->bpp8() ? 1 : 0, m_vdp1->rotate() ? 1 : 0, m_vdp1->hdtv() ? 1 : 0,
+					r(0xf8), r(0xfa), r(0xfc), r(0xe6), r(0xe2), r(0xe8), prev_dots, prev_shown);
 		}
 	}
 	else
