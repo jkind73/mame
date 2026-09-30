@@ -363,6 +363,7 @@ void renderer::begin_frame(memory const &mem, screen_config const &cfg)
 		s.frac_x = 0;
 		s.inc_x = d.nbg[n].inc_x;
 		s.mosaic_y = 0;
+		s.mosaic_odd = false;
 		s.ls_addr = d.nbg[n].ls_base;
 		s.have_line = false;
 		s.carry.pn_fetched = false;
@@ -708,7 +709,7 @@ void renderer::draw_nbg(decoded const &d, unsigned n, unsigned y)
 	}
 
 	// mosaic: the first line of a group is drawn, the others repeat it
-	if (p.mosaic && s.mosaic_y > 0 && s.have_line)
+	if (p.mosaic && (s.mosaic_y > 0 || s.mosaic_odd) && s.have_line)
 		return;
 
 	if (!m_cfg.exclusive) {
@@ -765,8 +766,18 @@ void renderer::finish_nbg(decoded const &d, unsigned n)
 	nbg_params const &p = d.nbg[n];
 	nbg_state &s = m_nbg[n];
 	s.frac_y += p.inc_y;
-	if (p.mosaic)
-		s.mosaic_y = (s.mosaic_y + 1 >= d.mosaic_v) ? 0 : s.mosaic_y + 1;
+	if (p.mosaic) {
+		// The vertical mosaic size counts field lines: MiSTer VDP2.sv (MOSAIC_VCNT steps once
+		// per rendered field line) and Ymir (VDP2FinishLine) agree, and ST-058 4.11 gives the
+		// interlace sizes as twice the non-interlaced ones. In double density a field line is
+		// two of the frame lines drawn here, and a mosaic screen is shown as single density
+		// (the two lines are the same), so the counter steps on every second line.
+		bool const pair_done = m_cfg.lsmd != 3 || s.mosaic_odd;
+		if (m_cfg.lsmd == 3)
+			s.mosaic_odd = !s.mosaic_odd;
+		if (pair_done)
+			s.mosaic_y = (s.mosaic_y + 1 >= d.mosaic_v) ? 0 : s.mosaic_y + 1;
+	}
 }
 
 //--------------------------------------------------------------------------
