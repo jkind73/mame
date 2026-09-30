@@ -246,8 +246,9 @@ void renderer::decode(decoded &d) const
 	d.r0.tpon = flag(bgon, 12);
 	d.r0.win = decode_window(bits(wctl[2], 7, 0));
 
-	// rotation parameter sets A and B
-	d.rpta = ((((bits(R(RPTAU), 2, 0)) << 16) | R(RPTAU + 2)) << 1) & ~0x43U;
+	// rotation parameter sets A and B: the table base is a word address with bit 6
+	// cleared (VDP2_pkg.sv RxRPAddr); set B follows set A 0x80 bytes later
+	d.rpta = ((((bits(R(RPTAU), 2, 0)) << 16) | R(RPTAU + 2)) << 1) & ~0x83U;
 	d.rpmd = bits(R(RPMD), 1, 0);
 	d.rpwin = decode_window(bits(wctl[3], 7, 0));
 	for (unsigned i = 0; i < 2; i++) {
