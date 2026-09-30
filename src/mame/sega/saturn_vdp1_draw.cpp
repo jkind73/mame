@@ -17,8 +17,12 @@ namespace saturn_vdp1 {
 
 namespace {
 
-// Cost model (saturn_vdp1_timing.h; Mednafen's structure, three costs refitted
-// to a MiSTer probe run, provisional)
+// Cost model, in VDP1 clocks (Mednafen's structure, verified against the Developer's
+// Manual: one dot per clock, a dot that reads the frame buffer takes 6 times as long,
+// pre-clipping costs up to 5 clocks per line). The values are the hardware ones.
+// The MiSTer probe run of 2026-09-28 (pixel read +1, overhead 116/256, frame buffer
+// row change +4) measured the FPGA core's own memory timing, not the silicon's, and
+// contradicts the manual's 6x, so it is not used.
 constexpr int32_t COMMAND_FETCH = 16;
 constexpr int32_t GOURAUD_TABLE = 4;
 constexpr int32_t LOOKUP_TABLE = 16;
@@ -27,10 +31,10 @@ constexpr int32_t LINE_GOURAUD = 2;
 constexpr int32_t PRECLIP_TEST = 4;
 constexpr int32_t LINE_SETUP = 8;
 constexpr int32_t PIXEL = 1;
-constexpr int32_t PIXEL_READ = 1;
-constexpr int32_t FB_ROW = 4;
-constexpr uint32_t OVERHEAD_16BPP = 116;   // /256
-constexpr uint32_t OVERHEAD_8BPP = 24;     // /256
+constexpr int32_t PIXEL_READ = 5;
+constexpr int32_t FB_ROW = 0;
+constexpr uint32_t OVERHEAD_16BPP = 48;   // /256, frame buffer and VRAM refresh overhead
+constexpr uint32_t OVERHEAD_8BPP = 24;    // /256
 
 constexpr int32_t sext13(int32_t v) { return int32_t(uint32_t(v) << 19) >> 19; }
 constexpr int32_t sext11(int32_t v) { return int32_t(uint32_t(v) << 21) >> 21; }
