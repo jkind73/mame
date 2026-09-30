@@ -255,7 +255,8 @@ private:
 	static saturn_vdp2_fetch::schedule fetch_schedule(decoded const &d);
 	layer_dot make_dot(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const;
 	void draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s);
-	layer_dot nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const;
+	layer_dot nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn, bool rdbs_gated = false) const;
+	static bool rdbs_allows(decoded const &d, uint32_t address, unsigned role);
 	void draw_nbg(decoded const &d, unsigned n, unsigned y);
 	void finish_nbg(decoded const &d, unsigned n);
 	void calc_rotation(decoded const &d, unsigned y, bool need_lines);
