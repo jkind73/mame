@@ -23,7 +23,9 @@
 #pragma once
 
 #include "saturn_vdp2_compose.h"
+#include "saturn_vdp2_fetch.h"
 
+#include <array>
 #include <cstdint>
 
 namespace saturn_vdp2_render {
@@ -39,6 +41,8 @@ struct memory {
 struct screen_config {
 	unsigned width = 320;   // output dots per line
 	bool hires = false;     // HRES[1]: 640/704 dot modes
+	unsigned hreso = 0;     // TVMD.HRESO
+	bool exclusive = false; // HRESO bit 2: exclusive monitor modes (no VRAM access model)
 	unsigned lsmd = 0;      // TVMD.LSMD interlace mode
 	bool disp = true;       // TVMD.DISP
 	bool bdclmd = false;    // TVMD.BDCLMD: DISP=0 shows the back screen instead of black
@@ -114,6 +118,8 @@ struct rot_params {
 struct decoded {
 	unsigned crmd = 0;
 	bool crkte = false;           // coefficient tables live in colour RAM
+	unsigned ramctl = 0;
+	uint16_t cyc[8] = {};         // VRAM cycle pattern registers A0L..B1U
 	nbg_params nbg[4];
 	bool r0on = false, r1on = false;
 	nbg_params rbg[2];            // RBG0 and RBG1 (RBG1 takes NBG0's settings)
@@ -193,6 +199,7 @@ private:
 		uint32_t ls_addr = 0;      // line scroll table read pointer
 		unsigned mosaic_y = 0;
 		bool have_line = false;
+		saturn_vdp2_fetch::carry_state carry;
 		layer_dot line[MAX_WIDTH];
 	};
 
@@ -231,6 +238,18 @@ private:
 		uint32_t bitmap_base;
 	};
 
+	struct char_info {
+		unsigned num = 0, pal = 0;
+		bool cc = false, pr = false, flip_h = false, flip_v = false;
+	};
+
+	std::array<saturn_vdp2_fetch::cycle_dots, 90> m_fetched;
+
+	static char_info decode_pn(nbg_params const &p, uint32_t pn);
+	static uint32_t pn_address(nbg_params const &p, struct geometry const &g, uint32_t sx, uint32_t sy);
+	static saturn_vdp2_fetch::schedule fetch_schedule(decoded const &d);
+	layer_dot make_dot(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const;
+	void draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s);
 	layer_dot nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const;
 	void draw_nbg(decoded const &d, unsigned n, unsigned y);
 	void finish_nbg(decoded const &d, unsigned n);
