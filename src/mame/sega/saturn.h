@@ -11,6 +11,7 @@
 #include "saturn_scu.h"
 //#include "saturn_vdp1.h"
 #include "saturn_vdp2.h"
+#include "saturn_vdp2_render.h"
 #include "smpc.h"
 
 #include "bus/generic/slot.h"
@@ -114,6 +115,9 @@ protected:
 	required_device<palette_device> m_palette;
 
 	bitmap_rgb32 m_tmpbitmap;
+	saturn_vdp2_render::renderer m_vdp2_renderer;
+
+	class vdp2_sprite_fb;
 
 	int m_scsp_last_line = 0;
 

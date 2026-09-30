@@ -9505,43 +9505,72 @@ void saturn_state::draw_sprites(bitmap_rgb32 &bitmap, const rectangle &cliprect,
 	vdp1_sprite_priorities_usage_valid = 1;
 }
 
+// VDP1 frame buffer as VDP2 reads it for the sprite layer: one 16-bit word per
+// dot, doubled horizontally in the low resolution VDP1 mode on a hi-res
+// screen, and read at half the line rate for a non-interlaced buffer on a
+// double-density screen.
+class saturn_state::vdp2_sprite_fb : public saturn_vdp2_render::sprite_source
+{
+public:
+	vdp2_sprite_fb(uint16_t *const *lines, unsigned pitch, bool half_lines, bool double_x)
+		: m_lines(lines), m_pitch(pitch), m_half_lines(half_lines), m_double_x(double_x)
+	{
+	}
+
+	virtual uint16_t sprite_word(unsigned x, unsigned y) const override
+	{
+		unsigned const fx = x >> (m_double_x ? 1 : 0);
+		unsigned const fy = std::min(y >> (m_half_lines ? 1 : 0), 511U);
+		uint16_t const *const line = m_lines ? m_lines[fy] : nullptr;
+		if (!line || fx >= m_pitch)
+			return 0;
+		return line[fx];
+	}
+
+private:
+	uint16_t *const *m_lines;
+	unsigned m_pitch;
+	bool m_half_lines;
+	bool m_double_x;
+};
+
 uint32_t saturn_state::screen_update_vdp2(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
-	vdp2_fade_effects();
+	static constexpr unsigned widths[4] = { 320, 352, 640, 704 };
+	uint8_t const hreso = m_vdp2->get_hreso();
 
-	vdp2_draw_back(m_tmpbitmap,cliprect);
+	saturn_vdp2_render::memory mem;
+	mem.regs = m_vdp2_regs.get();
+	mem.vram = m_vdp2_vram.get();
+	mem.cram = m_vdp2_cram.get();
+	mem.vram_mask = 0x7ffff;
 
-	if(m_vdp2->get_disp())
+	saturn_vdp2_render::screen_config cfg;
+	cfg.width = widths[hreso & 3];
+	cfg.hires = BIT(hreso, 1);
+	cfg.lsmd = m_vdp2->get_lsmd();
+	cfg.disp = m_vdp2->get_disp();
+	cfg.bdclmd = m_vdp2->get_bdclmd();
+	cfg.pal = m_vdp2->is_pal();
+
+	vdp2_sprite_fb const sprites(
+			m_vdp1_legacy.framebuffer_display_lines.get(),
+			m_vdp1_legacy.framebuffer_width ? m_vdp1_legacy.framebuffer_width : 1,
+			cfg.lsmd == 3 && m_vdp1_legacy.framebuffer_double_interlace == 0,
+			VDP1_TVM() == 0 && cfg.hires);
+
+	m_vdp2_renderer.begin_frame(mem, cfg);
+	uint32_t line[saturn_vdp2_render::renderer::MAX_WIDTH];
+	for (int y = 0; y <= cliprect.bottom(); y++)
 	{
-		uint8_t pri;
-
-		vdp1_sprite_priorities_usage_valid = 0;
-		memset(vdp1_sprite_priorities_used, 0, sizeof(vdp1_sprite_priorities_used));
-		memset(vdp1_sprite_priorities_in_fb_line, 0, sizeof(vdp1_sprite_priorities_in_fb_line));
-
-		/*If a plane has a priority value of zero it isn't shown at all.*/
-		for(pri=1;pri<8;pri++)
+		m_vdp2_renderer.render_line(y, sprites, line);
+		if (y >= cliprect.top())
 		{
-			if(pri==VDP2_N3PRIN) { vdp2_draw_NBG3(m_tmpbitmap,cliprect); }
-			if(pri==VDP2_N2PRIN) { vdp2_draw_NBG2(m_tmpbitmap,cliprect); }
-			if(pri==VDP2_N1PRIN) { vdp2_draw_NBG1(m_tmpbitmap,cliprect); }
-			if(pri==VDP2_N0PRIN) { vdp2_draw_NBG0(m_tmpbitmap,cliprect); }
-			if(pri==VDP2_R0PRIN) { vdp2_draw_RBG0(m_tmpbitmap,cliprect); }
-			{ draw_sprites(m_tmpbitmap,cliprect,pri); }
+			uint32_t *const dest = &bitmap.pix(y);
+			for (int x = cliprect.left(); x <= cliprect.right() && x < int(cfg.width); x++)
+				dest[x] = 0xff000000 | line[x];
 		}
 	}
 
-	copybitmap(bitmap, m_tmpbitmap, 0, 0, 0, 0, cliprect);
-
-	#if 0
-	/* Do NOT remove me, used to test video code performance. */
-	if(machine().input().code_pressed(KEYCODE_Q))
-	{
-		popmessage("Halt CPUs");
-		m_maincpu->set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
-		m_slave->set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
-		m_audiocpu->set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
-	}
-	#endif
 	return 0;
 }

@@ -17,6 +17,7 @@ public:
 	void regs_map(address_map &map) ATTR_COLD;
 
 	void set_is_pal(bool is_pal) { m_is_pal = is_pal; }
+	bool is_pal() const { return m_is_pal; }
 	void set_dotsel(bool is_352_mode) { m_dotsel_352 = is_352_mode; }
 
 	template <typename T> void set_screen_tag(T &&tag) { m_screen.set_tag(std::forward<T>(tag)); }
