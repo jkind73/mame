@@ -495,7 +495,10 @@ renderer::layer_dot renderer::make_dot(decoded const &d, nbg_params const &p, ui
 // a read outside them is not performed (Developer's Manual ST-058-R2, VDP2
 // 6.2 "Rotation data bank specification bit": "If the image data read address
 // is not in the specified bank, the data will not be read"). VDP2.sv 739-760
-// gates the same way. Without bank division, bank A0 / B0 bits cover A / B.
+// gates the same way. Only pattern names and characters are gated: Die Hard
+// Arcade's floor and sky read coefficients (KTCTL, KTAOF = 1 -> bank A1) from a
+// bank whose role bits are 00, so coefficient reads must not depend on them.
+// Without bank division, bank A0 / B0 bits cover A / B.
 bool renderer::rdbs_allows(decoded const &d, uint32_t address, unsigned role)
 {
 	unsigned const bank = (address >> 17) & 3;
@@ -954,8 +957,6 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 						raw = m_mem.cram[ca >> 2];
 						if (rp.kdbs)
 							raw = (raw >> (16 - 16 * ((byte_addr >> 1) & 1))) & 0xffff;
-					} else if (!d.r1on && !rdbs_allows(d, byte_addr, 1)) {
-						raw = 0; // outside the banks owned for coefficient data (ST-058 6.2)
 					} else if (rp.kdbs) {
 						raw = vram16(byte_addr);
 					} else {
