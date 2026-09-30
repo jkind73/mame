@@ -128,6 +128,7 @@ private:
 	u32 m_IrqMidi;
 	u32 m_IrqCPU;
 	u32 m_IrqDMA;
+	u8 m_cur_irq_level;    // level currently asserted to the sound CPU, 0 when none
 
 	u8 m_latched_MSLC;
 	u16 m_latched_MSLC_data;
@@ -146,6 +147,7 @@ private:
 
 	// timers
 	emu_timer *m_timerA, *m_timerB, *m_timerC;
+	emu_timer *m_timerS;   // 1 Fs sample interrupt, armed only while it is enabled
 
 	// DMA stuff
 	struct
@@ -175,11 +177,16 @@ private:
 	void exec_dma();       /*state DMA transfer function*/
 	u8 DecodeSCI(u8 irq);
 	void CheckPendingIRQ();
+	void SetPending(u16 mask);
+	void StartTimer(int n);
+	void TimerExpired(int n);
+	void UpdateSampleTimer();
 	void MainCheckPendingIRQ(u16 irq_type);
 	void ResetInterrupts();
 	TIMER_CALLBACK_MEMBER(timerA_cb);
 	TIMER_CALLBACK_MEMBER(timerB_cb);
 	TIMER_CALLBACK_MEMBER(timerC_cb);
+	TIMER_CALLBACK_MEMBER(timerS_cb);
 	int Get_AR(int base, int R);
 	int Get_DR(int base, int R);
 	void Compute_EG(SCSP_SLOT *slot);
