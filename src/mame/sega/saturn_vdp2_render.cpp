@@ -687,7 +687,11 @@ void renderer::draw_nbg(decoded const &d, unsigned n, unsigned y)
 	nbg_params const &p = d.nbg[n];
 	nbg_state &s = m_nbg[n];
 
-	// per line scroll / zoom table (NBG0/1): one entry per 1 << LSS lines
+	// per line scroll / zoom table (NBG0/1): one entry per 1 << LSS lines. Lines are
+	// the lines this renderer produces: field lines when not interlaced or single
+	// density (whose table interval is twice as long in frame lines) and frame lines
+	// in double density, so the interval is 1 << LSS in every mode (ST-058 chapter 5,
+	// N0LSS/N1LSS table of the line & vertical cell scroll control register).
 	if (!p.lzm)
 		s.inc_x = p.inc_x;
 	if (n < 2 && (p.lsx || p.lsy || p.lzm) && (y & ((1U << p.lss) - 1)) == 0) {
@@ -1294,7 +1298,10 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		// colour stage (VDP2.sv 3457-3520)
 		rgb const cfst = to_rgb(first.dc);
 		rgb csec = to_rgb(sec.dc);
-		if (!hires) {
+		// Extended colour calculation is unavailable in high resolution and dedicated
+		// monitor modes, and normal colour calculation with a palette second image
+		// only works with colour RAM mode 0 there (ST-058 12.1 / 12.2, Table 12.1)
+		if (!hires && !m_cfg.exclusive) {
 			rgb const cthd = boken_prev1 ? csec_prev1 : to_rgb(thd.dc);
 			rgb const cfth = boken_prev2 ? csec_prev2 : to_rgb(fth.dc);
 			csec = ext_color_calc(csec, sec.ccen, cthd, thd.palette, thd.ccen, cfth, first.lcen, sec.boken, d.crmd, exccen);
@@ -1305,7 +1312,7 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		}
 		unsigned const ccrt = d.ccrtmd ? sec.ccrt : first.ccrt;
 		bool ccen_first = !first.ccm3 ? first.ccen : (first.ccen && (first.msb || !first.palette));
-		if (hires && d.crmd != 0 && sec.palette)
+		if ((hires || m_cfg.exclusive) && d.crmd != 0 && sec.palette)
 			ccen_first = false;
 		rgb c = color_calc(cfst, csec, ccrt, ccen_first, d.ccmd);
 
