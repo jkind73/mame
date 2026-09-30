@@ -511,6 +511,10 @@ int32_t draw_engine::draw_line(line_state &l, bool aa, bool textured)
 				clipped |= !(px > uint32_t(user_x1 & 0x3ff) || px < uint32_t(user_x0 & 0x3ff) || py > uint32_t(user_y1 & 0x3ff) || py < uint32_t(user_y0 & 0x3ff));
 		}
 
+		stat_dots++;
+		if (clipped)
+			stat_clipped++;
+
 		// pixel positions are in the 11 bit wrapped space; the frame buffer sees the low bits
 		cost += plot(int32_t(px), int32_t(py), pix, transparent || clipped, m_prim.gouraud ? &l.g : nullptr);
 		if (row_cost && !aa_pixel && ((int32_t(px) - local_x) & 0xf) == 0xf)

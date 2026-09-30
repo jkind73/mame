@@ -88,6 +88,14 @@ private:
 	int32_t m_budget = 0;         // VDP1 clocks of drawing time available
 	attotime m_last_time;
 
+	// diagnostics (environment variable SATURN_VDP1_LOG): one line per frame change
+	struct frame_stats {
+		unsigned cmd[16] = {};     // commands executed, by command code
+		unsigned skipped = 0, jumps = 0, calls = 0, returns = 0, ended = 0, invalid = 0;
+	} m_stats;
+	bool m_log = false;
+	void log_frame();
+
 	// frame handling
 	bool m_vblank = false, m_hblank = false;
 	bool m_manual_pending = false;
