@@ -106,6 +106,8 @@ protected:
 	required_device<screen_device> m_screen;
 
 	saturn_vdp2_render::renderer m_vdp2_renderer;
+	std::unique_ptr<uint32_t[]> m_vdp2_frame;
+	void vdp2_scanline(int scanline);
 
 	class vdp2_sprite_fb;
 
