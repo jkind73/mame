@@ -236,6 +236,48 @@ int main()
 		CHECK_EQ(line[0], rgb555(14, 0, 0));  // line 3 -> row 6 -> colour 7
 	}
 
+	// 9. RBG0 with an identity matrix, then with X and Y swapped
+	{
+		machine m;
+		m.regs[0xae / 2] = 0x8000 >> 1;
+		m.w16(0x8000, 0x03e0);                // back: green
+		for (unsigned i = 1; i < 16; i++)
+			m.c15(i, i * 2, 0, 0);
+		m.regs[0x20 / 2] = 0x0010;            // BGON: RBG0
+		m.regs[0x2a / 2] = 0x0000;            // CHCTLB: 16 colours 1x1 tiles
+		m.regs[0x38 / 2] = 0x8000;            // PNCR: 1 word patterns
+		m.regs[0xfc / 2] = 4;                 // PRIR
+		m.regs[0xbc / 2] = 0;                 // RPTAU
+		m.regs[0xbe / 2] = 0x10000 >> 1;      // RPTAL: table at 0x10000
+		for (unsigned i = 0; i < 64 * 64; i++)
+			m.w16(i * 2, 0x100);              // every page entry is character 0x100 (page 0 only)
+		// character 0x100: row r has colour r + 1 across
+		for (unsigned row = 0; row < 8; row++)
+			for (unsigned px = 0; px < 4; px++)
+				m.w8(0x100 * 32 + row * 4 + px, ((row + 1) << 4) | (row + 1));
+		auto w32 = [&](uint32_t a, uint32_t v) { m.w16(a, v >> 16); m.w16(a + 2, v & 0xffff); };
+		auto table = [&](uint32_t a, uint32_t A, uint32_t B, uint32_t D, uint32_t E) {
+			w32(a + 0x0c, 0);                 // dXst
+			w32(a + 0x10, 1 << 16);           // dYst = 1.0
+			w32(a + 0x14, 1 << 16);           // dX = 1.0
+			w32(a + 0x18, 0);                 // dY
+			w32(a + 0x1c, A); w32(a + 0x20, B); w32(a + 0x28, D); w32(a + 0x2c, E);
+			w32(a + 0x4c, 1 << 16); w32(a + 0x50, 1 << 16); // kx = ky = 1.0
+		};
+		table(0x10000, 1 << 16, 0, 0, 1 << 16);
+		sprite_fb sp;
+		uint32_t line[704];
+		run(m, sp, line, 0);
+		CHECK_EQ(line[0], rgb555(2, 0, 0));   // (0,0) -> row 0 -> colour 1
+		CHECK_EQ(line[5], rgb555(2, 0, 0));
+		run(m, sp, line, 2);
+		CHECK_EQ(line[5], rgb555(6, 0, 0));   // line 2 -> row 2 -> colour 3
+		table(0x10000, 0, 1 << 16, 1 << 16, 0);
+		run(m, sp, line, 2);
+		CHECK_EQ(line[3], rgb555(8, 0, 0));   // sx = 2, sy = x = 3 -> row 3 -> colour 4
+		CHECK_EQ(line[6], rgb555(14, 0, 0));  // sy = 6 -> colour 7
+	}
+
 	std::puts("ok");
 	return 0;
 }

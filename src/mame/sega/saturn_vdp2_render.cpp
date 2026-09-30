@@ -30,7 +30,8 @@ enum : unsigned {
 	LCTAU = 0xa8, BKTAU = 0xac, WPSX0 = 0xc0, WCTLA = 0xd0, LWTA0U = 0xd8, LWTA1U = 0xdc,
 	SPCTL = 0xe0, SDCTL = 0xe2, CRAOFA = 0xe4, CRAOFB = 0xe6, LNCLEN = 0xe8, SFPRMD = 0xea,
 	CCCTL = 0xec, SFCCMD = 0xee, PRISA = 0xf0, PRINA = 0xf8, PRIR = 0xfc, CCRSA = 0x100,
-	ZMCTL = 0x98, CCRNA = 0x108, CCRR = 0x10c, CCRLB = 0x10e, CLOFEN = 0x110, CLOFSL = 0x112, COAR = 0x114
+	ZMCTL = 0x98, RPMD = 0xb0, KTCTL = 0xb4, KTAOF = 0xb6, OVPNRA = 0xb8, RPTAU = 0xbc, MPOFR = 0x3e, MPABRA = 0x50, PNCR = 0x38,
+	CCRNA = 0x108, CCRR = 0x10c, CCRLB = 0x10e, CLOFEN = 0x110, CLOFSL = 0x112, COAR = 0x114
 };
 
 // ST-058 / kMapIndexMasks: [cell 2x2][two-word][plane size]
@@ -96,6 +97,7 @@ void renderer::decode(decoded &d) const
 	auto const R = [this](unsigned off) -> unsigned { return m_mem.regs[off >> 1]; };
 
 	d.crmd = bits(R(RAMCTL), 13, 12);
+	d.crkte = flag(R(RAMCTL), 15);
 
 	unsigned const bgon = R(BGON);
 	unsigned const chctla = R(CHCTLA), chctlb = R(CHCTLB);
@@ -105,6 +107,7 @@ void renderer::decode(decoded &d) const
 	unsigned const mpofn = R(MPOFN), plsz = R(PLSZ), scrctl = R(SCRCTL);
 	unsigned const wctl[4] = { R(WCTLA), R(WCTLA + 2), R(WCTLA + 4), R(WCTLA + 6) };
 
+	d.r0on = flag(bgon, 4);
 	d.r1on = flag(bgon, 5);
 	d.mosaic_h = bits(mzctl, 11, 8) + 1;
 	d.mosaic_v = bits(mzctl, 15, 12) + 1;
@@ -160,6 +163,8 @@ void renderer::decode(decoded &d) const
 		p.supp_char = bits(pnc, 4, 0);
 
 		p.plsz = bits(plsz, 2 * n + 1, 2 * n);
+		if (p.plsz == 2)
+			p.plsz = 3;
 		unsigned const offs = bits(mpofn, 4 * n + 2, 4 * n);
 		p.page_shift = page_shift_table[p.cell2x2][!p.one_word];
 		unsigned const mask = map_index_mask[p.cell2x2][!p.one_word][p.plsz];
@@ -238,6 +243,64 @@ void renderer::decode(decoded &d) const
 	d.r0.tpon = flag(bgon, 12);
 	d.r0.win = decode_window(bits(wctl[2], 7, 0));
 
+	// rotation parameter sets A and B
+	d.rpta = ((((bits(R(RPTAU), 2, 0)) << 16) | R(RPTAU + 2)) << 1) & ~0x43U;
+	d.rpmd = bits(R(RPMD), 1, 0);
+	d.rpwin = decode_window(bits(wctl[3], 7, 0));
+	for (unsigned i = 0; i < 2; i++) {
+		rot_params &rp = d.rot[i];
+		unsigned const ktctl = R(KTCTL), ktaof = R(KTAOF), s8 = 8 * i;
+		rp.kte = flag(ktctl, s8);
+		rp.kdbs = flag(ktctl, s8 + 1);
+		rp.kmd = bits(ktctl, s8 + 3, s8 + 2);
+		rp.klce = flag(ktctl, s8 + 4);
+		rp.ktaos = bits(ktaof, s8 + 2, s8);
+		rp.plsz = bits(plsz, 4 * i + 9, 4 * i + 8);
+		if (rp.plsz == 2)
+			rp.plsz = 3;
+		rp.over = bits(plsz, 4 * i + 11, 4 * i + 10);
+		rp.ovpn = R(OVPNRA + 2 * i);
+		rp.mpofr = bits(R(MPOFR), 4 * i + 2, 4 * i);
+		for (unsigned pl = 0; pl < 16; pl++) {
+			unsigned const reg = R(MPABRA + 0x10 * i + 2 * (pl >> 1));
+			rp.map_index[pl] = (rp.mpofr << 6) | bits(reg, 8 * (pl & 1) + 5, 8 * (pl & 1));
+		}
+	}
+
+	// RBG0 character settings; RBG1 takes NBG0's
+	{
+		nbg_params &r = d.rbg[0];
+		r.ctl = d.r0;
+		r.on = d.r0on;
+		r.cell2x2 = flag(chctlb, 8);
+		r.bitmap = flag(chctlb, 9);
+		r.bitmap_w = 512;
+		r.bitmap_h = flag(chctlb, 10) ? 512 : 256;
+		r.cf = bits(chctlb, 14, 12);
+		r.mosaic = flag(mzctl, 4);
+		unsigned const pnc = R(PNCR);
+		r.one_word = flag(pnc, 15);
+		r.ext_char = flag(pnc, 14);
+		r.supp_pr = flag(pnc, 9);
+		r.supp_cc = flag(pnc, 8);
+		r.supp_pal = bits(pnc, 7, 5) << 4;
+		r.supp_char = bits(pnc, 4, 0);
+		r.page_shift = page_shift_table[r.cell2x2][!r.one_word];
+		unsigned const bmp = R(BMPNB);
+		r.bitmap_pal = bits(bmp, 2, 0) << 8;
+		r.bitmap_cc = flag(bmp, 4);
+		r.bitmap_pr = flag(bmp, 5);
+		d.rbg[1] = d.nbg[0];
+		d.rbg[1].on = d.r1on;
+		for (unsigned l = 0; l < 2; l++)
+			for (unsigned i = 0; i < 2; i++) {
+				nbg_params const &q = d.rbg[l];
+				unsigned const mask = map_index_mask[q.cell2x2][!q.one_word][d.rot[i].plsz];
+				for (unsigned pl = 0; pl < 16; pl++)
+					d.rbg_map_base[l][i][pl] = (d.rot[i].map_index[pl] & mask) << q.page_shift;
+			}
+	}
+
 	// windows
 	for (unsigned w = 0; w < 2; w++) {
 		unsigned const b = WPSX0 + 8 * w;
@@ -296,13 +359,16 @@ void renderer::begin_frame(memory const &mem, screen_config const &cfg)
 		s.ls_addr = d.nbg[n].ls_base;
 		s.have_line = false;
 	}
+	for (auto &r : m_rot_state)
+		r = rot_state();
+	m_rprctl_pending = 0;
 }
 
 //--------------------------------------------------------------------------
 //  Normal scroll screen dot fetch
 //--------------------------------------------------------------------------
 
-renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, uint32_t sx, uint32_t sy) const
+renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn) const
 {
 	layer_dot out;
 
@@ -315,22 +381,23 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, uin
 	if (p.bitmap) {
 		dot_x = sx & (p.bitmap_w - 1);
 		dot_y = sy & (p.bitmap_h - 1);
-		base = p.bitmap_base;
+		base = g.bitmap_base;
 		pitch = p.bitmap_w;
 		pal = p.bitmap_pal;
 		pr = p.bitmap_pr;
 		cc = p.bitmap_cc;
 	} else {
-		unsigned const psh_h = p.plsz & 1, psh_v = p.plsz >> 1;
-		unsigned const plane = ((sx >> (9 + psh_h)) & 1) | (((sy >> (9 + psh_v)) & 1) << 1);
+		unsigned const psh_h = g.plsz & 1, psh_v = g.plsz >> 1;
+		unsigned const plane_mask = (1U << g.plane_bits) - 1;
+		unsigned const plane = ((sx >> (9 + psh_h)) & plane_mask) | (((sy >> (9 + psh_v)) & plane_mask) << g.plane_bits);
 		unsigned const page = ((sx >> 9) & psh_h) | (((sy >> 9) & psh_v) << 1);
 		unsigned const c2 = p.cell2x2 ? 1 : 0;
 		unsigned const cx = bits(sx, 8, 3) >> c2, cy = bits(sy, 8, 3) >> c2;
 		unsigned const index = cx + (cy << (6 - c2));
-		uint32_t const page_addr = p.map_base[plane] + (page << p.page_shift);
+		uint32_t const page_addr = g.map_base[plane] + (page << p.page_shift);
 
 		unsigned char_num, flip_h, flip_v;
-		if (!p.one_word) {
+		if (repeat_pn < 0 && !p.one_word) {
 			uint32_t const pn = vram32(page_addr + index * 4);
 			char_num = pn & 0x7fff;
 			pal = bits(pn, 22, 16) << 4;
@@ -339,7 +406,7 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, uin
 			flip_h = flag(pn, 30);
 			flip_v = flag(pn, 31);
 		} else {
-			unsigned const pn = vram16(page_addr + index * 2);
+			unsigned const pn = repeat_pn >= 0 ? unsigned(repeat_pn) : vram16(page_addr + index * 2);
 			unsigned const ext = p.ext_char ? 1 : 0;
 			unsigned const base_num = bits(pn, 9 + 2 * ext, 0);
 			unsigned const supp_lo = 2 * c2 + 2 * ext;
@@ -359,7 +426,7 @@ renderer::layer_dot renderer::nbg_dot(decoded const &d, nbg_params const &p, uin
 
 		dot_x = sx & 7;
 		dot_y = sy & 7;
-		unsigned cell_x = c2 ? ((sx >> 3) & 1) : 0, cell_y = c2 ? ((sy >> 3) & 1) : 0;
+		unsigned cell_x = (c2 && repeat_pn < 0) ? ((sx >> 3) & 1) : 0, cell_y = (c2 && repeat_pn < 0) ? ((sy >> 3) & 1) : 0;
 		if (flip_h) { dot_x ^= 7; cell_x ^= c2; }
 		if (flip_v) { dot_y ^= 7; cell_y ^= c2; }
 		static constexpr unsigned cell_units_shift[5] = { 0, 1, 2, 2, 3 };
@@ -488,7 +555,7 @@ void renderer::draw_nbg(decoded const &d, unsigned n, unsigned y)
 				vcell_y = bits(vram32(vcs_addr + ((cell - first_cell) & 0x7f) * vcs_stride), 26, 8);
 			}
 		}
-		s.line[x] = nbg_dot(d, p, fx >> 8, (s.frac_y + p.scroll_y + vcell_y) >> 8);
+		s.line[x] = nbg_dot(d, p, geometry{ 1, p.map_base, p.plsz, p.bitmap_base }, fx >> 8, (s.frac_y + p.scroll_y + vcell_y) >> 8, -1);
 		fx += s.inc_x;
 	}
 	s.have_line = true;
@@ -564,6 +631,210 @@ renderer::sprite_dot renderer::decode_sprite(decoded const &d, uint16_t data) co
 }
 
 //--------------------------------------------------------------------------
+//  Rotation screens (RBG0 / RBG1)
+//--------------------------------------------------------------------------
+
+namespace {
+
+// RotCoord arithmetic (VDP2_pkg.sv): 16.16 fixed point in 32 bits
+inline int32_t sext(uint32_t v, unsigned nbits) { return int32_t(v << (32 - nbits)) >> (32 - nbits); }
+inline int32_t rc(int32_t integer, uint32_t frac16) { return int32_t((uint32_t(integer) << 16) | frac16); }
+inline int32_t mult_rc(int32_t a, int32_t b) { return int32_t((int64_t(a) * b) >> 16); }
+inline int32_t add_rc(int32_t a, int32_t b) { return int32_t(uint32_t(a) + uint32_t(b)); }
+inline int32_t sub_rc(int32_t a, int32_t b) { return int32_t(uint32_t(a) - uint32_t(b)); }
+
+// Rotation parameter table words (ST-058, VDP2_pkg.sv 1932-2000)
+inline int32_t scrn_start(uint32_t w) { return rc(sext((w >> 16) & 0x1fff, 13), ((w >> 6) & 0x3ff) << 6); }
+inline int32_t scrn_inc(uint32_t w) { return rc(sext((w >> 16) & 7, 3), ((w >> 6) & 0x3ff) << 6); }
+inline int32_t matr(uint32_t w) { return rc(sext((w >> 16) & 0xf, 4), ((w >> 6) & 0x3ff) << 6); }
+inline int32_t coord(uint32_t v14) { return rc(sext(v14 & 0x3fff, 14), 0); }
+inline int32_t shift_rc(uint32_t w) { return rc(sext((w >> 16) & 0x3fff, 14), ((w >> 6) & 0x3ff) << 6); }
+inline int32_t scaling(uint32_t w) { return rc(sext((w >> 16) & 0xff, 8), w & 0xffff); }
+inline int64_t addr_inc(uint32_t w) { return int64_t(sext((w >> 6) & 0xfffff, 20)) * 64; }
+
+} // anonymous namespace
+
+// Computes, for both parameter sets, the start coordinates for this line and
+// (when a rotation screen is enabled) the source coordinates of every dot.
+void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
+{
+	unsigned const rpx = m_cfg.hires ? (m_cfg.width >> 1) : m_cfg.width;
+
+	for (unsigned i = 0; i < 2; i++) {
+		rot_params const &rp = d.rot[i];
+		rot_state &st = m_rot_state[i];
+		uint32_t const t = d.rpta + i * 0x80;
+
+		int32_t const xst = scrn_start(vram32(t + 0x00));
+		int32_t const yst = scrn_start(vram32(t + 0x04));
+		int32_t const zst = scrn_start(vram32(t + 0x08));
+		int32_t const dxst = scrn_inc(vram32(t + 0x0c));
+		int32_t const dyst = scrn_inc(vram32(t + 0x10));
+		int32_t const dx = scrn_inc(vram32(t + 0x14));
+		int32_t const dy = scrn_inc(vram32(t + 0x18));
+
+		// start coordinates: read at the top of the frame or on request, otherwise stepped
+		unsigned const pend = m_rprctl_pending >> (8 * i);
+		if (y == 0 || (pend & 1))
+			st.xst = xst;
+		else
+			st.xst = add_rc(st.xst, dxst);
+		if (y == 0 || (pend & 2))
+			st.yst = yst;
+		else
+			st.yst = add_rc(st.yst, dyst);
+		bool const kast_reread = y == 0 || (pend & 4);
+		m_rprctl_pending &= ~(7U << (8 * i));
+
+		int64_t const dkast = addr_inc(vram32(t + 0x58));
+		if (kast_reread)
+			st.ka_y = 0;
+		else
+			st.ka_y += dkast;
+
+		if (!need_lines)
+			continue;
+
+		int32_t const a = matr(vram32(t + 0x1c)), b = matr(vram32(t + 0x20)), c = matr(vram32(t + 0x24));
+		int32_t const dd = matr(vram32(t + 0x28)), e = matr(vram32(t + 0x2c)), f = matr(vram32(t + 0x30));
+		uint32_t const pxy = vram32(t + 0x34), pzw = vram32(t + 0x38), cxy = vram32(t + 0x3c), czw = vram32(t + 0x40);
+		int32_t const px = coord(pxy >> 16), py = coord(pxy), pz = coord(pzw >> 16);
+		int32_t const cx = coord(cxy >> 16), cy = coord(cxy), cz = coord(czw >> 16);
+		int32_t const mx = shift_rc(vram32(t + 0x44)), my = shift_rc(vram32(t + 0x48));
+		int32_t const kx = scaling(vram32(t + 0x4c)), ky = scaling(vram32(t + 0x50));
+		uint32_t const kast = vram32(t + 0x54) & 0xffffffc0U;
+		int64_t const dkax = addr_inc(vram32(t + 0x5c));
+
+		// start point in the transformed plane, per-dot step, and viewpoint
+		int32_t xsp = add_rc(add_rc(mult_rc(a, sub_rc(st.xst, px)), mult_rc(b, sub_rc(st.yst, py))), mult_rc(c, sub_rc(zst, pz)));
+		int32_t ysp = add_rc(add_rc(mult_rc(dd, sub_rc(st.xst, px)), mult_rc(e, sub_rc(st.yst, py))), mult_rc(f, sub_rc(zst, pz)));
+		int32_t const dxsp = add_rc(mult_rc(a, dx), mult_rc(b, dy));
+		int32_t const dysp = add_rc(mult_rc(dd, dx), mult_rc(e, dy));
+		int32_t xp = add_rc(add_rc(add_rc(add_rc(cx, mult_rc(a, sub_rc(px, cx))), mult_rc(b, sub_rc(py, cy))), mult_rc(c, sub_rc(pz, cz))), mx);
+		int32_t yp = add_rc(add_rc(add_rc(add_rc(cy, mult_rc(dd, sub_rc(px, cx))), mult_rc(e, sub_rc(py, cy))), mult_rc(f, sub_rc(pz, cz))), my);
+
+		rot_line &ln = m_rot_line[i];
+		int64_t const ka_base = (int64_t(rp.ktaos) << 32) + int64_t(kast) + st.ka_y;
+
+		int32_t coeff = 0;
+		bool coeff_tp = false;
+		uint8_t coeff_lcsd = 0;
+		bool have_coeff = false;
+
+		for (unsigned x = 0; x < rpx; x++) {
+			int32_t kx_x = kx, ky_x = ky, xp_x = xp;
+			bool tp = false;
+			uint8_t lcsd = 0;
+			if (rp.kte) {
+				// the coefficient address steps per dot; a zero step needs only one read per line
+				if (!have_coeff || dkax != 0) {
+					int64_t const sum = ka_base + dkax * int64_t(x);
+					uint32_t const offs = uint32_t(sum >> 16) & 0x7ffff;
+					uint32_t const byte_addr = rp.kdbs ? (offs << 1) : (offs << 2);
+					uint32_t raw;
+					if (d.crkte) {
+						uint32_t const ca = (0x800 | byte_addr) & 0xffc;
+						raw = m_mem.cram[ca >> 2];
+						if (rp.kdbs)
+							raw = (raw >> (16 - 16 * ((byte_addr >> 1) & 1))) & 0xffff;
+					} else if (rp.kdbs) {
+						raw = vram16(byte_addr);
+					} else {
+						raw = vram32(byte_addr);
+					}
+					if (rp.kdbs) {
+						coeff_tp = raw & 0x8000;
+						coeff_lcsd = 0;
+						coeff = int32_t(int64_t(sext(raw & 0x7fff, 15)) * (rp.kmd == 3 ? (1 << 14) : (1 << 6)));
+					} else {
+						coeff_tp = raw & 0x80000000U;
+						coeff_lcsd = (raw >> 24) & 0x7f;
+						coeff = int32_t(int64_t(sext(raw & 0xffffff, 24)) * (rp.kmd == 3 ? (1 << 8) : 1));
+					}
+					have_coeff = true;
+				}
+				tp = coeff_tp;
+				lcsd = coeff_lcsd;
+				switch (rp.kmd) {
+				case 0: kx_x = ky_x = coeff; break;
+				case 1: kx_x = coeff; break;
+				case 2: ky_x = coeff; break;
+				default: xp_x = coeff; break;
+				}
+			}
+			ln.x[x] = add_rc(xp_x, mult_rc(kx_x, xsp)) >> 16;
+			ln.y[x] = add_rc(yp, mult_rc(ky_x, ysp)) >> 16;
+			ln.transparent[x] = tp;
+			ln.lcsd[x] = lcsd;
+			xsp = add_rc(xsp, dxsp);
+			ysp = add_rc(ysp, dysp);
+		}
+	}
+}
+
+// One rotation screen line. Layer 0 is RBG0 (selects between parameter sets
+// A and B), layer 1 is RBG1 (always set B).
+void renderer::draw_rbg(decoded const &d, unsigned layer, unsigned y, bool const *rpw_hit)
+{
+	(void)y;
+	nbg_params const &p = d.rbg[layer];
+	layer_dot *out = m_rbg[layer];
+	unsigned const shift = m_cfg.hires ? 1 : 0;
+	unsigned mosaic_x = 0;
+
+	for (unsigned x = 0; x < m_cfg.width; x++) {
+		if (p.mosaic) {
+			unsigned const cur = mosaic_x;
+			mosaic_x = (mosaic_x + 1 >= d.mosaic_h) ? 0 : mosaic_x + 1;
+			if (cur > 0) {
+				out[x] = out[x - 1];
+				if (layer == 0)
+					m_r0_lcsd[x] = m_r0_lcsd[x - 1];
+				continue;
+			}
+		}
+
+		unsigned const xr = x >> shift;
+		unsigned sel = 1;
+		if (layer == 0) {
+			switch (d.rpmd) {
+			case 0: sel = 0; break;
+			case 1: sel = 1; break;
+			case 2: sel = (d.rot[0].kte && m_rot_line[0].transparent[xr]) ? 1 : 0; break;
+			default: sel = rpw_hit[x] ? 1 : 0; break;
+			}
+		}
+		rot_params const &rp = d.rot[sel];
+		rot_line const &ln = m_rot_line[sel];
+
+		layer_dot dot;
+		if (layer == 0)
+			m_r0_lcsd[x] = rp.klce ? int16_t(ln.lcsd[xr]) : int16_t(-1);
+
+		if (!(rp.kte && ln.transparent[xr])) {
+			int32_t const sx = ln.x[xr], sy = ln.y[xr];
+			geometry const g{ 2, d.rbg_map_base[layer][sel], rp.plsz, rp.mpofr << 17 };
+			unsigned max_x, max_y;
+			if (rp.over == 3) {
+				max_x = max_y = 512;
+			} else if (p.bitmap) {
+				max_x = p.bitmap_w;
+				max_y = p.bitmap_h;
+			} else {
+				max_x = 2048U << (rp.plsz & 1);
+				max_y = 2048U << (rp.plsz >> 1);
+			}
+			bool const inside = sx >= 0 && sy >= 0 && unsigned(sx) < max_x && unsigned(sy) < max_y;
+			if (inside || rp.over == 0)
+				dot = nbg_dot(d, p, g, uint32_t(sx), uint32_t(sy), -1);
+			else if (rp.over == 1 && !p.bitmap)
+				dot = nbg_dot(d, p, g, uint32_t(sx), uint32_t(sy), int(rp.ovpn));
+		}
+		out[x] = dot;
+	}
+}
+
+//--------------------------------------------------------------------------
 //  Windows
 //--------------------------------------------------------------------------
 
@@ -610,12 +881,17 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	bool const hires = m_cfg.hires;
 
 	// back screen and line colour screen for this line
+	unsigned line_word;
 	{
 		unsigned const c = vram16(d.bkta + (d.bk_per_line ? y * 2 : 0));
 		m_back = ((c & 0x1f) << 19) | (((c >> 5) & 0x1f) << 11) | (((c >> 10) & 0x1f) << 3);
 		bool msb;
-		m_line_rgb = cram_rgb(d.crmd, vram16(d.lcta + (d.lc_per_line ? y * 2 : 0)) & 0x7ff, msb);
+		line_word = vram16(d.lcta + (d.lc_per_line ? y * 2 : 0)) & 0x7ff;
+		m_line_rgb = cram_rgb(d.crmd, line_word, msb);
 	}
+
+	bool const rbg_any = d.r0on || d.r1on;
+	calc_rotation(d, y, rbg_any && m_cfg.disp);
 
 	if (!m_cfg.disp) {
 		std::fill_n(dest, width, m_cfg.bdclmd ? m_back : 0U);
@@ -624,18 +900,21 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		return;
 	}
 
-	// scroll screens. NBG0 gives way to RBG1; the colour depth of NBG0/1
+	// Scroll screens. NBG0 gives way to RBG1; the colour depth of NBG0/1
 	// and the reduction settings decide which of NBG1-3 have VRAM cycles left.
+	// With both rotation screens enabled no normal screen is displayed.
 	bool nbg_on[4];
-	nbg_on[0] = d.nbg[0].on && !d.r1on;
+	nbg_on[0] = d.nbg[0].on || d.r1on;
 	nbg_on[1] = d.nbg[1].on && d.nbg[0].cf < 4;
 	nbg_on[2] = d.nbg[2].on && d.nbg[0].cf < 2 && !nbg_reduced(d.nbg[0]);
 	nbg_on[3] = d.nbg[3].on && d.nbg[0].cf < 4 && d.nbg[1].cf < 2 && !nbg_reduced(d.nbg[1]);
+	if (d.r0on && d.r1on)
+		nbg_on[1] = nbg_on[2] = nbg_on[3] = false;
 	for (unsigned n = 0; n < 4; n++)
-		if (nbg_on[n])
+		if (nbg_on[n] && !(n == 0 && d.r1on))
 			draw_nbg(d, n, y);
 
-	// window geometry for this line
+	// window geometry and hits for this line
 	bool wy_hit[2];
 	unsigned wsx[2], wex[2];
 	for (unsigned w = 0; w < 2; w++) {
@@ -650,6 +929,25 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		wy_hit[w] = (y >= sy && y <= ey && sy != 0x1fe && ey < 0x1fe) ||
 				(ey >= (m_cfg.pal ? 0x100U : 0xf0U) && ey <= 0x1ed && !ddi);
 	}
+	for (unsigned x = 0; x < width; x++)
+		for (unsigned w = 0; w < 2; w++) {
+			// window coordinates are in half dots in the normal resolutions
+			unsigned const px = hires ? x : (x << 1);
+			unsigned const s = hires ? wsx[w] : (wsx[w] & ~1U);
+			unsigned const e = hires ? wex[w] : (wex[w] & ~1U);
+			m_w_hit[w][x] = (px >= s || wsx[w] >= 0x360) && px <= e && e < 0x360 && e != 0x2ec && wy_hit[w];
+		}
+
+	// rotation screens
+	if (rbg_any) {
+		bool rpw_hit[MAX_WIDTH];
+		for (unsigned x = 0; x < width; x++)
+			rpw_hit[x] = win_test(m_w_hit[0][x] != d.rpwin.w0a, m_w_hit[1][x] != d.rpwin.w1a, false, d.rpwin);
+		if (d.r0on)
+			draw_rbg(d, 0, y, rpw_hit);
+		if (d.r1on)
+			draw_rbg(d, 1, y, rpw_hit);
+	}
 
 	// gradation neighbours (VDP2.sv 3452-3466)
 	bool boken_prev1 = false, boken_prev2 = false;
@@ -658,24 +956,15 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 
 	auto const to_rgb = [](uint32_t c) { return rgb{ uint8_t(c >> 16), uint8_t(c >> 8), uint8_t(c) }; };
 	auto const from_rgb = [](rgb c) { return (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | c.b; };
-	unsigned const boken_layer_n[4] = { 2, 4, 5, 6 };
+	unsigned const boken_layer_n[5] = { 2, 4, 5, 6, 1 };
 
 	for (unsigned x = 0; x < width; x++) {
-		bool w_hit[2];
-		for (unsigned w = 0; w < 2; w++) {
-			// window coordinates are in half dots in the normal resolutions
-			unsigned const px = hires ? x : (x << 1);
-			unsigned const s = hires ? wsx[w] : (wsx[w] & ~1U);
-			unsigned const e = hires ? wex[w] : (wex[w] & ~1U);
-			w_hit[w] = (px >= s || wsx[w] >= 0x360) && px <= e && e < 0x360 && e != 0x2ec && wy_hit[w];
-		}
-
 		sprite_dot const sd = decode_sprite(d, sprite.sprite_word(x, y));
 		bool const spwin = d.sp_winen;
 
 		auto const hidden = [&](window_ctl c) {
 			c.swe = c.swe && spwin;
-			return win_test(w_hit[0] != c.w0a, w_hit[1] != c.w1a, sd.wn != c.swa, c);
+			return win_test(m_w_hit[0][x] != c.w0a, m_w_hit[1][x] != c.w1a, sd.wn != c.swa, c);
 		};
 		bool const ccw = hidden(d.ccwin);
 		bool const bok_ok = d.boken && d.crmd == 0;
@@ -714,13 +1003,10 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			}
 		}
 
-		// scroll screens
-		layer_input in_nbg[4];
-		for (unsigned n = 0; n < 4; n++) {
-			nbg_params const &p = d.nbg[n];
-			layer_dot const &ld = m_nbg[n].line[x];
-			layer_input &li = in_nbg[n];
-			li.on = nbg_on[n] && ld.opaque && !hidden(p.ctl.win);
+		// a scroll or rotation screen's contribution
+		auto const layer_in = [&](nbg_params const &p, layer_dot const &ld, bool enabled, unsigned boken_n) {
+			layer_input li;
+			li.on = enabled && ld.opaque && !hidden(p.ctl.win);
 			li.priority = layer_priority(d, p.ctl, ld.pr, ld.code);
 			screen_dot &t = li.dot;
 			bool const sfc = (d.sfcd[p.ctl.sfcs] >> ((ld.code >> 1) & 7)) & 1;
@@ -732,13 +1018,20 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			t.coen = p.ctl.coen;
 			t.cosl = p.ctl.cosl;
 			t.sden = p.ctl.sden && sd.sd && sprin >= li.priority;
-			t.boken = bok_ok && d.bokn == boken_layer_n[n];
+			t.boken = bok_ok && d.bokn == boken_n;
 			t.lcen = p.ctl.lcen;
 			t.palette = ld.palette;
 			t.msb = ld.msb;
 			t.dc = ld.rgb;
+			return li;
+		};
+
+		layer_input in_nbg[4];
+		for (unsigned n = 0; n < 4; n++) {
+			bool const rot = n == 0 && d.r1on;
+			in_nbg[n] = layer_in(d.nbg[n], rot ? m_rbg[1][x] : m_nbg[n].line[x], nbg_on[n], boken_layer_n[n]);
 		}
-		layer_input in_r0; // RBG0/1 are not produced by this stage yet
+		layer_input const in_r0 = d.r0on ? layer_in(d.rbg[0], m_rbg[0][x], true, boken_layer_n[4]) : layer_input();
 
 		// priority stack; the back screen fills all three positions
 		dot_stack st;
@@ -770,6 +1063,11 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			lc.ccrt = d.lccrt;
 			lc.palette = true;
 			lc.dc = m_line_rgb;
+			if (d.r0on && m_r0_lcsd[x] >= 0) {
+				// the selected rotation parameter set supplies the low 7 bits of the line colour address
+				bool m;
+				lc.dc = cram_rgb(d.crmd, (line_word & 0x780) | unsigned(m_r0_lcsd[x]), m);
+			}
 			sec = lc;
 			thd = st.dot[1];
 			fth = st.dot[2];
