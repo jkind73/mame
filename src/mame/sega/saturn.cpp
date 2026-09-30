@@ -410,7 +410,10 @@ void saturn_state::vdp2_scanline(int scanline)
 			(plain && !m_vdp1->bpp8() && (hreso & 6) == 2) || BIT(hreso, 2));
 
 	m_vdp2_renderer.render_line(scanline, sprites, &m_vdp2_frame[scanline * saturn_vdp2_render::renderer::MAX_WIDTH]);
-	m_vdp1->display_line_done();
+	// the erase of the displayed buffer follows the read-out one buffer row at a time; in double
+	// density two frame lines read the same row, so it advances on every second line
+	if (cfg.lsmd != 3 || (scanline & 1))
+		m_vdp1->display_line_done();
 }
 
 uint32_t saturn_state::screen_update_vdp2(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
