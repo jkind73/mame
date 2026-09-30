@@ -201,6 +201,7 @@ private:
 		uint32_t inc_x = 0x100;    // horizontal step
 		uint32_t ls_addr = 0;      // line scroll table read pointer
 		unsigned mosaic_y = 0;
+		bool mosaic_odd = false;   // double density: second frame line of the current field line
 		bool have_line = false;
 		saturn_vdp2_fetch::carry_state carry;
 		layer_dot line[MAX_WIDTH];
