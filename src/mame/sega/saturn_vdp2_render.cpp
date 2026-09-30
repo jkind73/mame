@@ -315,7 +315,9 @@ void renderer::decode(decoded &d) const
 		d.wey[w] = bits(R(b + 6), 8, 0);
 		unsigned const l = w ? LWTA1U : LWTA0U;
 		d.lwe[w] = flag(R(l), 15);
-		d.lwta[w] = ((bits(R(l), 2, 0) << 16) | (R(l + 2) & 0xfffe)) ;
+		// line window table address: the 18-bit register value (bits 18-1) times 4, the
+		// same format as the line scroll table address (ST-058 8.1, p.187)
+		d.lwta[w] = ((bits(R(l), 2, 0) << 16) | (R(l + 2) & 0xfffe)) << 1;
 	}
 	d.ccwin = decode_window(bits(wctl[3], 15, 8));
 
@@ -1030,8 +1032,14 @@ void renderer::draw_rbg(decoded const &d, unsigned layer, unsigned y, bool const
 		rot_line const &ln = m_rot_line[sel];
 
 		layer_dot dot;
-		if (layer == 0)
-			m_r0_lcsd[x] = rp.klce ? int16_t(ln.lcsd[xr]) : int16_t(-1);
+		if (layer == 0) {
+			// line colour data in the coefficient data (ST-058 6.4, p.164, p.168): only with
+			// the coefficient table enabled and 2 word data; mode 2 takes it from table A
+			// for both images, modes 0, 1 and 3 from the table of the selected image
+			unsigned const lsel = d.rpmd == 2 ? 0 : sel;
+			rot_params const &lrp = d.rot[lsel];
+			m_r0_lcsd[x] = (lrp.klce && lrp.kte && !lrp.kdbs) ? int16_t(m_rot_line[lsel].lcsd[xr]) : int16_t(-1);
+		}
 
 		if (!(rp.kte && ln.transparent[xr])) {
 			int32_t const sx = ln.x[xr], sy = ln.y[xr];
@@ -1063,8 +1071,10 @@ void renderer::draw_rbg(decoded const &d, unsigned layer, unsigned y, bool const
 // VDP2_pkg.sv WinTest: a layer is hidden where this is true
 static bool win_test(bool w0hit, bool w1hit, bool wshit, window_ctl const &c)
 {
+	// no window enabled: OR logic leaves the whole screen outside the window area, AND
+	// logic makes the whole screen the window area (ST-058 8.2, xxLOG, p.194)
 	if (!c.w0e && !c.w1e && !c.swe)
-		return false;
+		return c.logic_and;
 	if (c.logic_and)
 		return (!c.w0e || w0hit) && (!c.w1e || w1hit) && (!c.swe || wshit);
 	return (c.w0e && w0hit) || (c.w1e && w1hit) || (c.swe && wshit);
@@ -1148,7 +1158,11 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			wex[w] = bits(e, 9, 0);
 		}
 		unsigned const sy = d.wsy[w], ey = d.wey[w];
-		wy_hit[w] = (y >= sy && y <= ey && sy != 0x1fe && ey < 0x1fe) ||
+		// double density interlace: the registers hold the field V counter in bits 8-1
+		// and bit 0 is not used (ST-058 Table 8.2), so compare field lines
+		unsigned const wy = ddi ? (y >> 1) : y;
+		unsigned const csy = ddi ? (sy >> 1) : sy, cey = ddi ? (ey >> 1) : ey;
+		wy_hit[w] = (wy >= csy && wy <= cey && sy != 0x1fe && ey < 0x1fe) ||
 				(ey >= (m_cfg.pal ? 0x100U : 0xf0U) && ey <= 0x1ed && !ddi);
 	}
 	for (unsigned x = 0; x < width; x++)
