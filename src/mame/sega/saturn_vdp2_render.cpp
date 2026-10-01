@@ -895,7 +895,7 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 		// density interlace counts the lines of a field (ST-058 2.4, VCT9-1 are the field line;
 		// MiSTer VDP2.sv steps them once per field line). Both frame lines of a pair use the
 		// same step.
-		bool const step = !(m_cfg.lsmd == 3 && (y & 1));
+		bool const step = !(m_cfg.lsmd == 3 && (y & 1) && !legacy_rotation_step);
 		unsigned const pend = m_rprctl_pending >> (8 * i);
 		if (step) {
 			if (y == 0 || (pend & 1))
