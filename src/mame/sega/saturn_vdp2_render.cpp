@@ -201,7 +201,8 @@ void renderer::decode(decoded &d) const
 			p.zmhf = flag(R(0x98), s);
 			p.zmqt = flag(R(0x98), s + 1);
 			unsigned const l = n ? LSTA1U : LSTA0U;
-			p.ls_base = ((bits(R(l), 2, 0) << 16) | R(l + 2)) << 1;
+			// the table address register is bits 18-1 (bit 0 of the low half is unused, ST-058 5.3), tables are longwords
+			p.ls_base = (((bits(R(l), 2, 0) << 16) | R(l + 2)) << 1) & ~3U;
 		} else {
 			unsigned const b = 0x90 + 4 * (n - 2);
 			p.scroll_x = bits(R(b), 10, 0) << 8;
@@ -728,7 +729,7 @@ void renderer::draw_nbg(decoded const &d, unsigned n, unsigned y)
 	unsigned vcs_stride = 4;
 	if (vcs) {
 		unsigned const vh = m_mem.regs[VCSTAU >> 1], vl = m_mem.regs[(VCSTAU + 2) >> 1];
-		vcs_addr = (((vh & 7) << 16) | vl) << 1;
+		vcs_addr = ((((vh & 7) << 16) | vl) << 1) & ~3U;
 		if (d.nbg[0].vcell && d.nbg[1].vcell) {
 			vcs_stride = 8;
 			if (n == 1)
