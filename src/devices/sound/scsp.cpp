@@ -315,13 +315,26 @@ void scsp_device::device_reset()
 //  device_post_load - called after loading a saved state
 //-------------------------------------------------
 
+// MVOL attenuates in 3 dB steps (MiSTer MVolCalc / Ymir): shift right by (~MVOL >> 1),
+// minus a quarter when MVOL is even; 0 mutes, 15 is unity
+double scsp_device::master_gain() const
+{
+	unsigned const mvol = MVOL();
+	if (!mvol)
+		return 0.0;
+	double gain = 1.0 / double(1 << ((mvol ^ 0xf) >> 1));
+	if (!(mvol & 1))
+		gain *= 0.75;
+	return gain;
+}
+
 void scsp_device::device_post_load()
 {
 	for (int slot = 0; slot < 32; slot++)
 		Compute_LFO(&m_Slots[slot]);
 
-	set_output_gain(0, MVOL() / 15.0);
-	set_output_gain(1, MVOL() / 15.0);
+	set_output_gain(0, master_gain());
+	set_output_gain(1, master_gain());
 }
 
 //-------------------------------------------------
@@ -803,8 +816,8 @@ void scsp_device::UpdateReg(int reg)
 	switch (reg & 0x3f)
 	{
 		case 0x0:
-			set_output_gain(0, MVOL() / 15.0);
-			set_output_gain(1, MVOL() / 15.0);
+			set_output_gain(0, master_gain());
+			set_output_gain(1, master_gain());
 			break;
 		case 0x2:
 		case 0x3:
