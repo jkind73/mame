@@ -1384,8 +1384,10 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 		for (int i = 0; i < 2; ++i)
 		{
 			SCSP_SLOT *slot = m_Slots + i + 16; // 100217, 100237 EFSDL, EFPAN for EXTS0/1
-			// !EFSDL case testable in saturn Multiplayer with Audio CD with default values.
-			u16 Enc = EFSDL(slot) ? ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd) : (((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd));
+			// the external input only has the effect send level and pan (ST-77, MiSTer SCSP.sv, Ymir);
+			// SCSP_LEGACY=0x10 brings back the old fallback to the direct send when EFSDL is 0
+			// (it was testable in saturn Multiplayer with Audio CD with default values)
+			u16 Enc = (EFSDL(slot) || !(scsp_legacy() & 0x10)) ? ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd) : (((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd));
 			{
 				m_DSP.EXTS[i] = s32(stream.get(i, s) * 32768.0);
 				m_log_exts_peak = std::max(m_log_exts_peak, std::abs(m_DSP.EXTS[i]));
