@@ -153,6 +153,7 @@ private:
 	u16 m_mcipd;
 
 	u32 m_eg_counter;    // envelope generator sample counter
+	u32 m_lfsr;          // noise generator, 17 bit LFSR advanced once per slot
 
 	SCSPDSP m_DSP;
 
