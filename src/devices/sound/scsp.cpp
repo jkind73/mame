@@ -120,7 +120,7 @@ static unsigned scsp_legacy()
 #define DAC18B()    ((m_udata.data[0] >> 0x0) & 0x0100)
 #define MVOL()      ((m_udata.data[0] >> 0x0) & 0x000F)
 #define RBL()       ((m_udata.data[1] >> 0x7) & 0x0003)
-#define RBP()       ((m_udata.data[1] >> 0x0) & 0x003F)
+#define RBP()       ((m_udata.data[1] >> 0x0) & 0x007F)   // RBP[19:13], ST-77 Figure 4.3
 #define MOFULL()    ((m_udata.data[2] >> 0x0) & 0x1000)
 #define MOEMPTY()   ((m_udata.data[2] >> 0x0) & 0x0800)
 #define MIOVF()     ((m_udata.data[2] >> 0x0) & 0x0400)
