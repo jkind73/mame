@@ -37,6 +37,7 @@ struct SCSPDSP
 	s32 FrcReg;    // 13 bit
 	s32 YReg;      // 24 bit
 	u32 AdrsReg;   // 12 bit
+	s32 InputsReg; // 24 bit, the INPUTS bus keeps its value when no source is selected
 
 // memory access pipeline, carried over from one step (and sample) to the next
 	bool ReadPending, ReadNOFL, WritePending;
