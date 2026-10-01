@@ -890,29 +890,39 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 		int32_t const dy = scrn_inc(vram32(t + 0x18));
 
 		// start coordinates: read at the top of the frame or on request, otherwise stepped
+		// The start coordinates and the coefficient table address advance with the V counter
+		// (ST-058 chapter 6: Xst + dXst x V counter, KAst + dKAst x V counter), which in double
+		// density interlace counts the lines of a field (ST-058 2.4, VCT9-1 are the field line;
+		// MiSTer VDP2.sv steps them once per field line). Both frame lines of a pair use the
+		// same step.
+		bool const step = !(m_cfg.lsmd == 3 && (y & 1));
 		unsigned const pend = m_rprctl_pending >> (8 * i);
-		if (y == 0 || (pend & 1))
-			st.xst = xst;
-		else
-			st.xst = add_rc(st.xst, dxst);
-		if (y == 0 || (pend & 2))
-			st.yst = yst;
-		else
-			st.yst = add_rc(st.yst, dyst);
+		if (step) {
+			if (y == 0 || (pend & 1))
+				st.xst = xst;
+			else
+				st.xst = add_rc(st.xst, dxst);
+			if (y == 0 || (pend & 2))
+				st.yst = yst;
+			else
+				st.yst = add_rc(st.yst, dyst);
+		}
 		// VDP1 frame buffer rotation (11.9 fixed point, the VDP1 readout of parameter set A)
 		if (i == 0) {
 			int32_t const sx = sext((((xw >> 28) & 1) << 10) | ((xw >> 16) & 0x3ff), 11) * 512 + int32_t((xw >> 7) & 0x1ff);
 			int32_t const sy = sext((((yw >> 28) & 1) << 10) | ((yw >> 16) & 0x3ff), 11) * 512 + int32_t((yw >> 7) & 0x1ff);
 			int32_t const isx = sext((dxw >> 16) & 7, 3) * 512 + int32_t((dxw >> 7) & 0x1ff);
 			int32_t const isy = sext((dyw >> 16) & 7, 3) * 512 + int32_t((dyw >> 7) & 0x1ff);
-			if (y == 0 || (pend & 1))
-				st.spr_xst = sx;
-			else
-				st.spr_xst += isx;
-			if (y == 0 || (pend & 2))
-				st.spr_yst = sy;
-			else
-				st.spr_yst += isy;
+			if (step) {
+				if (y == 0 || (pend & 1))
+					st.spr_xst = sx;
+				else
+					st.spr_xst += isx;
+				if (y == 0 || (pend & 2))
+					st.spr_yst = sy;
+				else
+					st.spr_yst += isy;
+			}
 			if (m_cfg.fb_rotate) {
 				int32_t const dxa = sext((vram32(t + 0x14) >> 16) & 7, 3) * 512 + int32_t((vram32(t + 0x14) >> 7) & 0x1ff);
 				int32_t const dya = sext((vram32(t + 0x18) >> 16) & 7, 3) * 512 + int32_t((vram32(t + 0x18) >> 7) & 0x1ff);
@@ -923,14 +933,16 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 			}
 		}
 
-		bool const kast_reread = y == 0 || (pend & 4);
-		m_rprctl_pending &= ~(7U << (8 * i));
+		if (step) {
+			bool const kast_reread = y == 0 || (pend & 4);
+			m_rprctl_pending &= ~(7U << (8 * i));
 
-		int64_t const dkast = addr_inc(vram32(t + 0x58));
-		if (kast_reread)
-			st.ka_y = 0;
-		else
-			st.ka_y += dkast;
+			int64_t const dkast = addr_inc(vram32(t + 0x58));
+			if (kast_reread)
+				st.ka_y = 0;
+			else
+				st.ka_y += dkast;
+		}
 
 		if (!need_lines)
 			continue;
