@@ -166,6 +166,7 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 		m_MidiOutR(0),
 		m_MidiW(0),
 		m_MidiR(0),
+		m_MidiOverflow(false),
 		m_timerA(nullptr),
 		m_timerB(nullptr),
 		m_timerC(nullptr),
@@ -262,6 +263,7 @@ void scsp_device::device_start()
 	save_item(NAME(m_MidiStack));
 	save_item(NAME(m_MidiW));
 	save_item(NAME(m_MidiR));
+	save_item(NAME(m_MidiOverflow));
 
 	save_item(NAME(m_TimPris));
 	save_item(NAME(m_TimCnt));
@@ -693,6 +695,7 @@ void scsp_device::init()
 
 	m_IrqTimA = m_IrqTimBC = m_IrqMidi = m_IrqCPU = m_IrqDMA = 0;
 	m_MidiR = m_MidiW = 0;
+	m_MidiOverflow = false;
 	m_MidiOutR = m_MidiOutW = 0;
 
 	m_DSP.space = &this->space();
@@ -970,8 +973,15 @@ void scsp_device::UpdateRegR(int reg)
 		case 4:
 		case 5:
 			{
-				u16 v = m_udata.data[0x4/2];
-				v &= 0xff00;
+				// MIEMP, MIFULL and MIOVF of the 4 byte input FIFO and MOEMP, MOFULL of the output one (ST-77 MIDI Register)
+				unsigned const in_count = (m_MidiW - m_MidiR) & 31;
+				unsigned const out_count = (m_MidiOutW - m_MidiOutR) & 31;
+				u16 v = 0;
+				v |= in_count == 0 ? 0x0100 : 0;
+				v |= in_count >= 4 ? 0x0200 : 0;
+				v |= m_MidiOverflow ? 0x0400 : 0;
+				v |= out_count == 0 ? 0x0800 : 0;
+				v |= out_count >= 4 ? 0x1000 : 0;
 				v |= m_MidiStack[m_MidiR];
 				logerror("Read %x from SCSP MIDI\n", v);
 				if (m_MidiR != m_MidiW)
@@ -1565,10 +1575,21 @@ void scsp_device::tra_complete()
 void scsp_device::rcv_complete()
 {
 	receive_register_extract();
+
+	// the input FIFO holds 4 bytes; more data sets MIOVF (it stays set, as in Ymir) and is lost
+	unsigned const count = (m_MidiW - m_MidiR) & 31;
+	if (count >= 4)
+	{
+		m_MidiOverflow = true;
+		return;
+	}
+
 	m_MidiStack[m_MidiW++] = get_received_char();
 	m_MidiW &= 31;
 
-	SetPending(0x8);
+	// the interrupt occurs when data arrives in an empty FIFO
+	if (count == 0)
+		SetPending(0x8);
 }
 
 //LFO handling
