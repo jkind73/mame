@@ -138,6 +138,9 @@ void smpc_hle_device::device_start()
 	save_item(NAME(m_intback_buf));
 	save_item(NAME(m_intback_stage));
 	save_item(NAME(m_pmode));
+	save_item(NAME(m_periph_report));
+	save_item(NAME(m_periph_offset));
+	save_item(NAME(m_resb));
 	save_item(NAME(m_rtc_data));
 	save_item(NAME(m_smem));
 	save_item(NAME(m_ckchg_tick));
@@ -175,6 +178,11 @@ void smpc_hle_device::device_reset()
 	m_intback_timer->reset();
 	m_sndres_timer->reset();
 	m_comreg = 0xff;
+	m_periph_report.clear();
+	m_periph_offset = 0;
+	m_resb = false;
+	m_intback_stage = 0;
+	m_pmode = 0;
 	m_command_in_progress = false;
 	m_NMI_reset = false;
 	m_cur_dotsel = false;
@@ -211,19 +219,24 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data)
 	if (!(offset & 1)) // avoid writing to even bytes
 		return;
 
+	uint8_t const old = m_ireg[offset >> 1];
 	m_ireg[offset >> 1] = data;
 
 	if(offset == 1) // check if we are under intback
 	{
 		if(m_intback_stage)
 		{
+			// IREG0 bit 6 = BREAK, bit 7 = CONTINUE which is requested by *inverting* the bit (ST-169 3.1)
 			if(data & 0x40)
 			{
 				LOGMASKED(LOG_PAD_CMD, "SMPC: BREAK request\n");
 				sr_ack();
 				m_intback_stage = 0;
+				m_periph_report.clear();
+				m_periph_offset = 0;
+				sf_ack(false);
 			}
-			else if(data & 0x80)
+			else if((data ^ old) & 0x80)
 			{
 				LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
 
@@ -576,7 +589,7 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command)
 
 		case 0x19: // RESENAB
 		case 0x1a: // RESDISA
-			LOGMASKED(LOG_COMMAND, "SMPC: %02x RES%s\n", m_comreg, m_comreg & 1 ? "DISA" : "ENAB");
+			LOGMASKED(LOG_COMMAND, "SMPC: %02x RES%s\n", m_comreg, m_comreg & 1 ? "ENAB" : "DISA");
 			m_NMI_reset = (m_comreg & 1);
 			break;
 
@@ -647,8 +660,9 @@ void smpc_hle_device::resolve_intback()
 			m_oreg[16+i] = 0xff; // undefined
 
 		m_intback_stage = (m_intback_buf[1] & 8) >> 3; // first peripheral
-		sr_set(0x40 | (m_intback_stage << 5));
-		m_pmode = m_intback_buf[0]>>4;
+		sr_set(0x40 | (m_intback_stage << 5) | (m_resb << 4));
+		m_pmode = m_intback_buf[1] >> 4; // P2MD1-0, P1MD1-0
+		m_periph_offset = 0;
 
 		irq_request();
 
@@ -661,6 +675,8 @@ void smpc_hle_device::resolve_intback()
 	{
 		m_intback_stage = (m_intback_buf[1] & 8) >> 3; // first peripheral
 		sr_set(0x40);
+		m_pmode = m_intback_buf[1] >> 4;
+		m_periph_offset = 0;
 		m_oreg[31] = 0x10;
 		intback_continue_request(0);
 	}
@@ -675,7 +691,13 @@ void smpc_hle_device::resolve_intback()
 TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request)
 {
 	if( m_has_ctrl_ports == true )
-		read_saturn_ports();
+	{
+		write_periph_report();
+		irq_request();
+
+		sf_ack(false);
+		return;
+	}
 
 	if (m_intback_stage == 2)
 	{
@@ -821,47 +843,71 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_rtc_increment)
  how did a real unit behave in this case?
 */
 
+// Collects the data of the enabled ports: for each port the port status followed by the
+// ID and data of every connected peripheral (ST-169 Figure 3.10). A port in 0-byte mode (3)
+// is not accessed and left out.
 void smpc_hle_device::read_saturn_ports()
 {
-	uint8_t status1 = m_ctrl1 ? m_ctrl1->read_status() : 0xf0;
-	uint8_t status2 = m_ctrl2 ? m_ctrl2->read_status() : 0xf0;
+	m_periph_report.clear();
 
-	uint8_t reg_offset = 0;
-	uint8_t ctrl1_offset = 0;     // this is used when there is segatap or multitap connected
-	uint8_t ctrl2_offset = 0;     // this is used when there is segatap or multitap connected
-
-	m_oreg[reg_offset++] = status1;
-
-	// read ctrl1
-	for (int i = 0; i < (status1 & 0xf); i++)
+	saturn_control_port_device *const ports[2] = { m_ctrl1, m_ctrl2 };
+	for (int port = 0; port < 2; port++)
 	{
-		uint8_t id = m_ctrl1->read_id(i);
+		if (((m_pmode >> (port * 2)) & 3) == 3)
+			continue;
 
-		m_oreg[reg_offset++] = id;
-		for (int j = 0; j < (id & 0xf); j++)
-			m_oreg[reg_offset++] = m_ctrl1->read_ctrl(j + ctrl1_offset);
+		saturn_control_port_device *const ctrl = ports[port];
+		uint8_t const status = ctrl ? ctrl->read_status() : 0xf0;
+		uint8_t ctrl_offset = 0;     // this is used when there is segatap or multitap connected
 
-		ctrl1_offset += (id & 0xf);
+		m_periph_report.push_back(status);
+		for (int i = 0; i < (status & 0xf); i++)
+		{
+			uint8_t const id = ctrl->read_id(i);
+
+			m_periph_report.push_back(id);
+			for (int j = 0; j < (id & 0xf); j++)
+				m_periph_report.push_back(ctrl->read_ctrl(j + ctrl_offset));
+
+			ctrl_offset += (id & 0xf);
+		}
 	}
+}
 
-	m_oreg[reg_offset++] = status2;
+// Moves the next 32 bytes of the peripheral data into OREG, the remainder is delivered by the next
+// CONTINUE request (SR.NPE = 1 while data remains, SR.PDL = 1 on the first report)
+void smpc_hle_device::write_periph_report()
+{
+	bool const first = m_periph_offset == 0;
+	if (first)
+		read_saturn_ports();
 
-	// read ctrl2
-	for (int i = 0; i < (status2 & 0xf); i++)
+	size_t const length = std::min<size_t>(32, m_periph_report.size() - m_periph_offset);
+	std::copy_n(m_periph_report.begin() + m_periph_offset, length, m_oreg);
+	std::fill(m_oreg + length, m_oreg + 32, 0xff);
+	m_periph_offset += length;
+
+	bool const remaining = m_periph_offset < m_periph_report.size();
+	if (!remaining)
 	{
-		uint8_t id = m_ctrl2->read_id(i);
-
-		m_oreg[reg_offset++] = id;
-
-		for (int j = 0; j < (id & 0xf); j++)
-			m_oreg[reg_offset++] = m_ctrl2->read_ctrl(j + ctrl2_offset);
-
-		ctrl2_offset += (id & 0xf);
+		m_periph_report.clear();
+		m_periph_offset = 0;
+		m_intback_stage = 0;
 	}
+	else
+		m_intback_stage = 2;
+
+	if (length < 32)
+		m_oreg[31] = 0x10; // callback for last command issued
+
+	sr_set(0x80 | (first ? 0x40 : 0) | (remaining ? 0x20 : 0) | (m_resb << 4) | (m_pmode & 0xf));
 }
 
 INPUT_CHANGED_MEMBER(smpc_hle_device::trigger_nmi_r )
 {
+	// reset button status shown in SR.RESB (ST-169 Figure 3.13)
+	m_resb = bool(newval);
+
 	// punt if NMI trigger is disabled
 	if(!m_NMI_reset)
 		return;

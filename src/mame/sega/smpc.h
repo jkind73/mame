@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "bus/sat_ctrl/ctrl.h"
 #include "machine/nvram.h"
 
@@ -145,6 +147,7 @@ private:
 	TIMER_CALLBACK_MEMBER(handle_command);
 	TIMER_CALLBACK_MEMBER(system_halt);
 	void read_saturn_ports();
+	void write_periph_report();
 
 	void sr_set(uint8_t data);
 	void sr_ack();
@@ -153,6 +156,9 @@ private:
 	int DectoBCD(int num);
 	int m_intback_stage;
 	int m_pmode;
+	std::vector<uint8_t> m_periph_report;
+	size_t m_periph_offset;
+	bool m_resb;
 	uint8_t m_region_code;
 
 	required_device<nvram_device> m_mini_nvram;
