@@ -630,6 +630,13 @@ void scsp_device::Compute_LFO(SCSP_SLOT *slot)
 		LFO_ComputeStep(&(slot->PLFO), LFOF(slot), PLFOWS(slot), PLFOS(slot), 0);
 	if (ALFOS(slot) != 0)
 		LFO_ComputeStep(&(slot->ALFO), LFOF(slot), ALFOWS(slot), ALFOS(slot), 1);
+
+	// LFORE: while set the LFO is held in reset, it starts again from phase 0 when the bit is cleared (ST-77)
+	if (LFORE(slot))
+	{
+		slot->PLFO.phase = slot->ALFO.phase = 0;
+		slot->PLFO.phase_step = slot->ALFO.phase_step = 0;
+	}
 }
 
 void scsp_device::StartSlot(SCSP_SLOT *slot)
