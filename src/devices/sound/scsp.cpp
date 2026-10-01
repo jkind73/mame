@@ -34,6 +34,16 @@
 #include "scsp.h"
 
 #include <algorithm>
+#include <cstdlib>
+
+// Diagnostics: SCSP_LEGACY=<hex mask> turns off parts of the interrupt and envelope rework, to find which
+// one a game depends on: 1 DMA end as a one shot pulse of the sound CPU line (no pending flags, main CPU
+// not told), 2 no 1 Fs sample interrupt, 4 slots only stop at the end of the release (not in any state)
+static unsigned scsp_legacy()
+{
+	static unsigned const mask = std::getenv("SCSP_LEGACY") ? unsigned(std::strtoul(std::getenv("SCSP_LEGACY"), nullptr, 16)) : 0;
+	return mask;
+}
 
 #define SHIFT   12
 #define LFO_SHIFT   8
@@ -464,7 +474,7 @@ TIMER_CALLBACK_MEMBER(scsp_device::timerC_cb)
 // (running it all the time would cost a timer event per sample for everything using the chip).
 void scsp_device::UpdateSampleTimer()
 {
-	if ((m_udata.data[0x1e/2] | m_mcieb) & 0x400)
+	if (((m_udata.data[0x1e/2] | m_mcieb) & 0x400) && !(scsp_legacy() & 2))
 	{
 		attotime const sample = attotime::from_ticks(512, clock());
 		m_timerS->adjust(sample, 0, sample);
@@ -561,7 +571,7 @@ int scsp_device::EG_Update(SCSP_SLOT *slot)
 	}
 
 	// a silent slot is switched off
-	if (prev >= 0x3c0 && !EGBP(slot))
+	if (prev >= 0x3c0 && !EGBP(slot) && (!(scsp_legacy() & 4) || eg.state == SCSP_RELEASE))
 		StopSlot(slot, 0);
 
 	return 0x3ff - level;
@@ -1414,7 +1424,13 @@ void scsp_device::exec_dma()
 	/* Job done */
 	m_udata.data[0x16/2] &= ~0x1000;
 	/* DMA transfer end interrupt: pending for both CPUs, SCIEB / MCIEB decide who is told */
-	SetPending(0x10);
+	if (scsp_legacy() & 1)
+	{
+		if (m_udata.data[0x1e/2] & 0x10)
+			m_irq_cb(m_IrqDMA, HOLD_LINE);
+	}
+	else
+		SetPending(0x10);
 }
 
 
