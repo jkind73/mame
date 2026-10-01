@@ -151,17 +151,17 @@ void SCSPDSP::Step()
 		//INPUTS RW
 		// colmns97 hits this
 		//assert(IRA < 0x32);
-		s32 INPUTS; // 24-bit
+		// an IRA beyond EXTS leaves INPUTS as the previous step had it (MiSTer SCSP.sv, Ymir DSP::Step)
+		s32 INPUTS = InputsReg; // 24-bit
 		if (IRA <= 0x1f)
 			INPUTS = MEMS[IRA];
 		else if (IRA <= 0x2F)
 			INPUTS = MIXS[IRA - 0x20] << 4;  //MIXS is 20 bit
 		else if (IRA <= 0x31)
 			INPUTS = EXTS[IRA - 0x30] << 8;  //EXTS is 16 bit
-		else
-			return;
 
 		INPUTS = util::sext(INPUTS, 24);
+		InputsReg = INPUTS;
 
 
 		//Operand sel
