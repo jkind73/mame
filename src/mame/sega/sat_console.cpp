@@ -681,7 +681,9 @@ unsigned sat_console_state::cpu_bus_waits(uint32_t address, bool write, unsigned
 	return 0;
 }
 
-// SATURN_BUS_TIMING=0 turns the wait states off (diagnostics)
+// On by default (it restores the Virtua Fighter 2 sound effects); SATURN_BUS_TIMING=0 turns it off.
+// Ymir notes that some games need fast and others slow timings. The After Burner II black screen seen
+// with a build that included this was stale nvram, not the timing.
 void sat_console_state::install_cpu_wait_states()
 {
 	char const *const env = std::getenv("SATURN_BUS_TIMING");
