@@ -322,6 +322,17 @@ VIDEO_START_MEMBER(saturn_state, vdp2_video_start)
 	vdp2_start();
 }
 
+// Diagnostics: SATURN_LEGACY_DDI=<hex mask> turns off the double density interlace behaviours added
+// on top of the original renderer, to find which one a game depends on:
+// 1 field rendering (every line each frame), 2 erase of the displayed buffer once per frame line,
+// 4 weave of the two sprite fields (one buffer row for both lines), 8 rotation parameters stepped
+// per frame line
+static unsigned legacy_ddi()
+{
+	static unsigned const mask = std::getenv("SATURN_LEGACY_DDI") ? unsigned(std::strtoul(std::getenv("SATURN_LEGACY_DDI"), nullptr, 16)) : 0;
+	return mask;
+}
+
 // VDP1 frame buffer as the VDP2 reads it for the sprite layer. The VDP2 dot
 // maps to the frame buffer dot: doubled horizontally when the buffer is 16 bit
 // and the screen is hi-res, read at twice the pitch when the buffer is 8 bit
@@ -338,7 +349,7 @@ public:
 	virtual uint16_t sprite_word(unsigned x, unsigned y) const override
 	{
 		unsigned const dx = (x << (m_half_res ? 1 : 0)) >> (m_double_res ? 1 : 0);
-		return m_half_lines ? m_vdp1.display_pixel_field(dx, y) : m_vdp1.display_pixel(dx, y);
+		return (m_half_lines && !(legacy_ddi() & 4)) ? m_vdp1.display_pixel_field(dx, y) : m_vdp1.display_pixel(dx, y >> (m_half_lines ? 1 : 0));
 	}
 
 	virtual uint16_t sprite_word_rotated(int32_t x, int32_t y) const override
@@ -412,11 +423,12 @@ void saturn_state::vdp2_scanline(int scanline)
 
 	// double density interlace: each 1/60 s field shows the lines of one parity, the lines of the
 	// other parity keep what the previous field drew (the two fields are different pictures)
-	bool const other_field = cfg.lsmd == 3 && !cfg.exclusive && ((scanline & 1) != int(m_screen->frame_number() & 1));
+	bool const other_field = cfg.lsmd == 3 && !cfg.exclusive && ((scanline & 1) != int(m_screen->frame_number() & 1)) && !(legacy_ddi() & 1);
+	m_vdp2_renderer.legacy_rotation_step = legacy_ddi() & 8;
 	m_vdp2_renderer.render_line(scanline, sprites, &m_vdp2_frame[scanline * saturn_vdp2_render::renderer::MAX_WIDTH], other_field);
 	// the erase of the displayed buffer follows the read-out one buffer row at a time; in double
 	// density two frame lines read the same row, so it advances on every second line
-	if (cfg.lsmd != 3 || (scanline & 1))
+	if (cfg.lsmd != 3 || (scanline & 1) || (legacy_ddi() & 2))
 		m_vdp1->display_line_done();
 }
 

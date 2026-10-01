@@ -170,6 +170,7 @@ public:
 
 	// diagnostics: sprite layer dots read (non transparent) and left visible by the sprite window, this frame
 	unsigned stat_sprite_dots = 0, stat_sprite_shown = 0;
+	bool legacy_rotation_step = false;   // diagnostics: rotation parameters step every frame line in double density
 	// refresh the memory views and screen settings between lines of a frame
 	void set_config(memory const &mem, screen_config const &cfg) { m_mem = mem; m_cfg = cfg; }
 	// RPRCTL was written: re-read Xst/Yst/KAst from the parameter table on the next line
