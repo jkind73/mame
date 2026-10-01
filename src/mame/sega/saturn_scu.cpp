@@ -32,6 +32,8 @@ C-Bus: $0600'0000 - $07ff'ffff (Work RAM-H, mirrored)
 #include "emu.h"
 #include "saturn_scu.h"
 
+#include <bit>
+
 #define LOG_DMA_MOVE     (1 << 1) // log the initial values prior to a DMA WAIT -> MOVE
 #define LOG_DMA_END      (1 << 2) // log the values at end of DMA
 #define LOG_DMA_STATE    (1 << 3) // log state changes
@@ -172,7 +174,10 @@ void saturn_scu_device::regs_map(address_map &map)
 	map(0x0040, 0x0057).m(*this, FUNC(saturn_scu_device::dma_map<2>));
 	// stv:smleague and shinmtaz reads from $005c (undocumented), DMA status mirror?
 	map(0x005c, 0x005f).r(FUNC(saturn_scu_device::dma_status_r));
-//  map(0x0060, 0x0063).w(FUNC(saturn_scu_device::dma_force_stop_w));
+	map(0x0060, 0x0063).lw32(NAME([this] (offs_t offset, u32 data, u32 mem_mask) {
+		if (ACCESSING_BITS_0_7)
+			dma_force_stop_w(data);
+	}));
 	map(0x007c, 0x007f).r(FUNC(saturn_scu_device::dma_status_r));
 	map(0x0080, 0x0083).rw(m_scudsp, FUNC(scudsp_cpu_device::program_control_r), FUNC(scudsp_cpu_device::program_control_w));
 	map(0x0084, 0x0087).w(m_scudsp, FUNC(scudsp_cpu_device::program_w));
@@ -183,13 +188,19 @@ void saturn_scu_device::regs_map(address_map &map)
 	map(0x009a, 0x009b).w(FUNC(saturn_scu_device::t1_mode_w));
 	map(0x00a0, 0x00a3).rw(FUNC(saturn_scu_device::irq_mask_r), FUNC(saturn_scu_device::irq_mask_w));
 	map(0x00a4, 0x00a7).rw(FUNC(saturn_scu_device::irq_status_r), FUNC(saturn_scu_device::irq_status_w));
-	map(0x00a8, 0x00ab).w(FUNC(saturn_scu_device::abus_irqack_w));
+	map(0x00a8, 0x00ab).rw(FUNC(saturn_scu_device::abus_irqack_r), FUNC(saturn_scu_device::abus_irqack_w));
 	map(0x00b0, 0x00b7).lrw32(
 		NAME([this] (offs_t offset) { return m_asr[offset & 1]; }),
 		NAME([this] (offs_t offset, u32 data, u32 mem_mask) { COMBINE_DATA(&m_asr[offset & 1]); })
 	);
-//  map(0x00b8, 0x00bb).rw(FUNC(saturn_scu_device::abus_refresh_r), FUNC(saturn_scu_device::abus_refresh_w));
-//  map(0x00c4, 0x00c7).rw(FUNC(saturn_scu_device::sdram_r), FUNC(saturn_scu_device::sdram_w));
+	map(0x00b8, 0x00bb).lrw32(
+		NAME([this] () { return m_aref; }),
+		NAME([this] (offs_t offset, u32 data, u32 mem_mask) { COMBINE_DATA(&m_aref); m_aref &= 0x1f; })  // ARFEN + ARWT3-0, ST-97 Fig 3.30
+	);
+	map(0x00c4, 0x00c7).lrw32(
+		NAME([this] () { return u32(m_rsel); }),
+		NAME([this] (offs_t offset, u32 data, u32 mem_mask) { if (ACCESSING_BITS_0_7) m_rsel = BIT(data, 0); })  // RSEL, ST-97 Fig 3.31
+	);
 	map(0x00c8, 0x00cb).r(FUNC(saturn_scu_device::version_r));
 }
 
@@ -235,9 +246,9 @@ void saturn_scu_device::device_add_mconfig(machine_config &config)
 	m_scudsp->out_ddmv_callback().set([this] (int state) {
 		//m_main_dtack_cb(state);
 		if (state)
-			m_dma_status |= DMA_DSP_MOVE;
+			m_dma_status |= DMA_DSP_MOVE | DMA_ACCESS_DSP;
 		else
-			m_dma_status &= ~(DMA_DSP_MOVE);
+			m_dma_status &= ~(DMA_DSP_MOVE | DMA_ACCESS_DSP);
 	});
 
 }
@@ -251,6 +262,11 @@ void saturn_scu_device::device_start()
 {
 	save_item(NAME(m_ist));
 	save_item(NAME(m_asr));
+	save_item(NAME(m_abus_ack_pending));
+	save_item(NAME(m_aiack));
+	save_item(NAME(m_aref));
+	save_item(NAME(m_rsel));
+	save_item(NAME(m_dma_status));
 	save_item(NAME(m_ism));
 	save_item(NAME(m_t0c));
 	save_item(NAME(m_t1s));
@@ -337,6 +353,10 @@ void saturn_scu_device::device_reset()
 	m_ism = 0xbfff;
 	m_ist = 0;
 	m_asr[0] = m_asr[1] = 0;
+	m_abus_ack_pending = 0;
+	m_aiack = false;
+	m_aref = 0;
+	m_rsel = false;
 
 	for(int i = 0; i < 3; i++)
 	{
@@ -398,6 +418,23 @@ inline void saturn_scu_device::update_dma_status(int level, dma_state_t new_stat
 	m_dma_status |= (new_state << 4 * level);
 
 	LOGMASKED(LOG_DMA_STATE, "%s (%08x)\n", status_names[(m_dma_status >> log_shifts[level]) & 0x3], m_dma_status);
+}
+
+// DACSA/DACSB: which buses the running DMA touches (ST-97 Figure 3.13)
+void saturn_scu_device::update_dma_access_flags(int level)
+{
+	m_dma_status &= ~(DMA_ACCESS_A_BUS | DMA_ACCESS_B_BUS);
+	if (level < 0)
+		return;
+
+	for (u32 const address : { m_dma[level].live_src, m_dma[level].live_dst })
+	{
+		u16 const flags = std::get<0>(get_address_flags(address, false));
+		if ((flags & 0x0300) == 0x0100)
+			m_dma_status |= DMA_ACCESS_A_BUS;
+		else if ((flags & 0x0300) == 0x0200)
+			m_dma_status |= DMA_ACCESS_B_BUS;
+	}
 }
 
 std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address, bool write_op)
@@ -975,17 +1012,43 @@ void saturn_scu_device::test_pending_irqs()
 								0x1, 0x1, 0x1, 0x1,
 								0x1, 0x1, 0x1, 0x1  };
 
-	// TODO: skip A-Bus for now
+	// internal sources (lowest bit wins among those pending and unmasked)
+	int internal = -1;
 	for(int i = 0; i < 14; i++)
 	{
 		if (!(BIT(m_ism, i)) && BIT(m_ist, i))
 		{
-			m_current_irq_level = irq_level[i];
-			m_current_vector = 0x40 + i;
-			m_hostcpu->set_input_line(m_current_irq_level, ASSERT_LINE);
-			m_ist &= ~(1 << i);
-			return;
+			internal = i;
+			break;
 		}
+	}
+
+	// A-Bus external interrupts 0-15 (IST bits 16-31), enabled by IMS bit 15 = 0 and delivered
+	// again only after AIACK has been written (ST-97 3.6, Ymir SCU::UpdateMasterInterruptLevel)
+	int external = -1;
+	if (!BIT(m_ism, 15))
+	{
+		u16 const pending = (m_ist >> 16) & ~m_abus_ack_pending;
+		if (pending)
+			external = std::countr_zero(pending);	}
+
+	int const internal_level = (internal >= 0) ? irq_level[internal] : -1;
+	int const external_level = (external >= 0) ? irq_level[16 + external] : -1;
+
+	if (internal_level >= 0 && internal_level >= external_level)
+	{
+		m_current_irq_level = irq_level[internal];
+		m_current_vector = 0x40 + internal;
+		m_hostcpu->set_input_line(m_current_irq_level, ASSERT_LINE);
+		m_ist &= ~(1 << internal);
+	}
+	else if (external >= 0)
+	{
+		m_current_irq_level = external_level;
+		m_current_vector = 0x50 + external;
+		m_hostcpu->set_input_line(m_current_irq_level, ASSERT_LINE);
+		m_ist &= ~(1 << (16 + external));
+		m_abus_ack_pending |= 1 << external;
 	}
 }
 
@@ -1099,9 +1162,50 @@ void saturn_scu_device::scudsp_end_w(int state)
 //  A-Bus section
 //**************************************************************************
 
+uint32_t saturn_scu_device::abus_irqack_r()
+{
+	return m_aiack;
+}
+
 void saturn_scu_device::abus_irqack_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	// ignore for now, verbose in places
+	// AIACK: writing 1 re-arms the A-Bus interrupt inputs (ST-97 Table 3.9)
+	if (ACCESSING_BITS_0_7)
+	{
+		m_aiack = BIT(data, 0);
+		if (m_aiack)
+			m_abus_ack_pending = 0;
+		test_pending_irqs();
+	}
+}
+
+void saturn_scu_device::abus_irq_w(unsigned n, int state)
+{
+	if (!state || n > 15)
+		return;
+
+	if (!BIT(m_abus_ack_pending, n))
+		m_ist |= 1u << (16 + n);
+	test_pending_irqs();
+}
+
+void saturn_scu_device::dma_force_stop_w(u32 data)
+{
+	// DSTP: bit 0 stops DMA in operation (ST-97 Figure 3.11)
+	if (!BIT(data, 0))
+		return;
+
+	for (int level = 0; level < 3; level++)
+	{
+		m_dma[level].done = false;
+		m_dma[level].live_count = 0;
+		m_dma[level].indirect_fetch_phase = false;
+		m_dma_status &= ~((0x30 << (4 * level)) | (level < 2 ? (1 << (16 + level)) : 0));
+	}
+	m_dma_status &= ~(DMA_ACCESS_A_BUS | DMA_ACCESS_B_BUS);
+	m_dma_tick_timer->adjust(attotime::never);
+	m_main_dtack_cb(0);
+	m_sound_dtack_cb(0);
 }
 
 //**************************************************************************
