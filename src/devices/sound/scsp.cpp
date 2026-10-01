@@ -620,6 +620,13 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 		logerror("SCSP %.6f KEY ON slot %02d by %s SA=%05x LSA=%04x LEA=%04x LPCTL=%d PCM8B=%d AR=%d D1R=%d D2R=%d RR=%d DL=%d TL=%02x SDIR=%d\n",
 				machine().time().as_double(), slot->slot, exec ? exec->device().tag() : "-", SA(slot), LSA(slot), LEA(slot),
 				LPCTL(slot), PCM8B(slot) ? 1 : 0, AR(slot), D1R(slot), D2R(slot), RR(slot), DL(slot), TL(slot), SDIR(slot) ? 1 : 0);
+		// where the sound goes and what it reads: sample bytes at SA (all zero: the data is not there)
+		u32 sum = 0;
+		for (u32 i = 0; i < 256; i += 2)
+			sum += read_word(SA(slot) + i);
+		logerror("SCSP %.6f   slot %02d mixer DISDL=%d DIPAN=%02x IMXL=%d ISEL=%d EFSDL=%d EFPAN=%02x STWINH=%d SSCTL=%d data %04x %04x %04x %04x sum256=%08x\n",
+				machine().time().as_double(), slot->slot, DISDL(slot), DIPAN(slot), IMXL(slot), ISEL(slot), EFSDL(slot), EFPAN(slot), STWINH(slot) ? 1 : 0, SSCTL(slot),
+				read_word(SA(slot)), read_word(SA(slot) + 2), read_word(SA(slot) + 4), read_word(SA(slot) + 6), sum);
 	}
 	slot->active = 1;
 	slot->cur_addr = 0;
