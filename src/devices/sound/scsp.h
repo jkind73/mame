@@ -62,18 +62,8 @@ private:
 
 	struct SCSP_EG_t
 	{
-		int volume; //
 		SCSP_STATE state;
-		int step;
-		//step vals
-		int AR;     //Attack
-		int D1R;    //Decay1
-		int D2R;    //Decay2
-		int RR;     //Release
-
-		int DL;     //Decay level
-		u8 EGHOLD;
-		u8 LPLINK;
+		int att;    // attenuation, 0x000 (loudest) to 0x3ff, 3/32 dB a step
 	};
 
 	struct SCSP_LFO_t
@@ -162,7 +152,7 @@ private:
 	u16 m_mcieb;
 	u16 m_mcipd;
 
-	int m_ARTABLE[64], m_DRTABLE[64];
+	u32 m_eg_counter;    // envelope generator sample counter
 
 	SCSPDSP m_DSP;
 
@@ -187,9 +177,7 @@ private:
 	TIMER_CALLBACK_MEMBER(timerB_cb);
 	TIMER_CALLBACK_MEMBER(timerC_cb);
 	TIMER_CALLBACK_MEMBER(timerS_cb);
-	int Get_AR(int base, int R);
-	int Get_DR(int base, int R);
-	void Compute_EG(SCSP_SLOT *slot);
+	unsigned EG_EffectiveRate(SCSP_SLOT *slot, unsigned rate, bool &overflow);
 	int EG_Update(SCSP_SLOT *slot);
 	u32 Step(SCSP_SLOT *slot);
 	void Compute_LFO(SCSP_SLOT *slot);
