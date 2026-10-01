@@ -39,6 +39,13 @@
 // Diagnostics: SCSP_LEGACY=<hex mask> turns off parts of the interrupt and envelope rework, to find which
 // one a game depends on: 1 DMA end as a one shot pulse of the sound CPU line (no pending flags, main CPU
 // not told), 2 no 1 Fs sample interrupt, 4 slots only stop at the end of the release (not in any state)
+// Diagnostics: SCSP_LOG=1 logs the interrupt registers, key on/off and the interrupt line changes
+static bool scsp_log()
+{
+	static bool const on = std::getenv("SCSP_LOG") != nullptr;
+	return on;
+}
+
 static unsigned scsp_legacy()
 {
 	static unsigned const mask = std::getenv("SCSP_LEGACY") ? unsigned(std::strtoul(std::getenv("SCSP_LEGACY"), nullptr, 16)) : 0;
@@ -389,6 +396,8 @@ void scsp_device::CheckPendingIRQ()
 	if (level != m_cur_irq_level)
 	{
 		// lower the line that was asserted by its own level: not every driver tracks the last one
+		if (scsp_log())
+			logerror("SCSP %.6f sound CPU interrupt level %d -> %d (SCIPD %04x SCIEB %04x)\n", machine().time().as_double(), m_cur_irq_level, level, pend, en);
 		if (m_cur_irq_level)
 			m_irq_cb((offs_t)m_cur_irq_level, CLEAR_LINE);
 		m_cur_irq_level = level;
@@ -604,6 +613,13 @@ void scsp_device::Compute_LFO(SCSP_SLOT *slot)
 
 void scsp_device::StartSlot(SCSP_SLOT *slot)
 {
+	if (scsp_log())
+	{
+		device_execute_interface *const exec = machine().scheduler().currently_executing();
+		logerror("SCSP %.6f KEY ON slot %02d by %s SA=%05x LSA=%04x LEA=%04x LPCTL=%d PCM8B=%d AR=%d D1R=%d D2R=%d RR=%d DL=%d TL=%02x SDIR=%d\n",
+				machine().time().as_double(), slot->slot, exec ? exec->device().tag() : "-", SA(slot), LSA(slot), LEA(slot),
+				LPCTL(slot), PCM8B(slot) ? 1 : 0, AR(slot), D1R(slot), D2R(slot), RR(slot), DL(slot), TL(slot), SDIR(slot) ? 1 : 0);
+	}
 	slot->active = 1;
 	slot->cur_addr = 0;
 	slot->nxt_addr = 1 << SHIFT;
@@ -624,6 +640,8 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 
 void scsp_device::StopSlot(SCSP_SLOT *slot,int keyoff)
 {
+	if (scsp_log())
+		logerror("SCSP %.6f %s slot %02d\n", machine().time().as_double(), keyoff ? "KEY OFF" : "STOP", slot->slot);
 	if (keyoff /*&& slot->EG.state!=SCSP_RELEASE*/)
 	{
 		slot->EG.state = SCSP_RELEASE;
@@ -988,6 +1006,11 @@ void scsp_device::w16(u32 addr, u16 val)
 	{
 		if (addr < 0x430)
 		{
+			if (scsp_log() && addr >= 0x41e)
+			{
+				device_execute_interface *const exec = machine().scheduler().currently_executing();
+				logerror("SCSP %.6f write %03x = %04x by %s\n", machine().time().as_double(), addr, val, exec ? exec->device().tag() : "-");
+			}
 			// SCIPD and MCIPD are r/o except for bit 5 CPU irqs
 			if (addr == 0x420 || addr == 0x42c)
 			{
