@@ -129,6 +129,7 @@ private:
 	u8 m_MidiOutW, m_MidiOutR;
 	u8 m_MidiStack[32];
 	u8 m_MidiW, m_MidiR;
+	bool m_MidiOverflow;
 
 	s32 m_EG_TABLE[0x400];
 
