@@ -44,6 +44,8 @@ public:
 	void vdp1_end_w(int state);
 	void sound_req_w(int state);
 	void smpc_irq_w(int state);
+	// A-Bus external interrupt inputs 0-15 (ST-97 Table 2.1 bits 16-31)
+	void abus_irq_w(unsigned n, int state);
 
 	IRQ_CALLBACK_MEMBER(irq_ack_cb);
 
@@ -147,6 +149,10 @@ private:
 	emu_timer *m_dma_tick_timer;
 	uint32_t m_ism;
 	uint32_t m_ist;
+	uint16_t m_abus_ack_pending; // external interrupts delivered but not yet acknowledged through AIACK
+	bool m_aiack;        // AIACK bit 0
+	uint32_t m_aref;     // AREF A-Bus refresh register (ST-97 3.6)
+	bool m_rsel;         // RSEL SDRAM select bit (ST-97 3.7)
 	uint32_t m_asr[2];   // A-Bus set registers ASR0 (0x25fe00b0), ASR1 (0x25fe00b4)
 	uint32_t m_t0c;
 	uint32_t m_t1s;
@@ -159,6 +165,8 @@ private:
 	uint32_t m_dma_clock_ref;
 
 	void test_pending_irqs();
+	void dma_force_stop_w(u32 data);
+	void update_dma_access_flags(int level);
 
 	// intended to be used as bitwise
 	enum dma_mode_t : uint32_t {
@@ -227,6 +235,7 @@ private:
 	void irq_status_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	uint32_t version_r();
 	// A-Bus section
+	uint32_t abus_irqack_r();
 	void abus_irqack_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 };
 
