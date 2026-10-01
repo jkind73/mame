@@ -681,8 +681,9 @@ unsigned sat_console_state::cpu_bus_waits(uint32_t address, bool write, unsigned
 	return 0;
 }
 
-// Off unless SATURN_BUS_TIMING=1: not validated on games yet (After Burner II does not get past its
-// splash screen with it, and Ymir notes that some games need fast and others slow timings)
+// Off unless SATURN_BUS_TIMING=1: not validated on games yet. Ymir notes that some games need fast and
+// others slow timings, and After Burner II stopped at a black screen after a build that included this
+// (cause not confirmed).
 void sat_console_state::install_cpu_wait_states()
 {
 	char const *const env = std::getenv("SATURN_BUS_TIMING");
