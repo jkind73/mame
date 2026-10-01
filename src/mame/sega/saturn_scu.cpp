@@ -151,6 +151,20 @@ template void saturn_scu_device::dma_map<1>(address_map &map);
 template void saturn_scu_device::dma_map<2>(address_map &map);
 
 
+unsigned saturn_scu_device::abus_waits(u32 address) const
+{
+	address &= 0x07ffffff;
+	if (address >= 0x02000000 && address < 0x04000000)
+		return ((m_asr[0] >> 20) & 0xf) + 3;   // CS0: A0NW
+	if (address >= 0x04000000 && address < 0x05000000)
+		return ((m_asr[0] >> 4) & 0xf) + 3;    // CS1: A1NW
+	if (address >= 0x05000000 && address < 0x05800000)
+		return 3;                              // dummy area
+	if (address >= 0x05800000 && address < 0x05900000)
+		return ((m_asr[1] >> 4) & 0xf) + 3;    // CS2: A3NW
+	return 0;
+}
+
 void saturn_scu_device::regs_map(address_map &map)
 {
 	map(0x0000, 0x0017).m(*this, FUNC(saturn_scu_device::dma_map<0>));
@@ -170,7 +184,10 @@ void saturn_scu_device::regs_map(address_map &map)
 	map(0x00a0, 0x00a3).rw(FUNC(saturn_scu_device::irq_mask_r), FUNC(saturn_scu_device::irq_mask_w));
 	map(0x00a4, 0x00a7).rw(FUNC(saturn_scu_device::irq_status_r), FUNC(saturn_scu_device::irq_status_w));
 	map(0x00a8, 0x00ab).w(FUNC(saturn_scu_device::abus_irqack_w));
-//  map(0x00b0, 0x00b7).rw(FUNC(saturn_scu_device::abus_set_r), FUNC(saturn_scu_device::abus_set_w));
+	map(0x00b0, 0x00b7).lrw32(
+		NAME([this] (offs_t offset) { return m_asr[offset & 1]; }),
+		NAME([this] (offs_t offset, u32 data, u32 mem_mask) { COMBINE_DATA(&m_asr[offset & 1]); })
+	);
 //  map(0x00b8, 0x00bb).rw(FUNC(saturn_scu_device::abus_refresh_r), FUNC(saturn_scu_device::abus_refresh_w));
 //  map(0x00c4, 0x00c7).rw(FUNC(saturn_scu_device::sdram_r), FUNC(saturn_scu_device::sdram_w));
 	map(0x00c8, 0x00cb).r(FUNC(saturn_scu_device::version_r));
@@ -233,6 +250,7 @@ void saturn_scu_device::device_add_mconfig(machine_config &config)
 void saturn_scu_device::device_start()
 {
 	save_item(NAME(m_ist));
+	save_item(NAME(m_asr));
 	save_item(NAME(m_ism));
 	save_item(NAME(m_t0c));
 	save_item(NAME(m_t1s));
@@ -318,6 +336,7 @@ void saturn_scu_device::device_reset()
 {
 	m_ism = 0xbfff;
 	m_ist = 0;
+	m_asr[0] = m_asr[1] = 0;
 
 	for(int i = 0; i < 3; i++)
 	{
