@@ -68,7 +68,10 @@ void SCSPDSP::Init()
 void SCSPDSP::Step()
 {
 	if (Stopped)
+	{
+		std::fill(std::begin(MIXS), std::end(MIXS), 0);
 		return;
+	}
 
 #if 0
 	int dump=0;
@@ -156,7 +159,7 @@ void SCSPDSP::Step()
 		if (IRA <= 0x1f)
 			INPUTS = MEMS[IRA];
 		else if (IRA <= 0x2F)
-			INPUTS = MIXS[IRA - 0x20] << 4;  //MIXS is 20 bit
+			INPUTS = MIXSPrev[IRA - 0x20] << 4;  //MIXS is 20 bit
 		else if (IRA <= 0x31)
 			INPUTS = EXTS[IRA - 0x30] << 8;  //EXTS is 16 bit
 
@@ -296,6 +299,8 @@ void SCSPDSP::Step()
 	}
 
 	--DEC;
+	// the slots fill one MIXS bank while the program reads the other (MiSTer SCSP.sv MIXS_GEN, Ymir mixStack)
+	std::copy(std::begin(MIXS), std::end(MIXS), std::begin(MIXSPrev));
 	std::fill(std::begin(MIXS), std::end(MIXS), 0);
 	//if (f)
 		//fclose(f);
@@ -319,5 +324,7 @@ void SCSPDSP::Start()
 		if (IPtr[0] || IPtr[1] || IPtr[2] || IPtr[3])
 			break;
 	}
-	LastStep = i + 1;
+	// an all-zero instruction still updates the accumulator, and the hardware runs all 128 steps, so one
+	// step past the last used one carries out the side effects of the program (Ymir UpdateProgramLength)
+	LastStep = std::min(i + 2, 128);
 }

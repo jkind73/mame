@@ -23,7 +23,8 @@ struct SCSPDSP
 	u32 DEC;
 
 //input
-	s32 MIXS[16]; //MIXS, 24 bit signed
+	s32 MIXS[16]; //MIXS, 24 bit signed, accumulated by the slots during the current sample
+	s32 MIXSPrev[16]; // the stack the program reads: the previous sample's MIXS (double buffered)
 	s16 EXTS[2];  //External inputs (CDDA)    16 bit signed
 
 //output
