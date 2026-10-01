@@ -110,6 +110,7 @@ protected:
 	uint32_t vdp2_vram_r(offs_t offset);
 	uint32_t vdp2_cram_r(offs_t offset);
 	uint16_t vdp2_regs_r(offs_t offset);
+	uint8_t vdp2_vram_write_penalty(offs_t bank);
 
 	void vdp2_vram_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	void vdp2_cram_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);

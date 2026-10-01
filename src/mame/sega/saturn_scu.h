@@ -29,6 +29,7 @@ public:
 	auto main_steal_cb()  { return m_main_steal_cb.bind(); }
 	auto sound_dtack_cb() { return m_sound_dtack_cb.bind(); }
 	auto sound_steal_cb() { return m_sound_steal_cb.bind(); }
+	auto vdp2_penalty_cb() { return m_vdp2_penalty_cb.bind(); }
 
 	// I/O operations
 	void regs_map(address_map &map) ATTR_COLD;
@@ -79,6 +80,7 @@ private:
 	devcb_write8     m_main_steal_cb;
 	devcb_write_line m_sound_dtack_cb;
 	devcb_write8     m_sound_steal_cb;
+	devcb_read8      m_vdp2_penalty_cb;
 
 	enum dma_id : int {
 		DMALV0_ID = 0,

@@ -915,6 +915,7 @@ void sat_console_state::saturn(machine_config &config)
 		m_maincpu->adjust_icount(-data);
 		m_slave->adjust_icount(-data);
 	});
+	m_scu->vdp2_penalty_cb().set(FUNC(sat_console_state::vdp2_vram_write_penalty));
 	m_scu->sound_steal_cb().set([this] (u8 data) {
 		m_audiocpu->adjust_icount(-data);
 	});
