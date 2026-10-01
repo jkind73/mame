@@ -359,7 +359,7 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 		// ES executes one step while the program is stopped, ignored while executing
 		if (BIT(data, ESF) && !BIT(m_flags, EXF))
 		{
-			int const icount = m_icount;
+			const int icount = m_icount;
 			m_update_mul = 0;
 			execute_one();
 			m_icount = icount;
@@ -417,9 +417,9 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 	// - SR/RR/SL/RL/RL8: C = bit shifted out of the input (b0, b0, b31, b31, b24)
 	m_alu = (uint64_t(m_ach.ui) << 32) | m_acl.ui;
 	{
-		uint32_t const acl = m_acl.ui;
-		uint32_t const pl = m_pl.ui;
-		auto const set_alu32 = [this] (uint32_t result)
+		const uint32_t acl = m_acl.ui;
+		const uint32_t pl = m_pl.ui;
+		const auto set_alu32 = [this] (uint32_t result)
 		{
 			m_alu = (m_alu & 0xffff'0000'0000) | result;
 			SET_Z(result == 0);
@@ -449,7 +449,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 
 			case 0x4:   /* ADD */
 			{
-				uint64_t const result = uint64_t(acl) + pl;
+				const uint64_t result = uint64_t(acl) + pl;
 				set_alu32(uint32_t(result));
 				SET_C(BIT(result, 32));
 				if (BIT((~(uint64_t(acl) ^ pl)) & (uint64_t(acl) ^ result), 31))
@@ -459,7 +459,7 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 
 			case 0x5:   /* SUB */
 			{
-				uint64_t const result = uint64_t(acl) - pl;
+				const uint64_t result = uint64_t(acl) - pl;
 				set_alu32(uint32_t(result));
 				SET_C(BIT(result, 32));
 				if (BIT((uint64_t(acl) ^ pl) & (uint64_t(acl) ^ result), 31))
@@ -469,9 +469,9 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 
 			case 0x6:   /* AD2 */
 			{
-				uint64_t const op1 = (uint64_t(m_ach.ui) << 32) | acl;
-				uint64_t const op2 = (uint64_t(m_ph.ui) << 32) | pl;
-				uint64_t const result = op1 + op2;
+				const uint64_t op1 = (uint64_t(m_ach.ui) << 32) | acl;
+				const uint64_t op2 = (uint64_t(m_ph.ui) << 32) | pl;
+				const uint64_t result = op1 + op2;
 				SET_Z((result << 16) == 0);
 				SET_S(s64(result << 16) < 0);
 				SET_C(BIT(result, 48));

@@ -827,9 +827,9 @@ void saturn_cd_hle_device::cmd_open_tray()
 // with the greatest frame address not exceeding the key; the result is read back with 0x56
 void saturn_cd_hle_device::cmd_execute_frame_address_search()
 {
-	uint32_t const spos = cr2;
-	uint32_t const bufnum = cr3 >> 8;
-	uint32_t const fad = ((cr3 & 0xff) << 16) | cr4;
+	const uint32_t spos = cr2;
+	const uint32_t bufnum = cr3 >> 8;
+	const uint32_t fad = ((cr3 & 0xff) << 16) | cr4;
 
 	LOGCMD("%s: Execute FAD search partition %02x pos %04x FAD %06x\n", machine().describe_context(), bufnum, spos, fad);
 
@@ -840,7 +840,7 @@ void saturn_cd_hle_device::cmd_execute_frame_address_search()
 	if (bufnum < MAX_FILTERS && partitions[bufnum].size != -1)
 	{
 		int32_t best = -1;
-		uint32_t const first = (spos == 0xffff) ? (partitions[bufnum].numblks ? partitions[bufnum].numblks - 1 : 0) : spos;
+		const uint32_t first = (spos == 0xffff) ? (partitions[bufnum].numblks ? partitions[bufnum].numblks - 1 : 0) : spos;
 		for (uint32_t i = first; i < partitions[bufnum].numblks; i++)
 		{
 			blockT const *const blk = partitions[bufnum].blocks[i];

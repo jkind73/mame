@@ -157,7 +157,7 @@ private:
 	int m_intback_stage;
 	int m_pmode;
 	std::vector<uint8_t> m_periph_report;
-	size_t m_periph_offset;
+	uint32_t m_periph_offset;
 	bool m_resb;
 	uint8_t m_region_code;
 

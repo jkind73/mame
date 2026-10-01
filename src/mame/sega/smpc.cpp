@@ -219,7 +219,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data)
 	if (!(offset & 1)) // avoid writing to even bytes
 		return;
 
-	uint8_t const old = m_ireg[offset >> 1];
+	const uint8_t old = m_ireg[offset >> 1];
 	m_ireg[offset >> 1] = data;
 
 	if(offset == 1) // check if we are under intback
@@ -857,13 +857,13 @@ void smpc_hle_device::read_saturn_ports()
 			continue;
 
 		saturn_control_port_device *const ctrl = ports[port];
-		uint8_t const status = ctrl ? ctrl->read_status() : 0xf0;
+		const uint8_t status = ctrl ? ctrl->read_status() : 0xf0;
 		uint8_t ctrl_offset = 0;     // this is used when there is segatap or multitap connected
 
 		m_periph_report.push_back(status);
 		for (int i = 0; i < (status & 0xf); i++)
 		{
-			uint8_t const id = ctrl->read_id(i);
+			const uint8_t id = ctrl->read_id(i);
 
 			m_periph_report.push_back(id);
 			for (int j = 0; j < (id & 0xf); j++)
@@ -878,16 +878,16 @@ void smpc_hle_device::read_saturn_ports()
 // CONTINUE request (SR.NPE = 1 while data remains, SR.PDL = 1 on the first report)
 void smpc_hle_device::write_periph_report()
 {
-	bool const first = m_periph_offset == 0;
+	const bool first = m_periph_offset == 0;
 	if (first)
 		read_saturn_ports();
 
-	size_t const length = std::min<size_t>(32, m_periph_report.size() - m_periph_offset);
+	const size_t length = std::min<size_t>(32, m_periph_report.size() - m_periph_offset);
 	std::copy_n(m_periph_report.begin() + m_periph_offset, length, m_oreg);
 	std::fill(m_oreg + length, m_oreg + 32, 0xff);
 	m_periph_offset += length;
 
-	bool const remaining = m_periph_offset < m_periph_report.size();
+	const bool remaining = m_periph_offset < m_periph_report.size();
 	if (!remaining)
 	{
 		m_periph_report.clear();
