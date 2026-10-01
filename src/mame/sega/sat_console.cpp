@@ -424,6 +424,9 @@ test1f diagnostic hacks:
 ****************************************************************************************************/
 
 #include "emu.h"
+
+#include <bit>
+#include <cstdlib>
 #include "saturn.h"
 
 #include "saturn_cdb.h"
@@ -474,6 +477,8 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 private:
+	void install_cpu_wait_states() ATTR_COLD;
+
 	// SMPC region codes, hardwired via jumper setting.
 	// - Given the scheme bit 3 should determine if the region is PAL or NTSC.
 	// - 0 and F are "prohibited", others are "Sega reserved".
@@ -634,6 +639,63 @@ void sat_console_state::nvram_init(nvram_device &nvram, void *data, size_t size)
 }
 
 
+// SH-2 bus access times of the I/O regions, in SH-2 clocks per access (8, 16 and 32 bit, read and
+// write). Values from Ymir (Saturn::ConfigureAccessCycles), where they are what Virtua Fighter 2
+// needs: its sound effects go missing when the SH-2 reaches the SCSP and the video chips too
+// quickly. The CPU core already counts one clock for the access itself, so only the rest is
+// charged. RAM and ROM regions are not tapped (a tap on every access costs too much host time):
+// their access times are not modelled here.
+namespace {
+
+struct bus_timing
+{
+	offs_t start, end;
+	uint8_t r8, w8, r16, w16, r32, w32;
+};
+
+constexpr bus_timing saturn_bus_timings[] = {
+	{ 0x00100000, 0x0017ffff,  4, 2,  4, 2,  8, 4 },  // SMPC registers
+	{ 0x01000000, 0x01ffffff,  4, 2,  4, 2,  8, 4 },  // MINIT/SINIT area
+	{ 0x05000000, 0x057fffff,  8, 2,  8, 2,  8, 2 },  // A-Bus dummy area
+	{ 0x05800000, 0x058fffff, 40, 40, 40, 40, 40, 40 },  // A-Bus CS2 (CD block, NetLink)
+	{ 0x05a00000, 0x05bfffff, 40, 2, 40, 2, 40, 2 },  // SCSP RAM, registers
+	{ 0x05c00000, 0x05cfffff, 22, 2, 22, 2, 22, 2 },  // VDP1 VRAM, frame buffer
+	{ 0x05d00000, 0x05d7ffff, 14, 2, 14, 2, 14, 2 },  // VDP1 registers
+	{ 0x05e00000, 0x05fbffff, 20, 2, 20, 2, 20, 2 },  // VDP2 VRAM, CRAM, registers
+	{ 0x05fe0000, 0x05feffff,  4, 2,  4, 2,  4, 2 }   // SCU registers
+};
+
+} // anonymous namespace
+
+// SATURN_BUS_TIMING=0 turns the access times off (diagnostics)
+void sat_console_state::install_cpu_wait_states()
+{
+	char const *const env = std::getenv("SATURN_BUS_TIMING");
+	if (env && std::strtol(env, nullptr, 0) == 0)
+		return;
+
+	for (sh7604_device *const cpu : { m_maincpu.target(), m_slave.target() })
+	{
+		for (bus_timing const &t : saturn_bus_timings)
+		{
+			auto const wait = [this, cpu, &t](bool write, uint32_t mem_mask)
+			{
+				unsigned const bits = std::popcount(mem_mask);
+				unsigned const cycles = bits <= 8 ? (write ? t.w8 : t.r8) : bits <= 16 ? (write ? t.w16 : t.r16) : (write ? t.w32 : t.r32);
+				if (cycles > 1)
+				{
+					// only accesses the CPU makes itself: the SCU DMA goes through the same address space
+					device_execute_interface *const exec = machine().scheduler().currently_executing();
+					if (exec == &cpu->execute())
+						exec->adjust_icount(-int(cycles - 1));
+				}
+			};
+			cpu->space(AS_PROGRAM).install_read_tap(t.start, t.end, "bus_wait_r", [wait](offs_t, uint32_t &, uint32_t mem_mask) { wait(false, mem_mask); });
+			cpu->space(AS_PROGRAM).install_write_tap(t.start, t.end, "bus_wait_w", [wait](offs_t, uint32_t &, uint32_t mem_mask) { wait(true, mem_mask); });
+		}
+	}
+}
+
 void sat_console_state::machine_start()
 {
 	saturn_state::machine_start();
@@ -645,6 +707,8 @@ void sat_console_state::machine_start()
 	m_slave->space(AS_PROGRAM).nop_readwrite(0x04000000, 0x047fffff);
 
 	m_nvram->set_base(m_backupram.get(), 0x8000);
+
+	install_cpu_wait_states();
 
 	if (m_exp)
 	{
