@@ -242,32 +242,15 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 
 uint32_t scudsp_cpu_device::compute_condition( uint32_t condition )
 {
+	// ST-97 Tables 4.2-4.4: bit 0 Z, bit 1 S, bit 2 C, bit 3 T0 select the flags that are ORed together;
+	// bit 5 set tests for the flags being 1, clear tests for all of them being 0 (NZ, NS, NZS, NC, NT0)
 	uint32_t result = 0;
+	result |= BIT(condition, 0) & BIT(m_flags, ZF);
+	result |= BIT(condition, 1) & BIT(m_flags, SF);
+	result |= BIT(condition, 2) & BIT(m_flags, CF);
+	result |= BIT(condition, 3) & BIT(m_flags, T0F);
 
-	switch( condition & 0xf )
-	{
-		case 0x1:   /* Z */
-			result = BIT(m_flags, ZF);
-			break;
-		case 0x2:   /* S */
-			result = BIT(m_flags, SF);
-			break;
-		case 0x3:   /* ZS */
-			result = BIT(m_flags, ZF) | BIT(m_flags, SF);
-			break;
-		case  0x4:  /* C */
-			result = BIT(m_flags, CF);
-			break;
-		case 0x8:   /* T0 */
-			result = BIT(m_flags, T0F);
-			break;
-	}
-	if ( !(condition & 0x20) )
-	{
-		result = !result;
-	}
-
-	return result;
+	return BIT(condition, 5) ? result : !result;
 }
 
 // DMA CTx r/ws follows MC increment rules
@@ -354,23 +337,35 @@ uint32_t scudsp_cpu_device::program_control_r()
 
 void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	uint32_t oldval, newval;
+	// PR/EP (bits 26/25) resume and pause a running program (ST-97 3.3)
+	if (ACCESSING_BITS_24_31)
+	{
+		if (BIT(data, EPF))
+			m_paused = true;
+		else if (BIT(data, PRF))
+			m_paused = false;
+	}
 
-	oldval = (m_flags & 0xffffff00) | (m_pc & 0xff);
-	newval = oldval;
-	COMBINE_DATA(&newval);
-
-	m_flags = (newval & 0x0063'0000) | (m_flags & ~0x0063'0000);
-
-	if (BIT(m_flags, EPF))
-		popmessage("scudsp.cpp: single step enabled");
-
-	// set new PC if transfer enable is set
+	// set new PC if transfer enable is set, not while the program is executing
 	// NOTE: doesn't get transfered in flags
-	if (BIT(data, LEF) && ACCESSING_BITS_0_15)
-		m_pc = newval & 0xff;
+	if (BIT(data, LEF) && ACCESSING_BITS_0_15 && !BIT(m_flags, EXF))
+		m_pc = data & 0xff;
 
-	//printf("%08x PRG CTRL\n",data);
+	if (ACCESSING_BITS_16_23)
+	{
+		// EX starts/stops the program
+		m_flags = (m_flags & ~(1 << EXF)) | (data & (1 << EXF));
+
+		// ES executes one step while the program is stopped, ignored while executing
+		if (BIT(data, ESF) && !BIT(m_flags, EXF))
+		{
+			int const icount = m_icount;
+			m_update_mul = 0;
+			execute_one();
+			m_icount = icount;
+		}
+	}
+
 	// run DSP if EXF is on
 	set_input_line(INPUT_LINE_RESET, (BIT(m_flags, EXF)) ? CLEAR_LINE : ASSERT_LINE);
 }
@@ -409,128 +404,109 @@ void scudsp_cpu_device::ram_address_w(uint32_t data)
 
 void scudsp_cpu_device::op_alu(uint32_t opcode)
 {
-	int64_t i1,i2;
-	int32_t i3;
 	int update_ct[4] = {0,0,0,0};
 	int dsp_mem;
 
 
 	/* ALU */
-	// NOTE: anything but AD2 doesn't update upper 16-bit ALU part
-	switch( (opcode & 0x3c000000) >> 26 )
+	// The ALU output register starts from the accumulator, so the 32-bit operations leave [ACH] in the
+	// upper 16 bits (ST-97 4.5 ALU commands: only AD2 works on the full 48 bits).
+	// Flags follow the per-command descriptions of the manual:
+	// - AND/OR/XOR: S = result MSB, Z = result is 0, C = 0
+	// - ADD/SUB/AD2: S, Z, C = carry out, V = overflow (sticky until the host reads the control port)
+	// - SR/RR/SL/RL/RL8: C = bit shifted out of the input (b0, b0, b31, b31, b24)
+	m_alu = (uint64_t(m_ach.ui) << 32) | m_acl.ui;
 	{
-		case 0x0:   /* NOP */
-			// the ALU output follows the A register when no operation is selected, flags don't change
-			// - madden98 loads LOP/RA0/WA0 from data RAM with MOV MCx,A followed by MOV ALL,[d]
-			m_alu = (uint64_t(m_ach.ui) << 32) | m_acl.ui;
-			break;
+		uint32_t const acl = m_acl.ui;
+		uint32_t const pl = m_pl.ui;
+		auto const set_alu32 = [this] (uint32_t result)
+		{
+			m_alu = (m_alu & 0xffff'0000'0000) | result;
+			SET_Z(result == 0);
+			SET_S(s32(result) < 0);
+		};
 
-		case 0x1:   /* AND */
-			i3 = m_acl.si & m_pl.si;
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_C(0);
-			SET_S(i3 < 0);
-			break;
+		switch( (opcode & 0x3c000000) >> 26 )
+		{
+			case 0x0:   /* NOP */
+			default:    /* unrecognized, treated as NOP */
+				break;
 
-		case 0x2:   /* OR */
-			i3 = m_acl.si | m_pl.si;
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_C(0);
-			SET_S(i3 < 0);
-			/* TODO: Croc and some early Psygnosis games wants Z to be 1 when the result of this one is negative.
-			         Needs HW tests ... */
-			if(i3 < 0)
-				i3 = 0;
-			SET_Z(i3 == 0);
-			break;
+			case 0x1:   /* AND */
+				set_alu32(acl & pl);
+				SET_C(0);
+				break;
 
-		case 0x3:   /* XOR */
-			i3 = m_acl.si ^ m_pl.si;
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_C(0);
-			SET_S(i3 < 0);
-			break;
+			case 0x2:   /* OR */
+				set_alu32(acl | pl);
+				SET_C(0);
+				break;
 
-		case 0x4:   /* ADD */
-			i3 = m_acl.si + m_pl.si;
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z( (i3 & s64(0xffff'ffff'ffffU)) == 0 );
-			SET_S( i3 & s64(0x1'0000'0000'0000U));
-			SET_C(i3 & s64(0x1'0000'0000U));
-			SET_V((i3 ^ m_acl.si) & (i3 ^ m_pl.si) & 0x8000'0000);
-			break;
+			case 0x3:   /* XOR */
+				set_alu32(acl ^ pl);
+				SET_C(0);
+				break;
 
-		case 0x5:   /* SUB */
-			i3 = m_acl.si - m_pl.si;
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_C(i3 & s64(0x1'0000'0000U));
-			SET_S(i3 < 0);
-			SET_V(((m_pl.si) ^ (m_acl.si)) & ((m_pl.si) ^ (i3)) & 0x8000'0000);
-			break;
+			case 0x4:   /* ADD */
+			{
+				uint64_t const result = uint64_t(acl) + pl;
+				set_alu32(uint32_t(result));
+				SET_C(BIT(result, 32));
+				if (BIT((~(uint64_t(acl) ^ pl)) & (uint64_t(acl) ^ result), 31))
+					m_flags |= 1 << VF;
+				break;
+			}
 
-		case 0x6:   /* AD2 */
-			i1 = concat_64(int32_t(m_ph.si), m_pl.si);
-			i2 = concat_64(int32_t(m_ach.si), m_acl.si);
-			m_alu = i1 + i2;
-			SET_Z((m_alu & s64(0xffff'ffff'ffffU)) == 0);
-			SET_S((m_alu & s64(0x8000'0000'0000U)) > 0);
-			SET_C(m_alu & s64(0x1'0000'0000'0000U));
-			SET_V((m_alu ^ i1) & (m_alu ^ i2) & s64(0x8000'0000'0000U));
-			break;
+			case 0x5:   /* SUB */
+			{
+				uint64_t const result = uint64_t(acl) - pl;
+				set_alu32(uint32_t(result));
+				SET_C(BIT(result, 32));
+				if (BIT((uint64_t(acl) ^ pl) & (uint64_t(acl) ^ result), 31))
+					m_flags |= 1 << VF;
+				break;
+			}
 
-		case 0x7:   /* ??? */
-			/* Unrecognized opcode */
-			break;
+			case 0x6:   /* AD2 */
+			{
+				uint64_t const op1 = (uint64_t(m_ach.ui) << 32) | acl;
+				uint64_t const op2 = (uint64_t(m_ph.ui) << 32) | pl;
+				uint64_t const result = op1 + op2;
+				SET_Z((result << 16) == 0);
+				SET_S(s64(result << 16) < 0);
+				SET_C(BIT(result, 48));
+				if (BIT((~(op1 ^ op2)) & (op1 ^ result), 47))
+					m_flags |= 1 << VF;
+				m_alu = result & 0xffff'ffff'ffff;
+				break;
+			}
 
-		case 0x8:   /* SR */
-			// MSB does not change
-			i3 = (m_acl.si >> 1) | (m_acl.si & 0x8000'0000);
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_S(i3 < 0);
-			SET_C(m_acl.ui & 0x8000'0000);
-			break;
+			case 0x8:   /* SR */
+				// MSB does not change
+				set_alu32(uint32_t(s32(acl) >> 1));
+				SET_C(BIT(acl, 0));
+				break;
 
-		case 0x9:   /* RR */
-			i3 = ((m_acl.ui >> 1) & 0x7fff'ffff) | ((m_acl.ui << 31) & 0x8000'0000);
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_S(i3 < 0);
-			SET_C(m_acl.ui & 0x1);
-			break;
+			case 0x9:   /* RR */
+				set_alu32(std::rotr(acl, 1));
+				SET_C(BIT(acl, 0));
+				break;
 
-		case 0xa:   /* SL */
-			i3 = m_acl.si << 1;
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_S(i3 < 0);
-			SET_C(m_acl.ui & 0x8000'0000);
-			break;
+			case 0xa:   /* SL */
+				set_alu32(acl << 1);
+				SET_C(BIT(acl, 31));
+				break;
 
-		case 0xb:   /* RL */
-			i3 = ((m_acl.si << 1) & 0xffff'fffe) | ((m_acl.si >> 31) & 0x1);
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_S(i3 < 0);
-			SET_C(m_acl.ui & 0x8000'0000);
-			break;
+			case 0xb:   /* RL */
+				set_alu32(std::rotl(acl, 1));
+				SET_C(BIT(acl, 31));
+				break;
 
-		case 0xc:
-		case 0xd:
-		case 0xe:
-			/* Unrecognized opcodes */
-			break;
-
-		case 0xf:   /* RL8 */
-			i3 = std::rotl(m_acl.ui, 8);
-			m_alu = uint32_t(i3 & 0xffff'ffff) | (m_alu & 0xffff'0000'0000);
-			SET_Z(i3 == 0);
-			SET_S(i3 < 0);
-			SET_C(m_acl.si & 0x0100'0000);
-			break;
+			case 0xf:   /* RL8 */
+				set_alu32(std::rotl(acl, 8));
+				SET_C(BIT(acl, 24));
+				break;
+		}
 	}
 
 	/* X-Bus */
@@ -869,64 +845,76 @@ void scudsp_cpu_device::exec_dma()
 	}
 }
 
-/* Execute cycles */
-void scudsp_cpu_device::execute_run()
+/* Execute one instruction */
+void scudsp_cpu_device::execute_one()
 {
 	uint32_t opcode;
 
+	m_update_mul = 0;
+
+	debugger_instruction_hook(m_pc);
+
+	if ( m_delay )
+	{
+		opcode = scudsp_readop(m_delay);
+		m_delay = 0;
+	}
+	else
+	{
+		opcode = scudsp_readop(m_pc);
+		m_pc++;
+	}
+
+	switch( (opcode & 0xc0000000) >> 30 )
+	{
+		case 0x00: /* 00 */
+			op_alu(opcode);
+			break;
+		case 0x01: /* 01 */
+			op_illegal(opcode);
+			break;
+		case 0x02: /* 10 */
+			op_move_immediate(opcode);
+			break;
+		case 0x03: /* 11 */
+			switch( (opcode & 0x30000000) >> 28 )
+			{
+				case 0x00:
+					op_dma(opcode);
+					break;
+				case 0x01:
+					op_jump(opcode);
+					break;
+				case 0x02:
+					op_loop(opcode);
+					break;
+				case 0x03:
+					op_end(opcode);
+					break;
+			}
+			break;
+	}
+
+	if ( m_update_mul == 1 )
+	{
+		m_mul = (int64_t)m_rx.si * (int64_t)m_ry.si;
+		m_update_mul = 0;
+	}
+}
+
+/* Execute cycles */
+void scudsp_cpu_device::execute_run()
+{
+	// execution is paused by the host through the program control port
+	if (m_paused)
+	{
+		m_icount = 0;
+		return;
+	}
+
 	do
 	{
-		m_update_mul = 0;
-
-		debugger_instruction_hook(m_pc);
-
-		if ( m_delay )
-		{
-			opcode = scudsp_readop(m_delay);
-			m_delay = 0;
-		}
-		else
-		{
-			opcode = scudsp_readop(m_pc);
-			m_pc++;
-		}
-
-		switch( (opcode & 0xc0000000) >> 30 )
-		{
-			case 0x00: /* 00 */
-				op_alu(opcode);
-				break;
-			case 0x01: /* 01 */
-				op_illegal(opcode);
-				break;
-			case 0x02: /* 10 */
-				op_move_immediate(opcode);
-				break;
-			case 0x03: /* 11 */
-				switch( (opcode & 0x30000000) >> 28 )
-				{
-					case 0x00:
-						op_dma(opcode);
-						break;
-					case 0x01:
-						op_jump(opcode);
-						break;
-					case 0x02:
-						op_loop(opcode);
-						break;
-					case 0x03:
-						op_end(opcode);
-						break;
-				}
-				break;
-		}
-
-		if ( m_update_mul == 1 )
-		{
-			m_mul = (int64_t)m_rx.si * (int64_t)m_ry.si;
-			m_update_mul = 0;
-		}
-
+		execute_one();
 	} while( m_icount > 0 );
 }
 
@@ -944,6 +932,7 @@ void scudsp_cpu_device::device_start()
 
 	m_pc = 0;
 	m_flags = 0;
+	m_paused = false;
 	m_delay = 0;
 	m_top = 0;
 	m_lop = 0;
@@ -977,6 +966,7 @@ void scudsp_cpu_device::device_start()
 
 	save_item(NAME(m_flags));
 	save_item(NAME(m_delay));
+	save_item(NAME(m_paused));
 
 	save_item(NAME(m_top));
 	save_item(NAME(m_lop));
