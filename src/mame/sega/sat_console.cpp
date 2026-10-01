@@ -686,7 +686,7 @@ void sat_console_state::install_cpu_wait_states()
 				{
 					// only accesses the CPU makes itself: the SCU DMA goes through the same address space
 					device_execute_interface *const exec = machine().scheduler().currently_executing();
-					if (exec == &cpu->execute())
+					if (exec == static_cast<device_execute_interface *>(cpu))
 						exec->adjust_icount(-int(cycles - 1));
 				}
 			};
