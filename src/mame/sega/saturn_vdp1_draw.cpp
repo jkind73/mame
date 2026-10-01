@@ -37,7 +37,6 @@ constexpr uint32_t OVERHEAD_16BPP = 48;   // /256, frame buffer and VRAM refresh
 constexpr uint32_t OVERHEAD_8BPP = 24;    // /256
 
 constexpr int32_t sext13(int32_t v) { return int32_t(uint32_t(v) << 19) >> 19; }
-constexpr int32_t sext11(int32_t v) { return int32_t(uint32_t(v) << 21) >> 21; }
 constexpr uint32_t up(int32_t v) { return uint32_t(v) << 19; }   // into the top 13 bits
 
 // Row stride shift of the texture per colour mode: words per texel row = width >> shift
@@ -627,8 +626,9 @@ int32_t draw_engine::execute(const uint16_t *cmd)
 		user_y1 = sys_y;
 		return 0;
 	case 0xa:
-		local_x = sext11(cmd[6] & 0x7ff);
-		local_y = sext11(cmd[7] & 0x7ff);
+		// 13-bit signed like the vertices; ST-013 only guarantees -1024..1023 (Ymir agrees)
+		local_x = sext13(cmd[6]);
+		local_y = sext13(cmd[7]);
 		return 0;
 	default:
 		return 0;
