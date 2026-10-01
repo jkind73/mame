@@ -30,7 +30,6 @@
     * June 6, 2011       (AS) Rewrote DMA from scratch, Darius 2 relies on it.
 */
 
-// TODO : Envelope/LFO times are based on 44100Hz case?
 #include "emu.h"
 #include "scsp.h"
 
@@ -270,6 +269,16 @@ void scsp_device::device_start()
 	save_item(NAME(m_DSP.EFREG));
 	save_item(NAME(m_DSP.Stopped));
 	save_item(NAME(m_DSP.LastStep));
+	save_item(NAME(m_DSP.AccReg));
+	save_item(NAME(m_DSP.FrcReg));
+	save_item(NAME(m_DSP.YReg));
+	save_item(NAME(m_DSP.AdrsReg));
+	save_item(NAME(m_DSP.ReadPending));
+	save_item(NAME(m_DSP.ReadNOFL));
+	save_item(NAME(m_DSP.WritePending));
+	save_item(NAME(m_DSP.ReadValue));
+	save_item(NAME(m_DSP.WriteValue));
+	save_item(NAME(m_DSP.ReadWriteAddr));
 }
 
 //-------------------------------------------------
@@ -1570,7 +1579,7 @@ s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO)
 
 void scsp_device::LFO_ComputeStep(SCSP_LFO_t *LFO,u32 LFOF,u32 LFOWS,u32 LFOS,int ALFO)
 {
-	float step = (float) LFOFreq[LFOF] * 256.0f / 44100.0f;
+	float step = (float) LFOFreq[LFOF] * 256.0f / (clock() / 512.0f);   // 256 steps a period, one step per output sample at most
 	LFO->phase_step = (u32) ((float) (1 << LFO_SHIFT) * step);
 	if (ALFO)
 	{

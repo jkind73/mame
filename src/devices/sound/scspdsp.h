@@ -32,6 +32,18 @@ struct SCSPDSP
 	bool Stopped;
 	int LastStep;
 
+// registers that keep their value from one sample to the next
+	s32 AccReg;    // 26 bit
+	s32 FrcReg;    // 13 bit
+	s32 YReg;      // 24 bit
+	u32 AdrsReg;   // 12 bit
+
+// memory access pipeline, carried over from one step (and sample) to the next
+	bool ReadPending, ReadNOFL, WritePending;
+	s32 ReadValue;      // 24 bit, the last finished read
+	u16 WriteValue;
+	u32 ReadWriteAddr;  // byte address of the pending read or write
+
 	void Init();
 	void SetSample(s32 sample, s32 SEL, s32 MXL);
 	void Step();
