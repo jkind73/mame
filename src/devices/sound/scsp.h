@@ -46,6 +46,7 @@ protected:
 	virtual void device_reset() override ATTR_COLD;
 	virtual void device_post_load() override;
 	double master_gain() const;
+	u16 monitor_slot_data() const;
 	virtual void device_clock_changed() override;
 
 	virtual void rom_bank_pre_change() override;

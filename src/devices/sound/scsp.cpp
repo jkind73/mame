@@ -360,20 +360,21 @@ void scsp_device::rom_bank_pre_change()
 void scsp_device::sound_stream_update(sound_stream &stream)
 {
 	DoMasterSamples(stream);
+}
 
-	// MSLC     |  CA   |SGC|EG
-	// f e d c b a 9 8 7 6 5 4 3 2 1 0
-
-	// latch the new MSLC, updates every 44.1 kHz
-	// cfr. vstriker (GK reflecting ball with heavy shots) and srallyc (PowerGames BGM bleeps at end)
-	u8 MSLC = m_latched_MSLC;
-	SCSP_SLOT *slot = m_Slots + MSLC;
-	u32 SGC = (slot->EG.state) & 3;
-	u32 CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
-	u32 EG = (slot->EG.att >> 5) & 0x1f;
+// MSLC     |  CA   |SGC|EG
+// f e d c b a 9 8 7 6 5 4 3 2 1 0
+// computed when read: the main CPU selects a slot and reads it back within a couple of
+// microseconds (Virtua Fighter 2 walks all 32 slots in ~40 us), far less than a sample
+u16 scsp_device::monitor_slot_data() const
+{
+	SCSP_SLOT const *slot = m_Slots + m_latched_MSLC;
+	u32 const SGC = (slot->EG.state) & 3;
+	u32 const CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
+	u32 const EG = (slot->EG.att >> 5) & 0x1f;
 	// NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
 	// saturn:toughtrk will hang on Human logo otherwise
-	m_latched_MSLC_data =  /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
+	return (CA << 7) | (SGC << 5) | EG;
 }
 
 u8 scsp_device::DecodeSCI(u8 irq)
@@ -990,7 +991,7 @@ void scsp_device::UpdateRegR(int reg)
 		case 8:
 		case 9:
 			{
-				m_udata.data[0x8/2] = m_latched_MSLC_data;
+				m_udata.data[0x8/2] = monitor_slot_data();
 			}
 			break;
 
