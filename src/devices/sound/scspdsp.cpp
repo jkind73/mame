@@ -70,8 +70,6 @@ void SCSPDSP::Step()
 	if (Stopped)
 		return;
 
-	std::fill(std::begin(EFREG), std::end(EFREG), 0);
-
 #if 0
 	int dump=0;
 	FILE *f=nullptr;
@@ -79,11 +77,10 @@ void SCSPDSP::Step()
 		f=fopen("dsp.txt","wt");
 #endif
 
-	s32 ACC = 0;    //26 bit
-	s32 MEMVAL = 0;
-	s32 FRC_REG = 0;    //13 bit
-	s32 Y_REG = 0;      //24 bit
-	u32 ADRS_REG = 0;  //13 bit
+	s32 ACC = AccReg;       //26 bit
+	s32 FRC_REG = FrcReg;   //13 bit
+	s32 Y_REG = YReg;       //24 bit
+	u32 ADRS_REG = AdrsReg; //12 bit
 
 	for (int step = 0; step < /*128*/LastStep; ++step)
 	{
@@ -166,12 +163,6 @@ void SCSPDSP::Step()
 
 		INPUTS = util::sext(INPUTS, 24);
 
-		if (IWT)
-		{
-			MEMS[IWA] = MEMVAL;  // MEMVAL was selected in previous MRD
-			if (IRA == IWA)
-				INPUTS = MEMVAL;
-		}
 
 		//Operand sel
 		s32 B; // 26-bit
@@ -221,7 +212,7 @@ void SCSPDSP::Step()
 		Y = util::sext(Y, 13);
 
 		s64 const v = (s64(X) * s64(Y)) >> 12;
-		ACC = int(v + B);
+		ACC = util::sext(int(v + B), 26);
 
 		if (TWT)
 			TEMP[(TWA + DEC) & 0x7f] = SHIFTED;
@@ -234,14 +225,31 @@ void SCSPDSP::Step()
 				FRC_REG = (SHIFTED >> 11) & 0x1fff;
 		}
 
-		if (MRD || MWT)
-		//if (0)
+		if (IWT)
+			MEMS[IWA] = ReadValue;   // the read issued two steps ago, see the pipeline below
+
+		// A read or write issued by a step is carried out by the next one, with the address that step
+		// calculated (MiSTer SCSP.sv DSP_READ/DSP_WRITE, Ymir DSP::Step), so the value of a read is
+		// there for an IWT two steps after the MRD. A write waits while a read is carried out.
+		if (ReadPending)
+		{
+			u16 const data = space->read_word(ReadWriteAddr);
+			ReadValue = ReadNOFL ? s32(s16(data)) << 8 : UNPACK(data);
+			ReadPending = false;
+			ReadNOFL = false;
+		}
+		else if (WritePending)
+		{
+			space->write_word(ReadWriteAddr, WriteValue);
+			WritePending = false;
+		}
+
 		{
 			u32 ADDR = MADRS[MASA];
 			if (!TABLE)
 				ADDR += DEC;
 			if (ADREB)
-				ADDR += ADRS_REG & 0x0FFF;
+				ADDR += u32(util::sext(ADRS_REG, 12));
 			if (NXADR)
 				ADDR++;
 			if (!TABLE)
@@ -249,21 +257,18 @@ void SCSPDSP::Step()
 			else
 				ADDR &= 0xffff;
 			ADDR += RBP << 12;
-			ADDR <<= 1;
-			if (MRD && (step & 1)) //memory only allowed on odd? DoA inserts NOPs on even
-			{
-				if (NOFL)
-					MEMVAL = space->read_word(ADDR) << 8;
-				else
-					MEMVAL = UNPACK(space->read_word(ADDR));
-			}
-			if (MWT && (step & 1))
-			{
-				if (NOFL)
-					space->write_word(ADDR, SHIFTED >> 8);
-				else
-					space->write_word(ADDR, PACK(SHIFTED));
-			}
+			ReadWriteAddr = ADDR << 1;
+		}
+
+		if (MRD)
+		{
+			ReadPending = true;
+			ReadNOFL = NOFL;
+		}
+		if (MWT)
+		{
+			WritePending = true;
+			WriteValue = NOFL ? u16(SHIFTED >> 8) : PACK(SHIFTED);
 		}
 
 		if (ADRL)
@@ -275,8 +280,21 @@ void SCSPDSP::Step()
 		}
 
 		if (EWT)
-			EFREG[EWA] += SHIFTED >> 8;
+			EFREG[EWA] = SHIFTED >> 8;   // a register: the last value written stays
 	}
+
+	AccReg = ACC;
+	FrcReg = FRC_REG;
+	YReg = Y_REG;
+	AdrsReg = ADRS_REG;
+
+	// finish a write issued by the last step
+	if (WritePending)
+	{
+		space->write_word(ReadWriteAddr, WriteValue);
+		WritePending = false;
+	}
+
 	--DEC;
 	std::fill(std::begin(MIXS), std::end(MIXS), 0);
 	//if (f)
