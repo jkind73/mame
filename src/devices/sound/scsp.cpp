@@ -288,6 +288,7 @@ void scsp_device::device_start()
 	save_item(NAME(m_DSP.MEMS));
 	save_item(NAME(m_DSP.DEC));
 	save_item(NAME(m_DSP.MIXS));
+	save_item(NAME(m_DSP.MIXSPrev));
 	save_item(NAME(m_DSP.EXTS));
 	save_item(NAME(m_DSP.EFREG));
 	save_item(NAME(m_DSP.Stopped));
