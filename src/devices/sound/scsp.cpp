@@ -1186,36 +1186,37 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 		addr1 += smp; addr2 += smp;
 	}
 
+	// the SBCTL bit inversion is applied to the samples before they are interpolated (Ymir
+	// SlotProcessStep3_2/4_4), and the interpolation weight has 6 bits of fraction
+	auto const sbctl = [slot](s32 smp)
+	{
+		if (SBCTL(slot) & 0x1)
+			smp ^= 0x7FFF;
+		if (SBCTL(slot) & 0x2)
+			smp = s16(smp ^ 0x8000);
+		return smp;
+	};
+
 	if (SSCTL(slot) == 0) // External DRAM data
 	{
+		s32 const fpart = (slot->cur_addr & ((1 << SHIFT) - 1)) >> (SHIFT - 6);
 		if (PCM8B(slot)) //8 bit signed
 		{
-			int8_t p1 = read_byte(SA(slot) + addr1);
-			int8_t p2 = read_byte(SA(slot) + addr2);
-			s32 s;
-			s32 fpart=slot->cur_addr & ((1 << SHIFT) - 1);
-			s = (int) (p1 << 8) * ((1 << SHIFT) - fpart) + (int) (p2 << 8) * fpart;
-			sample = (s >> SHIFT);
+			s32 const p1 = sbctl(s32(int8_t(read_byte(SA(slot) + addr1))) << 8);
+			s32 const p2 = sbctl(s32(int8_t(read_byte(SA(slot) + addr2))) << 8);
+			sample = p1 + (((p2 - p1) * fpart) >> 6);
 		}
 		else    //16 bit signed (endianness?)
 		{
-			s16 p1 = read_word(SA(slot) + addr1);
-			s16 p2 = read_word(SA(slot) + addr2);
-			s32 s;
-			s32 fpart = slot->cur_addr & ((1 << SHIFT) - 1);
-			s = (int)(p1) * ((1 << SHIFT) - fpart) + (int)(p2) * fpart;
-			sample = (s >> SHIFT);
+			s32 const p1 = sbctl(s16(read_word(SA(slot) + addr1)));
+			s32 const p2 = sbctl(s16(read_word(SA(slot) + addr2)));
+			sample = p1 + (((p2 - p1) * fpart) >> 6);
 		}
 	}
 	else if (SSCTL(slot) == 1)  // Internally generated data (Noise)
-		sample = (s16)((m_lfsr & 0xff) << 8);   // the noise generator's low byte as the upper byte of the sample
+		sample = sbctl(s16((m_lfsr & 0xff) << 8));   // the noise generator's low byte as the upper byte of the sample
 	else if (SSCTL(slot) >= 2)  // Internally generated data (All 0)
-		sample = 0;
-
-	if (SBCTL(slot) & 0x1)
-		sample ^= 0x7FFF;
-	if (SBCTL(slot) & 0x2)
-		sample = (s16)(sample ^ 0x8000);
+		sample = sbctl(0);
 
 	if (slot->Backwards)
 		slot->cur_addr -= step;
