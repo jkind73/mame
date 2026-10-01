@@ -181,6 +181,8 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
 	m_eg_counter = 0;
 	m_lfsr = 1;
+	m_log_peak[0] = m_log_peak[1] = 0;
+	m_log_count = 0;
 	std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
 	std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
 	std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
@@ -628,6 +630,7 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 				machine().time().as_double(), slot->slot, DISDL(slot), DIPAN(slot), IMXL(slot), ISEL(slot), EFSDL(slot), EFPAN(slot), STWINH(slot) ? 1 : 0, SSCTL(slot),
 				read_word(SA(slot)), read_word(SA(slot) + 2), read_word(SA(slot) + 4), read_word(SA(slot) + 6), sum);
 	}
+	slot->log_peak = 0;
 	slot->active = 1;
 	slot->cur_addr = 0;
 	slot->nxt_addr = 1 << SHIFT;
@@ -649,7 +652,8 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 void scsp_device::StopSlot(SCSP_SLOT *slot,int keyoff)
 {
 	if (scsp_log())
-		logerror("SCSP %.6f %s slot %02d\n", machine().time().as_double(), keyoff ? "KEY OFF" : "STOP", slot->slot);
+		logerror("SCSP %.6f %s slot %02d%s\n", machine().time().as_double(), keyoff ? "KEY OFF" : "STOP", slot->slot,
+				std::string(!keyoff ? util::string_format(" peak %d", slot->log_peak) : std::string()).c_str());
 	if (keyoff /*&& slot->EG.state!=SCSP_RELEASE*/)
 	{
 		slot->EG.state = SCSP_RELEASE;
@@ -1018,7 +1022,7 @@ void scsp_device::w16(u32 addr, u16 val)
 	{
 		if (addr < 0x430)
 		{
-			if (scsp_log() && addr >= 0x41e)
+			if (scsp_log())
 			{
 				device_execute_interface *const exec = machine().scheduler().currently_executing();
 				logerror("SCSP %.6f write %03x = %04x by %s\n", machine().time().as_double(), addr, val, exec ? exec->device().tag() : "-");
@@ -1327,8 +1331,12 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 				u16 dir_tl = SDIR(slot) ? 0 : TL(slot);
 				Enc = ((dir_tl) << 0x0) | ((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd);
 				{
-					smpl += (sample * m_LPANTABLE[Enc]) >> SHIFT;
-					smpr += (sample * m_RPANTABLE[Enc]) >> SHIFT;
+					s32 const l = (sample * m_LPANTABLE[Enc]) >> SHIFT;
+					s32 const r = (sample * m_RPANTABLE[Enc]) >> SHIFT;
+					smpl += l;
+					smpr += r;
+					if (scsp_log())
+						slot->log_peak = std::max({ slot->log_peak, std::abs(l) >> 2, std::abs(r) >> 2 });
 				}
 			}
 
@@ -1377,6 +1385,18 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 		{
 			stream.put_int_clamp(0, s, smpl >> 2, 32768);
 			stream.put_int_clamp(1, s, smpr >> 2, 32768);
+		}
+
+		if (scsp_log())
+		{
+			m_log_peak[0] = std::max(m_log_peak[0], std::abs(smpl >> 2));
+			m_log_peak[1] = std::max(m_log_peak[1], std::abs(smpr >> 2));
+			if (++m_log_count >= 44100)
+			{
+				logerror("SCSP %.6f output peak L %d R %d (of 32768)\n", machine().time().as_double(), m_log_peak[0], m_log_peak[1]);
+				m_log_peak[0] = m_log_peak[1] = 0;
+				m_log_count = 0;
+			}
 		}
 
 		++m_eg_counter;
