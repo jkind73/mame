@@ -681,11 +681,12 @@ unsigned sat_console_state::cpu_bus_waits(uint32_t address, bool write, unsigned
 	return 0;
 }
 
-// SATURN_BUS_TIMING=0 turns the wait states off (diagnostics)
+// Off unless SATURN_BUS_TIMING=1: not validated on games yet (After Burner II does not get past its
+// splash screen with it, and Ymir notes that some games need fast and others slow timings)
 void sat_console_state::install_cpu_wait_states()
 {
 	char const *const env = std::getenv("SATURN_BUS_TIMING");
-	if (env && std::strtol(env, nullptr, 0) == 0)
+	if (!env || std::strtol(env, nullptr, 0) == 0)
 		return;
 
 	for (sh7604_device *const cpu : { m_maincpu.target(), m_slave.target() })
