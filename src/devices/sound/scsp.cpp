@@ -38,7 +38,8 @@
 
 // Diagnostics: SCSP_LEGACY=<hex mask> turns off parts of the interrupt and envelope rework, to find which
 // one a game depends on: 1 DMA end as a one shot pulse of the sound CPU line (no pending flags, main CPU
-// not told), 2 no 1 Fs sample interrupt, 4 slots only stop at the end of the release (not in any state)
+// not told), 2 no 1 Fs sample interrupt, 4 slots only stop at the end of the release (not in any state),
+// 8 the end of a sound clears the slot's KYONB bit
 // Diagnostics: SCSP_LOG=1 logs the interrupt registers, key on/off and the interrupt line changes
 static bool scsp_log()
 {
@@ -650,7 +651,11 @@ void scsp_device::StopSlot(SCSP_SLOT *slot,int keyoff)
 	{
 		slot->active = 0;
 	}
-	slot->udata.data[0] &= ~0x800;
+	// KYONB is a register the sound CPU writes (ST-77 4.2, "KYONB (R/W)"); the end of a sound does not clear it.
+	// A key on only starts a slot whose envelope is in the release state, so a driver that reloads its slot
+	// registers from RAM with KYONB set does not restart a sound that has finished (OutRun's boot sound).
+	if (scsp_legacy() & 8)
+		slot->udata.data[0] &= ~0x800;
 }
 
 void scsp_device::init()
