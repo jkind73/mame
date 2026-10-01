@@ -163,6 +163,7 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	std::fill(std::begin(m_RPANTABLE), std::end(m_RPANTABLE), 0);
 	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
 	m_eg_counter = 0;
+	m_lfsr = 1;
 	std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
 	std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
 	std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
@@ -245,6 +246,7 @@ void scsp_device::device_start()
 	save_item(NAME(m_TimPris));
 	save_item(NAME(m_TimCnt));
 	save_item(NAME(m_eg_counter));
+	save_item(NAME(m_lfsr));
 
 	save_item(NAME(m_dma.dmea));
 	save_item(NAME(m_dma.drga));
@@ -1132,7 +1134,7 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 		}
 	}
 	else if (SSCTL(slot) == 1)  // Internally generated data (Noise)
-		sample = (s16)(machine().rand() & 0xffff); // Unknown algorithm
+		sample = (s16)((m_lfsr & 0xff) << 8);   // the noise generator's low byte as the upper byte of the sample
 	else if (SSCTL(slot) >= 2)  // Internally generated data (All 0)
 		sample = 0;
 
@@ -1241,6 +1243,8 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 
 		for (int sl = 0; sl < 32; ++sl)
 		{
+			// the noise generator (MiSTer SCSP.sv NOISE, Ymir m_lfsr) steps once per slot time
+			m_lfsr = (m_lfsr >> 1) | ((((m_lfsr >> 5) ^ m_lfsr) & 1) << 16);
 #if SCSP_FM_DELAY
 			m_RBUFDST = m_DELAYBUF + m_DELAYPTR;
 #else
@@ -1516,12 +1520,9 @@ void scsp_device::LFO_Init()
 		m_ALFO_TRI[i] = a;
 		m_PLFO_TRI[i] = p;
 
-		//noise
-		//a=lfo_noise[i];
-		a = machine().rand() & 0xff;
-		p = 128 - a;
-		m_ALFO_NOI[i] = a;
-		m_PLFO_NOI[i] = p;
+		//noise: taken from the noise generator when the LFO runs (ALFO_Step, PLFO_Step)
+		m_ALFO_NOI[i] = 0;
+		m_PLFO_NOI[i] = 0;
 	}
 
 	for (int s = 0; s < 8; ++s)
@@ -1547,6 +1548,8 @@ s32 scsp_device::PLFO_Step(SCSP_LFO_t *LFO)
 	LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
 #endif
 	p=LFO->table[LFO->phase >> LFO_SHIFT];
+	if (LFO->table == m_PLFO_NOI)
+		p = (s8)((m_lfsr ^ 0x80) & 0xfe);
 	p=LFO->scale[p+128];
 	return p << (SHIFT - LFO_SHIFT);
 }
@@ -1559,6 +1562,8 @@ s32 scsp_device::ALFO_Step(SCSP_LFO_t *LFO)
 	LFO->phase &= (1 << (LFO_SHIFT + 8)) - 1;
 #endif
 	p=LFO->table[LFO->phase >> LFO_SHIFT];
+	if (LFO->table == m_ALFO_NOI)
+		p = m_lfsr & 0xfe;
 	p=LFO->scale[p];
 	return p << (SHIFT - LFO_SHIFT);
 }
