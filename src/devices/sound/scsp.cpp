@@ -183,6 +183,7 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	m_lfsr = 1;
 	m_log_peak[0] = m_log_peak[1] = 0;
 	m_log_count = 0;
+	m_log_exts_peak = 0;
 	std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
 	std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
 	std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
@@ -1384,6 +1385,7 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			u16 Enc = EFSDL(slot) ? ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd) : (((DIPAN(slot)) << 0x8) | ((DISDL(slot)) << 0xd));
 			{
 				m_DSP.EXTS[i] = s32(stream.get(i, s) * 32768.0);
+				m_log_exts_peak = std::max(m_log_exts_peak, std::abs(m_DSP.EXTS[i]));
 				smpl += (m_DSP.EXTS[i] * m_LPANTABLE[Enc]) >> SHIFT;
 				smpr += (m_DSP.EXTS[i] * m_RPANTABLE[Enc]) >> SHIFT;
 			}
@@ -1417,12 +1419,13 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 					s32 efmax = 0;
 					for (int i = 0; i < 16; i++)
 						efmax = std::max<s32>(efmax, std::abs(m_DSP.EFREG[i]));
-					logerror("SCSP %.6f state MVOL=%d DAC18B=%d active=%d DSP stopped=%d steps=%d EFREGmax=%d EXTS=%d,%d | slot16 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x | slot17 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x\n",
-							machine().time().as_double(), MVOL(), DAC18B() ? 1 : 0, active, m_DSP.Stopped ? 1 : 0, m_DSP.LastStep, efmax, m_DSP.EXTS[0], m_DSP.EXTS[1],
+					logerror("SCSP %.6f state MVOL=%d DAC18B=%d active=%d DSP stopped=%d steps=%d EFREGmax=%d EXTSpeak=%d EXTS=%d,%d | slot16 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x | slot17 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x\n",
+							machine().time().as_double(), MVOL(), DAC18B() ? 1 : 0, active, m_DSP.Stopped ? 1 : 0, m_DSP.LastStep, efmax, m_log_exts_peak, m_DSP.EXTS[0], m_DSP.EXTS[1],
 							DISDL(s16), DIPAN(s16), EFSDL(s16), EFPAN(s16),
 							DISDL(s17), DIPAN(s17), EFSDL(s17), EFPAN(s17));
 				}
 				m_log_peak[0] = m_log_peak[1] = 0;
+				m_log_exts_peak = 0;
 				m_log_count = 0;
 			}
 		}
