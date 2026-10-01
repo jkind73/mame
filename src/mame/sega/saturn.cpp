@@ -279,6 +279,58 @@ uint16_t saturn_state::vdp2_regs_r(offs_t offset)
 	return m_vdp2_regs[offset];
 }
 
+// Extra SCU clocks a write to a 128KB VDP2 VRAM bank takes while the screen is being displayed: the
+// display uses some of the bank's access slots (cycle pattern types 0-7 and 0xc/0xd of the enabled
+// scroll screens, or the whole cycle for rotation), and the write waits for what is left. Table from
+// Mednafen's hardware measurements, indexed by the number of display slots in use (0..8).
+uint8_t saturn_state::vdp2_vram_write_penalty(offs_t bank)
+{
+	if (m_vdp2->is_blanking())
+		return 0;
+
+	const uint16_t bgon = m_vdp2_regs[0x20 / 2] & 0x1f3f;
+	const unsigned ramctl = m_vdp2_regs[0x0e / 2];
+	const unsigned vram_mode = (ramctl >> 8) & 3;
+	const unsigned rdbs_mode = ramctl & 0xff;
+	const unsigned sh = (m_vdp2->get_hreso() & 6) ? 0 : 4;
+
+	// cycle pattern type of slot i of a bank
+	auto const cycle_type = [this](unsigned b, unsigned i) -> unsigned
+	{
+		const uint16_t reg = m_vdp2_regs[(0x10 + b * 4 + (i >> 2) * 2) / 2];
+		return (reg >> (12 - 4 * (i & 3))) & 0xf;
+	};
+	auto const slot_penalty = [&](unsigned type) -> unsigned
+	{
+		if (type < 0x8 || type == 0xc || type == 0xd)
+			return BIT(bgon, type & 3);
+		return 0;
+	};
+
+	// a split bank has its own cycle pattern, otherwise the pair uses the first one
+	const unsigned esb = bank & (2 | ((vram_mode >> (bank >> 1)) & 1));
+	const unsigned rdbs = (rdbs_mode >> (esb << 1)) & 3;   // 0: unused for rotation
+	unsigned used = 0;
+
+	if (BIT(bgon, 5))
+	{
+		if (bank >= 2 || (BIT(bgon, 4) && rdbs != 0))
+			used = 8;
+	}
+	else if (BIT(bgon, 4) && rdbs != 0)
+	{
+		used = 8;
+	}
+	else if (bgon & 0x0f)
+	{
+		for (unsigned i = 0; i < 4; i++)
+			used += slot_penalty(cycle_type(esb, i)) + slot_penalty(cycle_type(esb, sh + i));
+	}
+
+	static const uint8_t PENALTY[9] = { 0, 0, 0, 0, 1, 1, 2, 3, 4 };
+	return PENALTY[used];
+}
+
 uint32_t saturn_state::vdp2_cram_r(offs_t offset)
 {
 	offset &= 0xfff >> 2;

@@ -34,6 +34,7 @@ public:
 	int get_vblank_start_position();
 	int get_ystep_count();
 	bool get_vramsz() { return m_vramsz; }
+	bool is_blanking() { return get_vblank() || !m_disp; }
 
 protected:
 	virtual void device_start() override ATTR_COLD;
