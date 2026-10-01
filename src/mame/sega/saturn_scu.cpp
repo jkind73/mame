@@ -447,8 +447,8 @@ std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address, bool writ
 //  std::tie(std::ignore, flags) = m_bus_space.read_word_flags(address & 0x07ff'ffff);
 
 	u16 flags = 0;
-	// TODO: waitstate penalties needs HW tests
-	// Also eventually needs to be in client address_maps as .before_delay
+	// extra SCU clocks per 16-bit transfer on top of the base 1; the read and the write of a
+	// transfer overlap, so the larger of the two is used rather than their sum
 	int penalty = 0;
 
 	switch(address & 0x0700'0000)
@@ -472,7 +472,11 @@ std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address, bool writ
 				case 0x00a0'0000:
 				case 0x00b0'0000:
 					flags = saturn_scu_device::B_BUS_SCSP;
-					//penalty = write_op ? 13 : 24;
+					// the SCSP takes 13 SCU clocks per 16-bit access in either direction, the
+					// other B-Bus devices keep the 1 clock best case (Mednafen scu.inc, measured on
+					// hardware; its SH-2 side figures of 13 write / 24 read are modelled by the CPU wait
+					// states instead)
+					penalty = 12;
 					break;
 				case 0x00c0'0000:
 				case 0x00d0'0000:
@@ -576,7 +580,7 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level)
 	m_dma[level].live_size = m_dma[level].size;
 	m_dma[level].live_count = 0;
 	m_dma[level].done = false;
-	m_dma[level].transfer_penalty = src_penalty + dst_penalty;
+	m_dma[level].transfer_penalty = std::max(src_penalty, dst_penalty);
 
 	update_dma_status(level, DMA_STATE_WAIT);
 
@@ -719,7 +723,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 				//TODO: why guardherj sets up a 0x23000 transfer for the FMV?
 				m_dma[level].live_size = indirect_size & ((level == 0) ? 0xf'ffff : 0x3'ffff);
 				m_dma[level].live_count = 0;
-				m_dma[level].transfer_penalty = src_penalty + dst_penalty;
+				m_dma[level].transfer_penalty = std::max(src_penalty, dst_penalty);
 
 				m_dma[level].mode = DMA_MODE_INDIRECT;
 
