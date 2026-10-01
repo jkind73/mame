@@ -41,7 +41,6 @@
 #define FIX(v)  ((u32) ((float) (1 << SHIFT) * (v)))
 
 
-#define EG_SHIFT    16
 
 
 /*
@@ -69,6 +68,7 @@
 #define AR(slot)        ((slot->udata.data[0x4] >> 0x0) & 0x001F)
 
 #define LPSLNK(slot)    ((slot->udata.data[0x5] >> 0x0) & 0x4000)
+#define EGBP(slot)      ((slot->udata.data[0x5] >> 0x0) & 0x8000)
 #define KRS(slot)       ((slot->udata.data[0x5] >> 0xA) & 0x000F)
 #define DL(slot)        ((slot->udata.data[0x5] >> 0x5) & 0x001F)
 #define RR(slot)        ((slot->udata.data[0x5] >> 0x0) & 0x001F)
@@ -98,16 +98,6 @@
 #define DIPAN(slot)     ((slot->udata.data[0xB] >> 0x8) & 0x001F)
 #define EFSDL(slot)     ((slot->udata.data[0xB] >> 0x5) & 0x0007)
 #define EFPAN(slot)     ((slot->udata.data[0xB] >> 0x0) & 0x001F)
-
-//Envelope times in ms
-static const double ARTimes[64] = {100000/*infinity*/,100000/*infinity*/,8100.0,6900.0,6000.0,4800.0,4000.0,3400.0,3000.0,2400.0,2000.0,1700.0,1500.0,
-					1200.0,1000.0,860.0,760.0,600.0,500.0,430.0,380.0,300.0,250.0,220.0,190.0,150.0,130.0,110.0,95.0,
-					76.0,63.0,55.0,47.0,38.0,31.0,27.0,24.0,19.0,15.0,13.0,12.0,9.4,7.9,6.8,6.0,4.7,3.8,3.4,3.0,2.4,
-					2.0,1.8,1.6,1.3,1.1,0.93,0.85,0.65,0.53,0.44,0.40,0.35,0.0,0.0};
-static const double DRTimes[64] = {100000/*infinity*/,100000/*infinity*/,118200.0,101300.0,88600.0,70900.0,59100.0,50700.0,44300.0,35500.0,29600.0,25300.0,22200.0,17700.0,
-					14800.0,12700.0,11100.0,8900.0,7400.0,6300.0,5500.0,4400.0,3700.0,3200.0,2800.0,2200.0,1800.0,1600.0,1400.0,1100.0,
-					920.0,790.0,690.0,550.0,460.0,390.0,340.0,270.0,230.0,200.0,170.0,140.0,110.0,98.0,85.0,68.0,57.0,49.0,43.0,34.0,
-					28.0,25.0,22.0,18.0,14.0,12.0,11.0,8.5,7.1,6.1,5.4,4.3,3.6,3.1};
 
 #define MEM4B()     ((m_udata.data[0] >> 0x0) & 0x0200)
 #define DAC18B()    ((m_udata.data[0] >> 0x0) & 0x0100)
@@ -172,8 +162,7 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	std::fill(std::begin(m_LPANTABLE), std::end(m_LPANTABLE), 0);
 	std::fill(std::begin(m_RPANTABLE), std::end(m_RPANTABLE), 0);
 	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
-	std::fill(std::begin(m_ARTABLE), std::end(m_ARTABLE), 0);
-	std::fill(std::begin(m_DRTABLE), std::end(m_DRTABLE), 0);
+	m_eg_counter = 0;
 	std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
 	std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
 	std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
@@ -217,15 +206,7 @@ void scsp_device::device_start()
 		save_item(NAME(m_Slots[slot].cur_addr), slot);
 		save_item(NAME(m_Slots[slot].nxt_addr), slot);
 		save_item(NAME(m_Slots[slot].step), slot);
-		save_item(NAME(m_Slots[slot].EG.volume), slot);
-		save_item(NAME(m_Slots[slot].EG.step), slot);
-		save_item(NAME(m_Slots[slot].EG.AR), slot);
-		save_item(NAME(m_Slots[slot].EG.D1R), slot);
-		save_item(NAME(m_Slots[slot].EG.D2R), slot);
-		save_item(NAME(m_Slots[slot].EG.RR), slot);
-		save_item(NAME(m_Slots[slot].EG.DL), slot);
-		save_item(NAME(m_Slots[slot].EG.EGHOLD), slot);
-		save_item(NAME(m_Slots[slot].EG.LPLINK), slot);
+		save_item(NAME(m_Slots[slot].EG.att), slot);
 		save_item(NAME(m_Slots[slot].PLFO.phase), slot);
 		save_item(NAME(m_Slots[slot].PLFO.phase_step), slot);
 		save_item(NAME(m_Slots[slot].ALFO.phase), slot);
@@ -263,6 +244,7 @@ void scsp_device::device_start()
 
 	save_item(NAME(m_TimPris));
 	save_item(NAME(m_TimCnt));
+	save_item(NAME(m_eg_counter));
 
 	save_item(NAME(m_dma.dmea));
 	save_item(NAME(m_dma.drga));
@@ -343,7 +325,7 @@ void scsp_device::sound_stream_update(sound_stream &stream)
 	SCSP_SLOT *slot = m_Slots + MSLC;
 	u32 SGC = (slot->EG.state) & 3;
 	u32 CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
-	u32 EG = (0x1f - (slot->EG.volume >> (EG_SHIFT + 5))) & 0x1f;
+	u32 EG = (slot->EG.att >> 5) & 0x1f;
 	// NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
 	// saturn:toughtrk will hang on Human logo otherwise
 	m_latched_MSLC_data =  /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
@@ -485,84 +467,93 @@ TIMER_CALLBACK_MEMBER(scsp_device::timerS_cb)
 	SetPending(0x400);
 }
 
-int scsp_device::Get_AR(int base, int R)
+// Envelope generator. ST-77 (4.2, EG registers) describes the four states and what the rate,
+// decay level, key rate scaling and hold bits do, but gives no rates. They are those of MiSTer's
+// SCSP.sv and Ymir's scsp_slot.hpp, which agree: the EG is a 10 bit attenuation (0 loudest) and
+// each sample a counter decides whether it steps. The effective rate is the register rate plus the
+// key rate scaling (KRS + octave, clamped to 0-15, none when KRS = 15), doubled; it picks how often
+// (every 2^n samples, n = 12 down to 1) and by how much (a pattern of 0-8) the level moves.
+// Attack is exponential (att -= (att + 1) * step / 16), the decays and the release are linear.
+unsigned scsp_device::EG_EffectiveRate(SCSP_SLOT *slot, unsigned rate, bool &overflow)
 {
-	int Rate = base + (R << 1);
-	return m_ARTABLE[std::clamp(Rate, 0, 63)];
-}
-
-int scsp_device::Get_DR(int base, int R)
-{
-	int Rate = base + (R << 1);
-	return m_DRTABLE[std::clamp(Rate, 0, 63)];
-}
-
-void scsp_device::Compute_EG(SCSP_SLOT *slot)
-{
-	int octave = (OCT(slot) ^ 8) - 8;
-	int rate;
+	unsigned eff = rate;
 	if (KRS(slot) != 0xf)
-		rate = octave + 2 * KRS(slot) + ((FNS(slot) >> 9) & 1);
-	else
-		rate = 0; //rate = ((FNS(slot) >> 9) & 1);
-
-	slot->EG.volume = 0x17F<<EG_SHIFT;
-	slot->EG.AR = Get_AR(rate,AR(slot));
-	slot->EG.D1R = Get_DR(rate,D1R(slot));
-	slot->EG.D2R = Get_DR(rate,D2R(slot));
-	slot->EG.RR = Get_DR(rate,RR(slot));
-	slot->EG.DL = 0x1f - DL(slot);
-	slot->EG.EGHOLD = EGHOLD(slot);
+	{
+		int const oct = (OCT(slot) ^ 8) - 8;
+		eff += std::clamp<int>(KRS(slot) + oct, 0, 15);
+	}
+	overflow = eff >= 0x20;   // the attack does not run: it starts at, and stays at, full level
+	return std::min<unsigned>(eff << 1, 63);
 }
 
+static unsigned eg_step(unsigned rate2, u32 counter)
+{
+	if (rate2 < 2)
+		return 0;
+	unsigned const shift = rate2 < 44 ? 12 - (rate2 >> 2) : 1;
+	if (counter & ((1U << shift) - 1))
+		return 0;
+	unsigned const phase = (counter >> shift) & 7;
+	if (rate2 < 48)
+	{
+		static constexpr u8 pattern[4][8] = {
+			{ 0, 1, 0, 1, 0, 1, 0, 1 }, { 0, 1, 0, 1, 1, 1, 0, 1 }, { 0, 1, 1, 1, 0, 1, 1, 1 }, { 0, 1, 1, 1, 1, 1, 1, 1 } };
+		return pattern[rate2 & 3][phase];
+	}
+	if (rate2 >= 60)
+		return 8;
+	static constexpr u8 fast[4][8] = {
+		{ 1, 1, 1, 1, 1, 1, 1, 1 }, { 1, 1, 1, 2, 1, 1, 1, 2 }, { 2, 1, 2, 1, 2, 1, 2, 1 }, { 1, 2, 2, 2, 1, 2, 2, 2 } };
+	return fast[rate2 & 3][phase] << ((rate2 - 48) >> 2);
+}
+
+// Steps the envelope of a slot for one sample and returns the volume index (0x3ff is no attenuation)
 int scsp_device::EG_Update(SCSP_SLOT *slot)
 {
-	switch (slot->EG.state)
+	SCSP_EG_t &eg = slot->EG;
+	int const prev = eg.att;
+	bool overflow;
+	unsigned rate;
+	switch (eg.state)
+	{
+		case SCSP_ATTACK:  rate = AR(slot);  break;
+		case SCSP_DECAY1:  rate = D1R(slot); break;
+		case SCSP_DECAY2:  rate = D2R(slot); break;
+		default:           rate = RR(slot);  break;
+	}
+	unsigned const step = rate ? eg_step(EG_EffectiveRate(slot, rate, overflow), m_eg_counter) : 0;
+	(void)overflow;
+
+	// what this sample is played at: the hold mode keeps the attack at full level, the bypass has no envelope
+	int const level = (EGBP(slot) || (eg.state == SCSP_ATTACK && EGHOLD(slot))) ? 0 : prev;
+
+	switch (eg.state)
 	{
 		case SCSP_ATTACK:
-			slot->EG.volume += slot->EG.AR;
-			if (slot->EG.volume >= (0x3ff<<EG_SHIFT))
-			{
-				if (!LPSLNK(slot))
-				{
-					slot->EG.state = SCSP_DECAY1;
-					if (slot->EG.D1R >= (1024 << EG_SHIFT)) //Skip SCSP_DECAY1, go directly to SCSP_DECAY2
-						slot->EG.state = SCSP_DECAY2;
-				}
-				slot->EG.volume=0x3ff << EG_SHIFT;
-			}
-			if (slot->EG.EGHOLD)
-				return 0x3ff << (SHIFT - 10);
+		{
+			bool ovr;
+			EG_EffectiveRate(slot, rate, ovr);
+			if (!ovr && step && prev > 0)
+				eg.att = std::max(prev + ((-(prev + 1) * int(step)) >> 4), 0);
+			if (!LPSLNK(slot) && prev == 0)
+				eg.state = SCSP_DECAY1;   // with the loop start link the loop start decides (UpdateSlot)
 			break;
+		}
 		case SCSP_DECAY1:
-			slot->EG.volume -= slot->EG.D1R;
-			if (slot->EG.volume <= 0)
-				slot->EG.volume = 0;
-			if (slot->EG.volume >> (EG_SHIFT + 5) <= slot->EG.DL)
-				slot->EG.state = SCSP_DECAY2;
-			break;
-		case SCSP_DECAY2:
-			if (D2R(slot) == 0)
-				return (slot->EG.volume >> EG_SHIFT) << (SHIFT - 10);
-			slot->EG.volume -= slot->EG.D2R;
-			if (slot->EG.volume <= 0)
-				slot->EG.volume = 0;
-
-			break;
-		case SCSP_RELEASE:
-			slot->EG.volume -= slot->EG.RR;
-			if (slot->EG.volume <= 0)
-			{
-				slot->EG.volume = 0;
-				StopSlot(slot, 0);
-				//slot->EG.volume = 0x17F << EG_SHIFT;
-				//slot->EG.state = SCSP_ATTACK;
-			}
-			break;
+			if ((prev >> 5) == (int)DL(slot))
+				eg.state = SCSP_DECAY2;
+			[[fallthrough]];
 		default:
-			return 1 << SHIFT;
+			if (step)
+				eg.att = std::min(prev + int(step), 0x3ff);
+			break;
 	}
-	return (slot->EG.volume >> EG_SHIFT) << (SHIFT - 10);
+
+	// a silent slot is switched off
+	if (prev >= 0x3c0 && !EGBP(slot))
+		StopSlot(slot, 0);
+
+	return 0x3ff - level;
 }
 
 u32 scsp_device::Step(SCSP_SLOT *slot)
@@ -596,9 +587,12 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 	slot->cur_addr = 0;
 	slot->nxt_addr = 1 << SHIFT;
 	slot->step = Step(slot);
-	Compute_EG(slot);
 	slot->EG.state = SCSP_ATTACK;
-	slot->EG.volume = 0x17F << EG_SHIFT;
+	{
+		bool overflow;
+		EG_EffectiveRate(slot, AR(slot), overflow);
+		slot->EG.att = overflow ? 0x000 : 0x280;
+	}
 	slot->Prev = 0;
 	slot->Backwards = 0;
 
@@ -695,33 +689,13 @@ void scsp_device::init()
 		m_RPANTABLE[i] = FIX((4.0f * RPAN * TL * fSDL));
 	}
 
-	m_ARTABLE[0] = m_DRTABLE[0] = 0;    //Infinite time
-	m_ARTABLE[1] = m_DRTABLE[1] = 0;    //Infinite time
-	for (i = 2; i < 64; ++i)
-	{
-		double step, scale;
-		double t = ARTimes[i];   //In ms
-		if (t != 0.0)
-		{
-			step = (1023 * 1000.0) / (44100.0 * t);
-			scale = (double) (1 << EG_SHIFT);
-			m_ARTABLE[i] = (int) (step * scale);
-		}
-		else
-			m_ARTABLE[i] = 1024 << EG_SHIFT;
-
-		t = DRTimes[i];   //In ms
-		step = (1023 * 1000.0) / (44100.0 * t);
-		scale = (double) (1 << EG_SHIFT);
-		m_DRTABLE[i] = (int) (step * scale);
-	}
-
 	// make sure all the slots are off
 	for (i = 0; i < 32; ++i)
 	{
 		m_Slots[i].slot = i;
 		m_Slots[i].active = 0;
 		m_Slots[i].EG.state = SCSP_RELEASE;
+		m_Slots[i].EG.att = 0x3ff;
 	}
 
 	LFO_Init();
@@ -761,11 +735,6 @@ void scsp_device::UpdateSlotReg(int s,int r)
 		case 0x10:
 		case 0x11:
 			slot->step = Step(slot);
-			break;
-		case 0xA:
-		case 0xB:
-			slot->EG.RR = Get_DR(0, RR(slot));
-			slot->EG.DL = 0x1f - DL(slot);
 			break;
 		case 0x12:
 		case 0x13:
@@ -1244,10 +1213,7 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 			sample >>= SHIFT;
 		}
 
-		if (slot->EG.state == SCSP_ATTACK)
-			sample = (sample * EG_Update(slot)) >> SHIFT;
-		else
-			sample = (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT - 10)]) >> SHIFT;
+		sample = (sample * m_EG_TABLE[EG_Update(slot)]) >> SHIFT;
 	}
 
 	if (!STWINH(slot))
@@ -1354,6 +1320,8 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			stream.put_int_clamp(0, s, smpl >> 2, 32768);
 			stream.put_int_clamp(1, s, smpr >> 2, 32768);
 		}
+
+		++m_eg_counter;
 	}
 }
 
