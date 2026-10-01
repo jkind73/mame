@@ -1394,6 +1394,21 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			if (++m_log_count >= 44100)
 			{
 				logerror("SCSP %.6f output peak L %d R %d (of 32768)\n", machine().time().as_double(), m_log_peak[0], m_log_peak[1]);
+				{
+					// one line with the mixer state: master volume, the CD audio slots (16, 17) and the DSP
+					SCSP_SLOT *const s16 = m_Slots + 16;
+					SCSP_SLOT *const s17 = m_Slots + 17;
+					int active = 0;
+					for (int i = 0; i < 32; i++)
+						active += m_Slots[i].active ? 1 : 0;
+					s32 efmax = 0;
+					for (int i = 0; i < 16; i++)
+						efmax = std::max<s32>(efmax, std::abs(m_DSP.EFREG[i]));
+					logerror("SCSP %.6f state MVOL=%d DAC18B=%d active=%d DSP stopped=%d steps=%d EFREGmax=%d EXTS=%d,%d | slot16 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x | slot17 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x\n",
+							machine().time().as_double(), MVOL(), DAC18B() ? 1 : 0, active, m_DSP.Stopped ? 1 : 0, m_DSP.LastStep, efmax, m_DSP.EXTS[0], m_DSP.EXTS[1],
+							DISDL(s16), DIPAN(s16), EFSDL(s16), EFPAN(s16),
+							DISDL(s17), DIPAN(s17), EFSDL(s17), EFPAN(s17));
+				}
 				m_log_peak[0] = m_log_peak[1] = 0;
 				m_log_count = 0;
 			}
