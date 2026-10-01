@@ -164,6 +164,9 @@ void saturn_cd_hle_device::device_start()
 	save_item(NAME(cdda_maxrepeat));
 	save_item(NAME(cdda_repeat_count));
 	save_item(NAME(tray_is_closed));
+	save_item(NAME(m_fadsearch_bufnum));
+	save_item(NAME(m_fadsearch_spos));
+	save_item(NAME(m_fadsearch_fad));
 	save_item(NAME(m_status_change_in_progress));
 	save_item(NAME(numfiles));
 	save_item(NAME(firstfile));
@@ -805,6 +808,63 @@ void saturn_cd_hle_device::cmd_init_cdsystem()
 	// TODO: ESEL happens at the end of the actual reset phase
 	hirqreg |= (CMOK | ESEL | EFLS | ECPY | EHST);
 	cr_standard_return(cd_stat);
+}
+
+// CDC_CdOpen (ST-162 8.2): stops the drive and opens the tray, DCHG and EFLS are raised before the open status
+void saturn_cd_hle_device::cmd_open_tray()
+{
+	LOGCMD("%s: Open tray\n", machine().describe_context());
+
+	hirqreg |= (CMOK | DCHG | EFLS);
+	cd_change_status(CD_STAT_OPEN);
+	tray_is_closed = 0;
+	cr_standard_return(cd_stat);
+}
+
+// CDC_ExeFadSearch (ST-162 8.2): starting at a sector position of a buffer partition, finds the sector
+// with the greatest frame address not exceeding the key; the result is read back with 0x56
+void saturn_cd_hle_device::cmd_execute_frame_address_search()
+{
+	uint32_t const spos = cr2;
+	uint32_t const bufnum = cr3 >> 8;
+	uint32_t const fad = ((cr3 & 0xff) << 16) | cr4;
+
+	LOGCMD("%s: Execute FAD search partition %02x pos %04x FAD %06x\n", machine().describe_context(), bufnum, spos, fad);
+
+	m_fadsearch_bufnum = bufnum;
+	m_fadsearch_spos = 0xffff;
+	m_fadsearch_fad = 0;
+
+	if (bufnum < MAX_FILTERS && partitions[bufnum].size != -1)
+	{
+		int32_t best = -1;
+		uint32_t const first = (spos == 0xffff) ? (partitions[bufnum].numblks ? partitions[bufnum].numblks - 1 : 0) : spos;
+		for (uint32_t i = first; i < partitions[bufnum].numblks; i++)
+		{
+			blockT const *const blk = partitions[bufnum].blocks[i];
+			if (blk && blk->FAD <= int32_t(fad) && (best < 0 || blk->FAD >= partitions[bufnum].blocks[best]->FAD))
+				best = i;
+		}
+
+		if (best >= 0)
+		{
+			m_fadsearch_spos = best;
+			m_fadsearch_fad = partitions[bufnum].blocks[best]->FAD;
+		}
+	}
+
+	hirqreg |= (CMOK | ESEL);
+	cr_standard_return(cd_stat);
+}
+
+// CDC_GetFadSearch (ST-162 8.2)
+void saturn_cd_hle_device::cmd_get_frame_address_search_results()
+{
+	cr1 = cd_stat;
+	cr2 = m_fadsearch_spos;
+	cr3 = (m_fadsearch_bufnum << 8) | ((m_fadsearch_fad >> 16) & 0xff);
+	cr4 = m_fadsearch_fad & 0xffff;
+	hirqreg |= CMOK;
 }
 
 void saturn_cd_hle_device::cmd_end_data_transfer()
@@ -2102,6 +2162,7 @@ void saturn_cd_hle_device::cd_exec_command()
 		case 0x02: cmd_get_toc(); break;
 		case 0x03: cmd_get_session_info(); break;
 		case 0x04: cmd_init_cdsystem(); break;
+		case 0x05: cmd_open_tray(); break;
 		case 0x06: cmd_end_data_transfer(); break;
 
 		case 0x10: cmd_play_disc(); break;
@@ -2128,8 +2189,8 @@ void saturn_cd_hle_device::cd_exec_command()
 		case 0x52: cmd_calculate_actual_data_size(); break;
 		case 0x53: cmd_get_actual_data_size(); break;
 		case 0x54: cmd_get_sector_information(); break;
-//      case 0x55: cmd_execute_frame_address_search()
-//      case 0x56: cmd_get_frame_address_search_results()
+		case 0x55: cmd_execute_frame_address_search(); break;
+		case 0x56: cmd_get_frame_address_search_results(); break;
 
 		case 0x60: cmd_set_sector_length(); break;
 		case 0x61: cmd_get_sector_data(); break;
