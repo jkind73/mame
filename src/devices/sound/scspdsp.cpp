@@ -112,7 +112,7 @@ void SCSPDSP::Step()
 		u32 const ZERO  = (IPtr[2] >>  1) & 0x01;
 		u32 const BSEL  = (IPtr[2] >>  0) & 0x01;
 
-		u32 const NOFL  = (IPtr[3] >> 15) & 0x01;  //????
+		u32 const NOFL  = (IPtr[3] >>  8) & 0x01;  // bit 8 of the last word (MiSTer SCSP_pkg.sv MPRO_t, Ymir DSPInstr)
 		u32 const COEF  = (IPtr[3] >>  9) & 0x3f;
 
 		u32 const MASA  = (IPtr[3] >>  2) & 0x1f;  //???
