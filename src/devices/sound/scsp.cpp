@@ -1086,11 +1086,35 @@ void scsp_device::w16(u32 addr, u16 val)
 		{
 			*((uint16_t *) (m_DSP.MPRO + (addr - 0x800) / 2)) = val;
 
-			if (addr == 0xBF0)
-			{
-				m_DSP.Start();
-			}
+			// the DSP always runs the program RAM; work out how many steps are in use
+			m_DSP.Start();
 		}
+		else if (addr < 0xE00)
+		{
+			s32 &t = m_DSP.TEMP[(addr >> 2) & 0x7f];
+			if (addr & 2)
+				t = util::sext((t & 0xff) | (val << 8), 24);
+			else
+				t = util::sext((t & 0xffff00) | (val & 0xff), 24);
+		}
+		else if (addr < 0xE80)
+		{
+			s32 &t = m_DSP.MEMS[(addr >> 2) & 0x1f];
+			if (addr & 2)
+				t = util::sext((t & 0xff) | (val << 8), 24);
+			else
+				t = util::sext((t & 0xffff00) | (val & 0xff), 24);
+		}
+		else if (addr < 0xEC0)
+		{
+			s32 &t = m_DSP.MIXSPrev[(addr >> 2) & 0xf];
+			if (addr & 2)
+				t = util::sext((t & 0xf) | (val << 4), 20);
+			else
+				t = util::sext((t & 0xffff0) | (val & 0xf), 20);
+		}
+		else if (addr < 0xEE0)
+			m_DSP.EFREG[(addr - 0xec0) / 2] = val;
 	}
 }
 
@@ -1128,24 +1152,20 @@ u16 scsp_device::r16(u32 addr)
 			v= *((u16 *) (m_DSP.MPRO + (addr - 0x800) / 2));
 		else if (addr < 0xE00)
 		{
-			if (addr & 2)
-				v = m_DSP.TEMP[(addr >> 2) & 0x7f] & 0xffff;
-			else
-				v = m_DSP.TEMP[(addr >> 2) & 0x7f] >> 16;
+			// TEMP and MEMS split each 24 bit entry in two words: [7:0], then [23:8] (ST-77 Figure 4.7)
+			s32 const t = m_DSP.TEMP[(addr >> 2) & 0x7f];
+			v = (addr & 2) ? u16(t >> 8) : u16(t & 0xff);
 		}
 		else if (addr < 0xE80)
 		{
-			if (addr & 2)
-				v = m_DSP.MEMS[(addr >> 2) & 0x1f] & 0xffff;
-			else
-				v = m_DSP.MEMS[(addr >> 2) & 0x1f] >> 16;
+			s32 const t = m_DSP.MEMS[(addr >> 2) & 0x1f];
+			v = (addr & 2) ? u16(t >> 8) : u16(t & 0xff);
 		}
 		else if (addr < 0xEC0)
 		{
-			if (addr & 2)
-				v = m_DSP.MIXS[(addr >> 2) & 0xf] & 0xffff;
-			else
-				v = m_DSP.MIXS[(addr >> 2) & 0xf] >> 16;
+			// MIXS is [3:0], then [19:4]; the program reads the stack of the previous sample
+			s32 const t = m_DSP.MIXSPrev[(addr >> 2) & 0xf];
+			v = (addr & 2) ? u16(t >> 4) : u16(t & 0xf);
 		}
 		else if (addr < 0xEE0)
 			v = *((u16 *) (m_DSP.EFREG + (addr - 0xec0) / 2));
