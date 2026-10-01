@@ -33,6 +33,11 @@ public:
 	// I/O operations
 	void regs_map(address_map &map) ATTR_COLD;
 
+	// Wait states (SCU clocks added to an SH-2 access) of the A-Bus areas: the A-Bus set register
+	// gives the number of normal waits of each area, the access takes that plus 3 (ST-097 A-Bus
+	// set register; MiSTer SCU.sv ABUS_WAIT_CNT = ASR0.A0NW + 3)
+	unsigned abus_waits(u32 address) const;
+
 	void vblank_out_w(int state);
 	void vblank_in_w(int state);
 	void hblank_in_w(int state);
@@ -142,6 +147,7 @@ private:
 	emu_timer *m_dma_tick_timer;
 	uint32_t m_ism;
 	uint32_t m_ist;
+	uint32_t m_asr[2];   // A-Bus set registers ASR0 (0x25fe00b0), ASR1 (0x25fe00b4)
 	uint32_t m_t0c;
 	uint32_t m_t1s;
 	uint32_t m_dma_status;
