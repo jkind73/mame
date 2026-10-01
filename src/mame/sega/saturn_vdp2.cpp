@@ -116,7 +116,7 @@ void saturn_vdp2_device::regs_map(address_map &map)
 {
 	// $5f80000 TVMD TV Mode
 	// x--- ---- ---- ---- DISP (0 = blanked)
-	// -x-- ---- ---- ---- BDCLMD (1 = back screen, 0 = black)
+	// ---- ---x ---- ---- BDCLMD (1 = back screen, 0 = black)
 	// ---- ---- xx-- ---- LSMD interlace mode
 	// ---- ---- --xx ---- VRESO vertical resolution
 	// ---- ---- ---- -xxx HRESO horizontal resolution
