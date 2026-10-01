@@ -60,6 +60,7 @@ saturn_scu_device::saturn_scu_device(const machine_config &mconfig, const char *
 	, m_main_steal_cb(*this)
 	, m_sound_dtack_cb(*this)
 	, m_sound_steal_cb(*this)
+	, m_vdp2_penalty_cb(*this, 0)
 {
 }
 
@@ -771,6 +772,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 		{
 			// direct mode
 
+			const uint32_t write_address = m_dma[level].live_dst;
 			(this->*dma_transfer_table[m_dma[level].mode & 3])(m_dma[level]);
 
 			// direct mode definitely looks burst, where stopping CPUs is a liability to avoid
@@ -779,6 +781,10 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			// - stv:gaxeduel
 			// - sonicjamj Sonic 1 (at least)
 			extra_penalty = m_dma[level].transfer_penalty;
+
+			// a write to VDP2 VRAM waits for the access slots the display leaves free
+			if ((write_address & 0x07f0'0000) == 0x05e0'0000)
+				extra_penalty = std::max<int>(extra_penalty, m_vdp2_penalty_cb((write_address & 0x7ffff) >> 17));
 
 			if (m_dma[level].rup)
 				m_dma[level].src = m_dma[level].live_src;
