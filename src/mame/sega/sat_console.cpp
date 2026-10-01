@@ -478,7 +478,7 @@ protected:
 
 private:
 	void install_cpu_wait_states() ATTR_COLD;
-	unsigned cpu_bus_waits(uint32_t address, bool write) const;
+	unsigned cpu_bus_waits(uint32_t address, bool write, unsigned bits) const;
 
 	// SMPC region codes, hardwired via jumper setting.
 	// - Given the scheme bit 3 should determine if the region is PAL or NTSC.
@@ -640,28 +640,44 @@ void sat_console_state::nvram_init(nvram_device &nvram, void *data, size_t size)
 }
 
 
-// Wait states the SH-2s see on the SCU's buses, in SH-2 clocks added to an access.
-// A-Bus: the A-Bus set register's normal wait count of the area plus 3 (SCU::abus_waits, ST-097
-// and MiSTer SCU.sv ABUS_WAIT_CNT). B-Bus: a fixed cost per chip. MiSTer models the B-Bus cycle by
-// cycle and has no such constants; the figures are the ones noted in saturn_scu.cpp
-// (get_address_flags). A read has to wait for the chip's data and is the slow direction, a write is
-// posted: that is also what Ymir's access times (read 14-40, write 2) show. Virtua Fighter 2 loses
-// its sound effects when the SH-2s get to the SCSP and the video chips too quickly (Ymir notes).
+// Extra SH-2 clocks an access to the SCU's buses and chips takes over a plain one, measured on a
+// real console (hardware probe log "sav1", NTSC 320 mode, SH-2 26.8466 MHz; the timer ticks are
+// FRT phi/32, so clocks per access = (ticks - baseline ticks) * 32 / count of each BUS_* result):
+//   reads:  SCSP regs and sound RAM 47, VDP1 VRAM 28, VDP1 frame buffer 26, VDP1 registers 24,
+//           VDP2 VRAM 40 (8 bit), VDP2 CRAM 19, VDP2 registers 39, SCU registers 7,
+//           A-Bus CS0 50, CD block (CS2) 16
+//   writes: SCSP 15 (29 for 32 bit), VDP1 7 (8 for 32 bit), VDP2 VRAM 1 (2 for 32 bit, 28 for 8 bit),
+//           VDP2 CRAM 1 (2 for 32 bit)
+// Writes to the work RAMs and the on-chip registers are the other end: 0 and 1. Virtua Fighter 2
+// loses its sound effects when the SH-2s get to the SCSP and the video chips too quickly (Ymir
+// notes), reads being the slow direction there.
+// Not measured by the probe and left out: writes to the SCU registers, the A-Bus areas and the
+// SMPC. The A-Bus set registers (ASR0/ASR1, implemented in the SCU) are not used: the A-Bus
+// read of 50 clocks was taken with the BIOS settings and does not follow from ASR + 3.
 // RAM and ROM areas are not tapped (a tap on every access costs too much host time).
-// TODO: the figures need hardware tests.
-unsigned sat_console_state::cpu_bus_waits(uint32_t address, bool write) const
+unsigned sat_console_state::cpu_bus_waits(uint32_t address, bool write, unsigned bits) const
 {
 	address &= 0x07ffffff;
-	if (address >= 0x02000000 && address < 0x05a00000)
-		return m_scu->abus_waits(address);
+	if (address >= 0x02000000 && address < 0x05000000)
+		return write ? 0 : 50;                                   // A-Bus CS0, CS1
+	if (address >= 0x05800000 && address < 0x05900000)
+		return write ? 0 : 16;                                   // CS2: CD block
 	if (address >= 0x05a00000 && address < 0x05c00000)
-		return write ? 13 : 24;     // SCSP
-	if (address >= 0x05c00000 && address < 0x05e00000)
-		return write ? 9 : 14;      // VDP1
-	if (address >= 0x05e00000 && address < 0x05fe0000)
-		return write ? 3 : 20;      // VDP2
+		return write ? (bits > 16 ? 29 : 15) : 47;               // SCSP
+	if (address >= 0x05c00000 && address < 0x05c80000)
+		return write ? (bits > 16 ? 8 : 7) : 28;                 // VDP1 VRAM
+	if (address >= 0x05c80000 && address < 0x05d00000)
+		return write ? (bits > 16 ? 8 : 7) : 26;                 // VDP1 frame buffer
+	if (address >= 0x05d00000 && address < 0x05e00000)
+		return write ? 7 : 24;                                   // VDP1 registers
+	if (address >= 0x05e00000 && address < 0x05f00000)
+		return write ? (bits <= 8 ? 28 : bits > 16 ? 2 : 1) : 40;   // VDP2 VRAM
+	if (address >= 0x05f00000 && address < 0x05f80000)
+		return write ? (bits > 16 ? 2 : 1) : 19;                 // VDP2 CRAM
+	if (address >= 0x05f80000 && address < 0x05fc0000)
+		return write ? 1 : 39;                                   // VDP2 registers
 	if (address >= 0x05fe0000 && address < 0x05ff0000)
-		return write ? 4 : 8;       // SCU registers
+		return write ? 0 : 7;                                    // SCU registers
 	return 0;
 }
 
@@ -674,21 +690,21 @@ void sat_console_state::install_cpu_wait_states()
 
 	for (sh7604_device *const cpu : { m_maincpu.target(), m_slave.target() })
 	{
-		auto const wait = [this, cpu](offs_t offset, bool write)
+		auto const wait = [this, cpu](offs_t offset, bool write, uint32_t mem_mask)
 		{
 			// only accesses the CPU makes itself: the SCU DMA goes through the same address space
 			device_execute_interface *const exec = machine().scheduler().currently_executing();
 			if (exec == static_cast<device_execute_interface *>(cpu))
 			{
-				unsigned const waits = cpu_bus_waits(offset << 2, write);
+				unsigned const waits = cpu_bus_waits(offset << 2, write, std::popcount(mem_mask));
 				if (waits)
 					exec->adjust_icount(-int(waits));
 			}
 		};
-		cpu->space(AS_PROGRAM).install_read_tap(0x02000000, 0x05fdffff, "bus_wait_r", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, false); });
-		cpu->space(AS_PROGRAM).install_write_tap(0x02000000, 0x05fdffff, "bus_wait_w", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, true); });
-		cpu->space(AS_PROGRAM).install_read_tap(0x05fe0000, 0x05feffff, "bus_wait_scu_r", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, false); });
-		cpu->space(AS_PROGRAM).install_write_tap(0x05fe0000, 0x05feffff, "bus_wait_scu_w", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, true); });
+		cpu->space(AS_PROGRAM).install_read_tap(0x02000000, 0x05fdffff, "bus_wait_r", [wait](offs_t offset, uint32_t &, uint32_t mem_mask) { wait(offset, false, mem_mask); });
+		cpu->space(AS_PROGRAM).install_write_tap(0x02000000, 0x05fdffff, "bus_wait_w", [wait](offs_t offset, uint32_t &, uint32_t mem_mask) { wait(offset, true, mem_mask); });
+		cpu->space(AS_PROGRAM).install_read_tap(0x05fe0000, 0x05feffff, "bus_wait_scu_r", [wait](offs_t offset, uint32_t &, uint32_t mem_mask) { wait(offset, false, mem_mask); });
+		cpu->space(AS_PROGRAM).install_write_tap(0x05fe0000, 0x05feffff, "bus_wait_scu_w", [wait](offs_t offset, uint32_t &, uint32_t mem_mask) { wait(offset, true, mem_mask); });
 	}
 }
 
