@@ -192,6 +192,7 @@ private:
 	void StartSlot(SCSP_SLOT *slot);
 	void StopSlot(SCSP_SLOT *slot, int keyoff);
 	void init();
+	void init_state();
 	void UpdateSlotReg(int s, int r);
 	void UpdateReg(int reg);
 	void UpdateSlotRegR(int slot, int reg);

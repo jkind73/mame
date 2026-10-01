@@ -314,6 +314,38 @@ void scsp_device::device_reset()
 {
 	set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
 	set_rate(31250);
+
+	// Power-on state of the chip: the SMPC clock change commands bring the SCSP back to it
+	// (ST-169 CKCHG352/CKCHG320: "VDP1, VDP2, SCU, SCSP: default value during power on"). Sound RAM
+	// is not touched. Without this the DSP program and the registers set up by the boot ROM keep
+	// running over the sound driver that the game loads afterwards.
+	if (m_stream == nullptr)
+		return; // first reset happens before the stream exists, init() has cleared everything
+
+	m_timerA->adjust(attotime::never);
+	m_timerB->adjust(attotime::never);
+	m_timerC->adjust(attotime::never);
+	m_timerS->adjust(attotime::never);
+
+	if (m_cur_irq_level)
+		m_irq_cb((offs_t)m_cur_irq_level, CLEAR_LINE);
+	m_cur_irq_level = 0;
+
+	memset(&m_Slots, 0, sizeof(m_Slots));
+	memset(&m_udata.data, 0, sizeof(m_udata.data));
+	std::fill(std::begin(m_RINGBUF), std::end(m_RINGBUF), 0);
+	m_BUFPTR = 0;
+	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
+	m_eg_counter = 0;
+	m_lfsr = 1;
+	memset(&m_dma, 0, sizeof(m_dma));
+	m_mcieb = 0;
+	m_mcipd = 0;
+	m_main_irq_cb(0);
+
+	init_state();
+	set_output_gain(0, master_gain());
+	set_output_gain(1, master_gain());
 }
 
 //-------------------------------------------------
@@ -699,19 +731,12 @@ void scsp_device::init()
 {
 	int i;
 
-	m_DSP.Init();
+	init_state();
 
-	m_IrqTimA = m_IrqTimBC = m_IrqMidi = m_IrqCPU = m_IrqDMA = 0;
-	m_MidiR = m_MidiW = 0;
-	m_MidiOverflow = false;
-	m_MidiOutR = m_MidiOutW = 0;
-
-	m_DSP.space = &this->space();
 	m_timerA = timer_alloc(FUNC(scsp_device::timerA_cb), this);
 	m_timerB = timer_alloc(FUNC(scsp_device::timerB_cb), this);
 	m_timerC = timer_alloc(FUNC(scsp_device::timerC_cb), this);
 	m_timerS = timer_alloc(FUNC(scsp_device::timerS_cb), this);
-	m_cur_irq_level = 0;
 
 	for (i = 0; i < 0x400; ++i)
 	{
@@ -771,8 +796,23 @@ void scsp_device::init()
 		m_RPANTABLE[i] = FIX((4.0f * RPAN * TL * fSDL));
 	}
 
+	LFO_Init();
+}
+
+// register and processing state that goes back to its power-on value on a reset
+void scsp_device::init_state()
+{
+	m_DSP.Init();
+	m_DSP.space = &this->space();
+
+	m_IrqTimA = m_IrqTimBC = m_IrqMidi = m_IrqCPU = m_IrqDMA = 0;
+	m_MidiR = m_MidiW = 0;
+	m_MidiOverflow = false;
+	m_MidiOutR = m_MidiOutW = 0;
+	m_cur_irq_level = 0;
+
 	// make sure all the slots are off
-	for (i = 0; i < 32; ++i)
+	for (int i = 0; i < 32; ++i)
 	{
 		m_Slots[i].slot = i;
 		m_Slots[i].active = 0;
@@ -780,7 +820,6 @@ void scsp_device::init()
 		m_Slots[i].EG.att = 0x3ff;
 	}
 
-	LFO_Init();
 	// no "pend"
 	m_udata.data[0x20/2] = 0;
 	m_TimCnt[0] = 0xffff;
