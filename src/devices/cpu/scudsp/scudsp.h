@@ -142,6 +142,7 @@ private:
 	address_space *m_data;
 	int m_icount;
 	uint8_t m_update_mul;
+	bool m_paused;
 
 	emu_timer *m_dma_timer;
 	enum dma_state_t : uint8_t {
@@ -168,6 +169,7 @@ private:
 	void op_loop(uint32_t opcode);
 	void op_end(uint32_t opcode);
 	void exec_dma();
+	void execute_one();
 };
 
 
