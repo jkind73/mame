@@ -177,6 +177,9 @@ private:
 	uint8_t cdda_maxrepeat;
 	uint8_t cdda_repeat_count;
 	uint8_t tray_is_closed;
+	uint8_t m_fadsearch_bufnum = 0;
+	uint16_t m_fadsearch_spos = 0;
+	uint32_t m_fadsearch_fad = 0;
 	bool m_status_change_in_progress, m_seek_in_progress;
 	int get_timing_command( void );
 
@@ -195,6 +198,7 @@ private:
 	void cmd_get_toc();
 	void cmd_get_session_info();
 	void cmd_init_cdsystem();
+	void cmd_open_tray();
 	void cmd_end_data_transfer();
 	// 0x10
 	void cmd_play_disc();
@@ -221,6 +225,8 @@ private:
 	void cmd_calculate_actual_data_size();
 	void cmd_get_actual_data_size();
 	void cmd_get_sector_information();
+	void cmd_execute_frame_address_search();
+	void cmd_get_frame_address_search_results();
 	// 0x60
 	void cmd_set_sector_length();
 	void cmd_get_sector_data();
