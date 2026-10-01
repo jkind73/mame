@@ -1192,15 +1192,18 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 		addr2 = (slot->nxt_addr >> (SHIFT - 1)) & ~1;
 	}
 
-	if (MDL(slot) != 0 || MDXSL(slot) != 0 || MDYSL(slot) != 0)
+	// FM: ST-77 Table 4.15 gives no modulation for MDL 0-4. The averaged X/Y inputs are scaled with
+	// six fractional bits: the integer part moves the sample index and the fraction adds to the
+	// interpolation phase (MiSTer MDCalc/MOD_PHASE, Ymir SlotProcessStep3_2). The ring buffer holds
+	// twice the slot output, so the sum of the two inputs is ((X + Y) / 2) of its entries.
+	int mod_int = 0;
+	int mod_frac = 0;
+	if (MDL(slot) >= 5)
 	{
-		s32 smp = (m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] + m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) / 2;
-
-		smp <<= 0xA; // associate cycle with 1024
-		smp >>= 0x1A - MDL(slot); // ex. for MDL=0xF, sample range corresponds to +/- 64 pi (32=2^5 cycles) so shift by 11 (16-5 == 0x1A-0xF)
-		if (!PCM8B(slot)) smp <<= 1;
-
-		addr1 += smp; addr2 += smp;
+		s32 const zd = ((m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] + m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) >> 1) & 0x3ffffe;
+		s32 const md = util::sext((zd << 5) >> (16 - MDL(slot)), 16);
+		mod_int = util::sext(md >> 5, 11);
+		mod_frac = (md & 0x1f) << 1;
 	}
 
 	// the SBCTL bit inversion is applied to the samples before they are interpolated (Ymir
@@ -1216,7 +1219,11 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 
 	if (SSCTL(slot) == 0) // External DRAM data
 	{
-		s32 const fpart = (slot->cur_addr & ((1 << SHIFT) - 1)) >> (SHIFT - 6);
+		s32 fpart = ((slot->cur_addr & ((1 << SHIFT) - 1)) >> (SHIFT - 6)) + mod_frac;
+		s32 const idx_off = mod_int + (fpart >> 6);
+		fpart &= 0x3f;
+		addr1 += PCM8B(slot) ? idx_off : idx_off * 2;
+		addr2 += PCM8B(slot) ? idx_off : idx_off * 2;
 		if (PCM8B(slot)) //8 bit signed
 		{
 			s32 const p1 = sbctl(s32(int8_t(read_byte(SA(slot) + addr1))) << 8);
