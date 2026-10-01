@@ -478,6 +478,7 @@ protected:
 
 private:
 	void install_cpu_wait_states() ATTR_COLD;
+	unsigned cpu_bus_waits(uint32_t address, bool write) const;
 
 	// SMPC region codes, hardwired via jumper setting.
 	// - Given the scheme bit 3 should determine if the region is PAL or NTSC.
@@ -639,35 +640,32 @@ void sat_console_state::nvram_init(nvram_device &nvram, void *data, size_t size)
 }
 
 
-// SH-2 bus access times of the I/O regions, in SH-2 clocks per access (8, 16 and 32 bit, read and
-// write). Values from Ymir (Saturn::ConfigureAccessCycles), where they are what Virtua Fighter 2
-// needs: its sound effects go missing when the SH-2 reaches the SCSP and the video chips too
-// quickly. The CPU core already counts one clock for the access itself, so only the rest is
-// charged. RAM and ROM regions are not tapped (a tap on every access costs too much host time):
-// their access times are not modelled here.
-namespace {
-
-struct bus_timing
+// Wait states the SH-2s see on the SCU's buses, in SH-2 clocks added to an access.
+// A-Bus: the A-Bus set register's normal wait count of the area plus 3 (SCU::abus_waits, ST-097
+// and MiSTer SCU.sv ABUS_WAIT_CNT). B-Bus: a fixed cost per chip. MiSTer models the B-Bus cycle by
+// cycle and has no such constants; the figures are the ones noted in saturn_scu.cpp
+// (get_address_flags). A read has to wait for the chip's data and is the slow direction, a write is
+// posted: that is also what Ymir's access times (read 14-40, write 2) show. Virtua Fighter 2 loses
+// its sound effects when the SH-2s get to the SCSP and the video chips too quickly (Ymir notes).
+// RAM and ROM areas are not tapped (a tap on every access costs too much host time).
+// TODO: the figures need hardware tests.
+unsigned sat_console_state::cpu_bus_waits(uint32_t address, bool write) const
 {
-	offs_t start, end;
-	uint8_t r8, w8, r16, w16, r32, w32;
-};
+	address &= 0x07ffffff;
+	if (address >= 0x02000000 && address < 0x05a00000)
+		return m_scu->abus_waits(address);
+	if (address >= 0x05a00000 && address < 0x05c00000)
+		return write ? 13 : 24;     // SCSP
+	if (address >= 0x05c00000 && address < 0x05e00000)
+		return write ? 9 : 14;      // VDP1
+	if (address >= 0x05e00000 && address < 0x05fe0000)
+		return write ? 3 : 20;      // VDP2
+	if (address >= 0x05fe0000 && address < 0x05ff0000)
+		return write ? 4 : 8;       // SCU registers
+	return 0;
+}
 
-constexpr bus_timing saturn_bus_timings[] = {
-	{ 0x00100000, 0x0017ffff,  4, 2,  4, 2,  8, 4 },  // SMPC registers
-	{ 0x01000000, 0x01ffffff,  4, 2,  4, 2,  8, 4 },  // MINIT/SINIT area
-	{ 0x05000000, 0x057fffff,  8, 2,  8, 2,  8, 2 },  // A-Bus dummy area
-	{ 0x05800000, 0x058fffff, 40, 40, 40, 40, 40, 40 },  // A-Bus CS2 (CD block, NetLink)
-	{ 0x05a00000, 0x05bfffff, 40, 2, 40, 2, 40, 2 },  // SCSP RAM, registers
-	{ 0x05c00000, 0x05cfffff, 22, 2, 22, 2, 22, 2 },  // VDP1 VRAM, frame buffer
-	{ 0x05d00000, 0x05d7ffff, 14, 2, 14, 2, 14, 2 },  // VDP1 registers
-	{ 0x05e00000, 0x05fbffff, 20, 2, 20, 2, 20, 2 },  // VDP2 VRAM, CRAM, registers
-	{ 0x05fe0000, 0x05feffff,  4, 2,  4, 2,  4, 2 }   // SCU registers
-};
-
-} // anonymous namespace
-
-// SATURN_BUS_TIMING=0 turns the access times off (diagnostics)
+// SATURN_BUS_TIMING=0 turns the wait states off (diagnostics)
 void sat_console_state::install_cpu_wait_states()
 {
 	char const *const env = std::getenv("SATURN_BUS_TIMING");
@@ -676,23 +674,21 @@ void sat_console_state::install_cpu_wait_states()
 
 	for (sh7604_device *const cpu : { m_maincpu.target(), m_slave.target() })
 	{
-		for (bus_timing const &t : saturn_bus_timings)
+		auto const wait = [this, cpu](offs_t offset, bool write)
 		{
-			auto const wait = [this, cpu, &t](bool write, uint32_t mem_mask)
+			// only accesses the CPU makes itself: the SCU DMA goes through the same address space
+			device_execute_interface *const exec = machine().scheduler().currently_executing();
+			if (exec == static_cast<device_execute_interface *>(cpu))
 			{
-				unsigned const bits = std::popcount(mem_mask);
-				unsigned const cycles = bits <= 8 ? (write ? t.w8 : t.r8) : bits <= 16 ? (write ? t.w16 : t.r16) : (write ? t.w32 : t.r32);
-				if (cycles > 1)
-				{
-					// only accesses the CPU makes itself: the SCU DMA goes through the same address space
-					device_execute_interface *const exec = machine().scheduler().currently_executing();
-					if (exec == static_cast<device_execute_interface *>(cpu))
-						exec->adjust_icount(-int(cycles - 1));
-				}
-			};
-			cpu->space(AS_PROGRAM).install_read_tap(t.start, t.end, "bus_wait_r", [wait](offs_t, uint32_t &, uint32_t mem_mask) { wait(false, mem_mask); });
-			cpu->space(AS_PROGRAM).install_write_tap(t.start, t.end, "bus_wait_w", [wait](offs_t, uint32_t &, uint32_t mem_mask) { wait(true, mem_mask); });
-		}
+				unsigned const waits = cpu_bus_waits(offset << 2, write);
+				if (waits)
+					exec->adjust_icount(-int(waits));
+			}
+		};
+		cpu->space(AS_PROGRAM).install_read_tap(0x02000000, 0x05fdffff, "bus_wait_r", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, false); });
+		cpu->space(AS_PROGRAM).install_write_tap(0x02000000, 0x05fdffff, "bus_wait_w", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, true); });
+		cpu->space(AS_PROGRAM).install_read_tap(0x05fe0000, 0x05feffff, "bus_wait_scu_r", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, false); });
+		cpu->space(AS_PROGRAM).install_write_tap(0x05fe0000, 0x05feffff, "bus_wait_scu_w", [wait](offs_t offset, uint32_t &, uint32_t) { wait(offset, true); });
 	}
 }
 
