@@ -1006,6 +1006,14 @@ void sat_console_state::saturneu(machine_config &config)
 	saturn(config);
 	m_vdp2->set_is_pal(true);
 
+	// start with the PAL clocks of the 352 dot mode (CPUs, SCU) and of the 320 dot mode (video), as the NTSC machine does
+	m_maincpu->set_clock(MASTER_CLOCK_352_PAL / 2);
+	m_slave->set_clock(MASTER_CLOCK_352_PAL / 2);
+	m_dcc->set_clock(MASTER_CLOCK_352_PAL);
+	m_scu->set_clock(MASTER_CLOCK_352_PAL);
+	m_vdp1->set_clock(MASTER_CLOCK_320_PAL / 2);
+	m_vdp2->set_clock(MASTER_CLOCK_320_PAL);
+
 	SATURN_CDB(config, "saturn_cdb", 16000000);
 
 	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("PAL");

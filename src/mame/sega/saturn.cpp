@@ -243,7 +243,9 @@ void saturn_state::system_halt_w(int state)
 
 void saturn_state::dot_select_w(int state)
 {
-	const XTAL &xtal = state ? MASTER_CLOCK_320 : MASTER_CLOCK_352;
+	// the PAL clocks are those of the same two modes at the PAL line rate (Overview Manual Rel.2.5, Table 3.1.1)
+	const bool pal = m_vdp2->is_pal();
+	const XTAL xtal = state ? (pal ? MASTER_CLOCK_320_PAL : MASTER_CLOCK_320) : (pal ? MASTER_CLOCK_352_PAL : MASTER_CLOCK_352);
 
 	m_maincpu->set_unscaled_clock(xtal / 2);
 	m_slave->set_unscaled_clock(xtal / 2);

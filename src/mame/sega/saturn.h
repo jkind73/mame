@@ -132,6 +132,10 @@ protected:
 // i.e. 1708 clocks per line at the NTSC line rate of 15734.27 Hz (colour burst clock / 910); 352 dot mode is
 // 28.6364 MHz, 1820 clocks per line. Both are the colour burst clock times clocks per line / 455.
 #define MASTER_CLOCK_320 XTAL(14'318'181) * 1708.0 / 455.0
+// PAL: SH-2 26.6877 MHz in 320 dot mode and 28.4377 MHz in 352 dot mode (Tables 3.1.1 and 3.2.1), the clocks
+// per line of the NTSC modes at the PAL line rate of 15625 Hz (the manual rounds the clocks, as above)
+#define MASTER_CLOCK_320_PAL (MASTER_CLOCK_320 * (26.6877 / 26.8741))
+#define MASTER_CLOCK_352_PAL (MASTER_CLOCK_352 * (28.4377 / 28.6364))
 
 
 #endif // MAME_SEGA_SATURN_H
