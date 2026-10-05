@@ -132,10 +132,7 @@ private:
 		DMA_LV2_MOVE      = 1 << 12, // D2MV
 		DMA_LV2_WAIT      = 1 << 13, // D2WT
 		DMA_LV0_BK        = 1 << 16, // D0BK
-		DMA_LV1_BK        = 1 << 17, // D1BK
-		DMA_ACCESS_A_BUS  = 1 << 20, // DACSA
-		DMA_ACCESS_B_BUS  = 1 << 21, // DACSB
-		DMA_ACCESS_DSP    = 1 << 22  // DACSD
+		DMA_LV1_BK        = 1 << 17  // D1BK
 	};
 
 	enum dma_state_t : uint32_t {
@@ -167,8 +164,6 @@ private:
 	uint32_t m_dma_clock_ref;
 
 	void test_pending_irqs();
-	void dma_force_stop_w(u32 data);
-	void update_dma_access_flags(int level);
 
 	// intended to be used as bitwise
 	enum dma_mode_t : uint32_t {

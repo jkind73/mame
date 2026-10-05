@@ -175,10 +175,8 @@ void saturn_scu_device::regs_map(address_map &map)
 	map(0x0040, 0x0057).m(*this, FUNC(saturn_scu_device::dma_map<2>));
 	// stv:smleague and shinmtaz reads from $005c (undocumented), DMA status mirror?
 	map(0x005c, 0x005f).r(FUNC(saturn_scu_device::dma_status_r));
-	map(0x0060, 0x0063).lw32(NAME([this] (offs_t offset, u32 data, u32 mem_mask) {
-		if (ACCESSING_BITS_0_7)
-			dma_force_stop_w(data);
-	}));
+	// $0060 (DMA forced stop) and the DMA access bits of the status register (DACSA/DACSB/DACSD)
+	// were deleted from the SCU manual in Rel.2.5 (errata SCU 2, 4, 5, 10, 16): unused
 	map(0x007c, 0x007f).r(FUNC(saturn_scu_device::dma_status_r));
 	map(0x0080, 0x0083).rw(m_scudsp, FUNC(scudsp_cpu_device::program_control_r), FUNC(scudsp_cpu_device::program_control_w));
 	map(0x0084, 0x0087).w(m_scudsp, FUNC(scudsp_cpu_device::program_w));
@@ -247,9 +245,9 @@ void saturn_scu_device::device_add_mconfig(machine_config &config)
 	m_scudsp->out_ddmv_callback().set([this] (int state) {
 		//m_main_dtack_cb(state);
 		if (state)
-			m_dma_status |= DMA_DSP_MOVE | DMA_ACCESS_DSP;
+			m_dma_status |= DMA_DSP_MOVE;
 		else
-			m_dma_status &= ~(DMA_DSP_MOVE | DMA_ACCESS_DSP);
+			m_dma_status &= ~(DMA_DSP_MOVE);
 	});
 
 }
@@ -419,23 +417,6 @@ inline void saturn_scu_device::update_dma_status(int level, dma_state_t new_stat
 	m_dma_status |= (new_state << 4 * level);
 
 	LOGMASKED(LOG_DMA_STATE, "%s (%08x)\n", status_names[(m_dma_status >> log_shifts[level]) & 0x3], m_dma_status);
-}
-
-// DACSA/DACSB: which buses the running DMA touches (ST-97 Figure 3.13)
-void saturn_scu_device::update_dma_access_flags(int level)
-{
-	m_dma_status &= ~(DMA_ACCESS_A_BUS | DMA_ACCESS_B_BUS);
-	if (level < 0)
-		return;
-
-	for (u32 const address : { m_dma[level].live_src, m_dma[level].live_dst })
-	{
-		u16 const flags = std::get<0>(get_address_flags(address, false));
-		if ((flags & 0x0300) == 0x0100)
-			m_dma_status |= DMA_ACCESS_A_BUS;
-		else if ((flags & 0x0300) == 0x0200)
-			m_dma_status |= DMA_ACCESS_B_BUS;
-	}
 }
 
 std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address, bool write_op)
@@ -1197,25 +1178,6 @@ void saturn_scu_device::abus_irq_w(unsigned n, int state)
 	if (!BIT(m_abus_ack_pending, n))
 		m_ist |= 1u << (16 + n);
 	test_pending_irqs();
-}
-
-void saturn_scu_device::dma_force_stop_w(u32 data)
-{
-	// DSTP: bit 0 stops DMA in operation (ST-97 Figure 3.11)
-	if (!BIT(data, 0))
-		return;
-
-	for (int level = 0; level < 3; level++)
-	{
-		m_dma[level].done = false;
-		m_dma[level].live_count = 0;
-		m_dma[level].indirect_fetch_phase = false;
-		m_dma_status &= ~((0x30 << (4 * level)) | (level < 2 ? (1 << (16 + level)) : 0));
-	}
-	m_dma_status &= ~(DMA_ACCESS_A_BUS | DMA_ACCESS_B_BUS);
-	m_dma_tick_timer->adjust(attotime::never);
-	m_main_dtack_cb(0);
-	m_sound_dtack_cb(0);
 }
 
 //**************************************************************************
