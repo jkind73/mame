@@ -128,7 +128,10 @@ protected:
 
 // These two clocks are synthesized by the 315-5746
 #define MASTER_CLOCK_352 XTAL(14'318'181)*4
-#define MASTER_CLOCK_320 XTAL(14'318'181)*3.75
+// 320 dot mode: SH-2 26.8741 MHz, SCU DSP 13.4371 MHz (Sega Saturn Overview Manual Rel.2.5, Tables 3.1.1 and 3.2.1),
+// i.e. 1708 clocks per line at the NTSC line rate of 15734.27 Hz (colour burst clock / 910); 352 dot mode is
+// 28.6364 MHz, 1820 clocks per line. Both are the colour burst clock times clocks per line / 455.
+#define MASTER_CLOCK_320 XTAL(14'318'181) * 1708.0 / 455.0
 
 
 #endif // MAME_SEGA_SATURN_H
