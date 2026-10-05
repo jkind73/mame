@@ -1020,11 +1020,11 @@ void scsp_device::UpdateRegR(int reg)
 		case 4:
 		case 5:
 			{
-				// MIEMP, MIFULL and MIOVF of the 4 byte input FIFO and MOEMP, MOFULL of the output one (ST-77 MIDI Register)
+				// MIFULL and MIOVF of the 4 byte input FIFO and MOEMP, MOFULL of the output one (ST-77 MIDI Register).
+				// MIEMP (input FIFO empty, bit 8) was deleted from the SCSP manual in Rel.2.5 (errata SCSP 5, 9), so it reads 0.
 				unsigned const in_count = (m_MidiW - m_MidiR) & 31;
 				unsigned const out_count = (m_MidiOutW - m_MidiOutR) & 31;
 				u16 v = 0;
-				v |= in_count == 0 ? 0x0100 : 0;
 				v |= in_count >= 4 ? 0x0200 : 0;
 				v |= m_MidiOverflow ? 0x0400 : 0;
 				v |= out_count == 0 ? 0x0800 : 0;
