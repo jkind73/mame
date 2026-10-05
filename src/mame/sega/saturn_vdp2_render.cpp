@@ -1201,7 +1201,10 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		// and bit 0 is not used (ST-058 Table 8.2), so compare field lines
 		unsigned const wy = ddi ? (y >> 1) : y;
 		unsigned const csy = ddi ? (sy >> 1) : sy, cey = ddi ? (ey >> 1) : ey;
-		wy_hit[w] = (wy >= csy && wy <= cey && sy != 0x1fe && ey < 0x1fe) ||
+		// a vertical end point of 1FCH-1FFH disables the window in double density interlace
+		// (VDP2 manual Rel.2.5 erratum 9, section 8.1); VDP2.sv only cuts off 1FEH and up
+		unsigned const ey_limit = ddi ? 0x1fcU : 0x1feU;
+		wy_hit[w] = (wy >= csy && wy <= cey && sy != 0x1fe && ey < ey_limit) ||
 				(ey >= (m_cfg.pal ? 0x100U : 0xf0U) && ey <= 0x1ed && !ddi);
 	}
 	for (unsigned x = 0; x < width; x++)
