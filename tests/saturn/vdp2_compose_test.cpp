@@ -46,9 +46,13 @@ int main()
 
 	// Extended: sec/2 + thd/4 + fth/4 with both ratios, sec/2 + thd/2 with one.
 	rgb w{255, 0, 0};
-	CHECK(ext_color_calc(w, true, w, false, true, w, true, false, 0, true).r == 127 + 63 + 63);
-	CHECK(ext_color_calc(w, true, w, false, false, w, false, false, 0, true).r == 127 + 127);
-	CHECK(ext_color_calc(w, false, w, false, false, w, false, false, 0, true).r == 255);
+	CHECK(ext_color_calc(w, true, w, false, true, w, false, true, false, 0, true).r == 127 + 63 + 63);
+	CHECK(ext_color_calc(w, true, w, false, false, w, false, false, false, 0, true).r == 127 + 127);
+	CHECK(ext_color_calc(w, false, w, false, false, w, false, false, false, 0, true).r == 255);
+	// Table 12.2, colour RAM mode 1/2 with line colour: RGB third and fourth give 2:1:1,
+	// a palette fourth gives 2:2:0
+	CHECK(ext_color_calc(w, true, w, false, true, w, false, true, false, 1, true).r == 127 + 63 + 63);
+	CHECK(ext_color_calc(w, true, w, false, true, w, true, true, false, 1, true).r == 127 + 127);
 	std::puts("ok");
 	return 0;
 }

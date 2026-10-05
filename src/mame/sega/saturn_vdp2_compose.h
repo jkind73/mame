@@ -113,11 +113,13 @@ inline uint8_t ext_mix(uint8_t sec, uint8_t thd, uint8_t fth, bool rt_sec, bool 
 // VDP2_pkg.sv ExtColorCalc. crmd is RAMCTL.CRMD, exccen already includes
 // ~BOKEN as the RTL passes it.
 inline rgb ext_color_calc(rgb sec, bool ccen_sec, rgb thd, bool palette_thd, bool ccen_thd,
-                          rgb fth, bool lcen, bool boken, unsigned crmd, bool exccen)
+                          rgb fth, bool palette_fth, bool lcen, bool boken, unsigned crmd, bool exccen)
 {
 	bool const rgb_mode = crmd != 0;
 	bool const rt_sec = (ccen_sec && !(rgb_mode && palette_thd) && exccen) || (boken && !rgb_mode);
-	bool const rt_thd = (ccen_thd && lcen && exccen) || (boken && !rgb_mode);
+	// ST-058 Table 12.2: in colour RAM modes 1 and 2 a palette format fourth image
+	// (the one below the line colour insertion) leaves 2:2:0 instead of 2:1:1
+	bool const rt_thd = (ccen_thd && lcen && exccen && !(rgb_mode && palette_fth)) || (boken && !rgb_mode);
 	return { ext_mix(sec.r, thd.r, fth.r, rt_sec, rt_thd),
 	         ext_mix(sec.g, thd.g, fth.g, rt_sec, rt_thd),
 	         ext_mix(sec.b, thd.b, fth.b, rt_sec, rt_thd) };

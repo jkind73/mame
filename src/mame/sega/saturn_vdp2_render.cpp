@@ -1368,7 +1368,7 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		if (!hires && !m_cfg.exclusive) {
 			rgb const cthd = boken_prev1 ? csec_prev1 : to_rgb(thd.dc);
 			rgb const cfth = boken_prev2 ? csec_prev2 : to_rgb(fth.dc);
-			csec = ext_color_calc(csec, sec.ccen, cthd, thd.palette, thd.ccen, cfth, first.lcen, sec.boken, d.crmd, exccen);
+			csec = ext_color_calc(csec, sec.ccen, cthd, thd.palette, thd.ccen, cfth, fth.palette, first.lcen, sec.boken, d.crmd, exccen);
 			boken_prev2 = boken_prev1;
 			csec_prev2 = csec_prev1;
 			boken_prev1 = sec.boken;
