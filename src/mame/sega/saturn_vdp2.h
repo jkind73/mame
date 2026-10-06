@@ -47,7 +47,10 @@ private:
 	devcb_write_line m_hint_cb;
 
 	// CRTC
-	emu_timer *m_video_sync_timer;
+	emu_timer *m_hblank_timer;
+	emu_timer *m_vblank_timer;
+	bool m_hblank_rising;  // the next HBLANK-IN event raises the signal; otherwise it drops it
+	bool m_vblank_next_in; // the next vertical event is VBLANK-IN; otherwise it is VBLANK-OUT
 
 	bool m_is_pal;
 	bool m_dotsel_352;
@@ -68,7 +71,13 @@ private:
 
 	bool m_vramsz;
 
-	TIMER_CALLBACK_MEMBER( sync_timer_cb );
+	TIMER_CALLBACK_MEMBER( hblank_timer_cb );
+	TIMER_CALLBACK_MEMBER( vblank_timer_cb );
+	void schedule_hblank();
+	void schedule_vblank();
+	int dot_scale() const;
+	int hblank_in_dot() const;
+	int hblank_out_dot() const;
 
 	void init_vcounter_table();
 	void reconfigure_crtc();

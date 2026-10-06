@@ -31,7 +31,10 @@ saturn_vdp2_device::saturn_vdp2_device(const machine_config &mconfig, const char
 
 void saturn_vdp2_device::device_start()
 {
-	m_video_sync_timer = timer_alloc(FUNC(saturn_vdp2_device::sync_timer_cb), this);
+	m_hblank_timer = timer_alloc(FUNC(saturn_vdp2_device::hblank_timer_cb), this);
+	m_vblank_timer = timer_alloc(FUNC(saturn_vdp2_device::vblank_timer_cb), this);
+	m_hblank_rising = true;
+	m_vblank_next_in = true;
 	init_vcounter_table();
 
 	save_item(NAME(m_tvmd));
@@ -45,6 +48,8 @@ void saturn_vdp2_device::device_start()
 	save_item(NAME(m_hdisplay));
 	save_item(NAME(m_vdisplay));
 	save_item(NAME(m_dotsel_352));
+	save_item(NAME(m_hblank_rising));
+	save_item(NAME(m_vblank_next_in));
 
 	save_item(NAME(m_exten));
 	save_item(NAME(m_exlten));
@@ -66,8 +71,6 @@ void saturn_vdp2_device::device_start()
 
 void saturn_vdp2_device::device_reset()
 {
-	m_video_sync_timer->adjust(m_screen->time_until_pos(0), 0);
-
 	m_odd_bit = 1;
 	// shouldn't really matter
 	m_old_tvmd = 0xffff;
@@ -326,6 +329,8 @@ void saturn_vdp2_device::reconfigure_crtc()
 	m_vdisplay = vert_res;
 
 	m_screen->configure(hblank_period, vblank_period, visarea, refresh);
+	schedule_hblank();
+	schedule_vblank();
 }
 
 int saturn_vdp2_device::get_hcounter()
@@ -378,29 +383,25 @@ int saturn_vdp2_device::get_vcounter()
 	return (true_vcount[vcount & 0x1ff][m_vreso]); // Non-interlace
 }
 
-// TODO: refine hblank/vblank positions
+// The TVSTAT HBLANK flag is set from dot 0x144 (0x164 in a 352 dot mode) until dot 4 of the
+// next line, in low resolution dots (MiSTer VDP2.sv HBLANK_START). The vertical blank flag is
+// set from the first line of the interval to the line before the last.
 int saturn_vdp2_device::get_hblank()
 {
-	const rectangle &visarea = m_screen->visible_area();
-	int cur_h = m_screen->hpos();
+	if (BIT(m_hreso, 2))
+		return m_screen->hpos() > m_screen->visible_area().right() ? 1 : 0; // TODO: exclusive monitor modes
 
-	if (cur_h > visarea.right()) //TODO
-		return 1;
-
-	return 0;
+	int const dot = m_screen->hpos() / dot_scale();
+	int const start = BIT(m_hreso, 0) ? 0x164 : 0x144;
+	return dot >= start || dot < 4 ? 1 : 0;
 }
 
 int saturn_vdp2_device::get_vblank()
 {
-	int cur_v, vblank_line;
-	cur_v = m_screen->vpos();
+	int const cur_v = m_screen->vpos();
+	int const first = get_vblank_start_position() * get_ystep_count();
 
-	vblank_line = get_vblank_start_position() * get_ystep_count();
-
-	if (cur_v >= vblank_line)
-		return 1;
-
-	return 0;
+	return cur_v >= first && cur_v < m_screen->height() - 1 ? 1 : 0;
 }
 
 int saturn_vdp2_device::get_vblank_start_position()
@@ -430,33 +431,98 @@ int saturn_vdp2_device::get_ystep_count()
 	return y_step;
 }
 
-TIMER_CALLBACK_MEMBER(saturn_vdp2_device::sync_timer_cb)
+// The line and frame events of the display. The horizontal ones follow the H counter of the
+// chip: the HBLANK-IN signal rises at dot 0x143 of a 320 dot line and at 0x163 of a 352 dot line
+// (one dot earlier in the hi-res modes) and drops at dot 2 of the next line (1 in hi-res); the
+// TVSTAT HBLANK flag is set from dot 0x144 or 0x164 until dot 4. The signal comes on every line,
+// the lines of the vertical blank interval too, because the SCU counts them. The vertical blank
+// interval begins where it always did here and ends at the start of the last line of the
+// frame, not at the first (MiSTer VDP2.sv: VBLANK-OUT is raised at the last dot of the line
+// before the last one; Ymir's last line phase). The SCU documentation
+// agrees: timer 0 is cleared by V-BLANK-OUT, and a compare value of 1 interrupts at the
+// HBLANK-IN right before the first active line.
+// Dots are counted in the units of the low resolution dot clock: hi-res pixels are two per dot.
+int saturn_vdp2_device::dot_scale() const
 {
-//	int hpos = m_screen->hpos();
-	int vpos = m_screen->vpos();
-	int hsync = get_hblank();
-	int vsync = get_vblank();
+	return BIT(m_hreso, 1) && !BIT(m_hreso, 2) ? 2 : 1;
+}
 
-	m_vint_cb(vsync);
-	m_hint_cb(hsync);
+int saturn_vdp2_device::hblank_in_dot() const
+{
+	if (BIT(m_hreso, 2))
+		return m_hdisplay + 3; // TODO: exclusive monitor modes
+	return ((BIT(m_hreso, 0) ? 0x163 : 0x143) - (BIT(m_hreso, 1) ? 1 : 0)) * dot_scale();
+}
 
-	if (vsync)
+int saturn_vdp2_device::hblank_out_dot() const
+{
+	if (BIT(m_hreso, 2))
+		return 2; // TODO: exclusive monitor modes
+	return (BIT(m_hreso, 1) ? 1 : 2) * dot_scale();
+}
+
+void saturn_vdp2_device::schedule_hblank()
+{
+	// the signal is high from its dot to the early dots of the next line
+	int const height = m_screen->height();
+	int const vpos = m_screen->vpos();
+	int const hpos = m_screen->hpos();
+	int const in_x = hblank_in_dot();
+	int const out_x = hblank_out_dot();
+	bool const high = hpos >= in_x || hpos < out_x;
+	m_hblank_rising = !high;
+	if (!high)
+		m_hblank_timer->adjust(m_screen->time_until_pos(vpos, in_x));
+	else
+		m_hblank_timer->adjust(m_screen->time_until_pos(hpos < out_x ? vpos : (vpos + 1) % height, out_x));
+}
+
+TIMER_CALLBACK_MEMBER(saturn_vdp2_device::hblank_timer_cb)
+{
+	int const height = m_screen->height();
+	int const vpos = m_screen->vpos();
+	int const in_x = hblank_in_dot();
+	int const out_x = hblank_out_dot();
+
+	m_hint_cb(m_hblank_rising ? 1 : 0);
+	if (m_hblank_rising)
 	{
-		// flip odd bit here
-		m_odd_bit ^= 1;
-		// TODO: T0C in SCU seems to run even after this point
-		m_video_sync_timer->adjust(m_screen->time_until_pos(0, 0));
+		// the signal drops early on the next line
+		m_hblank_rising = false;
+		m_hblank_timer->adjust(m_screen->time_until_pos((vpos + 1) % height, out_x));
 	}
 	else
 	{
-		if (hsync)
-		{
-			int ystep = get_ystep_count();
-
-			m_video_sync_timer->adjust(m_screen->time_until_pos(vpos + ystep, 0));
-		}
-		else
-			m_video_sync_timer->adjust(m_screen->time_until_pos(vpos, m_hdisplay));
+		m_hblank_rising = true;
+		m_hblank_timer->adjust(m_screen->time_until_pos(vpos, in_x));
 	}
 }
 
+void saturn_vdp2_device::schedule_vblank()
+{
+	// the blank interval runs from its first line to the line before the last
+	int const height = m_screen->height();
+	int const vpos = m_screen->vpos();
+	int const first = get_vblank_start_position() * get_ystep_count();
+	int const last = height - 1;
+	bool const inside = vpos >= first && vpos < last;
+	m_vblank_next_in = !inside;
+	m_vblank_timer->adjust(m_screen->time_until_pos(inside ? last : first, 0));
+}
+
+TIMER_CALLBACK_MEMBER(saturn_vdp2_device::vblank_timer_cb)
+{
+	if (m_vblank_next_in)
+	{
+		// flip odd bit here
+		m_odd_bit ^= 1;
+		m_vint_cb(1);
+	}
+	else
+		m_vint_cb(0);
+
+	m_vblank_next_in = !m_vblank_next_in;
+	int const height = m_screen->height();
+	int const first = get_vblank_start_position() * get_ystep_count();
+	m_vblank_timer->adjust(m_screen->time_until_pos(m_vblank_next_in ? first : height - 1, 0));
+}
