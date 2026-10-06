@@ -84,6 +84,10 @@ void sh7604_device::device_start()
 	m_dma_current_active_timer[1] = timer_alloc(FUNC(sh7604_device::sh2_dma_current_active_callback), this);
 	m_dma_current_active_timer[1]->adjust(attotime::never);
 
+	m_divu_timer = timer_alloc(FUNC(sh7604_device::divu_timer_cb), this);
+	m_divu_timer->adjust(attotime::never);
+	m_track_pending = true;
+
 	/* resolve callbacks */
 	m_dma_kludge_cb.resolve();
 	m_dma_fifo_data_available_cb.resolve();
@@ -138,6 +142,9 @@ void sh7604_device::device_start()
 	// DIVU
 	save_item(NAME(m_divu_ovf));
 	save_item(NAME(m_divu_ovfie));
+	save_item(NAME(m_divu_busy));
+	save_item(NAME(m_divu_ovf_pending));
+	save_item(NAME(m_divu_done));
 	save_item(NAME(m_dvsr));
 	save_item(NAME(m_dvdntl));
 	save_item(NAME(m_dvdnth));
@@ -189,6 +196,10 @@ void sh7604_device::device_reset()
 	// of cache memory, which reset does not initialize (8.5.1).
 	m_cache.ccr = 0;
 	m_fetch_pc = ~0U;
+
+	m_divu_busy = false;
+	m_divu_ovf_pending = false;
+	m_divu_timer->adjust(attotime::never);
 
 	m_frc = 0;
 	m_ocra = 0;
@@ -1238,11 +1249,13 @@ void sh7604_device::vcrwdt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 // VCRDIV is a word register where bits 6-0 have a meaning, reads back written word value
 uint32_t sh7604_device::vcrdiv_r()
 {
+	divu_wait();
 	return m_vcrdiv & 0xffff;
 }
 
 void sh7604_device::vcrdiv_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	divu_wait();
 	COMBINE_DATA(&m_vcrdiv);
 	// TODO: unemulated, level is seemingly not documented/settable?
 	m_irq_vector.divu = m_vcrdiv & 0x7f;
@@ -1255,11 +1268,13 @@ void sh7604_device::vcrdiv_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::dvcr_r()
 {
+	divu_wait();
 	return (m_divu_ovfie << 1) | (m_divu_ovf << 0);
 }
 
 void sh7604_device::dvcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	divu_wait();
 	if (ACCESSING_BITS_0_7)
 	{
 		// both bits are regular r/w
@@ -1273,21 +1288,25 @@ void sh7604_device::dvcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::dvsr_r()
 {
+	divu_wait();
 	return m_dvsr;
 }
 
 void sh7604_device::dvsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	divu_wait();
 	COMBINE_DATA(&m_dvsr);
 }
 
 uint32_t sh7604_device::dvdnt_r()
 {
+	divu_wait();
 	return m_dvdntl;
 }
 
 void sh7604_device::dvdnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	divu_wait();
 	// TODO: this is really a separate register that happens to be shared with DVDNTL
 	COMBINE_DATA(&m_dvdntl);
 	LOG("SH2 div32+mod %d/%d\n", int32_t(m_dvdntl), int32_t(m_dvsr));
@@ -1297,29 +1316,73 @@ void sh7604_device::dvdnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::dvdnth_r()
 {
+	divu_wait();
 	return m_dvdnth;
 }
 
 uint32_t sh7604_device::dvdntl_r()
 {
+	divu_wait();
 	return m_dvdntl;
 }
 
 void sh7604_device::dvdnth_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	divu_wait();
 	COMBINE_DATA(&m_dvdnth);
 }
 
 void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	divu_wait();
 	COMBINE_DATA(&m_dvdntl);
 	const int64_t dividend = int64_t((uint64_t(m_dvdnth) << 32) | m_dvdntl);
 	LOG("SH2 div64+mod %d/%d\n", dividend, int32_t(m_dvsr));
 	divu_start(dividend);
 }
 
+// The unit takes 39 cycles from the write of the dividend (Hardware Manual 10.3), 6 when the
+// operation overflows. An access to any of its registers while it runs waits for the end of the
+// operation (10.4.1; MiSTer DIVU.sv holds the bus with IBUS_BUSY while STEP is running), so the
+// result is computed at once and the CPU pays the time when it comes for it. The overflow flag,
+// and the interrupt it requests, appear when the operation ends. The time is the CPU's own,
+// including the cycles of the running sequence that the DRC has not taken off yet.
+void sh7604_device::divu_wait()
+{
+	if (!m_divu_busy)
+		return;
+	attotime const now = local_time() + cycles_to_attotime(m_bus_pending);
+	if (m_divu_done > now)
+	{
+		attotime const wait = m_divu_done - now;
+		uint64_t cycles = attotime_to_cycles(wait);
+		if (cycles_to_attotime(cycles) < wait)
+			cycles++;
+		m_sh2_state->icount -= int(cycles);
+	}
+	divu_finish();
+}
+
+void sh7604_device::divu_finish()
+{
+	m_divu_busy = false;
+	m_divu_timer->adjust(attotime::never);
+	if (m_divu_ovf_pending)
+	{
+		m_divu_ovf_pending = false;
+		m_divu_ovf = true;
+		sh2_recalc_irq();
+	}
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::divu_timer_cb)
+{
+	divu_finish();
+}
+
 void sh7604_device::divu_start(int64_t dividend)
 {
+	divu_finish();
 	const int32_t divisor = m_dvsr;
 	if (divisor && ((dividend != std::numeric_limits<int64_t>::min()) || (divisor != -1)))
 	{
@@ -1328,7 +1391,7 @@ void sh7604_device::divu_start(int64_t dividend)
 		{
 			m_dvdntl = uint32_t(quotient);
 			m_dvdnth = uint32_t(dividend % divisor);
-			// TODO: 39 cycles
+			divu_run(39);
 			return;
 		}
 	}
@@ -1350,9 +1413,15 @@ void sh7604_device::divu_start(int64_t dividend)
 	const bool negative = (dividend < 0) != (divisor < 0);
 	m_dvdnth = uint32_t(remainder);
 	m_dvdntl = m_divu_ovfie ? quotient : negative ? 0x80000000 : 0x7fffffff;
-	m_divu_ovf = true;
-	sh2_recalc_irq();
-	// TODO: 6 cycles
+	m_divu_ovf_pending = true;
+	divu_run(6);
+}
+
+void sh7604_device::divu_run(unsigned cycles)
+{
+	m_divu_busy = true;
+	m_divu_done = local_time() + cycles_to_attotime(m_bus_pending + cycles);
+	m_divu_timer->adjust(m_divu_done - machine().time());
 }
 
 /*

@@ -220,6 +220,14 @@ private:
 
 	// DIVU
 	bool m_divu_ovf, m_divu_ovfie;
+	bool m_divu_busy = false;       // an operation is running
+	bool m_divu_ovf_pending = false; // it overflows: the flag is set when it ends
+	attotime m_divu_done;           // when the operation ends
+	emu_timer *m_divu_timer;
+	void divu_wait();
+	void divu_run(unsigned cycles);
+	void divu_finish();
+	TIMER_CALLBACK_MEMBER(divu_timer_cb);
 	uint32_t m_dvsr, m_dvdntl, m_dvdnth;
 
 	// WTC

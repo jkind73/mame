@@ -91,6 +91,9 @@ protected:
 	// icount (the DRC applies them at the end of the sequence; the
 	// interpreter after each instruction), so both cores see the same time.
 	uint32_t m_bus_pending = 0;
+	// the DRC keeps m_bus_pending up to date even without bus timing, for the devices that wait for
+	// the CPU's time on an access of their own (the division unit)
+	bool m_track_pending = false;
 	void bus_charge(offs_t address, unsigned size, bool write, bool fill = false)
 	{
 		if (m_bus_timed)

@@ -215,7 +215,7 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 {
 	bool const timed = m_bus_timed && desc->pc < 0x40000000;
 	bool const cached = m_cache_model && desc->pc < 0x20000000;
-	if (m_bus_timed)
+	if (m_bus_timed || m_track_pending)
 		UML_MOV(block, mem(&m_bus_pending), compiler.cycles - desc->cycles);
 	if (!timed && !cached)
 		return;
