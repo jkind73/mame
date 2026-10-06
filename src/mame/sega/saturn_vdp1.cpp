@@ -163,6 +163,7 @@ void saturn_vdp1_device::stop_drawing()
 
 void saturn_vdp1_device::run()
 {
+	m_engine.cost_cap = int32_t(std::min<uint64_t>(clock() / 50, INT32_MAX));   // a frame, at the slowest rate
 	m_engine.tvmr = m_tvmr;
 	m_engine.fbcr = (m_fbcr & ~(FBCR_DIE | FBCR_DIL)) | (m_die ? FBCR_DIE : 0) | (m_dil ? FBCR_DIL : 0);
 	m_engine.fb = m_fb[m_draw_fb].get();

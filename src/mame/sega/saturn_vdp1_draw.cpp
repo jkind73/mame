@@ -525,6 +525,9 @@ int32_t draw_engine::draw_line(line_state &l, bool aa, bool textured)
 		bool transparent;
 		uint16_t pix;
 
+		if (cost >= cost_cap)
+			return cost;
+
 		if (textured) {
 			while (l.t.pending()) {
 				int32_t const tx = l.t.advance();
@@ -578,7 +581,7 @@ int32_t draw_engine::draw_fan(edge_stepper &e0, edge_stepper &e1, int32_t dmax, 
 {
 	int32_t cycles = 0;
 
-	for (int32_t iter = dmax; iter >= 0; iter--) {
+	for (int32_t iter = dmax; iter >= 0 && cycles < cost_cap; iter--) {
 		line_state l;
 		vertex p0, p1;
 		p0.x = e0.x; p0.y = e0.y; p0.g = e0.g.colour;
@@ -844,7 +847,7 @@ int32_t draw_engine::cmd_lines(const uint16_t *cmd)
 	if (mode & 4)
 		read_gouraud(vram, cmd, g);
 
-	for (unsigned i = 0; i < count; i++) {
+	for (unsigned i = 0; i < count && cycles < cost_cap; i++) {
 		vertex p0, p1;
 		unsigned const a = i & 3, b = (i + 1) & 3;
 		p0.x = sext13(cmd[6 + 2 * a] & 0x1fff) + local_x;

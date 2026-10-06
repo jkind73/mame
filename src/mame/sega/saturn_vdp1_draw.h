@@ -41,6 +41,11 @@ public:
 	uint16_t *fb = nullptr;     // draw frame buffer, FB_WORDS
 	unsigned tvmr = 0, fbcr = 0;
 
+	// The most clocks one command may take. Drawing ends at the next frame change, so no command
+	// of the chip can go on longer than a frame; a command that would (a line whose end point is
+	// never reached, as junk in the table gives) is cut at the cap instead of looping forever.
+	int32_t cost_cap = INT32_MAX;
+
 	void reset();
 
 	// Runs the command table at cmd (16 words); returns the VDP1 clocks used
