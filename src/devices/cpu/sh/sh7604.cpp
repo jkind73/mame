@@ -191,7 +191,43 @@ void sh7604_device::device_start()
 void sh7604_device::device_reset()
 {
 	bool const manual = m_manual_reset;
+	uint8_t const rstcsr = m_rstcsr;
 	sh2_device::device_reset();
+
+	// The registers of the on-chip modules take their initial values (Hardware Manual, the register
+	// chapters): the FRT, SCI, DMAC control registers and WDT as for standby mode, then the rest.
+	// RSTCSR is only initialized by the RES input, not by the WDT's own reset (12.2.3).
+	standby_init();
+	m_rstcsr = m_wdt_reset ? rstcsr : 0;
+	for (int i = 0; i < 2; i++)
+	{
+		m_dmac[i].drcr = 0;
+		m_dma_current_active_timer[i]->adjust(attotime::never);
+	}
+	m_divu_ovf = m_divu_ovfie = false;
+	m_divu_ovf_pending = false;
+	m_ipra = m_iprb = 0;
+	m_vcra = m_vcrb = m_vcrc = m_vcrd = m_vcrwdt = 0;
+	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
+	m_irq_level.frc = m_irq_level.sci = m_irq_level.divu = m_irq_level.dmac = m_irq_level.wdt = 0;
+	m_irq_vector.fic = m_irq_vector.foc = m_irq_vector.fov = m_irq_vector.divu = 0;
+	m_irq_vector.dmac[0] = m_irq_vector.dmac[1] = 0;
+	m_intc_icr = 0;
+	m_nmie = false;
+	m_vecmd = false;
+	m_sbycr = 0;
+	// a power-on reset initializes the BSC as well; a manual reset leaves it alone (4.2.3)
+	if (!manual)
+	{
+		m_bcr1 = 0x03f0;
+		m_bcr2 = 0x00fc;
+		m_wcr = 0xaaff;
+		m_mcr = 0;
+		m_rtcsr = 0;
+		m_rtcnt = 0;
+		m_rtcor = 0;
+	}
+	sh2_recalc_irq();
 
 	// CCR resets to zero (section 8.2); this disables the cache without implying a purge
 	// of cache memory, which reset does not initialize (8.5.1).
