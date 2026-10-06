@@ -63,6 +63,7 @@ private:
 	void sh7604_map(address_map &map) ATTR_COLD;
 
 	uint32_t sh2_internal_a5();
+	attotime dma_unit_time(uint32_t src, uint32_t dst, unsigned bytes, bool burst);
 	uint32_t cache_purge_r(offs_t offset);
 	void cache_purge_w(offs_t offset, uint32_t data);
 	uint32_t cache_address_r(offs_t offset, uint32_t mem_mask);

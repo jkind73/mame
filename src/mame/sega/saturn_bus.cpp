@@ -94,7 +94,7 @@ unsigned saturn_state::cpu_bus_waits(uint32_t address, bool write, unsigned bits
   The finish times are machine times, since a CPU's cycle count restarts when
   the CPU is reset.
 */
-int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now)
+int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma)
 {
 	sh7604_device &exec = cpu ? *m_slave : *m_maincpu;
 	auto const until = [&exec, &now] (const attotime &free) -> uint64_t
@@ -143,7 +143,7 @@ int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bo
 		t = 1 + cpu_bus_waits(address, write, size * 8) * (fill ? 4 : 1);
 	}
 
-	uint64_t const total = sh2_bus_arbitrate(cpu * 2, now, t, address, write);
+	uint64_t const total = sh2_bus_arbitrate(cpu * 2 + (dma ? 1 : 0), now, t, address, write);
 	return int(std::min<uint64_t>(total, 0x7fff'ffff)) - (total ? 1 : 0);
 }
 

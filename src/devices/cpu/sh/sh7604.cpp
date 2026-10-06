@@ -632,6 +632,39 @@ void sh7604_device::sh2_notify_dma_data_available()
 
 }
 
+// The time one DMAC transfer unit takes. The DMAC drives the bus controller like
+// the CPU does (MiSTer SH7604 DMAC.sv: DMA_RD / DMA_WR through DBUS, waiting on
+// DBUS_WAIT; Mednafen sh7095.inc DMA_DoTransfer through BSC_BusRead /
+// BSC_BusWrite). With the driver's bus timing every external access of the unit
+// costs what it costs the CPU, plus the cycle the CPU's instruction timing counts
+// for it, and the DMAC arbitrates for the bus as a requester of its own, against
+// its CPU and the other CPU; the next unit starts when this one's accesses end.
+// A 16 byte burst reads its four longwords as one line fill and then writes them.
+// Without bus timing, and for a unit between on-chip addresses, units are two
+// cycles apart.
+attotime sh7604_device::dma_unit_time(uint32_t src, uint32_t dst, unsigned bytes, bool burst)
+{
+	attotime const start = machine().time();
+	attotime end = start;
+	auto const bus = [this, &end] (uint32_t address, unsigned access_size, bool write, bool fill)
+	{
+		if (m_bus_timed && address < 0x40000000)
+			end += cycles_to_attotime(m_bus_timing(address, access_size, write, fill, end, true) + 1);
+	};
+	if (burst)
+	{
+		bus(src, 4, false, true);
+		for (unsigned i = 0; i < 4; i++)
+			bus(dst + 4 * i, 4, true, false);
+	}
+	else
+	{
+		bus(src, bytes, false, false);
+		bus(dst, bytes, true, false);
+	}
+	return end == start ? cycles_to_attotime(2) : end - start;
+}
+
 void sh7604_device::sh2_do_dma(int dmach)
 {
 	if (m_active_dma_count[dmach] > 0)
@@ -665,8 +698,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 				}
 			}
 
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+			//schedule next DMA callback, after the bus cycles of this unit
+			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 1, false), dmach);
 
 			uint32_t dmadata = m_program->read_byte(tempsrc);
 			if (!m_dma_kludge_cb.isnull())
@@ -709,8 +742,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 				}
 			}
 
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+			//schedule next DMA callback, after the bus cycles of this unit
+			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 2, false), dmach);
 
 			// check: should this really be using read_word_32 / write_word_32?
 			uint32_t dmadata = m_program->read_word(tempsrc);
@@ -754,8 +787,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 				}
 			}
 
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+			//schedule next DMA callback, after the bus cycles of this unit
+			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 4, false), dmach);
 
 			uint32_t dmadata = m_program->read_dword(tempsrc);
 			if (!m_dma_kludge_cb.isnull())
@@ -798,8 +831,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 				}
 			}
 
-			//schedule next DMA callback
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+			//schedule next DMA callback, after the bus cycles of this unit
+			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 4, true), dmach);
 
 			uint32_t dmadata = m_program->read_dword(tempsrc);
 			if (!m_dma_kludge_cb.isnull())

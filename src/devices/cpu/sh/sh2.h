@@ -81,8 +81,9 @@ protected:
 	// the external bus (addresses below 40000000H) costs beyond the one the
 	// instruction timing already counts. size is 1, 2 or 4; fill marks a
 	// cache line fill (four longwords, 8.4.1); now is the CPU's local time at
-	// the access (machine time, so it stays monotonic across CPU resets).
-	using bus_timing_delegate = device_delegate<int (offs_t address, unsigned size, bool write, bool fill, attotime now)>;
+	// the access (machine time, so it stays monotonic across CPU resets);
+	// dma marks an access of the on-chip DMAC, a requester of its own.
+	using bus_timing_delegate = device_delegate<int (offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma)>;
 	bus_timing_delegate m_bus_timing;
 	bool m_bus_timed = false;
 	uint32_t m_bus_write = 0;       // DRC helper argument
@@ -93,7 +94,7 @@ protected:
 	void bus_charge(offs_t address, unsigned size, bool write, bool fill = false)
 	{
 		if (m_bus_timed)
-			m_sh2_state->icount -= m_bus_timing(address, size, write, fill, local_time() + cycles_to_attotime(m_bus_pending));
+			m_sh2_state->icount -= m_bus_timing(address, size, write, fill, local_time() + cycles_to_attotime(m_bus_pending), false);
 	}
 	uint32_t cache_read(offs_t address, unsigned size, bool instruction);
 	void cache_write(offs_t address, unsigned size, uint32_t data);

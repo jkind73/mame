@@ -84,9 +84,9 @@ protected:
 	attotime m_sh2_sdram_free[2];     // per CPU: when the SDRAM finishes a posted write
 	bool m_stv_ioga = false;          // ST-V I/O gate array at 00400000H
 	static unsigned cpu_bus_waits(uint32_t address, bool write, unsigned bits);
-	int sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now);
-	int master_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now) { return sh2_bus_cycles(0, address, size, write, fill, now); }
-	int slave_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now) { return sh2_bus_cycles(1, address, size, write, fill, now); }
+	int sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma);
+	int master_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma) { return sh2_bus_cycles(0, address, size, write, fill, now, dma); }
+	int slave_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma) { return sh2_bus_cycles(1, address, size, write, fill, now, dma); }
 	uint64_t sh2_bus_arbitrate(unsigned requester, const attotime &now, uint64_t cycles, offs_t address, bool write);
 	void sh2_bus_reset();
 	// SATURN_BUS_TIMING=0 turns the SH-2 bus timing off (diagnostics)
