@@ -500,15 +500,13 @@ std::tuple<u16, int> saturn_scu_device::get_address_flags(u32 address, bool writ
 					//penalty = write_op ? 3 : 20;
 					break;
 				case 0x00f0'0000:
+					// the B-Bus ends at 0x5fdffff: the SCU's own registers above it are not a DMA
+					// source or destination, such a transfer is illegal (MiSTer SCU.sv: the B-Bus range
+					// of DMA_RA_ERR/DMA_WA_ERR is 0x5a00000-0x5fdffff)
 					if ((address & 0x000f'0000) < 0x000e'0000)
 					{
 						flags = saturn_scu_device::B_BUS_VDP2;
 						//penalty = write_op ? 3 : 20;
-					}
-					else
-					{
-						flags = saturn_scu_device::B_BUS_SCU;
-						//penalty = write_op ? 4 : 8;
 					}
 					break;
 

@@ -63,7 +63,6 @@ public:
 	static constexpr uint16_t B_BUS_SCSP  = 0x0201;
 	static constexpr uint16_t B_BUS_VDP1  = 0x0202;
 	static constexpr uint16_t B_BUS_VDP2  = 0x0203;
-	static constexpr uint16_t B_BUS_SCU   = 0x0204;
 	static constexpr uint16_t C_BUS       = 0x0300;
 
 protected:
