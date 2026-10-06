@@ -196,7 +196,12 @@ private:
 		bool        bbus_sound_access;
 		bool        cbus;          // the transfer reads or writes the C-Bus (Work RAM-H)
 		int32_t     pending_read;  // SH-2 cycles of source reads not yet overlapped by writes
-		int64_t     read_tag;      // the source longword whose read cost the next halfword shares, or -1
+		// the longword buffer of the source side: the SCU reads aligned longwords and hands out the
+		// bytes the write side needs (SCU manual 2.1, figure 2.1)
+		uint32_t    read_buffer;
+		uint32_t    read_address;  // the longword the buffer holds
+		uint8_t     read_offset;   // the next byte of it to hand out; 4 when it is used up
+		bool        read_buffer_valid;
 	}m_dma[3];
 
 	// SH-2 cycles the accesses of the current DMA unit took, the extra time a B-Bus device holds
@@ -208,6 +213,9 @@ private:
 	bool m_cpu_halt = false;
 	int dma_read_cost(u32 address, unsigned size);
 	uint32_t dma_read(dma_channel_t &ch, u32 address, unsigned size);
+	uint8_t dma_read_byte(dma_channel_t &ch);
+	uint16_t dma_read_word(dma_channel_t &ch);
+	void dma_write_unit(dma_channel_t &ch, unsigned word_add);
 	void dma_write_cost(dma_channel_t &ch, u32 address, unsigned size);
 	void dma_unit_step(uint8_t level);
 	void set_cpu_halt(bool halt);
@@ -224,7 +232,6 @@ private:
 	void trigger_dma_direct(uint8_t level);
 	void trigger_dma_indirect(uint8_t level);
 	void update_dma_status(int level, dma_state_t state);
-	[[maybe_unused]] void dma_single_transfer(uint32_t src, uint32_t dst,uint8_t *src_shift);
 	void dma_start_factor_ack(dma_event_id_t event);
 	std::tuple<int, int> check_dma_level_round_robin();
 

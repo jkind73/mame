@@ -295,7 +295,10 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[0].bbus_sound_access));
 	save_item(NAME(m_dma[0].cbus));
 	save_item(NAME(m_dma[0].pending_read));
-	save_item(NAME(m_dma[0].read_tag));
+	save_item(NAME(m_dma[0].read_buffer));
+	save_item(NAME(m_dma[0].read_address));
+	save_item(NAME(m_dma[0].read_offset));
+	save_item(NAME(m_dma[0].read_buffer_valid));
 
 	save_item(NAME(m_dma[1].src));
 	save_item(NAME(m_dma[1].dst));
@@ -318,7 +321,10 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[1].bbus_sound_access));
 	save_item(NAME(m_dma[1].cbus));
 	save_item(NAME(m_dma[1].pending_read));
-	save_item(NAME(m_dma[1].read_tag));
+	save_item(NAME(m_dma[1].read_buffer));
+	save_item(NAME(m_dma[1].read_address));
+	save_item(NAME(m_dma[1].read_offset));
+	save_item(NAME(m_dma[1].read_buffer_valid));
 
 	save_item(NAME(m_dma[2].src));
 	save_item(NAME(m_dma[2].dst));
@@ -341,7 +347,10 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[2].bbus_sound_access));
 	save_item(NAME(m_dma[2].cbus));
 	save_item(NAME(m_dma[2].pending_read));
-	save_item(NAME(m_dma[2].read_tag));
+	save_item(NAME(m_dma[2].read_buffer));
+	save_item(NAME(m_dma[2].read_address));
+	save_item(NAME(m_dma[2].read_offset));
+	save_item(NAME(m_dma[2].read_buffer_valid));
 
 	save_item(NAME(m_dma_cost));
 	save_item(NAME(m_dma_sdram_reads));
@@ -380,7 +389,7 @@ void saturn_scu_device::device_reset()
 		m_dma[i].bbus_sound_access = false;
 		m_dma[i].cbus = false;
 		m_dma[i].pending_read = 0;
-		m_dma[i].read_tag = -1;
+		m_dma[i].read_buffer_valid = false;
 		m_dma[i].mode = DMA_MODE_RESET;
 	}
 	m_dma_cost = 0;
@@ -579,7 +588,7 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level)
 	m_dma[level].bbus_sound_access = src_flags == B_BUS_SCSP || dst_flags == B_BUS_SCSP;
 	m_dma[level].cbus = src_flags == C_BUS || dst_flags == C_BUS;
 	m_dma[level].pending_read = 0;
-	m_dma[level].read_tag = -1;
+	m_dma[level].read_buffer_valid = false;
 
 	m_dma[level].live_src = m_dma[level].src;
 	m_dma[level].live_dst = m_dma[level].dst;
@@ -617,31 +626,11 @@ void saturn_scu_device::trigger_dma_indirect(uint8_t level)
 	m_dma[level].indirect_end_flag = false;
 	m_dma[level].cbus = false;
 	m_dma[level].pending_read = 0;
-	m_dma[level].read_tag = -1;
+	m_dma[level].read_buffer_valid = false;
 
 	update_dma_status(level, DMA_STATE_WAIT);
 
 	m_dma_tick_timer->adjust(attotime::from_ticks(2 * 4, m_dma_clock_ref));
-}
-
-// TODO: reimplement me
-inline void saturn_scu_device::dma_single_transfer(uint32_t src, uint32_t dst,uint8_t *src_shift)
-{
-	uint32_t src_data;
-
-	if(src & 1)
-	{
-		// tstrmrbl:cdrom2 (Road Blaster) does a work ram h to color ram with offsetted source address, do some data rotation
-		src_data = ((m_hostspace->read_dword(src & 0x07fffffc) & 0x00ffffff)<<8);
-		src_data |= ((m_hostspace->read_dword((src & 0x07fffffc)+4) & 0xff000000) >> 24);
-		src_data >>= (*src_shift)*16;
-	}
-	else
-		src_data = m_hostspace->read_dword(src & 0x07fffffc) >> (*src_shift)*16;
-
-	m_hostspace->write_word(dst,src_data);
-
-	*src_shift ^= 1;
 }
 
 std::tuple<int, int> saturn_scu_device::check_dma_level_round_robin()
@@ -700,18 +689,65 @@ int saturn_scu_device::dma_read_cost(u32 address, unsigned size)
 
 uint32_t saturn_scu_device::dma_read(dma_channel_t &ch, u32 address, unsigned size)
 {
-	// the SCU reads a longword and writes it as two halfwords: the second halfword of a longword
-	// read for the first costs nothing more
-	u32 const aligned = address & ~3U;
-	if (size == 2 && ch.read_tag == int64_t(aligned) && (address & 2))
-		ch.read_tag = -1;
-	else
-	{
-		m_dma_cost += ch.pending_read;
-		ch.pending_read = dma_read_cost(aligned, 4);
-		ch.read_tag = (size == 2 && !(address & 2)) ? int64_t(aligned) : -1;
-	}
+	m_dma_cost += ch.pending_read;
+	ch.pending_read = dma_read_cost(address, size);
 	return size == 4 ? m_hostspace->read_dword(address) : m_hostspace->read_word(address);
+}
+
+// The source side reads aligned longwords and hands out the bytes the write side asks for, from the
+// address it starts at, which need not be aligned (SCU manual 2.1: the bytes before the first
+// longword boundary are read as bytes of the longword). The next longword is the one a read address
+// add value away: 4 bytes on, or the same one for the CS2 area of the A-Bus when it is 0, which is how
+// a fill from a single location works.
+uint8_t saturn_scu_device::dma_read_byte(dma_channel_t &ch)
+{
+	if (!ch.read_buffer_valid)
+	{
+		ch.read_address = ch.live_src & 0x07ff'fffc;
+		ch.read_offset = ch.live_src & 3;
+		ch.read_buffer = dma_read(ch, ch.read_address, 4);
+		ch.read_buffer_valid = true;
+	}
+	else if (ch.read_offset == 4)
+	{
+		ch.read_address = (ch.read_address + ch.src_add) & 0x07ff'ffff;
+		ch.read_buffer = dma_read(ch, ch.read_address, 4);
+		ch.read_offset = 0;
+	}
+
+	uint8_t const result = ch.read_buffer >> (24 - 8 * ch.read_offset);
+	ch.read_offset++;
+	// the source address register follows what has been handed out
+	ch.live_src = ch.read_address + (ch.read_offset == 4 ? ch.src_add : ch.read_offset);
+	return result;
+}
+
+uint16_t saturn_scu_device::dma_read_word(dma_channel_t &ch)
+{
+	uint16_t const hi = dma_read_byte(ch);
+	return (hi << 8) | dma_read_byte(ch);
+}
+
+// One access of the write side: a halfword when the destination is aligned to one and two bytes are
+// left, a byte otherwise (the unaligned head and tail of a transfer, SCU manual 2.1). The write
+// address add value is for halfword accesses; a byte moves it by half as much. A Work RAM-H
+// destination always moves by a halfword (the add value is fixed there).
+void saturn_scu_device::dma_write_unit(dma_channel_t &ch, unsigned word_add)
+{
+	u32 const address = ch.live_dst & 0x07ff'ffff;
+	if ((ch.live_size - ch.live_count) < 2 || (address & 1))
+	{
+		m_hostspace->write_byte(address, dma_read_byte(ch));
+		dma_write_cost(ch, address, 1);
+		ch.live_dst += word_add >> 1;
+		ch.live_count += 1;
+		return;
+	}
+
+	m_hostspace->write_word(address, dma_read_word(ch));
+	dma_write_cost(ch, address, 2);
+	ch.live_dst += word_add;
+	ch.live_count += 2;
 }
 
 void saturn_scu_device::dma_write_cost(dma_channel_t &ch, u32 address, unsigned size)
@@ -817,7 +853,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			m_dma[level].cbus = src_flags == C_BUS || dst_flags == C_BUS;
 			set_cpu_halt(m_dma[level].cbus);
 			m_dma[level].pending_read = 0;
-			m_dma[level].read_tag = -1;
+			m_dma[level].read_buffer_valid = false;
 
 			m_dma[level].live_src = indirect_src & 0x07ff'ffff;
 			m_dma[level].live_dst = indirect_dst & 0x07ff'ffff;
@@ -968,46 +1004,13 @@ const saturn_scu_device::dma_transfer_func saturn_scu_device::dma_transfer_table
 
 void saturn_scu_device::dma_transfer_direct_default(dma_channel_t &ch)
 {
-	//dma_single_transfer(m_dma[level].src, m_dma[level].dst, &src_shift);
-	const u32 src_address = ch.live_src & 0x07ff'fffe;
-	const u32 dst_address = ch.live_dst & 0x07ff'fffe;
-
-	// TODO: actually reads as dword and writes as word for B-Bus transfers
-	uint32_t src_data = dma_read(ch, src_address, 2);
-
-	m_hostspace->write_word(dst_address, src_data);
-	dma_write_cost(ch, dst_address, 2);
-
-	// pfght fills VDP2 with a single work RAM location (i.e. DMA fill)
-	ch.live_src += ch.src_add >> 1;
-	// TODO: reimplement me
-// if(src_shift)
-//  dma_params.src+= dma_params.src_add;
-//
-	ch.live_dst += ch.dst_add;
-
-	ch.live_count += 2;
+	// pfght fills VDP2 with a single work RAM location (i.e. DMA fill): a read add value of 0
+	dma_write_unit(ch, ch.dst_add);
 }
 
 void saturn_scu_device::dma_transfer_direct_cbus_write(dma_channel_t &ch)
 {
-	//dma_single_transfer(m_dma[level].src, m_dma[level].dst, &src_shift);
-	const u32 src_address = ch.live_src & 0x07ff'fffe;
-	const u32 dst_address = ch.live_dst & 0x07ff'fffe;
-
-	uint32_t src_data = dma_read(ch, src_address, 2);
-
-	m_hostspace->write_word(dst_address, src_data);
-	dma_write_cost(ch, dst_address, 2);
-
-	ch.live_src += ch.src_add >> 1;
-	// TODO: reimplement me
-// if(src_shift)
-//  dma_params.src+= dma_params.src_add;
-//
-	ch.live_dst += 2;
-
-	ch.live_count += 2;
+	dma_write_unit(ch, 2);
 }
 
 void saturn_scu_device::dma_transfer_direct_cd(dma_channel_t &ch)
