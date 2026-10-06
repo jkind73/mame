@@ -40,7 +40,7 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0)
 	, m_dmaor(0)
-	, m_sbycr(0), m_ccr(0)
+	, m_sbycr(0)
 	, m_bcr1(0), m_bcr2(0), m_wcr(0), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
 	, m_frc_base(0), m_frt_input(0)
 	, m_timer(nullptr), m_wdtimer(nullptr)
@@ -166,7 +166,12 @@ void sh7604_device::device_start()
 
 	// misc
 	save_item(NAME(m_sbycr));
-	save_item(NAME(m_ccr));
+	save_item(NAME(m_cache.ccr));
+	save_item(NAME(m_cache.tag));
+	save_item(NAME(m_cache.valid));
+	save_item(NAME(m_cache.lru));
+	save_item(NAME(m_cache.line));
+	save_item(NAME(m_fetch_pc));
 
 	// BSC
 	save_item(NAME(m_bcr1));
@@ -181,6 +186,11 @@ void sh7604_device::device_start()
 void sh7604_device::device_reset()
 {
 	sh2_device::device_reset();
+
+	// CCR resets to zero (section 8.2); this disables the cache without implying a purge
+	// of cache memory, which reset does not initialize (8.5.1).
+	m_cache.ccr = 0;
+	m_fetch_pc = ~0U;
 
 	m_frc = 0;
 	m_ocra = 0;
@@ -256,7 +266,21 @@ void sh7604_device::standby_init()
 
 void sh7604_device::sh7604_map(address_map &map)
 {
-	map(0x40000000, 0xbfffffff).r(FUNC(sh7604_device::sh2_internal_a5));
+	if (m_cache_model)
+	{
+		// Table 8.2 partitions by address bits 31-29. MiSTer's CACHE.sv also
+		// decodes 100 as the data array; 101 is not listed and keeps the
+		// previous read value.
+		map(0x40000000, 0x5fffffff).rw(FUNC(sh7604_device::cache_purge_r), FUNC(sh7604_device::cache_purge_w));
+		map(0x60000000, 0x7fffffff).rw(FUNC(sh7604_device::cache_address_r), FUNC(sh7604_device::cache_address_w));
+		map(0x80000000, 0x9fffffff).rw(FUNC(sh7604_device::cache_data_r), FUNC(sh7604_device::cache_data_w));
+		map(0xa0000000, 0xbfffffff).r(FUNC(sh7604_device::sh2_internal_a5));
+		map(0xc0000000, 0xdfffffff).rw(FUNC(sh7604_device::cache_data_r), FUNC(sh7604_device::cache_data_w));
+	}
+	else
+	{
+		map(0x40000000, 0xbfffffff).r(FUNC(sh7604_device::sh2_internal_a5));
+	}
 
 //  TODO: cps3boot breaks with this enabled. Needs callback
 //  map(0xc0000000, 0xc0000fff).ram(); // cache data array
@@ -410,6 +434,49 @@ void sh7604_device::sh2_exception(const char *message, int irqline)
 uint32_t sh7604_device::sh2_internal_a5()
 {
 	return 0xa5a5a5a5;
+}
+
+// Associative purge (8.4.7): a write to 40000000H + address invalidates the
+// line holding address in every way whose tag matches. MiSTer's CACHE.sv
+// purges on reads of the area too. What a read returns is not documented
+// (CACHE.sv returns data array output, Mednafen all ones); the previous
+// value is kept.
+uint32_t sh7604_device::cache_purge_r(offs_t offset)
+{
+	if (!machine().side_effects_disabled())
+		m_cache.purge_line(offset << 2);
+	return sh2_internal_a5();
+}
+
+void sh7604_device::cache_purge_w(offs_t offset, uint32_t data)
+{
+	if (!machine().side_effects_disabled())
+		m_cache.purge_line(offset << 2);
+}
+
+// Address array (8.4.9), longword access only. CACHE.sv returns the low
+// half in both halves of a narrower read.
+uint32_t sh7604_device::cache_address_r(offs_t offset, uint32_t mem_mask)
+{
+	uint32_t const value = m_cache.read_address_array(offset << 2);
+	return mem_mask == 0xffffffff ? value : (value & 0xffff) * 0x10001;
+}
+
+void sh7604_device::cache_address_w(offs_t offset, uint32_t data)
+{
+	m_cache.write_address_array(offset << 2, data);
+}
+
+// Data array (8.4.8): byte, word or longword; in two-way mode ways 0 and 1
+// are the 2 KB RAM, and with the cache off all four ways are 4 KB of RAM.
+uint32_t sh7604_device::cache_data_r(offs_t offset)
+{
+	return m_cache.data_array(offset << 2);
+}
+
+void sh7604_device::cache_data_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	COMBINE_DATA(&m_cache.data_array(offset << 2));
 }
 
 void sh7604_device::sh2_timer_resync()
@@ -1398,7 +1465,7 @@ void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 uint8_t sh7604_device::ccr_r()
 {
-	return m_ccr & ~0x30;
+	return m_cache.ccr;
 }
 
 void sh7604_device::ccr_w(uint8_t data)
@@ -1411,7 +1478,7 @@ void sh7604_device::ccr_w(uint8_t data)
 	    ---- --x- Instruction Replacement Disable (ID)
 	    ---- ---x Cache Enable (CE)
 	*/
-	m_ccr = data;
+	m_cache.write_ccr(data);
 }
 
 // BCR1/BCR2 are really 16-bit wide, when accessed as dword the upper part is used as unlock

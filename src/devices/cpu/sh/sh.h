@@ -414,6 +414,10 @@ public:
 	virtual void sh2_exception(const char *message, int irqline) { fatalerror("sh2_exception in base classs\n"); }
 
 	virtual void generate_update_cycles(drcuml_block &block, compiler_state &compiler, uml::parameter param, bool allow_exception) = 0;
+	// Emitted before each instruction; sequence_start marks the first instruction of a sequence.
+	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start) { }
+	bool m_fetch_sequence_start = false;
+	uint32_t m_tas_read = 0;     // the next byte read is TAS.B's, which bypasses the SH7604 cache (8.4.4)
 
 	virtual bool generate_group_0_RTE(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint16_t opcode, int in_delay_slot, uint32_t ovrpc);
 	virtual bool generate_group_4_LDCSR(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, uint16_t opcode, int in_delay_slot, uint32_t ovrpc);

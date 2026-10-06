@@ -1574,6 +1574,7 @@ void sh_common_execution::TAS(uint32_t n)
 	m_sh2_state->ea = m_sh2_state->r[n];
 
 	/* Bus Lock enable */
+	m_tas_read = 1;
 	uint32_t temp = read_byte(m_sh2_state->ea);
 	if (temp == 0)
 		m_sh2_state->sr |= SH_T;
@@ -2249,6 +2250,7 @@ void sh_common_execution::code_compile_block(uint8_t mode, offs_t pc)
 				}
 
 				/* iterate over instructions in the sequence and compile them */
+				m_fetch_sequence_start = true;
 				for (curdesc = seqhead; curdesc != seqlast->next(); curdesc = curdesc->next())
 				{
 					generate_sequence_instruction(block, compiler, curdesc, SH_OVRPC_NONE);
@@ -2442,6 +2444,10 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 
 	/* update the icount map variable */
 	UML_MAPVAR(block, MAPVAR_CYCLES, compiler.cycles);                             // mapvar  CYCLES,compiler.cycles
+
+	/* instruction fetch side effects (the SH7604 cache) */
+	generate_instruction_fetch(block, compiler, desc, m_fetch_sequence_start);
+	m_fetch_sequence_start = false;
 
 	/* if we want a probe, add it here */
 	if (desc->pc == PROBE_ADDRESS)
@@ -4038,6 +4044,7 @@ bool sh_common_execution::generate_group_4(drcuml_block &block, compiler_state &
 	case 0x1b: // TAS(Rn);
 		UML_MOV(block, I0, R32(REG_N));        // mov r0, Rn
 		SETEA(0);
+		UML_MOV(block, mem(&m_tas_read), 1);   // the read bypasses the SH7604 cache
 		UML_CALLH(block, *m_read8);          // call read8
 
 		UML_AND(block, mem(&m_sh2_state->sr), mem(&m_sh2_state->sr), ~SH_T);   // and sr, sr, ~T

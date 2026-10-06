@@ -124,8 +124,93 @@ std::unique_ptr<util::disasm_interface> sh2_device::create_disassembler()
 	return std::make_unique<sh_disassembler>(false);
 }
 
+static void cfunc_cache_access(void *param) { ((sh2_device *)param)->func_cache_access(); }
+
+// SH7604 cache (section 8), when the driver enables the model. A read of
+// the cache area with CE set is served from the cache; a miss replaces the
+// way the LRU selects and fills its line from the bus, unless OD (data) or
+// ID (instruction fetch) disables replacement or the LRU selects no way, in
+// which case the access goes to the bus as is (8.4.1, 8.4.5). The LRU is
+// updated on hits and replacements (Table 8.3).
+uint32_t sh2_device::cache_read(offs_t address, unsigned size, bool instruction)
+{
+	unsigned const e = sh7604_cache::entry(address);
+	int w = m_cache.find(address);
+	if (w < 0)
+	{
+		if ((m_cache.ccr & (instruction ? sh7604_cache::CCR_ID : sh7604_cache::CCR_OD)) || (w = m_cache.replacement(e)) < 0)
+		{
+			switch (size)
+			{
+			case 1: return m_program->read_byte(address & m_am);
+			case 2: return m_program->read_word(address & m_am);
+			default: return m_program->read_dword(address & m_am);
+			}
+		}
+		m_cache.fill(address, w, [this] (uint32_t a) { return m_program->read_dword(a & m_am); });
+	}
+	m_cache.touch(e, w);
+	return m_cache.read_line(e, w, address, size);
+}
+
+// Writes go through to the bus whether or not they hit; a hit also updates
+// the cached copy and the LRU (8.4.2). Cache-through writes do not touch
+// the cache (8.4.3), which is how a cached copy goes stale.
+void sh2_device::cache_write(offs_t address, unsigned size, uint32_t data)
+{
+	int const w = m_cache.find(address);
+	if (w >= 0)
+	{
+		unsigned const e = sh7604_cache::entry(address);
+		m_cache.touch(e, w);
+		m_cache.write_line(e, w, address, size, data);
+	}
+}
+
+// DRC side of the cache: m_cache_op 0 reads m_cache_size bytes at
+// m_cache_addr into m_cache_data, 1 updates the cache for a write of
+// m_cache_data, 2 is an instruction fetch.
+void sh2_device::func_cache_access()
+{
+	switch (m_cache_op)
+	{
+	case 0:
+		m_cache_data = cache_read(m_cache_addr, m_cache_size, false);
+		break;
+	case 1:
+		cache_write(m_cache_addr, m_cache_size, m_cache_data);
+		break;
+	default:
+		cache_read(m_cache_addr, 4, true);
+		break;
+	}
+}
+
+// Instruction fetches (DRC): one cache access per longword of straight-line
+// code and one at each branch target or sequence start, as the interpreter
+// does. The opcode is not taken from the cache.
+void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start)
+{
+	if (!m_cache_model || desc->pc >= 0x20000000)
+		return;
+	if ((desc->pc & 2) && !sequence_start && !desc->is_branch_target())
+		return;
+	uml::code_label const skip = compiler.labelnum++;
+	UML_TEST(block, mem(&m_cache.ccr), sh7604_cache::CCR_CE);
+	UML_JMPc(block, COND_Z, skip);
+	UML_MOV(block, mem(&m_cache_addr), desc->pc & ~3);
+	UML_MOV(block, mem(&m_cache_op), 2);
+	UML_CALLC(block, cfunc_cache_access, this);
+	UML_LABEL(block, skip);
+}
+
 uint8_t sh2_device::read_byte(offs_t offset)
 {
+	// TAS.B reads memory directly, even in the cache area (8.4.4)
+	bool const tas = m_tas_read;
+	m_tas_read = 0;
+	if (!tas && cache_area(offset))
+		return cache_read(offset, 1, false);
 	if (offset < 0x40000000)
 		return m_program->read_byte(offset & m_am);
 
@@ -134,6 +219,8 @@ uint8_t sh2_device::read_byte(offs_t offset)
 
 uint16_t sh2_device::read_word(offs_t offset)
 {
+	if (cache_area(offset))
+		return cache_read(offset, 2, false);
 	if (offset < 0x40000000)
 		return m_program->read_word(offset & m_am);
 
@@ -142,6 +229,8 @@ uint16_t sh2_device::read_word(offs_t offset)
 
 uint32_t sh2_device::read_long(offs_t offset)
 {
+	if (cache_area(offset))
+		return cache_read(offset, 4, false);
 	// The cached (0x00000000) and cache-through (0x20000000) windows
 	// end up mirroring each other
 	if (offset < 0x40000000)
@@ -158,6 +247,8 @@ uint16_t sh2_device::decrypted_read_word(offs_t offset)
 
 void sh2_device::write_byte(offs_t offset, uint8_t data)
 {
+	if (cache_area(offset))
+		cache_write(offset, 1, data);
 	if (offset < 0x40000000)
 	{
 		m_program->write_byte(offset & m_am, data);
@@ -169,6 +260,8 @@ void sh2_device::write_byte(offs_t offset, uint8_t data)
 
 void sh2_device::write_word(offs_t offset, uint16_t data)
 {
+	if (cache_area(offset))
+		cache_write(offset, 2, data);
 	if (offset < 0x40000000)
 	{
 		m_program->write_word(offset & m_am, data);
@@ -180,6 +273,8 @@ void sh2_device::write_word(offs_t offset, uint16_t data)
 
 void sh2_device::write_long(offs_t offset, uint32_t data)
 {
+	if (cache_area(offset))
+		cache_write(offset, 4, data);
 	if (offset < 0x40000000)
 	{
 		m_program->write_dword(offset & m_am, data);
@@ -305,6 +400,15 @@ void sh2_device::execute_run()
 	do
 	{
 		debugger_instruction_hook(m_sh2_state->pc);
+
+		// Instructions are fetched as longwords through the cache (8.4.1):
+		// one fetch per longword of straight-line code, and one after every
+		// jump. The fetch updates the cache; the opcode itself is taken
+		// from memory, so stale cached code is not executed (the DRC could
+		// not do that, and both cores must agree).
+		if (cache_area(m_sh2_state->pc) && (!(m_sh2_state->pc & 2) || m_fetch_pc != m_sh2_state->pc - 2))
+			cache_read(m_sh2_state->pc & ~3, 4, true);
+		m_fetch_pc = m_sh2_state->pc;
 
 		const uint16_t opcode = m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
 
@@ -694,6 +798,43 @@ void sh2_device::static_generate_memory_accessor(int size, int iswrite, const ch
 	/* add a global entry for this */
 	alloc_handle(handleptr, name);
 	UML_HANDLE(block, *handleptr);                         // handle  *handleptr
+
+	// SH7604 cache (8.4): a read of the cache area with CE set is served by
+	// the cache helper; a write updates the cache on a hit, then goes to the
+	// bus as usual. Done before the address is masked: the masked cached and
+	// cache-through addresses are the same.
+	if (m_cache_model)
+	{
+		int const nocache = label++;
+		UML_CMP(block, I0, 0x20000000);                     // cache area: address bits 31-29 = 000
+		UML_JMPc(block, COND_AE, nocache);
+		UML_TEST(block, mem(&m_cache.ccr), sh7604_cache::CCR_CE);
+		UML_JMPc(block, COND_Z, nocache);
+		if (!iswrite && size == 1)
+		{
+			UML_TEST(block, mem(&m_tas_read), 1);           // TAS.B reads memory directly (8.4.4)
+			UML_JMPc(block, COND_NZ, nocache);
+		}
+		UML_MOV(block, mem(&m_cache_addr), I0);
+		UML_MOV(block, mem(&m_cache_size), size);
+		UML_MOV(block, mem(&m_cache_op), iswrite ? 1 : 0);
+		if (iswrite)
+		{
+			UML_MOV(block, mem(&m_cache_data), I1);
+			UML_CALLC(block, cfunc_cache_access, this);
+			UML_MOV(block, I0, mem(&m_cache_addr));
+			UML_MOV(block, I1, mem(&m_cache_data));
+		}
+		else
+		{
+			UML_CALLC(block, cfunc_cache_access, this);
+			UML_MOV(block, I0, mem(&m_cache_data));
+			UML_RET(block);
+		}
+		UML_LABEL(block, nocache);
+		if (!iswrite && size == 1)
+			UML_MOV(block, mem(&m_tas_read), 0);
+	}
 
 	// with internal handlers this becomes easier.
 	// if addr < 0x40000000 AND it with AM and do the read/write, else just do the read/write

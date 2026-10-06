@@ -890,12 +890,15 @@ void sat_console_state::saturn(machine_config &config)
 	SH7604(config, m_maincpu, MASTER_CLOCK_352 / 2); // 28.6364 MHz
 	m_maincpu->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
 	m_maincpu->set_is_slave(0);
+	// Model the SH7604 cache (section 8)
+	m_maincpu->set_cache_emulation(true);
 	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
 	TIMER(config, "scantimer").configure_scanline(FUNC(sat_console_state::saturn_scanline), "screen", 0, 1);
 
 	SH7604(config, m_slave, MASTER_CLOCK_352 / 2); // 28.6364 MHz
 	m_slave->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
 	m_slave->set_is_slave(1);
+	m_slave->set_cache_emulation(true);
 	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
 
 	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);

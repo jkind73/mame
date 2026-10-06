@@ -18,6 +18,7 @@
 #pragma once
 
 #include "sh.h"
+#include "sh7604_cache.h"
 
 class sh2_device : public sh_common_execution
 {
@@ -25,6 +26,7 @@ public:
 	void set_frt_input(int state) override {} // not every CPU needs this, let the ones that do override it
 
 	void func_fastirq(); // required for DRC, needs to be public to be accessible through non-classed static trampoline function
+	void func_cache_access();       // DRC cache helper (m_cache_op on m_cache_addr/m_cache_data)
 
 protected:
 	class sh2_frontend;
@@ -65,6 +67,18 @@ protected:
 	int32_t m_internal_irq_vector;
 	int8_t m_nmi_line_state;
 
+	// SH7604 cache (section 8). Its registers and array windows always
+	// exist; m_cache_model, set by the driver, makes the core look up and
+	// fill the cache on cache-area accesses.
+	sh7604_cache m_cache;
+	bool m_cache_model = false;
+	uint32_t m_cache_op = 0, m_cache_size = 0, m_cache_addr = 0, m_cache_data = 0; // DRC helper arguments
+	uint32_t m_fetch_pc = ~0U;      // interpreter: PC of the previous instruction fetch
+
+	bool cache_area(offs_t address) const { return m_cache_model && address < 0x20000000 && m_cache.enabled(); }
+	uint32_t cache_read(offs_t address, unsigned size, bool instruction);
+	void cache_write(offs_t address, unsigned size, uint32_t data);
+
 private:
 	virtual uint8_t read_byte(offs_t A) override;
 	virtual uint16_t read_word(offs_t A) override;
@@ -86,6 +100,7 @@ private:
 	virtual const opcode_desc* get_desclist(offs_t pc) override;
 
 	virtual void generate_update_cycles(drcuml_block &block, compiler_state &compiler, uml::parameter param, bool allow_exception) override;
+	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start) override;
 	virtual void static_generate_entry_point() override;
 	virtual void static_generate_memory_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr) override;
 

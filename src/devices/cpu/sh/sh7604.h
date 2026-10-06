@@ -25,6 +25,9 @@ public:
 	sh7604_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	void set_is_slave(int slave) { m_is_slave = slave; }
+	// Model the cache (section 8): the associative purge, address array and
+	// data array windows, and cache lookups on cache-area accesses.
+	void set_cache_emulation(bool enable) { m_cache_model = enable; }
 
 	template <typename... T> void set_dma_kludge_callback(T &&... args) { m_dma_kludge_cb.set(std::forward<T>(args)...); }
 
@@ -58,6 +61,12 @@ private:
 	void sh7604_map(address_map &map) ATTR_COLD;
 
 	uint32_t sh2_internal_a5();
+	uint32_t cache_purge_r(offs_t offset);
+	void cache_purge_w(offs_t offset, uint32_t data);
+	uint32_t cache_address_r(offs_t offset, uint32_t mem_mask);
+	void cache_address_w(offs_t offset, uint32_t data);
+	uint32_t cache_data_r(offs_t offset);
+	void cache_data_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
 	// SCI
 	uint8_t smr_r();
@@ -234,7 +243,7 @@ private:
 	uint8_t m_dmaor;
 
 	// misc
-	uint8_t m_sbycr, m_ccr;
+	uint8_t m_sbycr; // CCR lives in m_cache
 
 	// BSC
 	uint32_t m_bcr1, m_bcr2, m_wcr, m_mcr, m_rtcsr, m_rtcor, m_rtcnt;
