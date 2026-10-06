@@ -52,6 +52,9 @@ public:
 	template <unsigned N> auto in_counter_callback() { return m_cnt_cb[N].bind(); }
 
 	uint8_t read(offs_t offset);
+
+	// the port direction register: a set bit is an input
+	uint8_t port_config() const { return m_port_config; }
 	void write(offs_t offset, uint8_t data);
 
 protected:
@@ -69,6 +72,7 @@ private:
 	devcb_read16::array<4> m_cnt_cb;
 
 	uint8_t m_port_value[7];
+	uint16_t m_cnt_base[4]; // the value of each counter when the program last reset the counters
 	uint8_t m_port_config;
 	uint8_t m_mode;
 	int m_analog_channel;

@@ -43,6 +43,7 @@ sega_315_5649_device::sega_315_5649_device(const machine_config &mconfig, const 
 	m_analog_channel(0)
 {
 	std::fill(std::begin(m_port_value), std::end(m_port_value), 0xff);
+	std::fill(std::begin(m_cnt_base), std::end(m_cnt_base), 0);
 }
 
 //-------------------------------------------------
@@ -53,6 +54,7 @@ void sega_315_5649_device::device_start()
 {
 	// register for save states
 	save_item(NAME(m_port_value));
+	save_item(NAME(m_cnt_base));
 	save_item(NAME(m_port_config));
 	save_item(NAME(m_analog_channel));
 	save_item(NAME(m_mode));
@@ -84,7 +86,8 @@ uint8_t sega_315_5649_device::read(offs_t offset)
 	case 0x06:
 		if (m_mode & 0x80) // port G counter mode - 4x 16bit counters, auto-increments
 		{
-			data = m_cnt_cb[(m_port_value[6] >> 1) & 3](0) >> (((m_port_value[6] & 1) ^ 1) * 8);
+			unsigned const n = (m_port_value[6] >> 1) & 3;
+			data = uint16_t(m_cnt_cb[n](0) - m_cnt_base[n]) >> (((m_port_value[6] & 1) ^ 1) * 8);
 			if (!machine().side_effects_disabled())
 				m_port_value[6] = (m_port_value[6] & 0xf8) | ((m_port_value[6] + 1) & 7);
 			break;
@@ -145,7 +148,12 @@ void sega_315_5649_device::write(offs_t offset, uint8_t data)
 	case 0x03:
 	case 0x04:
 	case 0x05:
-	case 0x06:  // when in counter mode, bit 7 - 0 reset counters (not implemented)
+	case 0x06:  // when in counter mode, a write with bit 7 clear resets the counters
+		if (offset == 6 && !BIT(data, 7))
+		{
+			for (int i = 0; i < 4; i++)
+				m_cnt_base[i] = m_cnt_cb[i](0);
+		}
 		m_port_value[offset] = data;
 		m_out_port_cb[offset](data);
 		break;
