@@ -76,6 +76,25 @@ protected:
 	uint32_t m_fetch_pc = ~0U;      // interpreter: PC of the previous instruction fetch
 
 	bool cache_area(offs_t address) const { return m_cache_model && address < 0x20000000 && m_cache.enabled(); }
+
+	// External bus timing, supplied by the driver: the cycles an access to
+	// the external bus (addresses below 40000000H) costs beyond the one the
+	// instruction timing already counts. size is 1, 2 or 4; fill marks a
+	// cache line fill (four longwords, 8.4.1); now is the CPU's local time at
+	// the access (machine time, so it stays monotonic across CPU resets).
+	using bus_timing_delegate = device_delegate<int (offs_t address, unsigned size, bool write, bool fill, attotime now)>;
+	bus_timing_delegate m_bus_timing;
+	bool m_bus_timed = false;
+	uint32_t m_bus_write = 0;       // DRC helper argument
+	// DRC: base cycles of the current sequence that are not yet taken off
+	// icount (the DRC applies them at the end of the sequence; the
+	// interpreter after each instruction), so both cores see the same time.
+	uint32_t m_bus_pending = 0;
+	void bus_charge(offs_t address, unsigned size, bool write, bool fill = false)
+	{
+		if (m_bus_timed)
+			m_sh2_state->icount -= m_bus_timing(address, size, write, fill, local_time() + cycles_to_attotime(m_bus_pending));
+	}
 	uint32_t cache_read(offs_t address, unsigned size, bool instruction);
 	void cache_write(offs_t address, unsigned size, uint32_t data);
 

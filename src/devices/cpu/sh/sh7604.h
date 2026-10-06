@@ -28,6 +28,8 @@ public:
 	// Model the cache (section 8): the associative purge, address array and
 	// data array windows, and cache lookups on cache-area accesses.
 	void set_cache_emulation(bool enable) { m_cache_model = enable; }
+	// Cost of external bus accesses (see sh2_device::bus_timing_delegate).
+	template <typename... T> void set_bus_timing_callback(T &&... args) { m_bus_timing.set(std::forward<T>(args)...); }
 
 	template <typename... T> void set_dma_kludge_callback(T &&... args) { m_dma_kludge_cb.set(std::forward<T>(args)...); }
 
