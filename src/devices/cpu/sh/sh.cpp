@@ -3225,7 +3225,6 @@ bool sh_common_execution::generate_group_8(drcuml_block &block, compiler_state &
 {
 	int32_t disp;
 	uint32_t udisp;
-	uml::code_label templabel;
 
 	switch ((opcode >> 8) & 15)
 	{
@@ -3293,82 +3292,61 @@ bool sh_common_execution::generate_group_8(drcuml_block &block, compiler_state &
 		UML_MOV(block, mem(&m_sh2_state->sr), I0);      // mov m_sh2_state->sr, r0
 		return true;
 
+	// Conditional branches: the taken path is generated with a copy of the
+	// compiler state. generate_update_cycles charges and clears the cycles the
+	// sequence has accumulated so far, which the not-taken path, compiled on
+	// after the label, still has to charge at its own end; with the shared
+	// state a not-taken branch dropped the cycles of its whole sequence (the
+	// interpreter charges them). The not-taken label is reserved first, so
+	// labels allocated on the taken path (the interrupt check) can't take it.
 	case  9: // BT(opcode & 0xff);
-		UML_TEST(block, mem(&m_sh2_state->sr), SH_T);      // test m_sh2_state->sr, T
-		UML_JMPc(block, COND_Z, compiler.labelnum);    // jz compiler.labelnum
-
-		disp = util::sext(opcode, 8);
-		m_sh2_state->ea = (desc->pc + 2) + disp * 2 + 2;
-
-		// a taken branch eats two more cycles
-		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), 2);    // m_sh2_state->ea = destination
-
-		generate_update_cycles(block, compiler, m_sh2_state->ea, true);    // <subtract cycles>
-		UML_HASHJMP(block, 0, m_sh2_state->ea, *m_nocode);   // jmp m_sh2_state->ea
-
-		UML_LABEL(block, compiler.labelnum++);         // labelnum:
-		return true;
-
 	case 11: // BF(opcode & 0xff);
+	{
+		uml::code_label const not_taken = compiler.labelnum++;
 		UML_TEST(block, mem(&m_sh2_state->sr), SH_T);      // test m_sh2_state->sr, T
-		UML_JMPc(block, COND_NZ, compiler.labelnum);   // jnz compiler.labelnum
+		UML_JMPc(block, (opcode & 0x0200) ? COND_NZ : COND_Z, not_taken); // BF: jnz, BT: jz
 
 		disp = util::sext(opcode, 8);
-		m_sh2_state->ea = (desc->pc + 2) + disp * 2 + 2;
+		m_sh2_state->ea = (desc->pc + 2) + disp * 2 + 2;   // m_sh2_state->ea = destination
 
+		compiler_state taken(compiler);
 		// a taken branch eats two more cycles
-		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), 2);        // m_sh2_state->ea = destination
+		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), 2);
 
-		generate_update_cycles(block, compiler, m_sh2_state->ea, true);    // <subtract cycles>
+		generate_update_cycles(block, taken, m_sh2_state->ea, true);    // <subtract cycles>
 		UML_HASHJMP(block, 0, m_sh2_state->ea, *m_nocode);   // jmp m_sh2_state->ea
+		compiler.labelnum = taken.labelnum;
 
-		UML_LABEL(block, compiler.labelnum++);         // labelnum:
+		UML_LABEL(block, not_taken);                   // not_taken:
+		// the taken path's update zeroed the cycles map variable, which the
+		// code that follows in the stream sees
+		UML_MAPVAR(block, MAPVAR_CYCLES, compiler.cycles);
 		return true;
+	}
 
 	case 13: // BTS(opcode & 0xff);
-		if (m_cpu_type > CPU_TYPE_SH1)
-		{
-			UML_TEST(block, mem(&m_sh2_state->sr), SH_T);      // test m_sh2_state->sr, T
-			UML_JMPc(block, COND_Z, compiler.labelnum);    // jz compiler.labelnum
-
-			disp = util::sext(opcode, 8);
-			m_sh2_state->ea = (desc->pc + 2) + disp * 2 + 2;        // m_sh2_state->ea = destination
-
-			// a taken delayed conditional branch is one additional cycle
-			UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), 1);
-
-			templabel = compiler.labelnum;         // save our label
-			compiler.labelnum++;               // make sure the delay slot doesn't use it
-			generate_delay_slot(block, compiler, desc, m_sh2_state->ea-2);
-
-			generate_update_cycles(block, compiler, m_sh2_state->ea, true);    // <subtract cycles>
-			UML_HASHJMP(block, 0, m_sh2_state->ea, *m_nocode);   // jmp m_sh2_state->ea
-
-			UML_LABEL(block, templabel);            // labelnum:
-			return true;
-		}
-		break;
-
 	case 15: // BFS(opcode & 0xff);
 		if (m_cpu_type > CPU_TYPE_SH1)
 		{
+			uml::code_label const not_taken = compiler.labelnum++;
 			UML_TEST(block, mem(&m_sh2_state->sr), SH_T);      // test m_sh2_state->sr, T
-			UML_JMPc(block, COND_NZ, compiler.labelnum);   // jnz compiler.labelnum
+			UML_JMPc(block, (opcode & 0x0200) ? COND_NZ : COND_Z, not_taken); // BF/S: jnz, BT/S: jz
 
 			disp = util::sext(opcode, 8);
 			m_sh2_state->ea = (desc->pc + 2) + disp * 2 + 2;        // m_sh2_state->ea = destination
 
+			compiler_state taken(compiler);
 			// a taken delayed conditional branch is one additional cycle
 			UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), 1);
 
-			templabel = compiler.labelnum;         // save our label
-			compiler.labelnum++;               // make sure the delay slot doesn't use it
-			generate_delay_slot(block, compiler, desc, m_sh2_state->ea-2); // delay slot only if the branch is taken
+			generate_delay_slot(block, taken, desc, m_sh2_state->ea-2); // delay slot only if the branch is taken
 
-			generate_update_cycles(block, compiler, m_sh2_state->ea, true);    // <subtract cycles>
+			generate_update_cycles(block, taken, m_sh2_state->ea, true);    // <subtract cycles>
 			UML_HASHJMP(block, 0, m_sh2_state->ea, *m_nocode);   // jmp m_sh2_state->ea
+			compiler.labelnum = taken.labelnum;
 
-			UML_LABEL(block, templabel);            // labelnum:
+			UML_LABEL(block, not_taken);            // not_taken:
+			UML_MAPVAR(block, MAPVAR_CYCLES, compiler.cycles);
 			return true;
 		}
 		break;
@@ -3758,20 +3736,29 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 		return true;
 
 	case 0x1b: // SLEEP();
+	{
+		// the asleep path is generated with a copy of the compiler state, so
+		// the wake path still charges the sequence's cycles (as for the
+		// conditional branches in generate_group_8)
+		uml::code_label const wake = compiler.labelnum++;
 		UML_MOV(block, I0, mem(&m_sh2_state->sleep_mode));                 // mov i0, sleep_mode
 		UML_CMP(block, I0, 0x2);                                           // cmp i0, #2
-		UML_JMPc(block, COND_E, compiler.labelnum);                        // beq labelnum
+		UML_JMPc(block, COND_E, wake);                                     // beq wake
 		// sleep mode != 2: stay asleep by re-executing this instruction until an
 		// exception wakes us (same behavior as the SH interpreter)
+		compiler_state asleep(compiler);
 		UML_MOV(block, mem(&m_sh2_state->sleep_mode), 0x1);                // mov sleep_mode, #1
-		generate_update_cycles(block, compiler, desc->pc, true);           // repeat this insn
+		generate_update_cycles(block, asleep, desc->pc, true);             // repeat this insn
 		UML_HASHJMP(block, 0, desc->pc, *m_nocode);                        // jmp desc->pc
+		compiler.labelnum = asleep.labelnum;
 
-		UML_LABEL(block, compiler.labelnum++);                             // labelnum:
+		UML_LABEL(block, wake);                                            // wake:
+		UML_MAPVAR(block, MAPVAR_CYCLES, compiler.cycles);
 		// sleep_mode == 2
 		UML_MOV(block, mem(&m_sh2_state->sleep_mode), 0x0);                // sleep_mode = 0
 		generate_update_cycles(block, compiler, desc->pc+2, true);         // go to next insn
 		return true;
+	}
 
 	case 0x22: // STCVBR(Rn);
 		UML_MOV(block, R32(REG_N), mem(&m_sh2_state->vbr));        // mov Rn, vbr
