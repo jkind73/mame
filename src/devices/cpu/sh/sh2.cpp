@@ -99,8 +99,9 @@ void sh2_device::device_reset()
 	m_sh2_state->sleep_mode = 0;
 	m_sh2_state->internal_irq_level = -1;
 	m_sh2_state->sr = SH_I;
-	m_sh2_state->pc = read_long(0);
-	m_sh2_state->r[15] = read_long(4);
+	m_sh2_state->pc = read_long(m_manual_reset ? 8 : 0);
+	m_sh2_state->r[15] = read_long(m_manual_reset ? 12 : 4);
+	m_manual_reset = false;
 
 	m_test_irq = 0;
 	m_cpu_off = 0;

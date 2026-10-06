@@ -91,6 +91,8 @@ protected:
 	// icount (the DRC applies them at the end of the sequence; the
 	// interpreter after each instruction), so both cores see the same time.
 	uint32_t m_bus_pending = 0;
+	// the next reset is a manual reset: the PC and SP come from the vectors at 8 and 12 (Hardware Manual 4.2.3)
+	bool m_manual_reset = false;
 	// the DRC keeps m_bus_pending up to date even without bus timing, for the devices that wait for
 	// the CPU's time on an access of their own (the division unit)
 	bool m_track_pending = false;

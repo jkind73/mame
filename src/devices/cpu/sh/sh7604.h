@@ -158,9 +158,9 @@ private:
 	void dmaor_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 
 	// WTC
-	uint16_t wtcnt_r();
+	uint16_t wtcnt_r(offs_t offset, uint16_t mem_mask = ~0);
 	void wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
-	uint16_t rstcsr_r();
+	uint16_t rstcsr_r(offs_t offset, uint16_t mem_mask = ~0);
 	void rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
 	// misc
@@ -234,6 +234,9 @@ private:
 	uint8_t m_wtcnt, m_wtcsr;
 	uint8_t m_rstcsr;
 	uint16_t m_wtcw[2];
+	bool m_wtcsr_ovf_read = false;   // OVF has been read as 1: a following write of 0 clears it
+	bool m_rstcsr_wovf_read = false; // the same for WOVF
+	bool m_wdt_reset = false;        // the reset in progress comes from the WDT: RSTCSR survives it
 
 	// UBC
 	uint16_t m_barah, m_baral;

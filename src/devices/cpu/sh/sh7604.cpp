@@ -190,6 +190,7 @@ void sh7604_device::device_start()
 
 void sh7604_device::device_reset()
 {
+	bool const manual = m_manual_reset;
 	sh2_device::device_reset();
 
 	// CCR resets to zero (section 8.2); this disables the cache without implying a purge
@@ -222,11 +223,20 @@ void sh7604_device::device_reset()
 
 	m_wtcnt = 0;
 	m_wtcsr = 0;
+	m_wtcsr_ovf_read = false;
+	m_rstcsr_wovf_read = false;
+	if (!m_wdt_reset)
+		m_rstcsr = 0;
+	m_wdt_reset = false;
 
-	m_barah = 0;
-	m_baral = 0;
-	m_barbh = 0;
-	m_barbl = 0;
+	// a manual reset leaves the BSC and UBC alone (Hardware Manual 4.2.3)
+	if (!manual)
+	{
+		m_barah = 0;
+		m_baral = 0;
+		m_barbh = 0;
+		m_barbl = 0;
+	}
 }
 
 // on-chip modules initialized in standby mode (SH7604 hardware manual table 14.3), the
@@ -594,8 +604,18 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_wdtimer_callback)
 	}
 	else // watchdog mode
 	{
+		// WOVF is set and WDTOVF is output (not wired on the Saturn). WTCNT and WTCSR are reset
+		// within the WDT; with RSTE set the chip is reset too, a power-on reset or a manual one as
+		// RSTS says, for 512 clocks (Hardware Manual 12.3.1, 12.4.5). RSTCSR survives it.
 		m_rstcsr |= 0x80;
-		// TODO reset and /WDTOVF out
+		m_wtcnt = 0;
+		m_wtcsr = 0;
+		if (m_rstcsr & 0x40)
+		{
+			m_wdt_reset = true;
+			m_manual_reset = BIT(m_rstcsr, 5);
+			pulse_input_line(INPUT_LINE_RESET, cycles_to_attotime(512));
+		}
 	}
 }
 
@@ -1307,7 +1327,7 @@ uint32_t sh7604_device::dvdnt_r()
 void sh7604_device::dvdnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	divu_wait();
-	// TODO: this is really a separate register that happens to be shared with DVDNTL
+	// writing DVDNT also writes DVDNTL, and its MSB is extended into DVDNTH (Hardware Manual 10.2.2)
 	COMBINE_DATA(&m_dvdntl);
 	LOG("SH2 div32+mod %d/%d\n", int32_t(m_dvdntl), int32_t(m_dvsr));
 	// the dividend is sign-extended into DVDNTH, so this is a 64-bit division of a 32-bit value
@@ -1474,14 +1494,18 @@ void sh7604_device::barbl_w(offs_t offset, uint16_t data, uint16_t mem_mask)
  * WTC
  */
 
-uint16_t sh7604_device::wtcnt_r()
+uint16_t sh7604_device::wtcnt_r(offs_t offset, uint16_t mem_mask)
 {
 	sh2_wtcnt_recalc();
+	if (ACCESSING_BITS_8_15 && !machine().side_effects_disabled())
+		m_wtcsr_ovf_read = BIT(m_wtcsr, 7);
 	return ((m_wtcsr | 0x18) << 8) | (m_wtcnt & 0xff);
 }
 
-uint16_t sh7604_device::rstcsr_r()
+uint16_t sh7604_device::rstcsr_r(offs_t offset, uint16_t mem_mask)
 {
+	if (ACCESSING_BITS_0_7 && !machine().side_effects_disabled())
+		m_rstcsr_wovf_read = BIT(m_rstcsr, 7);
 	return (m_rstcsr & 0xe0) | 0x1f;
 }
 
@@ -1505,8 +1529,11 @@ void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			---- -xxx Clock select
 			*/
 			sh2_wtcnt_recalc();
-			m_wtcsr &= m_wtcw[0] & 0x80;
-			m_wtcsr |= m_wtcw[0] & 0x7f;
+			// OVF is cleared by writing 0 after reading it as 1; a 1 leaves it as it is
+			if (!(m_wtcw[0] & 0x80) && m_wtcsr_ovf_read)
+				m_wtcsr &= 0x7f;
+			m_wtcsr_ovf_read = false;
+			m_wtcsr = (m_wtcsr & 0x80) | (m_wtcw[0] & 0x7f);
 			if (m_wtcsr & 0x20)
 				sh2_wdt_activate();
 			else
@@ -1525,9 +1552,10 @@ void sh7604_device::rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	switch (m_wtcw[1] & 0xff00)
 	{
 		case 0xa500:
-			// clear WOVF flag
-			if ((m_wtcw[1] & 0x80) == 0)
+			// WOVF is cleared by writing 0 after reading it as 1
+			if ((m_wtcw[1] & 0x80) == 0 && m_rstcsr_wovf_read)
 				m_rstcsr &= 0x7f;
+			m_rstcsr_wovf_read = false;
 			break;
 		case 0x5a00:
 			m_rstcsr = (m_rstcsr & 0x80) | (m_wtcw[1] & 0x60);
