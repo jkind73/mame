@@ -122,6 +122,7 @@ void smpc_hle_device::device_start()
 	m_mini_nvram->set_base(&m_smem, 5);
 
 	save_item(NAME(m_sf));
+	save_item(NAME(m_in_vblank));
 	save_item(NAME(m_collect_wait));
 	save_item(NAME(m_collect_measured));
 	save_item(NAME(m_collect_done));
@@ -198,6 +199,7 @@ void smpc_hle_device::device_reset()
 	m_prev_sndoff = m_prev_sshoff = 0xff;
 	m_prev_cdoff = 0;
 
+	m_in_vblank = false;
 	m_collect_wait = false;
 	m_collect_measured = false;
 	m_collect_done = false;
@@ -475,6 +477,13 @@ void smpc_hle_device::command_register_w(uint8_t data)
 				m_collect_requested = (m_ireg[0] == 0);
 				m_collect_optimize = !BIT(m_ireg[1], 1);
 				m_collect_ready = attotime::never;
+
+				// The manual has the command issued in the blanking, before the VBLANK-OUT. Daytona USA
+				// (Japan) issues it from its VBLANK-OUT handler, microseconds after the edge, and needs
+				// the report in the same frame to boot: a command that finds the display active starts
+				// its collection at once, with the same optimization point (1 ms before the VBLANK-IN)
+				if (!m_in_vblank)
+					periph_collect_start();
 			}
 
 			// TODO: check against ireg2, must be 0xf0
@@ -727,9 +736,10 @@ static constexpr unsigned PERIPH_MARGIN_USEC = 1000;
 
 void smpc_hle_device::vblank_in_w(int state)
 {
-	if (!state)
+	if (!state || m_in_vblank)
 		return;
 
+	m_in_vblank = true;
 	attotime const now = machine().time();
 	if (m_vin_time != attotime::never)
 		m_frame_time = now - m_vin_time;
@@ -738,10 +748,12 @@ void smpc_hle_device::vblank_in_w(int state)
 
 void smpc_hle_device::vblank_out_w(int state)
 {
-	if (!state || !m_collect_wait)
+	if (!state || !m_in_vblank)
 		return;
 
-	periph_collect_start();
+	m_in_vblank = false;
+	if (m_collect_wait)
+		periph_collect_start();
 }
 
 // The SMPC saw the VBLANK-OUT of the frame after the INTBACK. Without the optimization the

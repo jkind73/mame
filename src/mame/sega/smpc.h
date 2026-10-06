@@ -164,6 +164,7 @@ private:
 	// Peripheral data collection (SMPC manual 3.1): the SMPC starts it when it sees the VBLANK-OUT
 	// after the INTBACK command; with the optimization on it measures the collection time and then
 	// starts it so that the data is ready 1 ms before the next VBLANK-IN.
+	bool m_in_vblank;          // the display is in its vertical blanking
 	bool m_collect_wait;       // a collection waits for the next VBLANK-OUT
 	bool m_collect_measured;   // the collection time of the mode has been measured once
 	bool m_collect_optimize;   // the INTBACK that asked for it has the optimization on (OPE = 0)
