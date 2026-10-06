@@ -33,7 +33,6 @@ DEFINE_DEVICE_TYPE(SH7604,  sh7604_device,  "sh2_7604",  "Hitachi SH-2 (SH7604)"
 
 sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: sh2_device(mconfig, SH7604, tag, owner, clock, CPU_TYPE_SH2, address_map_constructor(FUNC(sh7604_device::sh7604_map), this), 32, 0xc7ffffff)
-	, m_test_irq(0), m_internal_irq_vector(0)
 	, m_smr(0), m_brr(0), m_scr(0), m_tdr(0), m_ssr(0)
 	, m_tier(0), m_ftcsr(0), m_ftcsr_read_flags(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
@@ -51,7 +50,6 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 {
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
-	std::fill(std::begin(m_dma_irq), std::end(m_dma_irq), 0);
 	std::fill(std::begin(m_active_dma_incs), std::end(m_active_dma_incs), 0);
 	std::fill(std::begin(m_active_dma_incd), std::end(m_active_dma_incd), 0);
 	std::fill(std::begin(m_active_dma_size), std::end(m_active_dma_size), 0);
@@ -202,7 +200,6 @@ void sh7604_device::device_reset()
 	for (int i = 0; i < 2; i++)
 	{
 		m_dma_timer_active[i] = 0;
-		m_dma_irq[i] = 0;
 		m_active_dma_incs[i] = 0;
 		m_active_dma_incd[i] = 0;
 		m_active_dma_size[i] = 0;
@@ -399,12 +396,13 @@ void sh7604_device::sh2_exception(const char *message, int irqline)
 		if (irqline <= ((m_sh2_state->sr >> 4) & 15)) /* If the cpu forbids this interrupt */
 			return;
 
-		// if this is an sh2 internal irq, use its vector
-		if (m_sh2_state->internal_irq_level == irqline)
+		// an on-chip source takes the interrupt when no IRL input of the same level is pending: the
+		// IRL inputs rank above the on-chip sources (Hardware Manual table 5.4). The source stays
+		// requested until the program clears its flag, so the interrupt can be taken again once
+		// the mask allows it
+		if (m_sh2_state->internal_irq_level == irqline && !BIT(m_sh2_state->pending_irq, irqline))
 		{
 			vector = m_internal_irq_vector;
-			/* avoid spurious irqs with this (TODO: needs a better fix) */
-			m_sh2_state->internal_irq_level = -1;
 			LOG("SH-2 exception #%d (internal vector: $%x) after [%s]\n", irqline, vector, message);
 		}
 		else
@@ -880,7 +878,6 @@ void sh7604_device::sh2_do_dma(int dmach)
 		m_dmac[dmach].tcr = 0;
 		m_dmac[dmach].chcr |= 2;
 		m_dma_timer_active[dmach] = 0;
-		m_dma_irq[dmach] |= 1;
 		sh2_recalc_irq();
 
 	}
@@ -1270,8 +1267,6 @@ void sh7604_device::dvcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		//   a stage with game timer <= 10
 		m_divu_ovf = BIT(data, 0);
 		m_divu_ovfie = BIT(data, 1);
-		if (m_divu_ovfie)
-			LOG("SH2: unemulated DIVU OVF interrupt enable\n");
 		sh2_recalc_irq();
 	}
 }
@@ -1631,61 +1626,47 @@ void sh7604_device::set_frt_input(int state)
 	sh2_recalc_irq();
 }
 
+// The interrupt controller (Hardware Manual 5.2.5, table 5.4). Every on-chip source is a level
+// held by its flag and enable bits; the highest priority level goes to the CPU with its vector
+// number. Sources of the same level rank in the default priority order: DIVU, DMAC0, DMAC1, WDT,
+// SCI (ERI, RXI, TXI, TEI), FRT (ICI, OCI, OVI). The first source of a level wins, so a later
+// one needs a strictly higher level to replace it.
 void sh7604_device::sh2_recalc_irq()
 {
 	int irq = 0;
 	int vector = -1;
-	int level;
-
-	// Timer irqs
-	if (m_tier & m_ftcsr & (ICF | OCFA | OCFB | OVF))
+	auto const request = [&irq, &vector] (int level, int number)
 	{
-		level = (m_irq_level.frc & 15);
-		if (level > irq)
+		if ((level & 15) > irq)
 		{
-			int mask = m_tier & m_ftcsr;
-			irq = level;
-			if (mask & ICF)
-				vector = m_irq_vector.fic & 0x7f;
-			else if (mask & (OCFA | OCFB))
-				vector = m_irq_vector.foc & 0x7f;
-			else
-				vector = m_irq_vector.fov & 0x7f;
+			irq = level & 15;
+			vector = number & 0x7f;
 		}
+	};
+
+	// DIVU overflow
+	if (m_divu_ovf && m_divu_ovfie)
+		request(m_irq_level.divu, m_irq_vector.divu);
+
+	// DMAC transfer end: requested while TE and IE are both set
+	for (int ch = 0; ch < 2; ch++)
+	{
+		if ((m_dmac[ch].chcr & 6) == 6)
+			request(m_irq_level.dmac, m_irq_vector.dmac[ch]);
 	}
 
-	// WDT irqs
+	// WDT interval
 	if (m_wtcsr & 0x80)
-	{
-		level = m_irq_level.wdt & 15;
-		if (level > irq)
-		{
-			irq = level;
-			vector = (m_vcrwdt >> 8) & 0x7f;
-		}
-	}
+		request(m_irq_level.wdt, (m_vcrwdt >> 8) & 0x7f);
 
-	// DMA irqs
-	if ((m_dmac[0].chcr & 6) == 6 && m_dma_irq[0])
-	{
-		level = m_irq_level.dmac & 15;
-		if (level > irq)
-		{
-			irq = level;
-			m_dma_irq[0] &= ~1;
-			vector = m_irq_vector.dmac[0] & 0x7f;
-		}
-	}
-	else if ((m_dmac[1].chcr & 6) == 6 && m_dma_irq[1])
-	{
-		level = m_irq_level.dmac & 15;
-		if (level > irq)
-		{
-			irq = level;
-			m_dma_irq[1] &= ~1;
-			vector = m_irq_vector.dmac[1] & 0x7f;
-		}
-	}
+	// FRT: input capture, output compare, overflow
+	uint8_t const frt = m_tier & m_ftcsr;
+	if (frt & ICF)
+		request(m_irq_level.frc, m_irq_vector.fic);
+	if (frt & (OCFA | OCFB))
+		request(m_irq_level.frc, m_irq_vector.foc);
+	if (frt & OVF)
+		request(m_irq_level.frc, m_irq_vector.fov);
 
 	m_sh2_state->internal_irq_level = irq;
 	m_internal_irq_vector = vector;
@@ -1774,6 +1755,8 @@ void sh7604_device::chcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	COMBINE_DATA(&m_dmac[Channel].chcr);
 	m_dmac[Channel].chcr = (data & ~2) | (old & m_dmac[Channel].chcr & 2);
 	sh2_dmac_check(Channel);
+	// TE cleared or IE changed: the request follows the bits
+	sh2_recalc_irq();
 }
 
 uint32_t sh7604_device::dmaor_r()

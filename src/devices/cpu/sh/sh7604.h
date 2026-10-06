@@ -47,9 +47,6 @@ protected:
 
 	virtual void sh2_exception(const char *message, int irqline) override;
 
-	uint32_t m_test_irq;
-	int m_internal_irq_vector;
-
 private:
 	enum
 	{
@@ -259,7 +256,6 @@ private:
 	emu_timer *m_wdtimer;
 	emu_timer *m_dma_current_active_timer[2];
 	int m_dma_timer_active[2];
-	uint8_t m_dma_irq[2];
 
 	int m_active_dma_incs[2];
 	int m_active_dma_incd[2];

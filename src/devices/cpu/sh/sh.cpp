@@ -313,17 +313,6 @@ void sh_common_execution::BRA(uint32_t d)
 {
 	int32_t disp = util::sext(d, 12);
 
-#if BUSY_LOOP_HACKS
-	if (disp == -2)
-	{
-		uint32_t next_opcode = read_word(m_sh2_state->pc & m_am);
-		/* BRA  $
-		 * NOP
-		 */
-		if (next_opcode == 0x0009)
-			m_sh2_state->icount %= 3;   /* cycles for BRA $ and NOP taken (3) */
-	}
-#endif
 	m_sh2_state->m_delay = m_sh2_state->ea = m_sh2_state->pc + disp * 2 + 2;
 	m_sh2_state->icount--;
 }
@@ -732,22 +721,6 @@ void sh_common_execution::DT(uint32_t n)
 		m_sh2_state->sr |= SH_T;
 	else
 		m_sh2_state->sr &= ~SH_T;
-#if BUSY_LOOP_HACKS
-	{
-		uint32_t next_opcode = read_word(m_sh2_state->pc & AM);
-		/* DT   Rn
-		 * BF   $-2
-		 */
-		if (next_opcode == 0x8bfd)
-		{
-			while (m_sh2_state->r[n] > 1 && m_sh2_state->icount > 4)
-			{
-				m_sh2_state->r[n]--;
-				m_sh2_state->icount -= 4;   /* cycles for DT (1) and BF taken (3) */
-			}
-		}
-	}
-#endif
 }
 
 /*  EXTS.B  Rm,Rn */
