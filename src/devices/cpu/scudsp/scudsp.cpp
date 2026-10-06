@@ -622,16 +622,19 @@ void scudsp_cpu_device::op_move_immediate( uint32_t opcode )
 
 // DMA instructions (SCU manual 5, DMA): the transfer counter is the 8 bit immediate or the low byte of
 // a data RAM word, 0 meaning 256 (MiSTer DSP.sv TN0: the transfer ends when the decremented
-// counter reaches 0). The address addition field is the 3 bits 17-15 of the immediate forms
-// and bit 15 of the forms with the counter in RAM. The SCU receives it raw: a read adds 4 bytes
-// when bit 0 is set and nothing otherwise, and a write adds the SCU's write add value of the same
-// field (0, 2, 4, 8 ... 128 bytes) after every 16 bit access (MiSTer SCU.sv DMA_RADD <= DSP_ADD[0],
-// DMA_WADD <= DSP_ADD).
+// counter reaches 0). The address addition field is the raw bits 17-15 of both forms (the BIOS'
+// sound upload uses bit 16 in the form with the counter in RAM; MiSTer SCU.sv takes DSP_DSO[17:15]
+// whatever the form). A read steps its source by a longword when the field is not 0 and bit 1 is set,
+// or the source is on the B-Bus; a write adds the SCU's write add value of the field (0, 2, 4, 8 ...
+// 128 bytes) after every 16 bit access (SCU.sv DMA_RA_NEW, DMA_WA_NEW). RA0 follows each unit of a
+// read when bit 1 is set and WA0 each unit but the last of a write, unless the instruction holds
+// them; at the end of the transfer a read that did not step RA0 and every write add a longword
+// (SCU.sv DMA_END && DMA_DSP).
 void scudsp_cpu_device::op_dma( uint32_t opcode )
 {
 	uint8_t const hold = (opcode & 0x4000) >> 14;
 	bool const counter_in_ram = BIT(opcode, 13);
-	uint8_t const field = counter_in_ram ? BIT(opcode, 15) : (opcode & 0x38000) >> 15;
+	uint8_t const field = (opcode & 0x38000) >> 15;
 	m_dma.dir = BIT(opcode, 12);
 	m_dma.bank = (opcode & 0x700) >> 8;
 	m_dma.field = field;
@@ -734,6 +737,16 @@ void scudsp_cpu_device::op_illegal(uint32_t opcode)
 // DMA_END_PEND && PRGW: PC <= TOP).
 void scudsp_cpu_device::dma_end()
 {
+	// a read that did not step RA0 and every write move their register on by a longword (SCU.sv
+	// DMA_END && DMA_DSP)
+	if (m_dma_state != DMA_STATE_IDLE && m_dma.update)
+	{
+		if (m_dma.dir == 0 && !BIT(m_dma.field, 1))
+			m_ra0 = (m_ra0 + 1) & 0x01ff'ffff;
+		else if (m_dma.dir == 1)
+			m_wa0 = (m_wa0 + 1) & 0x01ff'ffff;
+	}
+
 	m_out_ddwt_cb(0);
 	m_out_ddmv_cb(0);
 	m_dma.ex = 0;
@@ -826,10 +839,13 @@ void scudsp_cpu_device::exec_dma()
 		else
 			set_dest_dma_mem( m_dma.bank, data );
 
-		uint32_t const add = BIT(m_dma.field, 0) ? 4 : 0;
-		m_dma.src += add;
-		if ( m_dma.update )
-			m_ra0 += add >> 2;
+		// the source steps by a longword when bit 1 of the field is set, or always on the B-Bus, and
+		// stays where it is when the field is 0; RA0 follows a stepping read
+		bool const bbus = (m_dma.src & 0x07f0'0000) >= 0x05a0'0000 && (m_dma.src & 0x07f0'0000) < 0x05fe'0000;
+		if (m_dma.field)
+			m_dma.src += (bbus || BIT(m_dma.field, 1)) ? 4 : 0;
+		if (m_dma.update && BIT(m_dma.field, 1))
+			m_ra0 = (m_dma.src >> 2) & 0x01ff'ffff;
 	}
 	else
 	{
@@ -851,8 +867,9 @@ void scudsp_cpu_device::exec_dma()
 			m_dma.dst += 2 * half;
 		}
 
-		if ( m_dma.update )
-			m_wa0 += (2 * half) >> 2;
+		// WA0 follows every unit but the last (the end of the transfer adds its own longword)
+		if (m_dma.update && m_dma.field && m_dma.count + 1 < m_dma.size)
+			m_wa0 = (m_dma.dst >> 2) & 0x01ff'ffff;
 	}
 }
 
