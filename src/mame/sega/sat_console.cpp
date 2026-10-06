@@ -842,15 +842,7 @@ void sat_console_state::saturn(machine_config &config)
 	m_scu->set_hostcpu(m_maincpu);
 	m_scu->main_dtack_cb().set_inputline(m_maincpu, INPUT_LINE_HALT);
 	m_scu->main_dtack_cb().append_inputline(m_slave, INPUT_LINE_HALT);
-	m_scu->sound_dtack_cb().set_inputline(m_audiocpu, INPUT_LINE_HALT);
-	m_scu->main_steal_cb().set([this] (u8 data) {
-		m_maincpu->adjust_icount(-data);
-		m_slave->adjust_icount(-data);
-	});
 	m_scu->vdp2_penalty_cb().set(FUNC(sat_console_state::vdp2_vram_write_penalty));
-	m_scu->sound_steal_cb().set([this] (u8 data) {
-		m_audiocpu->adjust_icount(-data);
-	});
 
 
 //  SH-1

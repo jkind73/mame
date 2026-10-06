@@ -138,9 +138,14 @@ int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bo
 	}
 	else
 	{
+		// An SCU DMA owns the A-Bus and the B-Bus while it runs: the access waits for it (SCU
+		// manual 2.1). The SCU's own registers stay reachable.
+		if (a < 0x05fc0000 && !(a >= 0x05900000 && a < 0x05a00000))
+			t += m_scu->dma_bus_owner_wait();
+
 		// the chips behind the SCU, as measured by the probe (they are the extra clocks, so one
 		// is added for the access itself)
-		t = 1 + cpu_bus_waits(address, write, size * 8) * (fill ? 4 : 1);
+		t += 1 + cpu_bus_waits(address, write, size * 8) * (fill ? 4 : 1);
 	}
 
 	uint64_t const total = sh2_bus_arbitrate(cpu * 2 + (dma ? 1 : 0), now, t, address, write);

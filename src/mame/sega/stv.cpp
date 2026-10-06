@@ -1213,14 +1213,6 @@ void stv_state::stv(machine_config &config)
 	m_scu->set_hostcpu(m_maincpu);
 	m_scu->main_dtack_cb().set_inputline(m_maincpu, INPUT_LINE_HALT);
 	m_scu->main_dtack_cb().append_inputline(m_slave, INPUT_LINE_HALT);
-	m_scu->sound_dtack_cb().set_inputline(m_audiocpu, INPUT_LINE_HALT);
-	m_scu->main_steal_cb().set([this] (u8 data) {
-		m_maincpu->adjust_icount(-data);
-		m_slave->adjust_icount(-data);
-	});
-	m_scu->sound_steal_cb().set([this] (u8 data) {
-		m_audiocpu->adjust_icount(-data);
-	});
 
 	SMPC_HLE(config, m_smpc_hle, XTAL(4'000'000));
 	m_smpc_hle->set_screen_tag("screen");

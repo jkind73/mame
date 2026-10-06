@@ -26,9 +26,6 @@ public:
 
 	template <typename T> void set_hostcpu(T &&tag) { m_hostcpu.set_tag(std::forward<T>(tag)); }
 	auto main_dtack_cb()  { return m_main_dtack_cb.bind(); }
-	auto main_steal_cb()  { return m_main_steal_cb.bind(); }
-	auto sound_dtack_cb() { return m_sound_dtack_cb.bind(); }
-	auto sound_steal_cb() { return m_sound_steal_cb.bind(); }
 	auto vdp2_penalty_cb() { return m_vdp2_penalty_cb.bind(); }
 
 	// I/O operations
@@ -38,6 +35,12 @@ public:
 	// gives the number of normal waits of each area, the access takes that plus 3 (ST-097 A-Bus
 	// set register; MiSTer SCU.sv ABUS_WAIT_CNT = ASR0.A0NW + 3)
 	unsigned abus_waits(u32 address) const;
+
+	// While an SCU DMA runs it owns the A-Bus and the B-Bus: an SH-2 access to either is put on
+	// hold until the transfer ends (SCU manual 2.1, "while SCU-DMA is running, CPU access to
+	// A-Bus and B-Bus is put on hold"). Runs the moving transfer's remaining units now, so their
+	// data lands before the access, and returns the SH-2 cycles the access waits.
+	uint32_t dma_bus_owner_wait();
 
 	void vblank_out_w(int state);
 	void vblank_in_w(int state);
@@ -77,9 +80,6 @@ private:
 	required_device<sh7604_device> m_hostcpu;
 	address_space *m_hostspace;
 	devcb_write_line m_main_dtack_cb;
-	devcb_write8     m_main_steal_cb;
-	devcb_write_line m_sound_dtack_cb;
-	devcb_write8     m_sound_steal_cb;
 	devcb_read8      m_vdp2_penalty_cb;
 
 	enum dma_id : int {
@@ -194,8 +194,23 @@ private:
 		bool        wup;
 		bool        done;
 		bool        bbus_sound_access;
-		int         transfer_penalty;
+		bool        cbus;          // the transfer reads or writes the C-Bus (Work RAM-H)
+		int32_t     pending_read;  // SH-2 cycles of source reads not yet overlapped by writes
+		int64_t     read_tag;      // the source longword whose read cost the next halfword shares, or -1
 	}m_dma[3];
+
+	// SH-2 cycles the accesses of the current DMA unit took, the extra time a B-Bus device holds
+	// the transfer off, the count of C-Bus source reads (the SDRAM slowdown), and whether the
+	// SCU holds the SH-2s for the C-Bus
+	int32_t m_dma_cost = 0;
+	attotime m_dma_extra = attotime::zero;
+	uint32_t m_dma_sdram_reads = 0;
+	bool m_cpu_halt = false;
+	int dma_read_cost(u32 address, unsigned size);
+	uint32_t dma_read(dma_channel_t &ch, u32 address, unsigned size);
+	void dma_write_cost(dma_channel_t &ch, u32 address, unsigned size);
+	void dma_unit_step(uint8_t level);
+	void set_cpu_halt(bool halt);
 
 	using dma_transfer_func = void (saturn_scu_device::*)(dma_channel_t &ch);
 	static const dma_transfer_func dma_transfer_table[4];

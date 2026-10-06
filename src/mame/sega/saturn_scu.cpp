@@ -57,9 +57,6 @@ saturn_scu_device::saturn_scu_device(const machine_config &mconfig, const char *
 	, m_scudsp(*this, "scudsp")
 	, m_hostcpu(*this, finder_base::DUMMY_TAG)
 	, m_main_dtack_cb(*this)
-	, m_main_steal_cb(*this)
-	, m_sound_dtack_cb(*this)
-	, m_sound_steal_cb(*this)
 	, m_vdp2_penalty_cb(*this, 0)
 {
 }
@@ -290,7 +287,9 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[0].live_size));
 	save_item(NAME(m_dma[0].live_count));
 	save_item(NAME(m_dma[0].bbus_sound_access));
-	save_item(NAME(m_dma[0].transfer_penalty));
+	save_item(NAME(m_dma[0].cbus));
+	save_item(NAME(m_dma[0].pending_read));
+	save_item(NAME(m_dma[0].read_tag));
 
 	save_item(NAME(m_dma[1].src));
 	save_item(NAME(m_dma[1].dst));
@@ -311,7 +310,9 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[1].live_size));
 	save_item(NAME(m_dma[1].live_count));
 	save_item(NAME(m_dma[1].bbus_sound_access));
-	save_item(NAME(m_dma[1].transfer_penalty));
+	save_item(NAME(m_dma[1].cbus));
+	save_item(NAME(m_dma[1].pending_read));
+	save_item(NAME(m_dma[1].read_tag));
 
 	save_item(NAME(m_dma[2].src));
 	save_item(NAME(m_dma[2].dst));
@@ -332,7 +333,13 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[2].live_size));
 	save_item(NAME(m_dma[2].live_count));
 	save_item(NAME(m_dma[2].bbus_sound_access));
-	save_item(NAME(m_dma[2].transfer_penalty));
+	save_item(NAME(m_dma[2].cbus));
+	save_item(NAME(m_dma[2].pending_read));
+	save_item(NAME(m_dma[2].read_tag));
+
+	save_item(NAME(m_dma_cost));
+	save_item(NAME(m_dma_sdram_reads));
+	save_item(NAME(m_cpu_halt));
 
 	save_item(NAME(m_current_irq_level));
 
@@ -365,8 +372,15 @@ void saturn_scu_device::device_reset()
 		m_dma[i].enable_mask = false;
 		m_dma[i].done = false;
 		m_dma[i].bbus_sound_access = false;
+		m_dma[i].cbus = false;
+		m_dma[i].pending_read = 0;
+		m_dma[i].read_tag = -1;
 		m_dma[i].mode = DMA_MODE_RESET;
 	}
+	m_dma_cost = 0;
+	m_dma_extra = attotime::zero;
+	m_dma_sdram_reads = 0;
+	m_cpu_halt = false;
 
 	m_dma_tick_timer->adjust(attotime::never);
 	m_dma_status = 0;
@@ -515,8 +529,8 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level)
 		return;
 	}
 
-	auto const [src_flags, src_penalty] = get_address_flags(m_dma[level].src, false);
-	auto const [dst_flags, dst_penalty] = get_address_flags(m_dma[level].dst, true);
+	auto const src_flags = std::get<0>(get_address_flags(m_dma[level].src, false));
+	auto const dst_flags = std::get<0>(get_address_flags(m_dma[level].dst, true));
 
 //  printf("%04x %04x\n", src_flags, dst_flags);
 
@@ -556,13 +570,15 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level)
 	}
 
 	m_dma[level].bbus_sound_access = src_flags == B_BUS_SCSP || dst_flags == B_BUS_SCSP;
+	m_dma[level].cbus = src_flags == C_BUS || dst_flags == C_BUS;
+	m_dma[level].pending_read = 0;
+	m_dma[level].read_tag = -1;
 
 	m_dma[level].live_src = m_dma[level].src;
 	m_dma[level].live_dst = m_dma[level].dst;
 	m_dma[level].live_size = m_dma[level].size;
 	m_dma[level].live_count = 0;
 	m_dma[level].done = false;
-	m_dma[level].transfer_penalty = std::max(src_penalty, dst_penalty);
 
 	update_dma_status(level, DMA_STATE_WAIT);
 
@@ -592,6 +608,9 @@ void saturn_scu_device::trigger_dma_indirect(uint8_t level)
 	m_dma[level].mode = DMA_MODE_INDIRECT;
 	m_dma[level].indirect_fetch_phase = true;
 	m_dma[level].indirect_end_flag = false;
+	m_dma[level].cbus = false;
+	m_dma[level].pending_read = 0;
+	m_dma[level].read_tag = -1;
 
 	update_dma_status(level, DMA_STATE_WAIT);
 
@@ -633,6 +652,95 @@ std::tuple<int, int> saturn_scu_device::check_dma_level_round_robin()
 	return std::make_tuple(move_level, wait_level);
 }
 
+// SH-2 cycles an SCU DMA access takes. The costs are the measured SH-2 bus times of Mednafen
+// 1.32.1 (scu.inc DMA_Read, DMA_Write, DMA_ReadCBus, ABusRW_DB, BBusRW_DB; numbers only), which
+// stand until the hardware probe disc measures a real Saturn. A source read costs, per 16 bits:
+// A-Bus CS0/CS1 5 + the normal wait + the pre-charge bit (2 + the burst wait when burst is
+// set up), the dummy area 16, CS2 8, the other A-Bus 1; B-Bus VDP1 and VDP2 1, SCSP 13, the other
+// B-Bus 1. A C-Bus (SDRAM) read is free, except that every 31st longword costs 6. A write costs,
+// per 16 bits, VDP1/VDP2 1 and SCSP 13 on the B-Bus (VDP2 adds its VRAM arbitration wait,
+// PL-V2-08), the A-Bus its write wait, and nothing on the C-Bus. Reads and writes overlap: a
+// read's cost is paid when the next one starts (or at the end of the transfer), less the write
+// time spent since.
+int saturn_scu_device::dma_read_cost(u32 address, unsigned size)
+{
+	u32 const a = address & 0x07ff'ffff;
+	unsigned const halves = size == 4 ? 2 : 1;
+	if (a >= 0x0600'0000)
+	{
+		m_dma_sdram_reads += halves;
+		if (m_dma_sdram_reads >= 62)
+		{
+			m_dma_sdram_reads -= 62;
+			return 6;
+		}
+		return 0;
+	}
+	int half = 1;
+	if (a >= 0x0200'0000 && a < 0x0500'0000)
+	{
+		u32 const cfg = m_asr[0] >> ((a & 0x0400'0000) ? 0 : 16);
+		half = ((cfg >> 2) & 3) ? 2 + ((cfg >> 8) & 0xf) : 5 + ((cfg >> 4) & 0xf) + BIT(cfg, 13);
+	}
+	else if (a >= 0x0500'0000 && a < 0x0580'0000)
+		half = 16;
+	else if (a >= 0x0580'0000 && a < 0x0590'0000)
+		half = 8;
+	else if (a >= 0x05a0'0000 && a < 0x05c0'0000)
+		half = 13;
+	return halves * half;
+}
+
+uint32_t saturn_scu_device::dma_read(dma_channel_t &ch, u32 address, unsigned size)
+{
+	// the SCU reads a longword and writes it as two halfwords: the second halfword of a longword
+	// read for the first costs nothing more
+	u32 const aligned = address & ~3U;
+	if (size == 2 && ch.read_tag == int64_t(aligned) && (address & 2))
+		ch.read_tag = -1;
+	else
+	{
+		m_dma_cost += ch.pending_read;
+		ch.pending_read = dma_read_cost(aligned, 4);
+		ch.read_tag = (size == 2 && !(address & 2)) ? int64_t(aligned) : -1;
+	}
+	return size == 4 ? m_hostspace->read_dword(address) : m_hostspace->read_word(address);
+}
+
+void saturn_scu_device::dma_write_cost(dma_channel_t &ch, u32 address, unsigned size)
+{
+	u32 const a = address & 0x07ff'ffff;
+	int per = 0;
+	if (a >= 0x05a0'0000 && a < 0x05c0'0000)
+		per = 13;
+	else if (a >= 0x05c0'0000 && a < 0x05fc'0000)
+		per = 1;
+	else if (a >= 0x0200'0000 && a < 0x0500'0000)
+	{
+		u32 const cfg = m_asr[0] >> ((a & 0x0400'0000) ? 0 : 16);
+		per = 5 + ((cfg >> 4) & 0xf) + BIT(cfg, 14);
+	}
+	int const w = per * (size == 4 ? 2 : 1);
+	m_dma_cost += w;
+	ch.pending_read = std::max<int32_t>(0, ch.pending_read - w);
+
+	// a write to VDP2 VRAM waits for the access slots the display leaves free
+	if ((a & 0x07f0'0000) == 0x05e0'0000)
+		m_dma_extra = std::max(m_dma_extra, attotime::from_ticks(m_vdp2_penalty_cb((a & 0x7ffff) >> 17), m_dma_clock_ref));
+}
+
+// The SH-2s wait while the moving transfer uses the C-Bus (Work RAM-H); transfers between the A-Bus
+// and the B-Bus leave them running. Only the SCU's own halt is released: the SMPC halts the SH-2s
+// through the same line.
+void saturn_scu_device::set_cpu_halt(bool halt)
+{
+	if (halt != m_cpu_halt)
+	{
+		m_cpu_halt = halt;
+		m_main_dtack_cb(halt);
+	}
+}
+
 TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 {
 	// guess: yield until DSP do its thing
@@ -643,7 +751,8 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 	}
 
 	auto [level, wait_level] = check_dma_level_round_robin();
-	int extra_penalty = 0;
+	m_dma_cost = 0;
+	m_dma_extra = attotime::zero;
 
 	//printf("%d %d\n", level, wait_level);
 
@@ -656,8 +765,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 
 			m_dma[level].done = false;
 			m_dma[level].live_count = 0;
-			m_main_dtack_cb(0);
-			m_sound_dtack_cb(0);
+			set_cpu_halt(false);
 
 			const uint16_t irqmask = 1 << (11 - level);
 
@@ -668,6 +776,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			if (wait_level != -1)
 			{
 				update_dma_status(wait_level, DMA_STATE_MOVE);
+				set_cpu_halt(m_dma[wait_level].cbus);
 
 				LOGMASKED(LOG_DMA_STATE, "Push DMA%d in foreground\n", wait_level);
 				if (wait_level == 1)
@@ -681,105 +790,51 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			return;
 		}
 
-		if (m_dma[level].mode & DMA_MODE_INDIRECT)
+		if ((m_dma[level].mode & DMA_MODE_INDIRECT) && m_dma[level].indirect_fetch_phase)
 		{
-			if (m_dma[level].indirect_fetch_phase)
+			u32 indirect_src, indirect_dst, indirect_size;
+			indirect_size = m_hostspace->read_dword(m_dma[level].index);
+			indirect_dst  = m_hostspace->read_dword(m_dma[level].index + 4);
+			indirect_src  = m_hostspace->read_dword(m_dma[level].index + 8);
+			m_dma[level].indirect_end_flag = BIT(indirect_src, 31);
+
+			LOGMASKED(LOG_DMA_INDIRECT, "DMA%d indirect entry %08x: R %08x W %08x C %08x %s\n",
+				level, m_dma[level].index, indirect_src, indirect_dst, indirect_size,
+				m_dma[level].indirect_end_flag ? "END" : "");
+
+			auto const src_flags = std::get<0>(get_address_flags(indirect_src, false));
+			auto const dst_flags = std::get<0>(get_address_flags(indirect_dst, true));
+
+			m_dma[level].bbus_sound_access = src_flags == B_BUS_SCSP || dst_flags == B_BUS_SCSP;
+			// the SH-2s wait while this descriptor's transfer uses the C-Bus
+			m_dma[level].cbus = src_flags == C_BUS || dst_flags == C_BUS;
+			set_cpu_halt(m_dma[level].cbus);
+			m_dma[level].pending_read = 0;
+			m_dma[level].read_tag = -1;
+
+			m_dma[level].live_src = indirect_src & 0x07ff'ffff;
+			m_dma[level].live_dst = indirect_dst & 0x07ff'ffff;
+			//TODO: why guardherj sets up a 0x23000 transfer for the FMV?
+			m_dma[level].live_size = indirect_size & ((level == 0) ? 0xf'ffff : 0x3'ffff);
+			m_dma[level].live_count = 0;
+
+			m_dma[level].mode = DMA_MODE_INDIRECT;
+
+			// TODO: other rules still applies
+			if (dst_flags == C_BUS)
 			{
-				u32 indirect_src, indirect_dst, indirect_size;
-				indirect_size = m_hostspace->read_dword(m_dma[level].index);
-				indirect_dst  = m_hostspace->read_dword(m_dma[level].index + 4);
-				indirect_src  = m_hostspace->read_dword(m_dma[level].index + 8);
-				m_dma[level].indirect_end_flag = BIT(indirect_src, 31);
-
-				LOGMASKED(LOG_DMA_INDIRECT, "DMA%d indirect entry %08x: R %08x W %08x C %08x %s\n",
-					level, m_dma[level].index, indirect_src, indirect_dst, indirect_size,
-					m_dma[level].indirect_end_flag ? "END" : "");
-
-				auto const [src_flags, src_penalty] = get_address_flags(indirect_src, false);
-				auto const [dst_flags, dst_penalty] = get_address_flags(indirect_dst, true);
-
-				m_dma[level].bbus_sound_access = src_flags == B_BUS_SCSP || dst_flags == B_BUS_SCSP;
-
-				m_dma[level].live_src = indirect_src & 0x07ff'ffff;
-				m_dma[level].live_dst = indirect_dst & 0x07ff'ffff;
-				//TODO: why guardherj sets up a 0x23000 transfer for the FMV?
-				m_dma[level].live_size = indirect_size & ((level == 0) ? 0xf'ffff : 0x3'ffff);
-				m_dma[level].live_count = 0;
-				m_dma[level].transfer_penalty = std::max(src_penalty, dst_penalty);
-
-				m_dma[level].mode = DMA_MODE_INDIRECT;
-
-				//if (m_dma[level].bbus_sound_access)
-				//{
-				//	m_sound_dtack_cb(1);
-				//}
-
-				// TODO: other rules still applies
-				if (dst_flags == C_BUS)
-				{
-					LOGMASKED(LOG_DMA_MODE, "Mode select: C-Bus Write\n");
-					m_dma[level].mode |= DMA_MODE_CBUS_WRITE;
-				}
-
-				m_dma[level].index += 0x0c;
-				m_dma[level].indirect_fetch_phase = false;
-				// yield 3 clock cycles out of fetching the new data
-				m_dma_tick_timer->adjust(attotime::from_ticks(3, m_dma_clock_ref));
-				return;
+				LOGMASKED(LOG_DMA_MODE, "Mode select: C-Bus Write\n");
+				m_dma[level].mode |= DMA_MODE_CBUS_WRITE;
 			}
 
-			(this->*dma_transfer_table[m_dma[level].mode & 3])(m_dma[level]);
-
-			// in indirect mode we steal cycles from the CPUs
-			// - stv:finlarch/smleague (where it sure checks the DMA status)
-			m_main_steal_cb(m_dma[level].transfer_penalty);
-			if (m_dma[level].bbus_sound_access)
-				m_sound_steal_cb(m_dma[level].transfer_penalty);
-
-			if (m_dma[level].wup)
-				m_dma[level].dst = m_dma[level].index;
-
-			if (m_dma[level].live_count >= m_dma[level].live_size)
-			{
-				LOGMASKED(LOG_DMA_END, "DMA%d indirect ended at %08x %08x\n", level, m_dma[level].live_src, m_dma[level].live_dst);
-
-				if (m_dma[level].indirect_end_flag)
-					m_dma[level].done = true;
-				else
-					m_dma[level].indirect_fetch_phase = true;
-			}
-		}
-		else
-		{
-			// direct mode
-
-			const uint32_t write_address = m_dma[level].live_dst;
-			(this->*dma_transfer_table[m_dma[level].mode & 3])(m_dma[level]);
-
-			// direct mode definitely looks burst, where stopping CPUs is a liability to avoid
-			// back-to-back transfers
-			// - saturn BIOS
-			// - stv:gaxeduel
-			// - sonicjamj Sonic 1 (at least)
-			extra_penalty = m_dma[level].transfer_penalty;
-
-			// a write to VDP2 VRAM waits for the access slots the display leaves free
-			if ((write_address & 0x07f0'0000) == 0x05e0'0000)
-				extra_penalty = std::max<int>(extra_penalty, m_vdp2_penalty_cb((write_address & 0x7ffff) >> 17));
-
-			if (m_dma[level].rup)
-				m_dma[level].src = m_dma[level].live_src;
-
-			if (m_dma[level].wup)
-				m_dma[level].dst = m_dma[level].live_dst;
-
-			if (m_dma[level].live_count >= m_dma[level].live_size)
-			{
-				LOGMASKED(LOG_DMA_END, "DMA%d direct ended at %08x %08x (RUP %d WUP %d)\n", level, m_dma[level].live_src, m_dma[level].live_dst, m_dma[level].rup, m_dma[level].wup);
-				m_dma[level].done = true;
-			}
+			m_dma[level].index += 0x0c;
+			m_dma[level].indirect_fetch_phase = false;
+			// yield 3 clock cycles out of fetching the new data
+			m_dma_tick_timer->adjust(attotime::from_ticks(3, m_dma_clock_ref));
+			return;
 		}
 
+		dma_unit_step(level);
 	}
 
 	if (wait_level > level)
@@ -787,11 +842,9 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 		// clear wait, set move
 		update_dma_status(wait_level, DMA_STATE_MOVE);
 
-		if (!(m_dma[wait_level].mode & DMA_MODE_INDIRECT))
-		{
-			m_main_dtack_cb(1);
-			m_sound_dtack_cb(m_dma[wait_level].bbus_sound_access);
-		}
+		// the SH-2s wait while the promoted transfer uses the C-Bus (an indirect transfer decides
+		// this at each descriptor)
+		set_cpu_halt(m_dma[wait_level].cbus);
 
 		if (level != -1)
 		{
@@ -803,7 +856,97 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 		}
 	}
 
-	m_dma_tick_timer->adjust(attotime::from_ticks(1 + extra_penalty, m_dma_clock_ref));
+	// the next unit follows after the time this one's accesses took
+	m_dma_tick_timer->adjust(m_hostcpu->cycles_to_attotime(m_dma_cost) + m_dma_extra);
+}
+
+// One transfer unit of a moving level and the register updates that follow it. The end of a
+// direct transfer, or of an indirect chain's last descriptor, sets done; the end of an indirect
+// descriptor goes on to fetch the next. When the transfer ends, the source read still pending is
+// charged.
+void saturn_scu_device::dma_unit_step(uint8_t level)
+{
+	dma_channel_t &ch = m_dma[level];
+
+	(this->*dma_transfer_table[ch.mode & 3])(ch);
+	if (ch.live_count >= ch.live_size)
+	{
+		m_dma_cost += ch.pending_read;
+		ch.pending_read = 0;
+	}
+
+	if (ch.mode & DMA_MODE_INDIRECT)
+	{
+		if (ch.wup)
+			ch.dst = ch.index;
+
+		if (ch.live_count >= ch.live_size)
+		{
+			LOGMASKED(LOG_DMA_END, "DMA%d indirect ended at %08x %08x\n", level, ch.live_src, ch.live_dst);
+
+			if (ch.indirect_end_flag)
+				ch.done = true;
+			else
+				ch.indirect_fetch_phase = true;
+		}
+	}
+	else
+	{
+		if (ch.rup)
+			ch.src = ch.live_src;
+
+		if (ch.wup)
+			ch.dst = ch.live_dst;
+
+		if (ch.live_count >= ch.live_size)
+		{
+			LOGMASKED(LOG_DMA_END, "DMA%d direct ended at %08x %08x (RUP %d WUP %d)\n", level, ch.live_src, ch.live_dst, ch.rup, ch.wup);
+			ch.done = true;
+		}
+	}
+}
+
+// An SH-2 access to the A-Bus or the B-Bus waits for the SCU DMA that owns them. The moving
+// level's remaining units of its current transfer run now, so that their data lands before the
+// access; the SH-2 is charged their time, and the end of the transfer (its interrupt, the next
+// descriptor) follows at the time it would have ended. A direct transfer still in its start delay
+// starts at once. A level suspended in the background, or an indirect chain before its first
+// descriptor, is left alone.
+uint32_t saturn_scu_device::dma_bus_owner_wait()
+{
+	if (m_dma_status & DMA_DSP_MOVE)
+		return 0;
+
+	auto [level, wait_level] = check_dma_level_round_robin();
+	if (level == -1)
+	{
+		if (wait_level == -1)
+			return 0;
+		dma_channel_t const &w = m_dma[wait_level];
+		if ((w.mode & DMA_MODE_INDIRECT) || w.live_count || (m_dma_status & (1 << (16 + wait_level))))
+			return 0;
+		update_dma_status(wait_level, DMA_STATE_MOVE);
+		set_cpu_halt(w.cbus);
+		level = wait_level;
+	}
+
+	dma_channel_t &ch = m_dma[level];
+	if (ch.done || ((ch.mode & DMA_MODE_INDIRECT) && ch.indirect_fetch_phase))
+		return 0;
+
+	uint64_t total = 0;
+	attotime extra = attotime::zero;
+	while (!ch.done && !((ch.mode & DMA_MODE_INDIRECT) && ch.indirect_fetch_phase))
+	{
+		m_dma_cost = 0;
+		m_dma_extra = attotime::zero;
+		dma_unit_step(level);
+		total += m_dma_cost;
+		extra += m_dma_extra;
+	}
+	total += m_hostcpu->attotime_to_cycles(extra);
+	m_dma_tick_timer->adjust(m_hostcpu->cycles_to_attotime(total));
+	return uint32_t(std::min<uint64_t>(total, 0x7fff'ffff));
 }
 
 // CD transfers needs to be in dword unit for now (need the xfertype32 branch)
@@ -823,9 +966,10 @@ void saturn_scu_device::dma_transfer_direct_default(dma_channel_t &ch)
 	const u32 dst_address = ch.live_dst & 0x07ff'fffe;
 
 	// TODO: actually reads as dword and writes as word for B-Bus transfers
-	uint32_t src_data = m_hostspace->read_word(src_address);
+	uint32_t src_data = dma_read(ch, src_address, 2);
 
 	m_hostspace->write_word(dst_address, src_data);
+	dma_write_cost(ch, dst_address, 2);
 
 	// pfght fills VDP2 with a single work RAM location (i.e. DMA fill)
 	ch.live_src += ch.src_add >> 1;
@@ -844,9 +988,10 @@ void saturn_scu_device::dma_transfer_direct_cbus_write(dma_channel_t &ch)
 	const u32 src_address = ch.live_src & 0x07ff'fffe;
 	const u32 dst_address = ch.live_dst & 0x07ff'fffe;
 
-	uint32_t src_data = m_hostspace->read_word(src_address);
+	uint32_t src_data = dma_read(ch, src_address, 2);
 
 	m_hostspace->write_word(dst_address, src_data);
+	dma_write_cost(ch, dst_address, 2);
 
 	ch.live_src += ch.src_add >> 1;
 	// TODO: reimplement me
@@ -865,9 +1010,13 @@ void saturn_scu_device::dma_transfer_direct_cd(dma_channel_t &ch)
 	const u32 src_address = ch.live_src & 0x07ff'fffc;
 	const u32 dst_address = ch.live_dst & 0x07ff'fffc;
 
-	m_hostspace->write_dword(dst_address, m_hostspace->read_dword(src_address));
+	m_hostspace->write_dword(dst_address, dma_read(ch, src_address, 4));
+	dma_write_cost(ch, dst_address, 4);
 	if(dst_add == 8)
-		m_hostspace->write_dword(dst_address + 4, m_hostspace->read_dword(src_address));
+	{
+		m_hostspace->write_dword(dst_address + 4, dma_read(ch, src_address, 4));
+		dma_write_cost(ch, dst_address + 4, 4);
+	}
 
 	ch.live_src += ch.src_add;
 	ch.live_dst += dst_add;
@@ -879,9 +1028,13 @@ void saturn_scu_device::dma_transfer_direct_cd_cbus_write(dma_channel_t &ch)
 	const u32 src_address = ch.live_src & 0x07ff'fffc;
 	const u32 dst_address = ch.live_dst & 0x07ff'fffc;
 
-	m_hostspace->write_dword(dst_address, m_hostspace->read_dword(src_address));
+	m_hostspace->write_dword(dst_address, dma_read(ch, src_address, 4));
+	dma_write_cost(ch, dst_address, 4);
 	if(ch.dst_add == 8)
-		m_hostspace->write_dword(dst_address + 4, m_hostspace->read_dword(src_address));
+	{
+		m_hostspace->write_dword(dst_address + 4, dma_read(ch, src_address, 4));
+		dma_write_cost(ch, dst_address + 4, 4);
+	}
 
 	ch.live_src += ch.src_add;
 	ch.live_dst += 4;
