@@ -282,12 +282,6 @@ void scudsp_cpu_device::set_dest_dma_mem( uint32_t memcode, uint32_t value )
 				break;
 		}
 	}
-	else if ( memcode == 4 )
-	{
-		throw emu_fatalerror("scudsp.cpp: set_dest_dma_mem == 4");
-		/* caused a stack overflow for sure ... */
-		//dsp_reg.internal_prg[ counter & 0x100 ] = value;
-	}
 }
 
 uint32_t scudsp_cpu_device::get_mem_source_dma( uint32_t memcode )
@@ -626,77 +620,34 @@ void scudsp_cpu_device::op_move_immediate( uint32_t opcode )
 	m_icount -= 1;
 }
 
+// DMA instructions (SCU manual 5, DMA): the transfer counter is the 8 bit immediate or the low byte of
+// a data RAM word, 0 meaning 256 (MiSTer DSP.sv TN0: the transfer ends when the decremented
+// counter reaches 0). The address addition field is the 3 bits 17-15 of the immediate forms
+// and bit 15 of the forms with the counter in RAM. The SCU receives it raw: a read adds 4 bytes
+// when bit 0 is set and nothing otherwise, and a write adds the SCU's write add value of the same
+// field (0, 2, 4, 8 ... 128 bytes) after every 16 bit access (MiSTer SCU.sv DMA_RADD <= DSP_ADD[0],
+// DMA_WADD <= DSP_ADD).
 void scudsp_cpu_device::op_dma( uint32_t opcode )
 {
-	uint8_t hold = (opcode &  0x4000) >> 14;
-	uint32_t add = (opcode & 0x38000) >> 15;
-	uint32_t dir_from_D0 = (opcode & 0x1000 ) >> 12;
-	uint32_t dsp_mem = (opcode & 0x300) >> 8;
+	uint8_t const hold = (opcode & 0x4000) >> 14;
+	bool const counter_in_ram = BIT(opcode, 13);
+	uint8_t const field = counter_in_ram ? BIT(opcode, 15) : (opcode & 0x38000) >> 15;
+	m_dma.dir = BIT(opcode, 12);
+	m_dma.bank = (opcode & 0x700) >> 8;
+	m_dma.field = field;
 
-	if ( opcode & 0x2000 )
+	unsigned size = counter_in_ram ? (get_source_mem_value(opcode & 7) & 0xff) : (opcode & 0xff);
+	m_dma.size = size ? size : 256;
+
+	if (m_dma.dir == 0)
 	{
-		m_dma.size = get_source_mem_value( opcode & 0xf );
-		switch ( add & 0x7 )
-		{
-			case 0: m_dma.add = 0; break;
-			case 1: m_dma.add = 4; break;
-			default: m_dma.add = 4; break;
-		}
+		m_dma.src = (m_ra0 << 2) & 0x07ff'ffff;
+		m_dma.dst = m_dma.bank;
 	}
 	else
 	{
-		m_dma.size = opcode & 0xff;
-		switch( add )
-		{
-			// TODO: why this calculation diverges vs. SCU DMA?
-			// is it for concealing that it should use the same rules instead?
-			// i.e. Work RAM H always in dword unit etc.
-			case 0: m_dma.add = 0; break;  /* 0 */
-			case 1: m_dma.add = 4; break;  /* 1 */
-			case 2: m_dma.add = 4; break;  /* 2 */
-			case 3: m_dma.add = 16; break; /* 4 */
-			case 4: m_dma.add = 16; break;  /* 8 */
-			case 5: m_dma.add = 64; break; /* 16 */
-			case 6: m_dma.add = 128; break; /* 32 */
-			case 7: m_dma.add = 256; break; /* 64 */
-		}
-	}
-
-	m_dma.dir = dir_from_D0;
-	// printf("SRC %08x DST %08x SIZE %08x UPDATE %08x DIR %08x ADD %08x\n",m_dma.src,m_dma.dst,m_dma.size,m_dma.update,m_dma.dir, add);
-
-	if ( m_dma.dir == 0 )
-	{
-		m_dma.src = (m_ra0 << 2) & 0x27ffffff;
-		m_dma.dst = dsp_mem;
-
-		// TODO: inherit bus reading from base SCU
-		// C-Bus reads can either be 0 or 4 only
-		// - mshvssf definitely wants this behaviour for palette at title & gameplay
-		if ((m_dma.src & 0x0700'0000) == 0x0600'0000)
-		{
-			m_dma.add = (1 << (add & 2)) & ~1;
-		}
-
-		// B-Bus reads are reportedly always +4
-		if ((m_dma.src & 0x0700'0000) == 0x0500'0000 || (m_dma.src & 0x00e0'0000) >= 0x00a0'0000)
-		{
-			m_dma.add = 4;
-		}
-	}
-	else
-	{
-		m_dma.src = dsp_mem;
-		m_dma.dst = (m_wa0 << 2) & 0x27ffffff;
-
-		// TODO: implement this rule for B-Bus
-		// (updates destination on every 16-bit write)
-		//if ((m_dma.dst & 0x0700'0000) == 0x0500'0000 || (m_dma.dst & 0x00e0'0000) >= 0x00a0'0000)
-		//{
-		//	m_dma.add = (1 << add) & ~1;
-		//}
-
-		// TODO: C-Bus uses the same add rule as B, except it's buggy for add mode = 1 and crossing 1KiB boundaries
+		m_dma.src = m_dma.bank;
+		m_dma.dst = (m_wa0 << 2) & 0x07ff'ffff;
 	}
 
 	m_dma.update = ( hold == 0 );
@@ -710,12 +661,6 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::from_ticks(4, this->clock()));
 
-
-	// HACK: should be burst not cycle steal
-	// this is duct tape to make stv:vfremix not overrun atomic execution in the SH-2s,
-	// with its small DMA transfers and no T0F checked.
-	// Test scenario: attract mode, Sarah hitting the air rather than Kage.
-	set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
 	m_icount -= 1;
 }
 
@@ -784,17 +729,31 @@ void scudsp_cpu_device::op_illegal(uint32_t opcode)
 	// m_icount -= 1;
 }
 
+// The end of a transfer: the flag drops, the buses are free and a program that waited for the DMA's
+// RAM goes on. A program RAM transfer ends with the program counter back at the top (DSP.sv
+// DMA_END_PEND && PRGW: PC <= TOP).
+void scudsp_cpu_device::dma_end()
+{
+	m_out_ddwt_cb(0);
+	m_out_ddmv_cb(0);
+	m_dma.ex = 0;
+	m_flags &= ~(1 << T0F);
+	m_dma_state = DMA_STATE_IDLE;
+	if (m_dma.dir == 0 && m_dma.bank == 4)
+		m_pc = m_top;
+	if (m_stalled)
+	{
+		m_stalled = false;
+		set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
+	}
+}
+
 TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 {
 	switch(m_dma_state)
 	{
 		case DMA_STATE_IDLE:
-			m_out_ddwt_cb(0);
-			m_out_ddmv_cb(0);
-			m_dma.ex = 0;
-			m_flags &= ~(1 << T0F);
-			set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
-
+			dma_end();
 			break;
 		case DMA_STATE_WAIT:
 			m_out_ddwt_cb(0);
@@ -803,46 +762,143 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 			m_dma_timer->adjust(attotime::from_ticks(1, this->clock()));
 			break;
 		case DMA_STATE_MOVE:
+		{
 			exec_dma();
 			m_dma.count++;
-			m_dma_state = m_dma.count >= m_dma.size ? DMA_STATE_IDLE : DMA_STATE_MOVE;
+			if (m_dma.count >= m_dma.size)
+			{
+				dma_end();
+				break;
+			}
 
-			// accessing the D0-Bus should cause a 1 cycle wait (70 nsec a.k.a. 1/~14 MHz)
-			m_dma_timer->adjust(attotime::from_ticks(1, this->clock()));
-			m_icount -= 1;
+			// the next unit follows after the bus accesses of this one, at least one tick of the
+			// DSP clock (70 nsec a.k.a. 1/~14 MHz)
+			attotime wait = !m_dma_wait_cb ? attotime::zero : m_dma_wait_cb();
+			attotime const tick = attotime::from_ticks(1, this->clock());
+			m_dma_timer->adjust(wait > tick ? wait : tick);
 			break;
+		}
 	}
 }
 
+// The host asks for the buses while the DMA runs: its remaining units are carried out at once
+attotime scudsp_cpu_device::dma_finish()
+{
+	if (m_dma_state == DMA_STATE_IDLE)
+		return attotime::zero;
+
+	attotime total = attotime::zero;
+	if (m_dma_state == DMA_STATE_WAIT)
+	{
+		m_out_ddwt_cb(0);
+		m_out_ddmv_cb(1);
+		m_dma_state = DMA_STATE_MOVE;
+	}
+	attotime const tick = attotime::from_ticks(1, this->clock());
+	while (m_dma.count < m_dma.size)
+	{
+		exec_dma();
+		m_dma.count++;
+		attotime const wait = !m_dma_wait_cb ? attotime::zero : m_dma_wait_cb();
+		total += wait > tick ? wait : tick;
+	}
+	m_dma_timer->adjust(attotime::never);
+	dma_end();
+	return total;
+}
+
+// One transfer unit of a longword. The external side is a pair of 16 bit accesses; on the B-Bus a
+// write moves the address by the write add value after each of them, on the other buses a longword
+// is written and the address moves by twice the value (Work RAM-H takes 4 bytes). The external
+// address registers follow unless the instruction holds them (DMAH).
 void scudsp_cpu_device::exec_dma()
 {
+	static constexpr uint32_t half_add[8] = { 0, 2, 4, 8, 16, 32, 64, 128 };
 	uint32_t data;
 	if ( m_dma.dir == 0 )
 	{
 		data = (m_in_dma_cb(m_dma.src)<<16) | m_in_dma_cb(m_dma.src+2);
-		set_dest_dma_mem( m_dma.dst, data );
-
-		m_dma.src += m_dma.add;
-
-		if ( m_dma.update )
+		if (m_dma.bank == 4)
 		{
-			m_ra0 += ((1 * m_dma.add) >> 2);
+			// the program RAM is written at the program counter
+			scudsp_writeop(m_pc++, data);
 		}
+		else
+			set_dest_dma_mem( m_dma.bank, data );
+
+		uint32_t const add = BIT(m_dma.field, 0) ? 4 : 0;
+		m_dma.src += add;
+		if ( m_dma.update )
+			m_ra0 += add >> 2;
 	}
 	else
 	{
-		data = get_mem_source_dma( m_dma.src );
+		data = get_mem_source_dma( m_dma.bank );
 
-		m_out_dma_cb(m_dma.dst, data >> 16 );
-		m_out_dma_cb(m_dma.dst + 2, data & 0xffff );
-
-		m_dma.dst += m_dma.add;
+		bool const bbus = (m_dma.dst & 0x07f0'0000) >= 0x05a0'0000 && (m_dma.dst & 0x07f0'0000) < 0x05fe'0000;
+		uint32_t const half = half_add[m_dma.field];
+		if (bbus)
+		{
+			m_out_dma_cb(m_dma.dst, data >> 16 );
+			m_dma.dst += half;
+			m_out_dma_cb(m_dma.dst, data & 0xffff );
+			m_dma.dst += half;
+		}
+		else
+		{
+			m_out_dma_cb(m_dma.dst, data >> 16 );
+			m_out_dma_cb(m_dma.dst + 2, data & 0xffff );
+			m_dma.dst += 2 * half;
+		}
 
 		if ( m_dma.update )
-		{
-			m_wa0 += ((1 * m_dma.add) >> 2);
-		}
+			m_wa0 += (2 * half) >> 2;
 	}
+}
+
+// A program that touches what a running DMA works with waits for its end (MiSTer DSP.sv sets
+// PAUSED when an instruction reads or writes the data RAM of the transfer, writes or increments its
+// CT, starts another DMA, or writes RA0 or WA0). The DSP is not stopped otherwise.
+bool scudsp_cpu_device::dma_conflict(uint32_t opcode) const
+{
+	unsigned const bank = m_dma.bank;
+	if (bank > 3)
+		return (opcode & 0xf0000000) == 0xc0000000;   // only another DMA (and the PC writes) are stopped
+
+	auto const source = [bank] (unsigned s) { return (s & 3) == bank && (s < 8); };
+	auto const dest = [bank] (unsigned d) { return d == bank || d == 0xc + bank || d == 6 || d == 7; };
+
+	switch (opcode >> 30)
+	{
+		case 0: // an ALU instruction with its parallel moves
+		{
+			if (opcode & 0x2000000)
+				if (source((opcode >> 20) & 7))
+					return true;
+			if (((opcode >> 23) & 3) == 3)
+				if (source((opcode >> 20) & 7))
+					return true;
+			if (opcode & 0x80000)
+				if (source((opcode >> 14) & 7))
+					return true;
+			if (((opcode >> 17) & 3) == 3)
+				if (source((opcode >> 14) & 7))
+					return true;
+			switch ((opcode >> 12) & 3)
+			{
+				case 1:
+					return dest((opcode >> 8) & 0xf);
+				case 3:
+					return source(opcode & 0xf) || dest((opcode >> 8) & 0xf);
+			}
+			return false;
+		}
+		case 2: // MVI
+			return (opcode & 0x3c000000) >> 26 == bank || ((opcode >> 26) & 0xf) == 6 || ((opcode >> 26) & 0xf) == 7;
+		case 3:
+			return ((opcode >> 28) & 3) == 0;   // another DMA
+	}
+	return false;
 }
 
 /* Execute one instruction */
@@ -853,6 +909,19 @@ void scudsp_cpu_device::execute_one()
 	m_update_mul = 0;
 
 	debugger_instruction_hook(m_pc);
+
+	// a program that needs what the running DMA uses waits for its end
+	if (m_dma_state != DMA_STATE_IDLE && !m_stalled)
+	{
+		uint32_t const next = scudsp_readop(m_delay ? m_delay : m_pc);
+		if (dma_conflict(next))
+		{
+			m_stalled = true;
+			set_input_line(INPUT_LINE_HALT, ASSERT_LINE);
+			m_icount = 0;
+			return;
+		}
+	}
 
 	if ( m_delay )
 	{
@@ -952,6 +1021,7 @@ void scudsp_cpu_device::device_start()
 	m_ct2 = 0;
 	m_ct3 = 0;
 	memset(&m_dma, 0x00, sizeof(m_dma));
+	m_stalled = false;
 
 	m_program = &space(AS_PROGRAM);
 	m_data = &space(AS_DATA);
@@ -987,6 +1057,14 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_dma.src));
 	save_item(NAME(m_dma.dst));
 	save_item(NAME(m_dma.size));
+	save_item(NAME(m_dma.field));
+	save_item(NAME(m_dma.bank));
+	save_item(NAME(m_dma.update));
+	save_item(NAME(m_dma.ex));
+	save_item(NAME(m_dma.dir));
+	save_item(NAME(m_dma.count));
+	save_item(NAME(m_dma_state));
+	save_item(NAME(m_stalled));
 
 	// Register state for debugger
 	state_add( SCUDSP_PC, "PC", m_pc ).formatstr("%02X");
@@ -1022,6 +1100,9 @@ void scudsp_cpu_device::device_reset()
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::never);
 	m_dma_state = DMA_STATE_IDLE;
+	if (m_stalled)
+		set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
+	m_stalled = false;
 }
 
 // TODO: do we need this?

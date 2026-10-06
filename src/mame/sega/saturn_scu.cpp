@@ -211,25 +211,44 @@ void saturn_scu_device::regs_map(address_map &map)
 //  configuration addiitons
 //-------------------------------------------------
 
+// The accesses of the DSP's DMA are charged like those of the SCU's own: a longword read is paid on its
+// first half, a write per 16 bit access, and the DSP waits for them before the next unit
+// (MiSTer DSP.sv waits on DMA_ACK of the SCU engine).
 uint16_t saturn_scu_device::scudsp_dma_r(offs_t offset, uint16_t mem_mask)
 {
-	//address_space &program = m_maincpu->space(AS_PROGRAM);
 	offs_t addr = offset & 0x07ff'ffff;
 
-//  printf("%08x\n", offset);
+	if (!(addr & 2))
+		m_dsp_dma_cost += dma_read_cost(addr, 4);
 
 	return m_hostspace->read_word(addr,mem_mask);
 }
 
-
 void saturn_scu_device::scudsp_dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	//address_space &program = m_maincpu->space(AS_PROGRAM);
 	offs_t addr = offset & 0x07ff'ffff;
 
-//  printf("%08x %02x\n",offset,data);
+	// the write cost of the SCU's own transfers, with a channel of no pending read
+	dma_channel_t scratch{};
+	int32_t const cost = m_dma_cost;
+	attotime const extra = m_dma_extra;
+	m_dma_cost = 0;
+	m_dma_extra = attotime::zero;
+	dma_write_cost(scratch, addr, 2);
+	m_dsp_dma_cost += m_dma_cost;
+	m_dsp_dma_extra = std::max(m_dsp_dma_extra, m_dma_extra);
+	m_dma_cost = cost;
+	m_dma_extra = extra;
 
-	m_hostspace->write_word(addr, data,mem_mask);
+	m_hostspace->write_word(addr, data, mem_mask);
+}
+
+attotime saturn_scu_device::scudsp_dma_wait()
+{
+	attotime const wait = m_hostcpu->cycles_to_attotime(m_dsp_dma_cost) + m_dsp_dma_extra;
+	m_dsp_dma_cost = 0;
+	m_dsp_dma_extra = attotime::zero;
+	return wait;
 }
 
 void saturn_scu_device::device_add_mconfig(machine_config &config)
@@ -238,6 +257,7 @@ void saturn_scu_device::device_add_mconfig(machine_config &config)
 	m_scudsp->out_irq_callback().set(DEVICE_SELF, FUNC(saturn_scu_device::scudsp_end_w));
 	m_scudsp->in_dma_callback().set(FUNC(saturn_scu_device::scudsp_dma_r));
 	m_scudsp->out_dma_callback().set(FUNC(saturn_scu_device::scudsp_dma_w));
+	m_scudsp->set_dma_wait_callback([this] () { return scudsp_dma_wait(); });
 	m_scudsp->out_ddwt_callback().set([this] (int state) {
 		if (state)
 			m_dma_status |= DMA_DSP_WAIT;
@@ -955,8 +975,12 @@ void saturn_scu_device::dma_unit_step(uint8_t level)
 // descriptor, is left alone.
 uint32_t saturn_scu_device::dma_bus_owner_wait()
 {
-	if (m_dma_status & DMA_DSP_MOVE)
-		return 0;
+	if (m_dma_status & (DMA_DSP_MOVE | DMA_DSP_WAIT))
+	{
+		// the DSP's transfer owns the A-Bus and the B-Bus as well: the access waits for it
+		uint64_t const cycles = m_hostcpu->attotime_to_cycles(m_scudsp->dma_finish());
+		return uint32_t(std::min<uint64_t>(cycles, 0x7fff'ffff));
+	}
 
 	auto [level, wait_level] = check_dma_level_round_robin();
 	if (level == -1)

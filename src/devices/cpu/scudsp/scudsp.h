@@ -49,6 +49,11 @@ public:
 	auto out_dma_callback() { return m_out_dma_cb.bind(); }
 	auto out_ddwt_callback() { return m_out_ddwt_cb.bind(); }
 	auto out_ddmv_callback() { return m_out_ddmv_cb.bind(); }
+	// the time the SCU takes for the bus accesses of the last DMA unit
+	void set_dma_wait_callback(std::function<attotime ()> cb) { m_dma_wait_cb = std::move(cb); }
+
+	// the host SH-2 needs the buses of a running DMA: run it to its end now, returns the time it took
+	attotime dma_finish();
 
 	/* port 0 */
 	uint32_t program_control_r();
@@ -88,6 +93,7 @@ protected:
 	devcb_write16        m_out_dma_cb;
 	devcb_write_line     m_out_ddwt_cb;
 	devcb_write_line     m_out_ddmv_cb;
+	std::function<attotime ()> m_dma_wait_cb;
 
 private:
 	enum {
@@ -135,9 +141,11 @@ private:
 	uint32_t  m_ra0,m_wa0;                                /*DSP DMA registers*/
 	struct{
 		uint32_t src, dst;
-		uint16_t add;
+		uint8_t  field;   // the address addition field of the instruction, 0-7
+		uint8_t  bank;    // the data RAM of the transfer, 4 is the program RAM
 		uint16_t size, update, ex, dir, count;
 	}m_dma;
+	bool m_stalled;       // the program waits for a DMA that uses its RAM
 	address_space *m_program;
 	address_space *m_data;
 	int m_icount;
@@ -150,7 +158,7 @@ private:
 		DMA_STATE_WAIT,
 		DMA_STATE_MOVE
 	};
-	dma_state_t m_dma_state;
+	uint8_t m_dma_state;
 	TIMER_CALLBACK_MEMBER(dma_tick_cb);
 
 	uint32_t get_source_mem_reg_value( uint32_t mode );
@@ -169,6 +177,8 @@ private:
 	void op_loop(uint32_t opcode);
 	void op_end(uint32_t opcode);
 	void exec_dma();
+	void dma_end();
+	bool dma_conflict(uint32_t opcode) const;
 	void execute_one();
 };
 

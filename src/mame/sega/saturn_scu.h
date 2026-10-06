@@ -211,6 +211,9 @@ private:
 	uint32_t m_dma_sdram_reads = 0;
 	bool m_cpu_halt = false;
 	int dma_read_cost(u32 address, unsigned size);
+	attotime scudsp_dma_wait();
+	int32_t m_dsp_dma_cost = 0;           // SH-2 cycles of the accesses of the DSP's DMA unit
+	attotime m_dsp_dma_extra = attotime::zero;
 	uint32_t dma_read(dma_channel_t &ch, u32 address, unsigned size);
 	uint8_t dma_read_byte(dma_channel_t &ch);
 	uint16_t dma_read_word(dma_channel_t &ch);
