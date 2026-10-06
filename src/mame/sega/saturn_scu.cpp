@@ -266,6 +266,7 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_ism));
 	save_item(NAME(m_t0c));
 	save_item(NAME(m_t1s));
+	save_item(NAME(m_t1_sync));
 	save_item(NAME(m_t1md));
 
 	save_item(NAME(m_dma[0].src));
@@ -394,6 +395,7 @@ void saturn_scu_device::device_reset()
 	m_tenb = false;
 	m_t1md = false;
 	m_timer0_counter = 0;
+	m_t1_sync = false;
 	m_timer1->adjust(attotime::never);
 }
 
@@ -1063,10 +1065,25 @@ uint32_t saturn_scu_device::dma_status_r()
 // Timers
 //**************************************************************************
 
+// Timer 0 counts the HBLANK-IN signals since the last VBLANK-OUT and interrupts when its value
+// becomes equal to T0C, which is checked as a level with edge detection by the chip (MiSTer
+// SCU.sv TM0_MATCH): a compare value of 0 interrupts at the VBLANK-OUT itself, 1 at the first
+// HBLANK-IN after it (SCU manual 3.4). Writing a T0C that equals the counter is a match too.
+void saturn_scu_device::timer0_match()
+{
+	dma_start_factor_ack(DMA_EVENT_TIMER0);
+	m_ist |= IST_TIMER_0;
+	test_pending_irqs();
+	m_t1_sync = true;
+}
+
 void saturn_scu_device::t0_compare_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	bool const was = m_timer0_counter == m_t0c;
 	COMBINE_DATA(&m_t0c);
 	m_t0c &= 0x3ff;
+	if (m_tenb && !was && m_timer0_counter == m_t0c)
+		timer0_match();
 }
 
 void saturn_scu_device::t1_setdata_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -1081,6 +1098,7 @@ void saturn_scu_device::t1_setdata_w(offs_t offset, uint32_t data, uint32_t mem_
  */
 void saturn_scu_device::t1_mode_w(uint16_t data)
 {
+	bool const was_enabled = m_tenb;
 	m_t1md = BIT(data, 8);
 	m_tenb = BIT(data, 0);
 	if (!m_tenb)
@@ -1088,10 +1106,22 @@ void saturn_scu_device::t1_mode_w(uint16_t data)
 		m_timer0_counter = 0;
 		m_timer1->adjust(attotime::never);
 	}
+	else if (!was_enabled)
+	{
+		// the counter restarts when the timers are enabled
+		m_timer0_counter = 0;
+		if (m_t0c == 0)
+			timer0_match();
+	}
 }
 
+// Timer 1 interrupts when its count ends: always in mode 0, and in mode 1 only if timer 0
+// matched on the line it was started
 TIMER_CALLBACK_MEMBER(saturn_scu_device::timer1_irq_cb)
 {
+	if (m_t1md && !m_t1_sync)
+		return;
+
 	dma_start_factor_ack(DMA_EVENT_TIMER1);
 
 	m_ist |= IST_TIMER_1;
@@ -1214,6 +1244,8 @@ void saturn_scu_device::vblank_out_w(int state)
 	m_ist |= IST_VBLANK_OUT;
 	test_pending_irqs();
 	m_timer0_counter = 0;
+	if (m_tenb && m_t0c == 0)
+		timer0_match();
 }
 
 void saturn_scu_device::vblank_in_w(int state)
@@ -1238,26 +1270,22 @@ void saturn_scu_device::hblank_in_w(int state)
 	// check if timer enabled first (diehard cares for sound, sets T0C = 0)
 	if (m_tenb)
 	{
-		const bool timer0_hit = m_timer0_counter == m_t0c;
-		if (timer0_hit)
-		{
-			dma_start_factor_ack(DMA_EVENT_TIMER0);
-			m_ist |= IST_TIMER_0;
-		}
+		// timer 0 counts, and its flag for timer 1 lasts one line
+		m_t1_sync = false;
+		m_timer0_counter = (m_timer0_counter + 1) & 0x3ff;
+		if (m_timer0_counter == m_t0c)
+			timer0_match();
 
-		// Timer 1 conditions
-		// - Mode is 0 (all scanlines)
-		// - Mode is 1 and timer 0 is hit
-		const bool timer1_hit = (timer0_hit || !m_t1md);
-		if (timer1_hit)
+		// timer 1 loads its set value when it is stopped, and counts down at the 7 MHz of the
+		// SCU clock; the interrupt comes two ticks of the 28 MHz clock before the count ends
+		// (SCU.sv TM1: loaded with 4 * T1S, T1S = 0 meaning 512, and compared with 2). A running
+		// timer is not loaded again.
+		if (m_timer1->expire() == attotime::never || m_timer1->expire() <= machine().time())
 		{
-			m_timer1->adjust(attotime::from_ticks(m_t1s, this->clock() / 8));
+			unsigned const count = m_t1s ? m_t1s : 512;
+			m_timer1->adjust(attotime::from_ticks(8 * count - 4, this->clock()));
 		}
 	}
-	// NOTE: the counter still runs, it's the irq that fires if timer is enabled
-	// also that this never fires if t0c & 0x200
-	m_timer0_counter ++;
-	m_timer0_counter &= 0x1ff;
 
 	test_pending_irqs();
 }

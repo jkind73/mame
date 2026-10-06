@@ -240,6 +240,8 @@ private:
 	void t0_compare_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	void t1_setdata_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	void t1_mode_w(uint16_t data);
+	void timer0_match();
+	bool m_t1_sync = false; // timer 0 matched on this line: mode 1 lets timer 1 interrupt
 	// Interrupt
 	uint32_t irq_mask_r();
 	uint32_t irq_status_r();
