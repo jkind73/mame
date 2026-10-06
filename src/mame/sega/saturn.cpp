@@ -179,6 +179,12 @@ void saturn_state::vint_callback(int state)
 
 	m_prev_vint = state;
 	m_vdp1->vblank_w(state);
+
+	// the SMPC collects the peripheral data relative to the blanking
+	if (state)
+		m_smpc_hle->vblank_in_w(1);
+	else
+		m_smpc_hle->vblank_out_w(1);
 }
 
 void saturn_state::hint_callback(int state)

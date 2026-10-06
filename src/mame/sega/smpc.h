@@ -25,6 +25,10 @@ class smpc_hle_device : public device_t,
 						public device_rtc_interface
 {
 public:
+	// the VDP2 blanking signals: the SMPC collects the peripheral data relative to them
+	void vblank_in_w(int state);
+	void vblank_out_w(int state);
+
 	// construction/destruction
 	smpc_hle_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
@@ -141,6 +145,8 @@ private:
 	void irq_request();
 
 	void resolve_intback();
+	void periph_collect_start();
+	void periph_data_wanted();
 	TIMER_CALLBACK_MEMBER(intback_continue_request);
 	TIMER_CALLBACK_MEMBER(handle_rtc_increment);
 	TIMER_CALLBACK_MEMBER(sound_reset);
@@ -155,6 +161,17 @@ private:
 	void sf_set();
 	int DectoBCD(int num);
 	int m_intback_stage;
+	// Peripheral data collection (SMPC manual 3.1): the SMPC starts it when it sees the VBLANK-OUT
+	// after the INTBACK command; with the optimization on it measures the collection time and then
+	// starts it so that the data is ready 1 ms before the next VBLANK-IN.
+	bool m_collect_wait;       // a collection waits for the next VBLANK-OUT
+	bool m_collect_measured;   // the collection time of the mode has been measured once
+	bool m_collect_optimize;   // the INTBACK that asked for it has the optimization on (OPE = 0)
+	bool m_collect_done;       // the data of the collection is ready (or being awaited by a CONTINUE)
+	bool m_collect_requested;  // an INTBACK or CONTINUE is waiting for the data
+	attotime m_collect_ready;  // when the collection ends
+	attotime m_vin_time;       // the last VBLANK-IN
+	attotime m_frame_time;     // time between the last two VBLANK-INs
 	int m_pmode;
 	std::vector<uint8_t> m_periph_report;
 	uint32_t m_periph_offset;

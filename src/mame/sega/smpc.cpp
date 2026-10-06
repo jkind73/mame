@@ -122,6 +122,14 @@ void smpc_hle_device::device_start()
 	m_mini_nvram->set_base(&m_smem, 5);
 
 	save_item(NAME(m_sf));
+	save_item(NAME(m_collect_wait));
+	save_item(NAME(m_collect_measured));
+	save_item(NAME(m_collect_done));
+	save_item(NAME(m_collect_requested));
+	save_item(NAME(m_collect_optimize));
+	save_item(NAME(m_collect_ready));
+	save_item(NAME(m_vin_time));
+	save_item(NAME(m_frame_time));
 	save_item(NAME(m_sr));
 	save_item(NAME(m_ddr1));
 	save_item(NAME(m_ddr2));
@@ -190,6 +198,15 @@ void smpc_hle_device::device_reset()
 	m_prev_sndoff = m_prev_sshoff = 0xff;
 	m_prev_cdoff = 0;
 
+	m_collect_wait = false;
+	m_collect_measured = false;
+	m_collect_done = false;
+	m_collect_requested = false;
+	m_collect_optimize = false;
+	m_collect_ready = attotime::never;
+	m_vin_time = attotime::never;
+	m_frame_time = attotime::never;
+
 	m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
 }
 
@@ -240,7 +257,14 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data)
 			{
 				LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
 
-				m_intback_timer->adjust(attotime::from_usec(700));  // TODO: is timing correct?
+				if (m_periph_offset == 0 && m_periph_report.empty() && (m_collect_wait || !m_collect_done))
+				{
+					// the first report: it is available when the collection has ended
+					m_collect_requested = true;
+					periph_data_wanted();
+				}
+				else
+					m_intback_timer->adjust(attotime::from_usec(700));  // TODO: is timing correct?
 
 				// TODO: following looks wrong here
 				m_oreg[31] = 0x10;
@@ -434,7 +458,9 @@ void smpc_hle_device::command_register_w(uint8_t data)
 			for(int i = 0; i < 3; i++)
 				m_intback_buf[i] = m_ireg[i];
 
-			// calculate the timing for intback command
+			// calculate the timing for intback command: the status part is ready at once, the
+			// peripheral data comes when the SMPC has collected it, which starts at the VBLANK-OUT
+			// (SMPC manual 3.1, "Optimization of peripheral data acquisition time")
 			int timing;
 
 			timing = 8;
@@ -442,9 +468,14 @@ void smpc_hle_device::command_register_w(uint8_t data)
 			if( m_ireg[0] != 0) // non-peripheral data
 				timing += 8;
 
-			// TODO: At vblank-out actually
 			if( m_ireg[1] & 8) // peripheral data
-				timing += 700;
+			{
+				m_collect_wait = true;
+				m_collect_done = false;
+				m_collect_requested = (m_ireg[0] == 0);
+				m_collect_optimize = !BIT(m_ireg[1], 1);
+				m_collect_ready = attotime::never;
+			}
 
 			// TODO: check against ireg2, must be 0xf0
 
@@ -678,7 +709,8 @@ void smpc_hle_device::resolve_intback()
 		m_pmode = m_intback_buf[1] >> 4;
 		m_periph_offset = 0;
 		m_oreg[31] = 0x10;
-		intback_continue_request(0);
+		m_collect_requested = true;
+		periph_data_wanted();
 	}
 	else
 	{
@@ -686,6 +718,66 @@ void smpc_hle_device::resolve_intback()
 		m_oreg[31] = 0x10;
 		sf_ack(false);
 	}
+}
+
+// The collection time of the peripherals (a guess: the SMPC reads the ports with its own timing,
+// depending on the devices connected) and the 1 ms margin of the optimization (manual 3.1)
+static constexpr unsigned PERIPH_COLLECT_USEC = 700;
+static constexpr unsigned PERIPH_MARGIN_USEC = 1000;
+
+void smpc_hle_device::vblank_in_w(int state)
+{
+	if (!state)
+		return;
+
+	attotime const now = machine().time();
+	if (m_vin_time != attotime::never)
+		m_frame_time = now - m_vin_time;
+	m_vin_time = now;
+}
+
+void smpc_hle_device::vblank_out_w(int state)
+{
+	if (!state || !m_collect_wait)
+		return;
+
+	periph_collect_start();
+}
+
+// The SMPC saw the VBLANK-OUT of the frame after the INTBACK. Without the optimization the
+// collection starts now. With it the SMPC starts it so that the data is ready 1 ms before the
+// next VBLANK-IN, once it has measured how long the collection takes (which it does on the
+// first frame of the mode).
+void smpc_hle_device::periph_collect_start()
+{
+	m_collect_wait = false;
+	attotime const now = machine().time();
+	attotime ready = now + attotime::from_usec(PERIPH_COLLECT_USEC);
+	if (m_collect_optimize && m_collect_measured && m_frame_time != attotime::never && m_vin_time != attotime::never)
+	{
+		attotime const next_vin = m_vin_time + m_frame_time;
+		attotime const target = next_vin - attotime::from_usec(PERIPH_MARGIN_USEC);
+		if (target > ready)
+			ready = target;
+	}
+	if (m_collect_optimize)
+		m_collect_measured = true;
+	m_collect_ready = ready;
+	if (m_collect_requested)
+		periph_data_wanted();
+}
+
+// The program is waiting for the peripheral data: answer when the collection has ended
+void smpc_hle_device::periph_data_wanted()
+{
+	if (m_collect_wait)
+		return;   // the VBLANK-OUT has not come yet: periph_collect_start() calls back
+
+	attotime const now = machine().time();
+	attotime const when = m_collect_ready > now ? m_collect_ready : now;
+	m_collect_requested = false;
+	m_collect_done = true;
+	m_intback_timer->adjust(when - now);
 }
 
 TIMER_CALLBACK_MEMBER(smpc_hle_device::intback_continue_request)
