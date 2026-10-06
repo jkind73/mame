@@ -31,8 +31,6 @@ public:
 		m_hopper(*this, "hopper"),
 		m_billboard(*this, "billboard"),
 		m_ioga(*this, "ioga"),
-		m_ioga_ports(*this, "PORT%c", 'A'),
-		m_ioga_counters(*this, "PORTG.%u", 0),
 		m_ioga_mahjong{ { *this, "P1_KEY%u", 0 }, { *this, "P2_KEY%u", 0 } },
 		m_pdr(*this, "PDR%u", 1),
 		m_cc_digits(*this, "cc_digit%u", 0U)
@@ -106,15 +104,9 @@ protected:
 	void stv_cartslot(machine_config &config) ATTR_COLD;
 
 private:
-	uint8_t ioga_r(offs_t offset);
-	void ioga_w(offs_t offset, uint8_t data);
-	uint8_t critcrsh_ioga_r(offs_t offset);
-	void critcrsh_ioga_w(offs_t offset, uint8_t data);
-	uint8_t stvmp_ioga_r(offs_t offset);
-	void stvmp_ioga_w(offs_t offset, uint8_t data);
-	[[maybe_unused]] uint32_t magzun_hef_hack_r();
-	[[maybe_unused]] uint32_t magzun_rx_hack_r();
-	void hop_ioga_w(offs_t offset, uint8_t data);
+	uint8_t critcrsh_gun_r(unsigned axis);
+	void critcrsh_digits_w(uint8_t data);
+	uint8_t mahjong_r(unsigned port);
 
 	std::pair<std::error_condition, std::string> load_cart(device_image_interface &image, generic_slot_device *slot);
 	DECLARE_DEVICE_IMAGE_LOAD_MEMBER( stv_cart1 ) { return load_cart(image, m_cart1); }
@@ -131,11 +123,7 @@ private:
 	void batmanfr_sound_comms_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 	optional_device<acclaim_rax_device> m_rax;
 
-	uint8_t     m_port_sel,m_mux_data = 0;
-	uint8_t     m_system_output = 0;
-	uint8_t     m_ioga_mode = 0;
-	uint8_t     m_ioga_portg = 0;
-	uint16_t    m_ioga_count[4]{};
+	uint8_t     m_mux_data = 0;
 	void pd_output_w(uint8_t data);
 
 	// protection specific variables and functions
@@ -163,8 +151,6 @@ private:
 	optional_device<ticket_dispenser_device> m_hopper;
 	required_device<sega_billboard_device> m_billboard;
 	optional_device<sega_315_5649_device> m_ioga;
-	optional_ioport_array<7> m_ioga_ports;
-	required_ioport_array<4> m_ioga_counters;
 	optional_ioport_array<5> m_ioga_mahjong[2];
 	required_ioport_array<2> m_pdr;
 	output_finder<2> m_cc_digits;
@@ -180,9 +166,6 @@ private:
 	void sound_mem(address_map &map) ATTR_COLD;
 	void scsp_mem(address_map &map) ATTR_COLD;
 	void stv_mem(address_map &map) ATTR_COLD;
-	void critcrsh_mem(address_map &map) ATTR_COLD;
-	void stvmp_mem(address_map &map) ATTR_COLD;
-	void hopper_mem(address_map &map) ATTR_COLD;
 	void stvcd_mem(address_map &map) ATTR_COLD;
 };
 

@@ -170,157 +170,46 @@ void stv_state::pd_output_w(uint8_t data)
 	machine().bookkeeping().coin_lockout_w(0, BIT(~data, 2));
 	machine().bookkeeping().coin_lockout_w(1, BIT(~data, 3));
 	// TODO: propagate upper nibble to a configurable output port
+
+	// the hopper machines: bit 7 turns the motor on
+	if (m_hopper)
+		m_hopper->motor_w(BIT(data, 7));
 }
 
-// TODO: remove this legacy fallback, use the actual device instead
-uint8_t stv_state::ioga_r(offs_t offset)
-{
-	uint8_t res;
-
-	res = 0xff;
-	if(offset & 0x10 && !machine().side_effects_disabled())
-		logerror("Reading from mirror %08x?\n",offset * 2 + 1);
-
-	offset &= 0x0f; // mirror?
-
-	switch((offset * 2) + 1)
-	{
-		case 0x0d:
-			if (m_ioga_mode & 0x80) // PORT-G in counter mode
-			{
-				uint8_t const sel = (m_ioga_portg >> 1) & 0x03;
-				res = ((m_ioga_counters[sel]->read() - m_ioga_count[sel]) >> ((~m_ioga_portg & 1) * 8) & 0xff);
-				m_ioga_portg = (m_ioga_portg & 0xf8) | ((m_ioga_portg + 1) & 0x07); // counter# is auto-incremented on read
-				break;
-			}
-			[[fallthrough]];
-		case 0x01: // P1
-		case 0x03: // P2
-		case 0x05: // SYSTEM
-		case 0x09: // P3
-		case 0x0b: // P4
-			res = m_ioga_ports[offset]->read();
-			break;
-		case 0x07: res = m_system_output; break; // port D, read-backs value written
-		case 0x1b: res = 0; break; // Serial COM READ status
-		case 0x1d: res = m_ioga_mode; break;
-	}
-
-	return res;
-}
-
-void stv_state::ioga_w(offs_t offset, uint8_t data)
-{
-	if(offset & 0x10 && !machine().side_effects_disabled())
-		logerror("Writing to mirror %08x %02x?\n",offset * 2 + 1,data);
-
-	offset &= 0x0f; // mirror?
-
-	switch(offset * 2 + 1)
-	{
-		case 0x07:
-			m_system_output = data;
-			machine().bookkeeping().coin_counter_w(0, data & 0x01);
-			machine().bookkeeping().coin_counter_w(1, data & 0x02);
-			machine().bookkeeping().coin_lockout_w(0, ~data & 0x04);
-			machine().bookkeeping().coin_lockout_w(1, ~data & 0x08);
-			break;
-		case 0x09:
-			m_billboard->write(data);
-			break;
-		case 0x0d:
-			if(!BIT(data, 7)) // when bit 7==0 reset counters
-			{
-				for(unsigned i = 0; m_ioga_counters.size() > i; ++i)
-					m_ioga_count[i] = m_ioga_counters[i]->read();
-			}
-			m_ioga_portg = data;
-			break;
-		case 0x1d:
-			m_ioga_mode = data;
-			break;
-	}
-}
-
-uint8_t stv_state::critcrsh_ioga_r(offs_t offset)
+// Crazy Crash: the light gun readings come in on the ports of the first two players, the
+// digits of the 7 segment display go out of port F
+uint8_t stv_state::critcrsh_gun_r(unsigned axis)
 {
 	const char *const lgnames[] = { "LIGHTX", "LIGHTY" };
 
-	uint8_t res = 0xff;
-
-	switch(offset * 2 + 1)
-	{
-		case 0x01:
-		case 0x03:
-			res = ioport(lgnames[offset])->read();
-			res = bitswap<8>(res, 2, 3, 0, 1, 6, 7, 5, 4) & 0xf3;
-			res |= (ioport("PORTC")->read() & 0x10) ? 0x0 : 0x4; // x/y hit latch actually
-			break;
-		default:
-			res = ioga_r(offset);
-			break;
-	}
-
+	uint8_t res = ioport(lgnames[axis])->read();
+	res = bitswap<8>(res, 2, 3, 0, 1, 6, 7, 5, 4) & 0xf3;
+	res |= (ioport("PORTC")->read() & 0x10) ? 0x0 : 0x4; // x/y hit latch actually
 	return res;
 }
 
-void stv_state::critcrsh_ioga_w(offs_t offset, uint8_t data)
+void stv_state::critcrsh_digits_w(uint8_t data)
 {
 	static uint8_t const bcd2hex[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7c, 0x07, 0x7f, 0x67, 0x58, 0x4c, 0x62, 0x49, 0x78, 0x00 }; // TODO: chip type unknown
-	switch (offset * 2 + 1)
-	{
-		case 0x0b:
-			m_cc_digits[0] = bcd2hex[(data & 0xf0) >> 4];
-			m_cc_digits[1] = bcd2hex[data & 0x0f];
-			break;
-		default:
-			ioga_w(offset, data);
-			break;
-	}
+	m_cc_digits[0] = bcd2hex[(data & 0xf0) >> 4];
+	m_cc_digits[1] = bcd2hex[data & 0x0f];
 }
 
-uint8_t stv_state::stvmp_ioga_r(offs_t offset)
+// Mahjong panels: port E selects the rows of keys, which come in on the first two ports when
+// the port direction register sets them to inputs for the panel (bit 4 of it is what the games
+// write to switch between the joystick and the panel)
+uint8_t stv_state::mahjong_r(unsigned port)
 {
+	if (m_ioga->port_config() & 0x10) // joystick select
+		return ioport(port ? "PORTB" : "PORTA")->read();
+
 	uint8_t res = 0xff;
-
-	switch(offset * 2 + 1)
+	for (unsigned i = 0; i < 5; i++)
 	{
-		case 0x01:
-		case 0x03:
-			if(m_port_sel & 0x10) // joystick select <<< this is obviously wrong, this bit only selects PORTE direction
-			{
-				res = ioga_r(offset);
-			}
-			else // mahjong panel select
-			{
-				for(unsigned i = 0; m_ioga_mahjong[i].size() > i; i++)
-				{
-					if(BIT(m_mux_data, i))
-						res &= m_ioga_mahjong[offset][i]->read();
-				}
-			}
-			break;
-		default: res = ioga_r(offset); break;
+		if (BIT(m_mux_data, i))
+			res &= m_ioga_mahjong[port][i]->read();
 	}
-
 	return res;
-}
-
-void stv_state::stvmp_ioga_w(offs_t offset, uint8_t data)
-{
-	switch(offset * 2 + 1)
-	{
-		case 0x09: m_mux_data = data ^ 0xff; break;
-		case 0x11: m_port_sel = data; break;
-		default:   ioga_w(offset,data); break;
-	}
-}
-
-void stv_state::hop_ioga_w(offs_t offset, uint8_t data)
-{
-	if ((offset * 2 + 1) == 7)
-		m_hopper->motor_w(data & 0x80);
-	ioga_w(offset, data);
 }
 
 
@@ -491,52 +380,16 @@ void stv_state::init_stv()
 #endif
 }
 
-// reference patches for magzun, we rather need to emulate microphone properly.
-/*
-    - if pc==604bf20 && 608e832 <- 1 (HWEF)
-    - if pc==604bfbe && 608e832 <- 2 (HREF)
-    - if pc==604c006 && 60ff3b7 <- 0x40 (they tries to read-back 0x40?)
-
-    TODO: game doesn't work if not in debugger?
-*/
-
-uint32_t stv_state::magzun_hef_hack_r()
-{
-	if(m_maincpu->pc()==0x604bf20) return 0x00000001; //HWEF
-
-	if(m_maincpu->pc()==0x604bfbe) return 0x00000002; //HREF
-
-	return m_workram_h[0x08e830/4];
-}
-
-uint32_t stv_state::magzun_rx_hack_r()
-{
-	if(m_maincpu->pc()==0x604c006) return 0x40;
-
-	return m_workram_h[0x0ff3b4/4];
-}
+// magzun needs its microphone (over the serial channels of the I/O gate array) emulated. What its
+// program waits for, from a trace of it (the old patches that forced these values are gone):
+// - at pc 604bf20 it reads 1 from 608e830 (HWEF) and at 604bfbe 2 (HREF);
+// - at pc 604c006 it reads back 0x40 from 60ff3b4.
+// Two checks of its program ROM (the END error at ROM 0x90054 and the time out subroutine at
+// 0x34f4) cannot be passed without the microphone either.
 
 void stv_state::init_magzun()
 {
-	m_maincpu->sh2drc_add_pcflush(0x604bf20);
-	m_maincpu->sh2drc_add_pcflush(0x604bfbe);
-	m_maincpu->sh2drc_add_pcflush(0x604c006);
-
 	init_stv();
-
-//  m_maincpu->space(AS_PROGRAM).install_read_handler(0x608e830, 0x608e833, read32smo_delegate(*this, FUNC(stv_state::magzun_hef_hack_r)));
-//  m_maincpu->space(AS_PROGRAM).install_read_handler(0x60ff3b4, 0x60ff3b7, read32smo_delegate(*this, FUNC(stv_state::magzun_rx_hack_r)));
-
-	/* Program ROM patches, don't understand how to avoid these two checks ... */
-	#if 0
-	{
-		uint32_t *ROM = (uint32_t *)memregion("cart")->base();
-
-		ROM[0x90054/4] = 0x00e00001; // END error
-
-		ROM[0x34f4/4] = 0x00000009; // Time Out sub-routine
-	}
-	#endif
 }
 
 
@@ -1066,7 +919,6 @@ void stv_state::stv_mem(address_map &map)
 	map(0x00100000, 0x0010007f).mirror(0x2007ff80).m(m_smpc_hle, FUNC(smpc_hle_device::io_map));
 	map(0x00180000, 0x0018ffff).rw(FUNC(stv_state::backupram_r), FUNC(stv_state::backupram_w)).share("share1");
 	map(0x00200000, 0x002fffff).ram().mirror(0x20100000).share("workram_l");
-//  map(0x00400000, 0x0040003f).rw(FUNC(stv_state::ioga_r), FUNC(stv_state::ioga_w)).umask32(0x00ff00ff);
 	map(0x00400000, 0x0040001f).mirror(0x20).rw("ioga", FUNC(sega_315_5649_device::read), FUNC(sega_315_5649_device::write)).umask32(0x00ff00ff);
 	map(0x01000000, 0x017fffff).w("dcc", FUNC(saturn_dcc_device::minit_w));
 	map(0x01800000, 0x01ffffff).w("dcc", FUNC(saturn_dcc_device::sinit_w));
@@ -1089,24 +941,6 @@ void stv_state::stv_mem(address_map &map)
 	map(0x06000000, 0x060fffff).ram().mirror(0x21f00000).share("workram_h");
 	map(0x60000000, 0x600003ff).nopw();
 	map(0xc0000000, 0xc00007ff).ram(); // cache RAM
-}
-
-void stv_state::critcrsh_mem(address_map &map)
-{
-	stv_mem(map);
-	map(0x00400000, 0x0040003f).rw(FUNC(stv_state::critcrsh_ioga_r), FUNC(stv_state::critcrsh_ioga_w)).umask32(0x00ff00ff);
-}
-
-void stv_state::stvmp_mem(address_map &map)
-{
-	stv_mem(map);
-	map(0x00400000, 0x0040003f).rw(FUNC(stv_state::stvmp_ioga_r), FUNC(stv_state::stvmp_ioga_w)).umask32(0x00ff00ff);
-}
-
-void stv_state::hopper_mem(address_map &map)
-{
-	stv_mem(map);
-	map(0x00400000, 0x0040003f).rw(FUNC(stv_state::ioga_r), FUNC(stv_state::hop_ioga_w)).umask32(0x00ff00ff);
 }
 
 void stv_state::stvcd_mem(address_map &map)
@@ -1243,6 +1077,10 @@ void stv_state::stv(machine_config &config)
 	});
 	m_ioga->in_pf_callback().set_ioport("PORTF");
 	m_ioga->in_pg_callback().set_ioport("PORTG");
+	m_ioga->in_counter_callback<0>().set_ioport("PORTG.0");
+	m_ioga->in_counter_callback<1>().set_ioport("PORTG.1");
+	m_ioga->in_counter_callback<2>().set_ioport("PORTG.2");
+	m_ioga->in_counter_callback<3>().set_ioport("PORTG.3");
 	m_ioga->an_port_callback<0>().set_ioport("AN0");
 	m_ioga->an_port_callback<1>().set_ioport("AN1");
 	m_ioga->an_port_callback<2>().set_ioport("AN2");
@@ -1293,8 +1131,9 @@ void stv_state::critcrsh(machine_config &config)
 {
 	stv(config);
 
-	m_maincpu->set_addrmap(AS_PROGRAM, &stv_state::critcrsh_mem);
-	m_slave->set_addrmap(AS_PROGRAM, &stv_state::critcrsh_mem);
+	m_ioga->in_pa_callback().set([this] () { return critcrsh_gun_r(0); });
+	m_ioga->in_pb_callback().set([this] () { return critcrsh_gun_r(1); });
+	m_ioga->out_pf_callback().set(FUNC(stv_state::critcrsh_digits_w));
 }
 
 void stv_state::magzun(machine_config &config)
@@ -1312,8 +1151,9 @@ void stv_state::stvmp(machine_config &config)
 {
 	stv(config);
 
-	m_maincpu->set_addrmap(AS_PROGRAM, &stv_state::stvmp_mem);
-	m_slave->set_addrmap(AS_PROGRAM, &stv_state::stvmp_mem);
+	m_ioga->in_pa_callback().set([this] () { return mahjong_r(0); });
+	m_ioga->in_pb_callback().set([this] () { return mahjong_r(1); });
+	m_ioga->out_pe_callback().set([this] (uint8_t data) { m_mux_data = data ^ 0xff; });
 }
 
 void stv_state::stvcd(machine_config &config)
@@ -1410,9 +1250,6 @@ void stv_state::hopper(machine_config &config)
 {
 	stv(config);
 	HOPPER(config, m_hopper, attotime::from_msec(100));
-
-	m_maincpu->set_addrmap(AS_PROGRAM, &stv_state::hopper_mem);
-	m_slave->set_addrmap(AS_PROGRAM, &stv_state::hopper_mem);
 }
 
 void stv_state::machine_reset()
@@ -1439,7 +1276,7 @@ void stv_state::machine_reset()
 	else
 		m_cart_reg[3] = nullptr;
 
-	m_port_sel = m_mux_data = 0;
+	m_mux_data = 0;
 
 	m_prev_gamebank_select = 0xff;
 }
@@ -1484,7 +1321,6 @@ void stv_state::machine_start()
 	// save states
 	save_item(NAME(m_en_68k));
 	save_item(NAME(m_prev_gamebank_select));
-	save_item(NAME(m_port_sel));
 	save_item(NAME(m_mux_data));
 	save_item(NAME(m_scsp_last_line));
 
