@@ -63,8 +63,10 @@ void saturn_state::machine_reset()
 	m_slave->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
 	m_audiocpu->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
 
-	m_maincpu->set_unscaled_clock(MASTER_CLOCK_320/2);
-	m_slave->set_unscaled_clock(MASTER_CLOCK_320/2);
+	// the 320 dot mode clocks, NTSC or PAL (Overview Manual Rel.2.5, Table 3.1.1)
+	XTAL const reset_clock = m_vdp2->is_pal() ? MASTER_CLOCK_320_PAL : MASTER_CLOCK_320;
+	m_maincpu->set_unscaled_clock(reset_clock / 2);
+	m_slave->set_unscaled_clock(reset_clock / 2);
 
 	m_en_68k = 0;
 
