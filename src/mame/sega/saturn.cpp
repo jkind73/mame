@@ -55,9 +55,18 @@
 #include <cstdlib>
 
 
+void saturn_state::machine_start()
+{
+	// a loaded state starts with a free SH-2 bus
+	machine().save().register_postload(save_prepost_delegate(FUNC(saturn_state::sh2_bus_reset), this));
+}
+
+
 void saturn_state::machine_reset()
 {
 	m_scsp_last_line = 0;
+
+	sh2_bus_reset();
 
 	// don't let the slave cpu and the 68k go anywhere
 	m_slave->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);

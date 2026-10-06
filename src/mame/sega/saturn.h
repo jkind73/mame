@@ -7,6 +7,7 @@
 
 #include "315-5881_crypt.h"
 #include "315-5838_317-0229_comp.h"
+#include "saturn_bus.h"
 #include "saturn_dcc.h"
 #include "saturn_scu.h"
 #include "saturn_vdp1.h"
@@ -24,6 +25,8 @@
 
 #include "emupal.h"
 #include "screen.h"
+
+#include <deque>
 
 class saturn_state : public driver_device
 {
@@ -68,6 +71,26 @@ protected:
 	required_device<scsp_device> m_scsp;
 	required_device<smpc_hle_device> m_smpc_hle;
 	required_device<saturn_scu_device> m_scu;
+
+	// SH-2 external bus timing and master/slave arbitration (saturn_bus.cpp)
+	using bus_interval = saturn_bus::interval;
+	static constexpr unsigned BUS_REQUESTERS = saturn_bus::REQUESTERS;
+	std::deque<bus_interval> m_sh2_bus_log[BUS_REQUESTERS]; // the intervals each requester held the bus, oldest first
+	attotime m_sh2_bus_debt[BUS_REQUESTERS];                // the delay it owes for accesses it ran past
+	attotime m_sh2_bus_debt_from[BUS_REQUESTERS] = { attotime::never, attotime::never, attotime::never, attotime::never };
+	attotime m_bsc_last_end[2];       // per CPU: when its last bus access ended,
+	uint8_t m_bsc_last_area[2] = {};  // its area
+	bool m_bsc_last_read[2] = {};     // and whether it was a read
+	attotime m_sh2_sdram_free[2];     // per CPU: when the SDRAM finishes a posted write
+	bool m_stv_ioga = false;          // ST-V I/O gate array at 00400000H
+	static unsigned cpu_bus_waits(uint32_t address, bool write, unsigned bits);
+	int sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now);
+	int master_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now) { return sh2_bus_cycles(0, address, size, write, fill, now); }
+	int slave_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now) { return sh2_bus_cycles(1, address, size, write, fill, now); }
+	uint64_t sh2_bus_arbitrate(unsigned requester, const attotime &now, uint64_t cycles, offs_t address, bool write);
+	void sh2_bus_reset();
+	// SATURN_BUS_TIMING=0 turns the SH-2 bus timing off (diagnostics)
+	static bool sh2_bus_timing_enabled();
 	required_device<saturn_vdp1_device> m_vdp1;
 	required_device<saturn_vdp2_device> m_vdp2;
 	required_device<screen_device> m_screen;
@@ -80,6 +103,7 @@ protected:
 
 	int m_scsp_last_line = 0;
 
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	void scsp_irq(offs_t offset, uint8_t data);

@@ -1188,6 +1188,8 @@ void stv_state::stv(machine_config &config)
 	m_maincpu->set_is_slave(0);
 	// Model the SH7604 cache (section 8)
 	m_maincpu->set_cache_emulation(true);
+	if (sh2_bus_timing_enabled())
+		m_maincpu->set_bus_timing_callback(FUNC(stv_state::master_bus_cycles));
 	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
 	TIMER(config, "scantimer").configure_scanline(FUNC(stv_state::saturn_scanline), "screen", 0, 1);
 
@@ -1195,6 +1197,8 @@ void stv_state::stv(machine_config &config)
 	m_slave->set_addrmap(AS_PROGRAM, &stv_state::stv_mem);
 	m_slave->set_is_slave(1);
 	m_slave->set_cache_emulation(true);
+	if (sh2_bus_timing_enabled())
+		m_slave->set_bus_timing_callback(FUNC(stv_state::slave_bus_cycles));
 	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
 
 	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
@@ -1483,6 +1487,7 @@ std::pair<std::error_condition, std::string> stv_state::load_cart(device_image_i
 void stv_state::machine_start()
 {
 	saturn_state::machine_start();
+	m_stv_ioga = true;
 
 	// save states
 	save_item(NAME(m_en_68k));
