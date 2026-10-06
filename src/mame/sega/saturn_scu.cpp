@@ -98,9 +98,12 @@ void saturn_scu_device::dma_map(address_map &map)
 	);
 	// everything else is write only
 	map(0x0c, 0x17).nopr();
-	// DxAD: add values
+	// DxAD: add values (write protected while the level is transferring: SCU manual 3.2; MiSTer
+	// SCU.sv protects the add value and mode registers of a running level)
 	map(0x0c, 0x0f).lw32(
 		NAME([this] (offs_t offset, u32 data, u32 mem_mask) {
+			if (m_dma_status & (DMA_LV0_MOVE << (4 * Level)))
+				return;
 			if (ACCESSING_BITS_8_15)
 				m_dma[Level].src_add = BIT(data, 8) * 4;
 			if (ACCESSING_BITS_0_7)
@@ -129,6 +132,8 @@ void saturn_scu_device::dma_map(address_map &map)
 	// DxMOD / DxRUP / DxWUP / DxFT: indirect mode, RUP, WUP, start factor
 	map(0x14, 0x17).lw32(
 		NAME([this] (offs_t offset, u32 data, u32 mem_mask) {
+			if (m_dma_status & (DMA_LV0_MOVE << (4 * Level)))
+				return;
 			if (ACCESSING_BITS_24_31)
 				m_dma[Level].indirect_mode = BIT(data, 24);
 			if (ACCESSING_BITS_16_23)
