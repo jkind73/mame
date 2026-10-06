@@ -148,7 +148,11 @@ int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bo
 		t += 1 + cpu_bus_waits(address, write, size * 8) * (fill ? 4 : 1);
 	}
 
-	uint64_t const total = sh2_bus_arbitrate(cpu * 2 + (dma ? 1 : 0), now, t, address, write);
+	// The DMAC is a master of its own chip's bus controller: its accesses and its CPU's share one
+	// timeline (the DMAC steals the cycles between the CPU's), and only the other CPU contends
+	// with both. Giving it a requester of its own made it lose every tie to a CPU that polls the
+	// bus back to back, and its unit time grew without bound.
+	uint64_t const total = sh2_bus_arbitrate(cpu * 2, now, t, address, write);
 	return int(std::min<uint64_t>(total, 0x7fff'ffff)) - (total ? 1 : 0);
 }
 
@@ -181,8 +185,8 @@ void saturn_state::sh2_bus_reset()
 
 
 /*
-  The two SH-2s share one external bus (and each SH-2's on-chip DMAC uses it
-  too). The master owns it and the slave requests it; whichever holds the bus
+  The two SH-2s share one external bus (each SH-2's on-chip DMAC uses its own
+  chip's bus controller, so it takes its CPU's place in the arbitration). The master owns it and the slave requests it; whichever holds the bus
   completes its bus cycle before another requester gets it, and a pending
   request is granted when the bus cycle ends (SH7604 manual 7.10; the DMAC
   drives the same bus controller as its CPU). Mednafen serialises every
