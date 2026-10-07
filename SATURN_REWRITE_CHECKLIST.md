@@ -1,6 +1,6 @@
 # Saturn / ST-V source rewrite: status checklist
 
-Updated 2026-10-07 (after commit `45ca1a164f9`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
+Updated 2026-10-07 (after commit `81025778514`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
 `[x]` done and committed (commit in brackets), `[~]` partly done, `[ ]` not done.
 
 ## How this file stays true
@@ -122,7 +122,7 @@ Updated 2026-10-07 (after commit `45ca1a164f9`). Branch `claude/saturn-vdp2-rewr
 - [ ] Old stash entries are still in the shared stash (`optimizations-pre-rebase-onto-master`, `EXTRA`, `garbage`, `extra garbage`, `latestcheckins`, ...): the user decides when to drop them; nothing is dropped without being asked
 
 ## 11. Verification and housekeeping
-- [x] `SCSP_LOG` and `SCSP_LEGACY` removed (the log blocks, the per-slot and per-second peak counters, the four legacy switches: the rewritten behaviour is the only one; VF2 audio of the first 9 s is bit-identical before and after)
+- [x] `SCSP_LOG` is now MAME-style compile-time logging in `scsp.cpp` (`VERBOSE` masks `LOG_IRQ`, `LOG_REG`, `LOG_KEY`, `LOG_MIX`; default 0 so the code is compiled out, no cost; the CD audio play line is `LOGXFER` in `saturn_cd_hle.cpp`); `SCSP_LEGACY` is removed (the rewritten behaviour is the only one, git history has the old one). Verified: logs appear with the masks on, and the VF2 audio of the first 9 s is bit-identical with them off
 - [ ] **Diagnostic hooks still to remove or turn into options**: `SATURN_LEGACY_DDI` (`saturn.cpp`), `SATURN_VDP1_LOG` (`saturn.cpp`, `saturn_vdp1.cpp`), `SATURN_BUS_TIMING` (`saturn_bus.cpp`). The generated inventory lists each one under `getenv`
 - [ ] Move the standalone Lua timing tests (`dmactest2.lua`, `scudma.lua`, `bustest*.lua`, state-hash and audio-analysis scripts) from the session scratchpad into the repository; `regtests/saturn` lives in the other branch only
 - [ ] Regression pass at the end of each area, one game at a time: cotton2, rsgun, vfremix, ffreveng (Saturn); gaxeduel, diehard, vfkids, fhboxers, batmanfr (ST-V); Daytona USA (Japan) boots with the Japanese BIOS; the BIOS animation sound

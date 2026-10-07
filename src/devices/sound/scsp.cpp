@@ -34,6 +34,19 @@
 #include "scsp.h"
 
 #include <algorithm>
+#include <cstdlib>
+
+// Logging (set VERBOSE to the masks wanted and rebuild; with the default 0 the code below is compiled out):
+//   LOG_IRQ  sound CPU interrupt level changes
+//   LOG_REG  every write to the common registers, with the CPU that wrote it
+//   LOG_KEY  key on / key off / stop of a slot: envelope, mixer routing, first sample bytes, loudest output
+//   LOG_MIX  once per second: output peak, master volume, DAC18B, CD audio input slots, DSP state
+#define LOG_IRQ  (1U << 1)
+#define LOG_REG  (1U << 2)
+#define LOG_KEY  (1U << 3)
+#define LOG_MIX  (1U << 4)
+#define VERBOSE 0
+#include "logmacro.h"
 
 #define SHIFT   12
 #define LFO_SHIFT   8
@@ -164,6 +177,9 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
 	m_eg_counter = 0;
 	m_lfsr = 1;
+	m_log_peak[0] = m_log_peak[1] = 0;
+	m_log_count = 0;
+	m_log_exts_peak = 0;
 	std::fill(std::begin(m_EG_TABLE), std::end(m_EG_TABLE), 0);
 	std::fill(std::begin(m_PLFO_TRI), std::end(m_PLFO_TRI), 0);
 	std::fill(std::begin(m_PLFO_SQR), std::end(m_PLFO_SQR), 0);
@@ -432,6 +448,8 @@ void scsp_device::CheckPendingIRQ()
 	if (level != m_cur_irq_level)
 	{
 		// lower the line that was asserted by its own level: not every driver tracks the last one
+		if (VERBOSE & LOG_IRQ)
+			logerror("SCSP %.6f sound CPU interrupt level %d -> %d (SCIPD %04x SCIEB %04x)\n", machine().time().as_double(), m_cur_irq_level, level, pend, en);
 		if (m_cur_irq_level)
 			m_irq_cb((offs_t)m_cur_irq_level, CLEAR_LINE);
 		m_cur_irq_level = level;
@@ -654,6 +672,21 @@ void scsp_device::Compute_LFO(SCSP_SLOT *slot)
 
 void scsp_device::StartSlot(SCSP_SLOT *slot)
 {
+	if (VERBOSE & LOG_KEY)
+	{
+		device_execute_interface *const exec = machine().scheduler().currently_executing();
+		logerror("SCSP %.6f KEY ON slot %02d by %s SA=%05x LSA=%04x LEA=%04x LPCTL=%d PCM8B=%d AR=%d D1R=%d D2R=%d RR=%d DL=%d TL=%02x SDIR=%d\n",
+				machine().time().as_double(), slot->slot, exec ? exec->device().tag() : "-", SA(slot), LSA(slot), LEA(slot),
+				LPCTL(slot), PCM8B(slot) ? 1 : 0, AR(slot), D1R(slot), D2R(slot), RR(slot), DL(slot), TL(slot), SDIR(slot) ? 1 : 0);
+		// where the sound goes and what it reads: sample bytes at SA (all zero: the data is not there)
+		u32 sum = 0;
+		for (u32 i = 0; i < 256; i += 2)
+			sum += read_word(SA(slot) + i);
+		logerror("SCSP %.6f   slot %02d mixer DISDL=%d DIPAN=%02x IMXL=%d ISEL=%d EFSDL=%d EFPAN=%02x STWINH=%d SSCTL=%d data %04x %04x %04x %04x sum256=%08x\n",
+				machine().time().as_double(), slot->slot, DISDL(slot), DIPAN(slot), IMXL(slot), ISEL(slot), EFSDL(slot), EFPAN(slot), STWINH(slot) ? 1 : 0, SSCTL(slot),
+				read_word(SA(slot)), read_word(SA(slot) + 2), read_word(SA(slot) + 4), read_word(SA(slot) + 6), sum);
+	}
+	slot->log_peak = 0;
 	slot->active = 1;
 	slot->cur_addr = 0;
 	slot->nxt_addr = 1 << SHIFT;
@@ -674,6 +707,9 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 
 void scsp_device::StopSlot(SCSP_SLOT *slot,int keyoff)
 {
+	if (VERBOSE & LOG_KEY)
+		logerror("SCSP %.6f %s slot %02d%s\n", machine().time().as_double(), keyoff ? "KEY OFF" : "STOP", slot->slot,
+				std::string(!keyoff ? util::string_format(" peak %d", slot->log_peak) : std::string()).c_str());
 	if (keyoff /*&& slot->EG.state!=SCSP_RELEASE*/)
 	{
 		slot->EG.state = SCSP_RELEASE;
@@ -1055,6 +1091,11 @@ void scsp_device::w16(u32 addr, u16 val)
 	{
 		if (addr < 0x430)
 		{
+			if (VERBOSE & LOG_REG)
+			{
+				device_execute_interface *const exec = machine().scheduler().currently_executing();
+				logerror("SCSP %.6f write %03x = %04x by %s\n", machine().time().as_double(), addr, val, exec ? exec->device().tag() : "-");
+			}
 			// SCIPD and MCIPD are r/o except for bit 5 CPU irqs
 			if (addr == 0x420 || addr == 0x42c)
 			{
@@ -1392,6 +1433,8 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 					s32 const r = (sample * m_RPANTABLE[Enc]) >> SHIFT;
 					smpl += l;
 					smpr += r;
+					if (VERBOSE & LOG_KEY)
+						slot->log_peak = std::max({ slot->log_peak, std::abs(l) >> 2, std::abs(r) >> 2 });
 				}
 			}
 
@@ -1426,6 +1469,8 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			u16 const Enc = ((EFPAN(slot)) << 0x8) | ((EFSDL(slot)) << 0xd);
 			{
 				m_DSP.EXTS[i] = s32(stream.get(i, s) * 32768.0);
+				if (VERBOSE & LOG_MIX)
+					m_log_exts_peak = std::max(m_log_exts_peak, std::abs(m_DSP.EXTS[i]));
 				smpl += (m_DSP.EXTS[i] * m_LPANTABLE[Enc]) >> SHIFT;
 				smpr += (m_DSP.EXTS[i] * m_RPANTABLE[Enc]) >> SHIFT;
 			}
@@ -1447,6 +1492,33 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			stream.put_int_clamp(1, s, smpr >> 2, 32768);
 		}
 
+		if (VERBOSE & LOG_MIX)
+		{
+			m_log_peak[0] = std::max(m_log_peak[0], std::abs(smpl >> 2));
+			m_log_peak[1] = std::max(m_log_peak[1], std::abs(smpr >> 2));
+			if (++m_log_count >= 44100)
+			{
+				logerror("SCSP %.6f output peak L %d R %d (of 32768)\n", machine().time().as_double(), m_log_peak[0], m_log_peak[1]);
+				{
+					// one line with the mixer state: master volume, the CD audio slots (16, 17) and the DSP
+					SCSP_SLOT *const s16 = m_Slots + 16;
+					SCSP_SLOT *const s17 = m_Slots + 17;
+					int active = 0;
+					for (int i = 0; i < 32; i++)
+						active += m_Slots[i].active ? 1 : 0;
+					s32 efmax = 0;
+					for (int i = 0; i < 16; i++)
+						efmax = std::max<s32>(efmax, std::abs(m_DSP.EFREG[i]));
+					logerror("SCSP %.6f state MVOL=%d DAC18B=%d active=%d DSP stopped=%d steps=%d EFREGmax=%d EXTSpeak=%d EXTS=%d,%d | slot16 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x | slot17 DISDL=%d DIPAN=%02x EFSDL=%d EFPAN=%02x\n",
+							machine().time().as_double(), MVOL(), DAC18B() ? 1 : 0, active, m_DSP.Stopped ? 1 : 0, m_DSP.LastStep, efmax, m_log_exts_peak, m_DSP.EXTS[0], m_DSP.EXTS[1],
+							DISDL(s16), DIPAN(s16), EFSDL(s16), EFPAN(s16),
+							DISDL(s17), DIPAN(s17), EFSDL(s17), EFPAN(s17));
+				}
+				m_log_peak[0] = m_log_peak[1] = 0;
+				m_log_exts_peak = 0;
+				m_log_count = 0;
+			}
+		}
 
 		++m_eg_counter;
 	}

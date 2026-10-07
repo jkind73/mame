@@ -94,6 +94,7 @@ private:
 		SCSP_LFO_t ALFO;     //Amplitude LFO
 		int slot;
 		s16 Prev;  //Previous sample (for interpolation)
+		s32 log_peak;  // SCSP_LOG: loudest direct output of the slot since it was keyed on
 	};
 
 	devcb_write8       m_irq_cb;  /* irq callback */
@@ -157,6 +158,9 @@ private:
 
 	u32 m_eg_counter;    // envelope generator sample counter
 	u32 m_lfsr;          // noise generator, 17 bit LFSR advanced once per slot
+	s32 m_log_peak[2];   // SCSP_LOG: output peak of the last second
+	u32 m_log_count;
+	s32 m_log_exts_peak; // SCSP_LOG: peak of the external (CD audio) input of the last second
 
 	SCSPDSP m_DSP;
 

@@ -135,9 +135,9 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 ## src/devices/sound/scsp.cpp (3)
 
-- 127: /* TODO */
-- 1455: // TODO: this needs to be timer-ized
-- 1476: /* TODO: don't know if params auto-updates, I guess not ... */
+- 140: /* TODO */
+- 1527: // TODO: this needs to be timer-ized
+- 1548: /* TODO: don't know if params auto-updates, I guess not ... */
 
 ## src/lib/util/cdrom.cpp (4)
 
@@ -230,8 +230,8 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 2776: // TODO: this may not play well with curfad rejection
 - 2939: // TODO: timings, may be too fast
 - 3005: // TODO: pinpoint cases when this isn't okay
-- 3039: // TODO: untested with cur_track == 0xaa (lead-out)
-- 3055: // TODO: should be correct but somehow still doesn't work
+- 3040: // TODO: untested with cur_track == 0xaa (lead-out)
+- 3056: // TODO: should be correct but somehow still doesn't work
 
 ## src/mame/sega/saturn_dcc.cpp (2)
 

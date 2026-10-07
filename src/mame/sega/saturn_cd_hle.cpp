@@ -3005,6 +3005,7 @@ void saturn_cd_hle_device::cd_playdata()
 						// TODO: pinpoint cases when this isn't okay
 						// (out of bounds disc for example)
 						p_ok = 1;
+						LOGXFER("CD audio play FAD %d track %d\n", cd_curfad, m_cdrom_image->get_track(cd_curfad) + 1);
 						m_cdda->start_audio(cd_curfad, 1);
 					}
 
