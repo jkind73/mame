@@ -367,6 +367,9 @@ double scsp_device::master_gain() const
 
 void scsp_device::device_post_load()
 {
+	// the saved program is the raw words; the decoded fields the DSP runs are rebuilt
+	m_DSP.DecodeAll();
+
 	for (int slot = 0; slot < 32; slot++)
 		Compute_LFO(&m_Slots[slot]);
 
@@ -1124,6 +1127,7 @@ void scsp_device::w16(u32 addr, u16 val)
 		else if (addr < 0xC00)
 		{
 			*((uint16_t *) (m_DSP.MPRO + (addr - 0x800) / 2)) = val;
+			m_DSP.DecodeStep((addr - 0x800) / 8);
 
 			// the DSP always runs the program RAM; work out how many steps are in use
 			m_DSP.Start();

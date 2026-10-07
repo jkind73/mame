@@ -87,40 +87,37 @@ void SCSPDSP::Step()
 
 	for (int step = 0; step < /*128*/LastStep; ++step)
 	{
-		u16 *const IPtr = MPRO + (step * 4);
+		DecodedStep const &inst = MPRO_decoded[step];
 
-		//if (!IPtr[0] && !IPtr[1] && !IPtr[2] && !IPtr[3])
-			//break;
+		u32 const TRA   = inst.TRA;
+		u32 const TWT   = inst.TWT;
+		u32 const TWA   = inst.TWA;
 
-		u32 const TRA   = (IPtr[0] >>  8) & 0x7f;
-		u32 const TWT   = (IPtr[0] >>  7) & 0x01;
-		u32 const TWA   = (IPtr[0] >>  0) & 0x7f;
+		u32 const XSEL  = inst.XSEL;
+		u32 const YSEL  = inst.YSEL;
+		u32 const IRA   = inst.IRA;
+		u32 const IWT   = inst.IWT;
+		u32 const IWA   = inst.IWA;
 
-		u32 const XSEL  = (IPtr[1] >> 15) & 0x01;
-		u32 const YSEL  = (IPtr[1] >> 13) & 0x03;
-		u32 const IRA   = (IPtr[1] >>  6) & 0x3f;
-		u32 const IWT   = (IPtr[1] >>  5) & 0x01;
-		u32 const IWA   = (IPtr[1] >>  0) & 0x1f;
+		u32 const TABLE = inst.TABLE;
+		u32 const MWT   = inst.MWT;
+		u32 const MRD   = inst.MRD;
+		u32 const EWT   = inst.EWT;
+		u32 const EWA   = inst.EWA;
+		u32 const ADRL  = inst.ADRL;
+		u32 const FRCL  = inst.FRCL;
+		u32 const SHIFT = inst.SHIFT;
+		u32 const YRL   = inst.YRL;
+		u32 const NEGB  = inst.NEGB;
+		u32 const ZERO  = inst.ZERO;
+		u32 const BSEL  = inst.BSEL;
 
-		u32 const TABLE = (IPtr[2] >> 15) & 0x01;
-		u32 const MWT   = (IPtr[2] >> 14) & 0x01;
-		u32 const MRD   = (IPtr[2] >> 13) & 0x01;
-		u32 const EWT   = (IPtr[2] >> 12) & 0x01;
-		u32 const EWA   = (IPtr[2] >>  8) & 0x0f;
-		u32 const ADRL  = (IPtr[2] >>  7) & 0x01;
-		u32 const FRCL  = (IPtr[2] >>  6) & 0x01;
-		u32 const SHIFT = (IPtr[2] >>  4) & 0x03;
-		u32 const YRL   = (IPtr[2] >>  3) & 0x01;
-		u32 const NEGB  = (IPtr[2] >>  2) & 0x01;
-		u32 const ZERO  = (IPtr[2] >>  1) & 0x01;
-		u32 const BSEL  = (IPtr[2] >>  0) & 0x01;
+		u32 const NOFL  = inst.NOFL;
+		u32 const COEF  = inst.COEF;
 
-		u32 const NOFL  = (IPtr[3] >>  8) & 0x01;  // bit 8 of the last word (MiSTer SCSP_pkg.sv MPRO_t, Ymir DSPInstr)
-		u32 const COEF  = (IPtr[3] >>  9) & 0x3f;
-
-		u32 const MASA  = (IPtr[3] >>  2) & 0x1f;  //???
-		u32 const ADREB = (IPtr[3] >>  1) & 0x01;
-		u32 const NXADR = (IPtr[3] >>  0) & 0x01;
+		u32 const MASA  = inst.MASA;
+		u32 const ADREB = inst.ADREB;
+		u32 const NXADR = inst.NXADR;
 
 		//operations are done at 24 bit precision
 #if 0
@@ -314,6 +311,50 @@ void SCSPDSP::SetSample(s32 sample, int SEL, int MXL)
 		//int a = 1;
 }
 
+// The program words are decoded once, when the host writes them, not at every sample: the fields
+// of step `step` of MPRO
+void SCSPDSP::DecodeStep(int step)
+{
+	u16 const *const IPtr = MPRO + (step * 4);
+	DecodedStep &d = MPRO_decoded[step];
+	d.TRA   = (IPtr[0] >>  8) & 0x7f;
+	d.TWT   = (IPtr[0] >>  7) & 0x01;
+	d.TWA   = (IPtr[0] >>  0) & 0x7f;
+
+	d.XSEL  = (IPtr[1] >> 15) & 0x01;
+	d.YSEL  = (IPtr[1] >> 13) & 0x03;
+	d.IRA   = (IPtr[1] >>  6) & 0x3f;
+	d.IWT   = (IPtr[1] >>  5) & 0x01;
+	d.IWA   = (IPtr[1] >>  0) & 0x1f;
+
+	d.TABLE = (IPtr[2] >> 15) & 0x01;
+	d.MWT   = (IPtr[2] >> 14) & 0x01;
+	d.MRD   = (IPtr[2] >> 13) & 0x01;
+	d.EWT   = (IPtr[2] >> 12) & 0x01;
+	d.EWA   = (IPtr[2] >>  8) & 0x0f;
+	d.ADRL  = (IPtr[2] >>  7) & 0x01;
+	d.FRCL  = (IPtr[2] >>  6) & 0x01;
+	d.SHIFT = (IPtr[2] >>  4) & 0x03;
+	d.YRL   = (IPtr[2] >>  3) & 0x01;
+	d.NEGB  = (IPtr[2] >>  2) & 0x01;
+	d.ZERO  = (IPtr[2] >>  1) & 0x01;
+	d.BSEL  = (IPtr[2] >>  0) & 0x01;
+
+	d.NOFL  = (IPtr[3] >>  8) & 0x01;
+	d.COEF  = (IPtr[3] >>  9) & 0x3f;
+
+	d.MASA  = (IPtr[3] >>  2) & 0x1f;
+	d.ADREB = (IPtr[3] >>  1) & 0x01;
+	d.NXADR = (IPtr[3] >>  0) & 0x01;
+}
+
+// Decode the whole program, e.g. after a saved state was loaded (MPRO is saved, its decoded copy is not)
+void SCSPDSP::DecodeAll()
+{
+	for (int step = 0; step < 128; ++step)
+		DecodeStep(step);
+}
+
 void SCSPDSP::Start()
 {
 	Stopped = false;
@@ -327,4 +368,5 @@ void SCSPDSP::Start()
 	// an all-zero instruction still updates the accumulator, and the hardware runs all 128 steps, so one
 	// step past the last used one carries out the side effects of the program (Ymir UpdateProgramLength)
 	LastStep = std::min(i + 2, 128);
+
 }
