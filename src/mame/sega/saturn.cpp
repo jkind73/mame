@@ -52,6 +52,8 @@
 
 #include "cpu/scudsp/scudsp.h"
 
+#include "video.h"
+
 #include <cstdlib>
 
 
@@ -443,6 +445,19 @@ void saturn_state::vdp2_scanline(int scanline)
 	static constexpr unsigned widths[4] = { 320, 352, 640, 704 };
 	if (scanline < 0 || scanline >= 512 || scanline > m_screen->visible_area().bottom())
 		return;
+
+	// A frame that frame skipping does not display needs no picture: the VDP2 only reads, so
+	// nothing else depends on the pixels. What the rest of the machine does depend on is the
+	// VDP1 erase that follows the read-out of the frame buffer, row by row, and that is kept.
+	// The decision is taken at the first line so that a frame is either drawn whole or not at all.
+	if (scanline == 0)
+		m_vdp2_skip_frame = machine().video().skip_this_frame();
+	if (m_vdp2_skip_frame)
+	{
+		if (m_vdp2->get_lsmd() != 3 || (scanline & 1) || (legacy_ddi() & 2))
+			m_vdp1->display_line_done();
+		return;
+	}
 
 	uint8_t const hreso = m_vdp2->get_hreso();
 

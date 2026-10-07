@@ -97,6 +97,7 @@ protected:
 
 	saturn_vdp2_render::renderer m_vdp2_renderer;
 	std::unique_ptr<uint32_t[]> m_vdp2_frame;
+	bool m_vdp2_skip_frame = false;   // the frame being drawn is not displayed (frame skipping)
 	void vdp2_scanline(int scanline);
 
 	class vdp2_sprite_fb;
