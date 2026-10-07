@@ -958,7 +958,10 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 		int32_t const mx = shift_rc(vram32(t + 0x44)), my = shift_rc(vram32(t + 0x48));
 		int32_t const kx = scaling(vram32(t + 0x4c)), ky = scaling(vram32(t + 0x50));
 		uint32_t const kast = vram32(t + 0x54) & 0xffffffc0U;
-		int64_t const dkax = addr_inc(vram32(t + 0x5c));
+		// RPMD mode 2 reads the coefficients of table A dot by dot to pick the image, so table B cannot
+		// be read dot by dot: its per dot step is ignored and it is read once per line (Rel.2.5 VDP2
+		// manual 6.3, rotation parameter mode register). Per line coefficients of B (step 0) still work.
+		int64_t const dkax = (d.rpmd == 2 && i == 1) ? 0 : addr_inc(vram32(t + 0x5c));
 
 		// start point in the transformed plane, per-dot step, and viewpoint
 		int32_t xsp = add_rc(add_rc(mult_rc(a, sub_rc(st.xst, px)), mult_rc(b, sub_rc(st.yst, py))), mult_rc(c, sub_rc(zst, pz)));
@@ -1202,6 +1205,14 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			uint32_t const e = vram32(d.lwta[w] + y * 4);
 			wsx[w] = bits(e, 25, 16);
 			wex[w] = bits(e, 9, 0);
+		}
+		// Table 8.1 (Rel.2.5): the dedicated monitor modes ignore bit 9 and shift the bits down by one
+		// against the normal modes: the 320/352 dot mode holds H8-H0 (one dot units) and the 640/704 dot
+		// mode H9-H1 (units of two dots, there is no bit for H0). In the half dot units of the code
+		// below both are the register's 9 bits times two.
+		if (m_cfg.exclusive) {
+			wsx[w] = (wsx[w] & 0x1ff) << 1;
+			wex[w] = (wex[w] & 0x1ff) << 1;
 		}
 		unsigned const sy = d.wsy[w], ey = d.wey[w];
 		// double density interlace: the registers hold the field V counter in bits 8-1

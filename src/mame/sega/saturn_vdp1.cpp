@@ -240,6 +240,14 @@ void saturn_vdp1_device::latch_erase_params()
 	m_erase.y_end = m_ewrr & 0x1ff;
 	m_erase.x_bound = ((m_ewrr >> 9) & 0x7f) << 3;
 	m_erase.data = m_ewdr;
+
+	// The registers are not checked (VDP1 manual 4.4). With X1 >= X3 or Y1 > Y3 the chip erases as if
+	// the area were X3 = X1 + 1, Y3 = Y1: one dot in the normal and high resolution modes, eight in
+	// rotation and HDTV (ST-013 4.4, Figure 4.2).
+	if (m_erase.x_bound <= m_erase.x_start || m_erase.y_end < m_erase.y_start) {
+		m_erase.x_bound = m_erase.x_start + ((m_tvmr & (TVMR_ROTATE | TVMR_HDTV)) ? 8 : 1);
+		m_erase.y_end = m_erase.y_start;
+	}
 }
 
 void saturn_vdp1_device::erase_row(unsigned y)
@@ -261,14 +269,14 @@ void saturn_vdp1_device::erase_row(unsigned y)
 // row 175 and leave the shards of the previous scene in rows 176-184. `budget` is in VDP1 clocks.
 void saturn_vdp1_device::erase_limited(int64_t budget)
 {
-	unsigned const x_end = m_erase.x_bound > m_erase.x_start ? m_erase.x_bound : m_erase.x_start + 8;
+	unsigned const x_end = m_erase.x_bound;
 	for (unsigned y = m_erase.y_start; y <= m_erase.y_end; y++) {
 		uint16_t *row = display_buffer() + ((y & 0xff) << 9);
 		if (m_erase.rot8)
 			row += (y & 0x100);
 		budget -= 8;
 		for (unsigned x = m_erase.x_start; x < x_end; x += 8) {
-			for (unsigned i = 0; i < 8; i++)
+			for (unsigned i = 0; i < 8 && x + i < x_end; i++)
 				row[(x + i) & m_erase.x_mask] = m_erase.data;
 			budget -= 8;
 			if (budget <= 0)

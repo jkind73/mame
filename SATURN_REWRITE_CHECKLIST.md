@@ -1,6 +1,6 @@
 # Saturn / ST-V source rewrite: status checklist
 
-Updated 2026-10-07 (after commit `af264ec1df1`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
+Updated 2026-10-07 (after commit `2797c93a4d4`; the VDP items marked WIP are uncommitted-then-pushed, untested). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
 `[x]` done and committed (commit in brackets), `[~]` partly done, `[ ]` not done.
 
 ## How this file stays true
@@ -35,11 +35,11 @@ Updated 2026-10-07 (after commit `af264ec1df1`). Branch `claude/saturn-vdp2-rewr
 - [x] Die Hard Arcade sky / floor / ceiling regression fixed
 - [x] VDP2 picture of a frame that frame skipping does not show is not drawn; layers that cannot be seen and colour stages that do nothing are skipped (`c54eac2aca6`, `e334d7a9aca`)
 - [x] VBLANK-IN at line 224 in the 224 line mode (`3674a79cc9f`; decided by Batman Forever, a hardware test would still confirm)
-- [ ] Table 12.2 mode-0 last row prints "2:1:0", code uses 2:1:1: check against the Rel.2.5 page
-- [ ] RPMD mode 2: manual wording about B's per-dot coefficients (currently ignored)
-- [ ] Exclusive-monitor window X bit layout, exclusive monitor hblank/dot positions (notes in `saturn_vdp2.cpp`)
-- [ ] Erase with X1 >= X3
-- [ ] VDP2 V counter roll-back, H counter values at the end of the line (HCT 0x15A to 0x3B0), latch behaviour (section 12.3)
+- [x] Table 12.2 mode-0 last row: the Rel.2.5 page (vdp2 hon p12_12) prints 2:1:1, the code already matches; the 2:1:0 was a Rel.1 misprint
+- [~] RPMD mode 2: Rel.2.5 (p06_35) says table B cannot be read dot by dot in mode 2, so its per dot step is ignored; implemented in `saturn_vdp2_render.cpp` as dKAx = 0 for B (per line coefficients of B, which Die Hard Arcade needs, still work). WIP, NOT built or tested: compare diehard/vfkids/VF2 pictures and hashes with `saturn_base.exe` before relying on it. MiSTer VDP2.sv still applies B's coefficients
+- [~] Exclusive-monitor window X bit layout: Table 8.1 (Rel.2.5 p08_10) implemented (bit 9 invalid, register bits 8-0 times two in the half dot units of the code). WIP, NOT built or tested. Still open: exclusive monitor hblank/dot positions (MiSTer VDP2.sv gives HBLANK flag from 0x148/0x168 to 8, signal at 0x143/0x163, H counter unit is 2 dots in the 640/704 exclusive modes; its exclusive 352 jump value 0x3D0 gives a line of the wrong length, so it is unverified): not implemented
+- [~] Erase with X1 >= X3 or Y1 > Y3: ST-013 4.4 says the chip erases as if X3 = X1 + 1, Y3 = Y1 (one dot in normal / high resolution, eight in rotation and HDTV); implemented in `saturn_vdp1.cpp` `latch_erase_params` (MiSTer VDP1.sv erases nothing; the official document wins). WIP, NOT built or tested
+- [ ] VDP2 V counter and H counter (section 12.3). Analysis from MiSTer VDP2.sv, not implemented: the V counter increments at the dot where the H counter jumps (320 mode: 0x15A, 352 mode: 0x176), so the last 80 dots of a line read the next line; the H register is HCT times two (plus half dot in hi-res) and HCT jumps from 0x15A (0x176) to 0x3B0 for the last 80 dots, so only the first 347 (375) dots are linear; the TVSTAT VBLANK flag changes with the same V counter increment (about 80 dots before the line end, not at the line start); EXLAT external latch (light gun) is missing: needs an input line on the VDP2
 - [ ] Open divergence in the fetch pipeline port: Megamix (memory `vdp2-fetch-pipeline-port`)
 
 ## 2. VDP1
