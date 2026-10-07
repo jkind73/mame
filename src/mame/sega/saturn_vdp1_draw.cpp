@@ -265,6 +265,14 @@ uint32_t draw_engine::tex_fetch(uint32_t x)
 // Draws one dot into the draw frame buffer; returns its cost in clocks
 int32_t draw_engine::plot(int32_t x, int32_t y, uint16_t pix, bool transparent, gouraud_stepper *g)
 {
+	if (__builtin_expect(m_prim.fast_plot, 1)) {
+		if (!transparent) {
+			uint16_t *const row = fb + ((y & 0xff) << 9);
+			row[x & 0x1ff] = pix;
+		}
+		return PIXEL;
+	}
+
 	unsigned const mode = m_prim.mode;
 	bool const bpp8 = tvmr & TVMR_8BPP;
 	bool const msb_on = mode & 0x8000;
@@ -490,32 +498,51 @@ int32_t draw_engine::draw_line(line_state &l, bool aa, bool textured)
 	bool const row_cost = m_prim.fb_row;   // normal and scaled sprites only
 	int32_t cost = 0;
 
+	uint32_t const clip_sys_x = sys_x & 0x3ff;
+	uint32_t const clip_sys_y = sys_y & 0x3ff;
+	uint32_t const clip_user_x0 = user_x0 & 0x3ff;
+	uint32_t const clip_user_x1 = user_x1 & 0x3ff;
+	uint32_t const clip_user_y0 = user_y0 & 0x3ff;
+	uint32_t const clip_user_y1 = user_y1 & 0x3ff;
+	enum class clip_type { sys_only, user_inside, user_outside };
+	clip_type const ctype = !user_en ? clip_type::sys_only : (!user_mode ? clip_type::user_inside : clip_type::user_outside);
+
 	// Clip test of one dot; returns false when the line has to end here
 	auto body = [&](uint32_t px, uint32_t py, uint16_t pix, bool transparent, bool aa_pixel) -> bool {
 		bool clipped;
-		if (user_en && !user_mode)
-			clipped = px > uint32_t(user_x1 & 0x3ff) || px < uint32_t(user_x0 & 0x3ff) || py > uint32_t(user_y1 & 0x3ff) || py < uint32_t(user_y0 & 0x3ff);
-		else
-			clipped = px > uint32_t(sys_x & 0x3ff) || py > uint32_t(sys_y & 0x3ff);
-
-		// once the line has been inside the window, leaving it ends the line
-		if (clipped && !l.drawn_ac)
-			return false;
-		l.drawn_ac = l.drawn_ac && clipped;
-
-		if (user_en) {
-			if (!user_mode)
-				clipped |= px > uint32_t(sys_x & 0x3ff) || py > uint32_t(sys_y & 0x3ff);
-			else
-				clipped |= !(px > uint32_t(user_x1 & 0x3ff) || px < uint32_t(user_x0 & 0x3ff) || py > uint32_t(user_y1 & 0x3ff) || py < uint32_t(user_y0 & 0x3ff));
+		if (__builtin_expect(ctype == clip_type::sys_only, 1)) {
+			clipped = px > clip_sys_x || py > clip_sys_y;
+			if (clipped && !l.drawn_ac)
+				return false;
+			l.drawn_ac = l.drawn_ac && clipped;
+		} else if (ctype == clip_type::user_inside) {
+			clipped = px > clip_user_x1 || px < clip_user_x0 || py > clip_user_y1 || py < clip_user_y0;
+			if (clipped && !l.drawn_ac)
+				return false;
+			l.drawn_ac = l.drawn_ac && clipped;
+			clipped |= px > clip_sys_x || py > clip_sys_y;
+		} else {
+			clipped = px > clip_sys_x || py > clip_sys_y;
+			if (clipped && !l.drawn_ac)
+				return false;
+			l.drawn_ac = l.drawn_ac && clipped;
+			clipped |= !(px > clip_user_x1 || px < clip_user_x0 || py > clip_user_y1 || py < clip_user_y0);
 		}
 
 		stat_dots++;
 		if (clipped)
 			stat_clipped++;
 
-		// pixel positions are in the 11 bit wrapped space; the frame buffer sees the low bits
-		cost += plot(int32_t(px), int32_t(py), pix, transparent || clipped, m_prim.gouraud ? &l.g : nullptr);
+		if (__builtin_expect(m_prim.fast_plot, 1)) {
+			if (!transparent && !clipped) {
+				uint16_t *const row = fb + ((py & 0xff) << 9);
+				row[px & 0x1ff] = pix;
+			}
+			cost += PIXEL;
+		} else {
+			// pixel positions are in the 11 bit wrapped space; the frame buffer sees the low bits
+			cost += plot(int32_t(px), int32_t(py), pix, transparent || clipped, m_prim.gouraud ? &l.g : nullptr);
+		}
 		if (row_cost && !aa_pixel && ((int32_t(px) - local_x) & 0xf) == 0xf)
 			cost += FB_ROW;
 		return true;
@@ -663,6 +690,7 @@ int32_t draw_engine::cmd_sprite(const uint16_t *cmd, unsigned format)
 	m_prim.gouraud = (mode & 0x8004) == 0x4;
 	m_prim.colour = colour;
 	m_prim.fb_row = format < 2;
+	m_prim.fast_plot = ((mode & 0x8103) == 0) && !(fbcr & FBCR_DIE) && !(tvmr & TVMR_8BPP) && !m_prim.gouraud;
 
 	if (format == 2) {
 		for (unsigned i = 0; i < 4; i++) {
@@ -805,6 +833,7 @@ int32_t draw_engine::cmd_polygon(const uint16_t *cmd)
 	m_prim.aa = true;
 	m_prim.gouraud = (mode & 0x8004) == 0x4;
 	m_prim.colour = cmd[3];
+	m_prim.fast_plot = ((mode & 0x8103) == 0) && !(fbcr & FBCR_DIE) && !(tvmr & TVMR_8BPP) && !m_prim.gouraud;
 
 	for (unsigned i = 0; i < 4; i++) {
 		p[i].x = sext13(cmd[6 + 2 * i]) + local_x;
@@ -844,6 +873,7 @@ int32_t draw_engine::cmd_lines(const uint16_t *cmd)
 	m_prim.aa = false;
 	m_prim.gouraud = (mode & 0x8004) == 0x4;
 	m_prim.colour = cmd[3];
+	m_prim.fast_plot = ((mode & 0x8103) == 0) && !(fbcr & FBCR_DIE) && !(tvmr & TVMR_8BPP) && !m_prim.gouraud;
 	if (mode & 4)
 		read_gouraud(vram, cmd, g);
 

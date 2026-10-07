@@ -116,7 +116,7 @@ private:
 	// Per command values shared by the lines of a primitive
 	struct primitive {
 		uint16_t mode = 0;
-		bool textured = false, aa = false, gouraud = false;
+		bool textured = false, aa = false, gouraud = false, fast_plot = false;
 		uint16_t colour = 0;
 		uint32_t tex_base = 0;
 		uint16_t clut[16] = {};
