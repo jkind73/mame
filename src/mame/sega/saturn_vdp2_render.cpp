@@ -1098,15 +1098,20 @@ void renderer::draw_rbg(decoded const &d, unsigned layer, unsigned y, bool const
 //--------------------------------------------------------------------------
 
 // VDP2_pkg.sv WinTest: a layer is hidden where this is true
-static bool win_test(bool w0hit, bool w1hit, bool wshit, window_ctl const &c)
+static bool win_test(bool w0hit, bool w1hit, bool wshit, window_ctl const &c, bool swe)
 {
 	// no window enabled: OR logic leaves the whole screen outside the window area, AND
 	// logic makes the whole screen the window area (ST-058 8.2, xxLOG, p.194)
-	if (!c.w0e && !c.w1e && !c.swe)
+	if (!c.w0e && !c.w1e && !swe)
 		return c.logic_and;
 	if (c.logic_and)
-		return (!c.w0e || w0hit) && (!c.w1e || w1hit) && (!c.swe || wshit);
-	return (c.w0e && w0hit) || (c.w1e && w1hit) || (c.swe && wshit);
+		return (!c.w0e || w0hit) && (!c.w1e || w1hit) && (!swe || wshit);
+	return (c.w0e && w0hit) || (c.w1e && w1hit) || (swe && wshit);
+}
+
+static bool win_test(bool w0hit, bool w1hit, bool wshit, window_ctl const &c)
+{
+	return win_test(w0hit, w1hit, wshit, c, c.swe);
 }
 
 // NBG0 CHCN[0] with half reduction, or quarter reduction (VDP2.sv 3193-3194)
@@ -1236,13 +1241,40 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	auto const from_rgb = [](rgb c) { return (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | c.b; };
 	unsigned const boken_layer_n[5] = { 2, 4, 5, 6, 1 };
 
+	unsigned active_nbg[4];
+	unsigned num_active_nbg = 0;
+	for (unsigned n = 0; n < 4; n++) {
+		if (nbg_on[n]) {
+			nbg_params const &p = (n == 0 && d.r1on) ? d.rbg[1] : d.nbg[n];
+			if (p.ctl.priority != 0 || p.ctl.sprm != 0)
+				active_nbg[num_active_nbg++] = n;
+		}
+	}
+	bool const r0_active = d.r0on && (d.rbg[0].ctl.priority != 0 || d.rbg[0].ctl.sprm != 0);
+
+	bool sp_cond[8];
+	for (unsigned i = 0; i < 8; i++) {
+		unsigned const pri = d.sp_pri[i];
+		switch (d.sp_cccs) {
+		case 0: sp_cond[i] = pri <= d.sp_ccn; break;
+		case 1: sp_cond[i] = pri == d.sp_ccn; break;
+		case 2: sp_cond[i] = pri >= d.sp_ccn; break;
+		default: sp_cond[i] = true; break;
+		}
+	}
+
+	screen_dot bk_base;
+	bk_base.ccrt = d.bkccrt;
+	bk_base.coen = d.bkcoen;
+	bk_base.cosl = d.bkcosl;
+	bk_base.dc = m_back;
+
 	for (unsigned x = 0; x < width; x++) {
 		sprite_dot const sd = decode_sprite(d, m_cfg.fb_rotate ? sprite.sprite_word_rotated(m_spr_x[x >> (hires ? 1 : 0)], m_spr_y[x >> (hires ? 1 : 0)]) : sprite.sprite_word(x, y));
 		bool const spwin = d.sp_winen;
 
-		auto const hidden = [&](window_ctl c) {
-			c.swe = c.swe && spwin;
-			return win_test(m_w_hit[0][x] != c.w0a, m_w_hit[1][x] != c.w1a, sd.wn != c.swa, c);
+		auto const hidden = [&](window_ctl const &c) {
+			return win_test(m_w_hit[0][x] != c.w0a, m_w_hit[1][x] != c.w1a, sd.wn != c.swa, c, c.swe && spwin);
 		};
 		bool const ccw = hidden(d.ccwin);
 		bool const bok_ok = d.boken && d.crmd == 0;
@@ -1251,23 +1283,16 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		unsigned const sprin = d.sp_pri[sd.pr];
 		layer_input in_spr;
 		{
-			screen_dot &t = in_spr.dot;
 			in_spr.on = !sd.tp && !hidden(d.sp.win);
 			if (!sd.tp)
 				stat_sprite_dots++;
 			if (in_spr.on)
 				stat_sprite_shown++;
-			if (in_spr.on) {
+			if (in_spr.on && sprin != 0) {
 				in_spr.priority = sprin;
+				screen_dot &t = in_spr.dot;
 				t.caos = d.sp_caos;
-				bool cond;
-				switch (d.sp_cccs) {
-				case 0: cond = sprin <= d.sp_ccn; break;
-				case 1: cond = sprin == d.sp_ccn; break;
-				case 2: cond = sprin >= d.sp_ccn; break;
-				default: cond = true; break;
-				}
-				t.ccen = d.sp.ccen && !ccw && cond;
+				t.ccen = d.sp.ccen && !ccw && sp_cond[sd.pr];
 				t.ccm3 = d.sp_cccs == 3;
 				t.ccrt = d.sp_ccrt[sd.cc];
 				t.coen = d.sp.coen;
@@ -1284,16 +1309,22 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 					t.dc = sd.dc;
 					t.msb = true;
 				}
+			} else {
+				in_spr.on = false;
 			}
 		}
 
 		// a scroll or rotation screen's contribution
-		auto const layer_in = [&](nbg_params const &p, layer_dot const &ld, bool enabled, unsigned boken_n) {
+		auto const layer_in = [&](nbg_params const &p, layer_dot const &ld, unsigned boken_n) {
 			layer_input li;
-			if (!enabled || !ld.opaque)
+			if (!ld.opaque)
 				return li;   // an off or transparent dot does not take part in the stack
-			li.on = !hidden(p.ctl.win);
 			li.priority = layer_priority(d, p.ctl, ld.pr, ld.code);
+			if (li.priority == 0)
+				return li;
+			li.on = !hidden(p.ctl.win);
+			if (!li.on)
+				return li;
 			screen_dot &t = li.dot;
 			bool const sfc = (d.sfcd[p.ctl.sfcs] >> ((ld.code >> 1) & 7)) & 1;
 			bool const ccen = p.ctl.sccm == 1 ? ld.cc : p.ctl.sccm == 2 ? (sfc && ld.cc) : true;
@@ -1312,29 +1343,20 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			return li;
 		};
 
-		layer_input in_nbg[4];
-		for (unsigned n = 0; n < 4; n++) {
-			bool const rot = n == 0 && d.r1on;
-			in_nbg[n] = layer_in(d.nbg[n], rot ? m_rbg[1][x] : m_nbg[n].line[x], nbg_on[n], boken_layer_n[n]);
-		}
-		layer_input const in_r0 = d.r0on ? layer_in(d.rbg[0], m_rbg[0][x], true, boken_layer_n[4]) : layer_input();
-
 		// priority stack; the back screen fills all three positions
 		dot_stack st;
-		{
-			screen_dot b;
-			b.ccrt = d.bkccrt;
-			b.coen = d.bkcoen;
-			b.cosl = d.bkcosl;
-			b.sden = d.bksden && sd.sd;
-			b.dc = m_back;
-			for (auto &dot : st.dot)
-				dot = b;
-		}
+		screen_dot b = bk_base;
+		b.sden = d.bksden && sd.sd;
+		st.dot[0] = st.dot[1] = st.dot[2] = b;
+
 		insert_layer(st, layer_kind::sprite, in_spr);
-		insert_layer(st, layer_kind::rbg0, in_r0);
-		for (unsigned n = 0; n < 4; n++)
-			insert_layer(st, layer_kind::nbg, in_nbg[n]);
+		if (r0_active)
+			insert_layer(st, layer_kind::rbg0, layer_in(d.rbg[0], m_rbg[0][x], boken_layer_n[4]));
+		for (unsigned i = 0; i < num_active_nbg; i++) {
+			unsigned const n = active_nbg[i];
+			bool const rot = n == 0 && d.r1on;
+			insert_layer(st, layer_kind::nbg, layer_in(rot ? d.rbg[1] : d.nbg[n], rot ? m_rbg[1][x] : m_nbg[n].line[x], boken_layer_n[n]));
+		}
 
 		// dots taking part in the mix (VDP2.sv 3396-3420)
 		screen_dot const first = st.dot[0];
@@ -1363,12 +1385,11 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		}
 
 		// colour stage (VDP2.sv 3457-3520)
-		rgb const cfst = to_rgb(first.dc);
 		rgb csec = to_rgb(sec.dc);
 		// Extended colour calculation is unavailable in high resolution and dedicated
 		// monitor modes, and normal colour calculation with a palette second image
 		// only works with colour RAM mode 0 there (ST-058 12.1 / 12.2, Table 12.1)
-		if (!hires && !m_cfg.exclusive) {
+		if (!hires && !m_cfg.exclusive && (exccen || d.boken)) {
 			rgb const cthd = boken_prev1 ? csec_prev1 : to_rgb(thd.dc);
 			rgb const cfth = boken_prev2 ? csec_prev2 : to_rgb(fth.dc);
 			csec = ext_color_calc(csec, sec.ccen, cthd, thd.palette, thd.ccen, cfth, fth.palette, first.lcen, sec.boken, d.crmd, exccen);
@@ -1377,17 +1398,29 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			boken_prev1 = sec.boken;
 			csec_prev1 = to_rgb(sec.dc);
 		}
-		unsigned const ccrt = d.ccrtmd ? sec.ccrt : first.ccrt;
 		bool ccen_first = !first.ccm3 ? first.ccen : (first.ccen && (first.msb || !first.palette));
 		if ((hires || m_cfg.exclusive) && d.crmd != 0 && sec.palette)
 			ccen_first = false;
-		rgb c = color_calc(cfst, csec, ccrt, ccen_first, d.ccmd);
 
-		unsigned const *co = first.cosl ? d.cob : d.coa;
-		c.r = shadow(color_offset(c.r, co[0], first.coen), first.sden);
-		c.g = shadow(color_offset(c.g, co[1], first.coen), first.sden);
-		c.b = shadow(color_offset(c.b, co[2], first.coen), first.sden);
-		dest[x] = from_rgb(c);
+		if (!ccen_first && !first.coen && !first.sden) {
+			dest[x] = first.dc;
+		} else {
+			rgb const cfst = to_rgb(first.dc);
+			rgb c = ccen_first ? color_calc(cfst, csec, d.ccrtmd ? sec.ccrt : first.ccrt, true, d.ccmd) : cfst;
+
+			if (first.coen) {
+				unsigned const *co = first.cosl ? d.cob : d.coa;
+				c.r = color_offset(c.r, co[0], true);
+				c.g = color_offset(c.g, co[1], true);
+				c.b = color_offset(c.b, co[2], true);
+			}
+			if (first.sden) {
+				c.r >>= 1;
+				c.g >>= 1;
+				c.b >>= 1;
+			}
+			dest[x] = from_rgb(c);
+		}
 	}
 
 	for (unsigned n = 0; n < 4; n++)

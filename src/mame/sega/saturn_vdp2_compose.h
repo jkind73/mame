@@ -30,18 +30,23 @@ namespace saturn_vdp2_compose {
 
 // VDP2_pkg.sv ScreenDot_t: a layer's dot after priority/attribute resolution.
 struct screen_dot {
-	uint8_t caos = 0;     // colour RAM address offset (3 bits)
-	bool ccen = false;    // colour calculation enabled for this dot
-	bool ccm3 = false;    // colour calculation mode 3 (per-dot CC bit)
-	uint8_t ccrt = 0;     // colour calculation ratio (5 bits)
-	bool coen = false;    // colour offset enable
-	bool cosl = false;    // colour offset select (A/B)
-	bool sden = false;    // shadow enable
-	bool boken = false;   // border-on colour calculation (extended mode)
-	bool lcen = false;    // line colour screen insertion
-	bool palette = false; // colour came from colour RAM (not direct RGB)
-	bool msb = false;     // colour data MSB (colour RAM bit 15/31)
-	uint32_t dc = 0;      // resolved 24-bit RGB (0x00RRGGBB)
+	uint32_t dc;          // resolved 24-bit RGB (0x00RRGGBB)
+	uint8_t caos;         // colour RAM address offset (3 bits)
+	uint8_t ccrt;         // colour calculation ratio (5 bits)
+	uint16_t ccen:1;      // colour calculation enabled for this dot
+	uint16_t ccm3:1;      // colour calculation mode 3 (per-dot CC bit)
+	uint16_t coen:1;      // colour offset enable
+	uint16_t cosl:1;      // colour offset select (A/B)
+	uint16_t sden:1;      // shadow enable
+	uint16_t boken:1;     // border-on colour calculation (extended mode)
+	uint16_t lcen:1;      // line colour screen insertion
+	uint16_t palette:1;   // colour came from colour RAM (not direct RGB)
+	uint16_t msb:1;       // colour data MSB (colour RAM bit 15/31)
+
+	screen_dot()
+		: dc(0), caos(0), ccrt(0), ccen(0), ccm3(0), coen(0), cosl(0), sden(0), boken(0), lcen(0), palette(0), msb(0)
+	{
+	}
 };
 
 struct rgb {
