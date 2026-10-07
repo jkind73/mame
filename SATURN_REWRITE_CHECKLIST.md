@@ -126,6 +126,7 @@ Updated 2026-10-07 (after commit `af264ec1df1`). Branch `claude/saturn-vdp2-rewr
 - [x] `SATURN_VDP1_LOG` is compile-time logging (`saturn_vdp_log.h`, `SATURN_VDP_VERBOSE`, mask `LOG_VDP_FRAME`); the per-dot and per-command counters that only fed it are compiled out too
 - [x] `SATURN_LEGACY_DDI` removed with `legacy_rotation_step` (the double density interlace behaviours are the only ones)
 - [x] `SATURN_BUS_TIMING` is the driver option "SH-2 bus timing" (Machine Configuration, On by default, saved per machine, applied at reset; `sh2_device::set_bus_timing_enabled`). Off runs the CPUs on an ideal bus: VF2 ran 188% instead of 169% in the same 10 s test, and its audio differs
+- [ ] A soft reset (Lua `machine:soft_reset()` 1 frame into a VF2 run) leaves the machine silent and running at about 800% in both option states: not investigated; check whether the reset path (SMPC / sound CPU / CD block) is at fault, a user can reach it with F3
 - [ ] No environment variable hooks are left in the Saturn / ST-V sources: the generated inventory must show no `getenv`; a new one is a checklist item
 - [ ] Move the standalone Lua timing tests (`dmactest2.lua`, `scudma.lua`, `bustest*.lua`, state-hash and audio-analysis scripts) from the session scratchpad into the repository; `regtests/saturn` lives in the other branch only
 - [ ] Regression pass at the end of each area, one game at a time: cotton2, rsgun, vfremix, ffreveng (Saturn); gaxeduel, diehard, vfkids, fhboxers, batmanfr (ST-V); Daytona USA (Japan) boots with the Japanese BIOS; the BIOS animation sound
