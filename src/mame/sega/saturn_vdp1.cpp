@@ -252,24 +252,28 @@ void saturn_vdp1_device::erase_row(unsigned y)
 		row[x & m_erase.x_mask] = m_erase.data;
 }
 
-// Vblank erase: the dots it can clear are limited by the time vblank lasts,
-// (dots per raster - 200) * (vblank rasters) (ST-013 4.4 and Table 4.5); when it
-// runs out the rest of the area is left as it was and games fill it with
-// polygons. `budget` is in dots (VDP1 clocks).
+// Vblank erase: the pixels it can clear are limited by the time vblank lasts (ST-013 4.4: "there is
+// not enough time to erase/write the entire screen"; the games fill the rest with polygons). The
+// manual's Table 4.5 gives the number of pixels the erase is guaranteed to complete,
+// (pixels per raster - 200) * (vblank rasters), not where it stops. The chip clears one pixel per
+// VDP1 clock, 8 at a time, with 8 clocks of overhead per row, for as long as vblank lasts
+// (Mednafen vdp1.cpp, measured on hardware). Batman Forever (ST-V) clears a 352x224 window this
+// way and paints the bottom rows with a polygon from row 185: the table's figure would stop at
+// row 175 and leave the shards of the previous scene in rows 176-184. `budget` is in VDP1 clocks.
 void saturn_vdp1_device::erase_limited(int64_t budget)
 {
-	unsigned const width = m_erase.x_bound > m_erase.x_start ? m_erase.x_bound - m_erase.x_start : 1;
-	for (unsigned y = m_erase.y_start; y <= m_erase.y_end && budget > 0; y++) {
-		if (budget >= width) {
-			erase_row(y);
-			budget -= width;
-		} else {
-			uint16_t *row = display_buffer() + ((y & 0xff) << 9);
-			if (m_erase.rot8)
-				row += (y & 0x100);
-			for (unsigned x = m_erase.x_start; budget > 0 && x < m_erase.x_start + width; x++, budget--)
-				row[x & m_erase.x_mask] = m_erase.data;
-			break;
+	unsigned const x_end = m_erase.x_bound > m_erase.x_start ? m_erase.x_bound : m_erase.x_start + 8;
+	for (unsigned y = m_erase.y_start; y <= m_erase.y_end; y++) {
+		uint16_t *row = display_buffer() + ((y & 0xff) << 9);
+		if (m_erase.rot8)
+			row += (y & 0x100);
+		budget -= 8;
+		for (unsigned x = m_erase.x_start; x < x_end; x += 8) {
+			for (unsigned i = 0; i < 8; i++)
+				row[(x + i) & m_erase.x_mask] = m_erase.data;
+			budget -= 8;
+			if (budget <= 0)
+				return;
 		}
 	}
 }
@@ -301,11 +305,8 @@ void saturn_vdp1_device::frame_change()
 	latch_erase_params();
 
 	if (m_vb_erase_active) {
-		// 1708 clocks per raster at 320 dots, 1820 at 352 (ST-013 Table 4.4)
-		int64_t const line_clocks = clock() > 27500000 ? 1820 : 1708;
-		int64_t const clocks = (machine().time() - m_vblank_start).as_ticks(clock());
-		int64_t const rasters = (clocks + line_clocks / 2) / line_clocks;
-		erase_limited(rasters * (line_clocks - 200));
+		// the erase runs from the start of vblank to its end
+		erase_limited((machine().time() - m_vblank_start).as_ticks(clock()));
 		m_vb_erase_active = false;
 	}
 
