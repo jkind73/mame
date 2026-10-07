@@ -1484,10 +1484,15 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			}
 		}
 
+		// The mix is in units of a quarter of the 16 bit output (smpl >> 2 is what the 16 bit DAC gets).
+		// With DAC18B the mixer shifts the sum left by two before the 16 bit output saturates (MiSTer
+		// SCSP_pkg.sv MVolCalc, Ymir SCSP "expand to 18 bits"), so the output is four times louder than
+		// in the 16 bit mode, not the same level with two more bits. Virtua Fighter 2 sets DAC18B and
+		// its send levels (-30 to -18 dB) are meant for that gain.
 		if (DAC18B())
 		{
-			stream.put_int_clamp(0, s, smpl, 131072);
-			stream.put_int_clamp(1, s, smpr, 131072);
+			stream.put_int_clamp(0, s, smpl, 32768);
+			stream.put_int_clamp(1, s, smpr, 32768);
 		}
 		else
 		{
