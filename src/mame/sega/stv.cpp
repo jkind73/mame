@@ -1022,8 +1022,7 @@ void stv_state::stv(machine_config &config)
 	m_maincpu->set_is_slave(0);
 	// Model the SH7604 cache (section 8)
 	m_maincpu->set_cache_emulation(true);
-	if (sh2_bus_timing_enabled())
-		m_maincpu->set_bus_timing_callback(FUNC(stv_state::master_bus_cycles));
+	m_maincpu->set_bus_timing_callback(FUNC(stv_state::master_bus_cycles));
 	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
 	TIMER(config, "scantimer").configure_scanline(FUNC(stv_state::saturn_scanline), "screen", 0, 1);
 
@@ -1031,8 +1030,7 @@ void stv_state::stv(machine_config &config)
 	m_slave->set_addrmap(AS_PROGRAM, &stv_state::stv_mem);
 	m_slave->set_is_slave(1);
 	m_slave->set_cache_emulation(true);
-	if (sh2_bus_timing_enabled())
-		m_slave->set_bus_timing_callback(FUNC(stv_state::slave_bus_cycles));
+	m_slave->set_bus_timing_callback(FUNC(stv_state::slave_bus_cycles));
 	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
 
 	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
@@ -1341,6 +1339,11 @@ void stv_state::machine_start()
 	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT ) PORT_PLAYER(_n_)
 
 static INPUT_PORTS_START( stv )
+	PORT_START("CONFIG")
+	PORT_CONFNAME( 0x01, 0x01, "SH-2 bus timing" )
+	PORT_CONFSETTING(    0x01, DEF_STR( On ) )
+	PORT_CONFSETTING(    0x00, DEF_STR( Off ) )
+
 	PORT_START("PDR1")
 	PORT_DIPNAME( 0x40, 0x40, "PDR1" ) // P1 Gun Trigger
 	PORT_DIPSETTING(    0x40, DEF_STR( Off ) )

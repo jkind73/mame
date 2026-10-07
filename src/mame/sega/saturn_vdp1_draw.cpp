@@ -10,6 +10,8 @@
 
 #include "saturn_vdp1_draw.h"
 
+#include "saturn_vdp_log.h"
+
 #include <algorithm>
 #include <cstdlib>
 
@@ -529,9 +531,9 @@ int32_t draw_engine::draw_line(line_state &l, bool aa, bool textured)
 			clipped |= !(px > clip_user_x1 || px < clip_user_x0 || py > clip_user_y1 || py < clip_user_y0);
 		}
 
-		stat_dots++;
+		vdp_stat(stat_dots);
 		if (clipped)
-			stat_clipped++;
+			vdp_stat(stat_clipped);
 
 		if (__builtin_expect(m_prim.fast_plot, 1)) {
 			if (!transparent && !clipped) {

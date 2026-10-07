@@ -37,6 +37,7 @@ public:
 		m_workram_l(*this, "workram_l"),
 		m_workram_h(*this, "workram_h"),
 		m_sound_ram(*this, "sound_ram"),
+		m_config(*this, "CONFIG"),
 		m_maincpu(*this, "maincpu"),
 		m_slave(*this, "slave"),
 		m_audiocpu(*this, "audiocpu"),
@@ -64,6 +65,7 @@ protected:
 
 	uint8_t     m_en_68k = 0;
 
+	optional_ioport m_config;      // driver options: SH-2 bus timing
 	required_device<sh7604_device> m_maincpu;
 	required_device<sh7604_device> m_slave;
 	required_device<m68000_base_device> m_audiocpu;
@@ -89,8 +91,6 @@ protected:
 	int slave_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma) { return sh2_bus_cycles(1, address, size, write, fill, now, dma); }
 	uint64_t sh2_bus_arbitrate(unsigned requester, const attotime &now, uint64_t cycles, offs_t address, bool write);
 	void sh2_bus_reset();
-	// SATURN_BUS_TIMING=0 turns the SH-2 bus timing off (diagnostics)
-	static bool sh2_bus_timing_enabled();
 	required_device<saturn_vdp1_device> m_vdp1;
 	required_device<saturn_vdp2_device> m_vdp2;
 	required_device<screen_device> m_screen;

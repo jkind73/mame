@@ -157,15 +157,6 @@ int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bo
 }
 
 
-// On by default (it restores the Virtua Fighter 2 sound effects); SATURN_BUS_TIMING=0 turns it off.
-// Ymir notes that some games need fast and others slow timings.
-bool saturn_state::sh2_bus_timing_enabled()
-{
-	char const *const env = std::getenv("SATURN_BUS_TIMING");
-	return !(env && std::strtol(env, nullptr, 0) == 0);
-}
-
-
 // A loaded state starts with a free bus: the logs of the time before the load would otherwise
 // hold the bus into the restored time.
 void saturn_state::sh2_bus_reset()

@@ -28,6 +28,9 @@ public:
 	void func_fastirq(); // required for DRC, needs to be public to be accessible through non-classed static trampoline function
 	void func_cache_access();       // DRC cache helper (m_cache_op on m_cache_addr/m_cache_data)
 
+	// Switches the external bus timing callback on or off (a driver option); the DRC recompiles its blocks.
+	void set_bus_timing_enabled(bool on) { m_bus_timed = on && !m_bus_timing.isnull(); m_cache_dirty = true; }
+
 protected:
 	class sh2_frontend;
 

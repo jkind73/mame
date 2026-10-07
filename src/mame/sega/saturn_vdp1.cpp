@@ -11,7 +11,7 @@
 #include "emu.h"
 #include "saturn_vdp1.h"
 
-#include <cstdlib>
+#include "saturn_vdp_log.h"
 
 using namespace saturn_vdp1;
 
@@ -36,7 +36,6 @@ void saturn_vdp1_device::device_start()
 	m_engine.reset();
 	m_last_time = machine().time();
 	m_vbe_timer = timer_alloc(FUNC(saturn_vdp1_device::vbe_sample), this);
-	m_log = std::getenv("SATURN_VDP1_LOG") != nullptr;
 
 	save_pointer(NAME(m_vram), VRAM_WORDS);
 	save_pointer(NAME(m_fb[0]), FB_WORDS);
@@ -181,20 +180,20 @@ void saturn_vdp1_device::run()
 			if (!(m_cmd[0] & 0xc000)) {
 				if ((m_cmd[0] & 0xf) >= 0xc) {
 					// not a command: drawing stops without the end flag
-					m_stats.invalid++;
+					vdp_stat(m_stats.invalid);
 					stop_drawing();
 					return;
 				}
-				m_stats.cmd[m_cmd[0] & 0xf]++;
+				vdp_stat(m_stats.cmd[m_cmd[0] & 0xf]);
 				m_budget -= m_engine.execute(m_cmd);
 			} else if (m_cmd[0] & 0x8000) {
-				m_stats.ended++;
+				vdp_stat(m_stats.ended);
 				stop_drawing();
 				m_edsr |= 2;              // CEF
 				m_draw_end_cb(1);
 				return;
 			} else {
-				m_stats.skipped++;
+				vdp_stat(m_stats.skipped);
 			}
 			m_phase = phase::next;
 			break;
@@ -203,17 +202,17 @@ void saturn_vdp1_device::run()
 			m_cmd_addr = (m_cmd_addr + 0x10) & (VRAM_WORDS - 1);
 			switch ((m_cmd[0] >> 12) & 3) {
 			case 1:   // jump
-				m_stats.jumps++;
+				vdp_stat(m_stats.jumps);
 				m_cmd_addr = (uint32_t(m_cmd[1]) << 2) & ~0xfU;
 				break;
 			case 2:   // call: the first call remembers the return address
-				m_stats.calls++;
+				vdp_stat(m_stats.calls);
 				if (m_ret_addr < 0)
 					m_ret_addr = int32_t(m_cmd_addr);
 				m_cmd_addr = (uint32_t(m_cmd[1]) << 2) & ~0xfU;
 				break;
 			case 3:   // return
-				m_stats.returns++;
+				vdp_stat(m_stats.returns);
 				if (m_ret_addr >= 0) {
 					m_cmd_addr = uint32_t(m_ret_addr);
 					m_ret_addr = -1;
@@ -297,7 +296,7 @@ void saturn_vdp1_device::log_frame()
 void saturn_vdp1_device::frame_change()
 {
 	update();
-	if (m_log) {
+	if (SATURN_VDP_VERBOSE & LOG_VDP_FRAME) {
 		log_frame();
 		m_stats = frame_stats();
 		m_engine.stat_dots = m_engine.stat_clipped = 0;

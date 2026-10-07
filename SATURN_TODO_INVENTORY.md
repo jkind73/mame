@@ -166,21 +166,15 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 407: TODO:
 - 420: test1f diagnostic hacks:
 - 545: /* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be an actual bug with the CD block. */
-- 626: /* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
-- 773: /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
+- 631: /* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
+- 778: /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
 
-## src/mame/sega/saturn.cpp (6)
+## src/mame/sega/saturn.cpp (4)
 
 - 9: @TODO List of things that needs to be implemented:
-- 162: TODO:
-- 237: // TODO: edge triggered?
-- 243: // TODO: actually send a device reset signal to the connected devices
-- 405: static unsigned const mask = std::getenv("SATURN_LEGACY_DDI") ? unsigned(std::strtoul(std::getenv("SATURN_LEGACY_DDI"), nullptr, 16)) : 0;
-- 488: static bool const log = std::getenv("SATURN_VDP1_LOG") != nullptr;
-
-## src/mame/sega/saturn_bus.cpp (1)
-
-- 164: char const *const env = std::getenv("SATURN_BUS_TIMING");
+- 167: TODO:
+- 242: // TODO: edge triggered?
+- 248: // TODO: actually send a device reset signal to the connected devices
 
 ## src/mame/sega/saturn_cd_hle.cpp (48)
 
@@ -250,10 +244,6 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 878: //TODO: why guardherj sets up a 0x23000 transfer for the FMV?
 - 884: // TODO: other rules still applies
 
-## src/mame/sega/saturn_vdp1.cpp (1)
-
-- 39: m_log = std::getenv("SATURN_VDP1_LOG") != nullptr;
-
 ## src/mame/sega/saturn_vdp2.cpp (16)
 
 - 7: TODO:
@@ -315,24 +305,24 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 558: //  m_instadma_hack = 1;
 - 979: memset(memregion("abus")->base(), 0x00, 0x3000000); // TODO: 1-filled?
 - 1011: // TODO: SCSP reset line (at bit 3?)
-- 1111: SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
-- 1145: // TODO: microphone bindings, currently hangs on FLAG checks
-- 1207: // FIXME
-- 1219: // TODO: RAX output connected to SCSP?
-- 1802: // TODO: sense/delta values seems wrong
-- 1904: // TODO: BSERVICE and BTEST on PDR2 (?)
-- 1905: // TODO: throws coin error in maintenance mode, only coin 2 works
-- 3102: // TODO: has extra connection to a i486BD according to test mode
-- 3439: // TODO: add 1p eeprom default
-- 3546: // TODO: add 1p eeprom default
-- 3561: // TODO: add 1p eeprom default
-- 3583: // TODO: add 1p eeprom default
-- 3602: // TODO: add 1p eeprom default
-- 3621: // TODO: add 1p eeprom default
-- 3640: // TODO: add 1p eeprom default
-- 3661: // TODO: add 1p eeprom default
-- 3683: // TODO: add 1p eeprom default
-- 3925: // TODO: add 1p eeprom default
+- 1109: SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
+- 1143: // TODO: microphone bindings, currently hangs on FLAG checks
+- 1205: // FIXME
+- 1217: // TODO: RAX output connected to SCSP?
+- 1805: // TODO: sense/delta values seems wrong
+- 1907: // TODO: BSERVICE and BTEST on PDR2 (?)
+- 1908: // TODO: throws coin error in maintenance mode, only coin 2 works
+- 3105: // TODO: has extra connection to a i486BD according to test mode
+- 3442: // TODO: add 1p eeprom default
+- 3549: // TODO: add 1p eeprom default
+- 3564: // TODO: add 1p eeprom default
+- 3586: // TODO: add 1p eeprom default
+- 3605: // TODO: add 1p eeprom default
+- 3624: // TODO: add 1p eeprom default
+- 3643: // TODO: add 1p eeprom default
+- 3664: // TODO: add 1p eeprom default
+- 3686: // TODO: add 1p eeprom default
+- 3928: // TODO: add 1p eeprom default
 
 ## src/mame/sega/stvdev.cpp (1)
 

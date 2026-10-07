@@ -11,6 +11,8 @@
 
 #include "saturn_vdp2_render.h"
 
+#include "saturn_vdp_log.h"
+
 #include <algorithm>
 
 namespace saturn_vdp2_render {
@@ -896,7 +898,7 @@ void renderer::calc_rotation(decoded const &d, unsigned y, bool need_lines)
 		// density interlace counts the lines of a field (ST-058 2.4, VCT9-1 are the field line;
 		// MiSTer VDP2.sv steps them once per field line). Both frame lines of a pair use the
 		// same step.
-		bool const step = !(m_cfg.lsmd == 3 && (y & 1) && !legacy_rotation_step);
+		bool const step = !(m_cfg.lsmd == 3 && (y & 1));
 		unsigned const pend = m_rprctl_pending >> (8 * i);
 		if (step) {
 			if (y == 0 || (pend & 1))
@@ -1285,9 +1287,9 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		{
 			in_spr.on = !sd.tp && !hidden(d.sp.win);
 			if (!sd.tp)
-				stat_sprite_dots++;
+				vdp_stat(stat_sprite_dots);
 			if (in_spr.on)
-				stat_sprite_shown++;
+				vdp_stat(stat_sprite_shown);
 			if (in_spr.on && sprin != 0) {
 				in_spr.priority = sprin;
 				screen_dot &t = in_spr.dot;

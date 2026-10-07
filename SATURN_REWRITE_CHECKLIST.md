@@ -1,6 +1,6 @@
 # Saturn / ST-V source rewrite: status checklist
 
-Updated 2026-10-07 (after commit `81025778514`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
+Updated 2026-10-07 (after commit `af264ec1df1`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
 `[x]` done and committed (commit in brackets), `[~]` partly done, `[ ]` not done.
 
 ## How this file stays true
@@ -21,7 +21,7 @@ Updated 2026-10-07 (after commit `81025778514`). Branch `claude/saturn-vdp2-rewr
 ## Next up (in this order; the user decides when to switch)
 1. **Speed**: games run between 95% and 64%. Profile (gdb sampling) says the cost is the SH-2 bus arbitration callback, the SH7604 cache read, and the VDP2 line renderer. Plan: bit-exact fast path in `sh2_bus_arbitrate`, then `sh2_device::cache_read`, then VDP2 `render_line` / `draw_nbg_fetched` / `draw_rbg`; prove each step with the state-hash Lua script; repeat the profile with sound enabled (the first one ran without). The user paused this on 2026-10-07 while the VF2 sound was looked at.
 2. **VF2 sound versus Ymir** (section 7): BIOS chime louder than Ymir, fight sound effects not yet compared.
-3. **Diagnostic hooks** (section 11): `SATURN_LEGACY_DDI`, `SATURN_VDP1_LOG`, `SATURN_BUS_TIMING` remain; remove or turn into proper options.
+3. **Diagnostic hooks**: none left (section 11).
 4. **SCSP DMA timing and 1Fs interrupt** (section 7), **SCU DSP audit remainder** (section 5).
 5. Open hardware questions that need the probe disc (sections 2, 4, 6).
 
@@ -123,7 +123,10 @@ Updated 2026-10-07 (after commit `81025778514`). Branch `claude/saturn-vdp2-rewr
 
 ## 11. Verification and housekeeping
 - [x] `SCSP_LOG` is now MAME-style compile-time logging in `scsp.cpp` (`VERBOSE` masks `LOG_IRQ`, `LOG_REG`, `LOG_KEY`, `LOG_MIX`; default 0 so the code is compiled out, no cost; the CD audio play line is `LOGXFER` in `saturn_cd_hle.cpp`); `SCSP_LEGACY` is removed (the rewritten behaviour is the only one, git history has the old one). Verified: logs appear with the masks on, and the VF2 audio of the first 9 s is bit-identical with them off
-- [ ] **Diagnostic hooks still to remove or turn into options**: `SATURN_LEGACY_DDI` (`saturn.cpp`), `SATURN_VDP1_LOG` (`saturn.cpp`, `saturn_vdp1.cpp`), `SATURN_BUS_TIMING` (`saturn_bus.cpp`). The generated inventory lists each one under `getenv`
+- [x] `SATURN_VDP1_LOG` is compile-time logging (`saturn_vdp_log.h`, `SATURN_VDP_VERBOSE`, mask `LOG_VDP_FRAME`); the per-dot and per-command counters that only fed it are compiled out too
+- [x] `SATURN_LEGACY_DDI` removed with `legacy_rotation_step` (the double density interlace behaviours are the only ones)
+- [x] `SATURN_BUS_TIMING` is the driver option "SH-2 bus timing" (Machine Configuration, On by default, saved per machine, applied at reset; `sh2_device::set_bus_timing_enabled`). Off runs the CPUs on an ideal bus: VF2 ran 188% instead of 169% in the same 10 s test, and its audio differs
+- [ ] No environment variable hooks are left in the Saturn / ST-V sources: the generated inventory must show no `getenv`; a new one is a checklist item
 - [ ] Move the standalone Lua timing tests (`dmactest2.lua`, `scudma.lua`, `bustest*.lua`, state-hash and audio-analysis scripts) from the session scratchpad into the repository; `regtests/saturn` lives in the other branch only
 - [ ] Regression pass at the end of each area, one game at a time: cotton2, rsgun, vfremix, ffreveng (Saturn); gaxeduel, diehard, vfkids, fhboxers, batmanfr (ST-V); Daytona USA (Japan) boots with the Japanese BIOS; the BIOS animation sound
 - [ ] Update the memory notes after each area (`saturn-rewrite-checklist`, `rewrite-plan-2026-09-29`, `sh2-bus-timing`, `vdp2-line-renderer-progress`, `saturn-vf2-audio`)
@@ -223,12 +226,10 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/mame/sega/315-5881_crypt.h` | 1 |
 | `src/mame/sega/315_5649.cpp` | 1 |
 | `src/mame/sega/sat_console.cpp` | 6 |
-| `src/mame/sega/saturn.cpp` | 6 |
-| `src/mame/sega/saturn_bus.cpp` | 1 |
+| `src/mame/sega/saturn.cpp` | 4 |
 | `src/mame/sega/saturn_cd_hle.cpp` | 48 |
 | `src/mame/sega/saturn_dcc.cpp` | 2 |
 | `src/mame/sega/saturn_scu.cpp` | 9 |
-| `src/mame/sega/saturn_vdp1.cpp` | 1 |
 | `src/mame/sega/saturn_vdp2.cpp` | 16 |
 | `src/mame/sega/saturn_vdp2.h` | 1 |
 | `src/mame/sega/segabill.cpp` | 1 |
@@ -237,6 +238,6 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/mame/sega/stv.cpp` | 28 |
 | `src/mame/sega/stvdev.cpp` | 1 |
 | `src/mame/shared/rax.cpp` | 1 |
-| **40 files with notes, 73 searched files without** | **218** |
+| **38 files with notes, 76 searched files without** | **214** |
 
 <!-- END GENERATED -->

@@ -616,6 +616,11 @@ INPUT_CHANGED_MEMBER(sat_console_state::tray_close)
 }
 
 static INPUT_PORTS_START( saturn )
+	PORT_START("CONFIG")
+	PORT_CONFNAME( 0x01, 0x01, "SH-2 bus timing" )
+	PORT_CONFSETTING(    0x01, DEF_STR( On ) )
+	PORT_CONFSETTING(    0x00, DEF_STR( Off ) )
+
 	PORT_START("RESET") /* hardwired buttons */
 	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CHANGED_MEMBER("smpc", FUNC(smpc_hle_device::trigger_nmi_r), 0) PORT_NAME("Reset Button")
 	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(sat_console_state::tray_open), 0) PORT_NAME("Tray Open Button")
@@ -817,8 +822,7 @@ void sat_console_state::saturn(machine_config &config)
 	m_maincpu->set_is_slave(0);
 	// Model the SH7604 cache (section 8)
 	m_maincpu->set_cache_emulation(true);
-	if (sh2_bus_timing_enabled())
-		m_maincpu->set_bus_timing_callback(FUNC(sat_console_state::master_bus_cycles));
+	m_maincpu->set_bus_timing_callback(FUNC(sat_console_state::master_bus_cycles));
 	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
 	TIMER(config, "scantimer").configure_scanline(FUNC(sat_console_state::saturn_scanline), "screen", 0, 1);
 
@@ -826,8 +830,7 @@ void sat_console_state::saturn(machine_config &config)
 	m_slave->set_addrmap(AS_PROGRAM, &sat_console_state::saturn_mem);
 	m_slave->set_is_slave(1);
 	m_slave->set_cache_emulation(true);
-	if (sh2_bus_timing_enabled())
-		m_slave->set_bus_timing_callback(FUNC(sat_console_state::slave_bus_cycles));
+	m_slave->set_bus_timing_callback(FUNC(sat_console_state::slave_bus_cycles));
 	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
 
 	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
