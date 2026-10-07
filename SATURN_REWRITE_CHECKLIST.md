@@ -1,6 +1,6 @@
 # Saturn / ST-V source rewrite: status checklist
 
-Updated 2026-10-07 (after commit `118a4b42bb6`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
+Updated 2026-10-07 (after commit `45ca1a164f9`). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
 `[x]` done and committed (commit in brackets), `[~]` partly done, `[ ]` not done.
 
 ## How this file stays true
@@ -21,7 +21,7 @@ Updated 2026-10-07 (after commit `118a4b42bb6`). Branch `claude/saturn-vdp2-rewr
 ## Next up (in this order; the user decides when to switch)
 1. **Speed**: games run between 95% and 64%. Profile (gdb sampling) says the cost is the SH-2 bus arbitration callback, the SH7604 cache read, and the VDP2 line renderer. Plan: bit-exact fast path in `sh2_bus_arbitrate`, then `sh2_device::cache_read`, then VDP2 `render_line` / `draw_nbg_fetched` / `draw_rbg`; prove each step with the state-hash Lua script; repeat the profile with sound enabled (the first one ran without). The user paused this on 2026-10-07 while the VF2 sound was looked at.
 2. **VF2 sound versus Ymir** (section 7): BIOS chime louder than Ymir, fight sound effects not yet compared.
-3. **Diagnostic hooks** (section 11): remove or turn into proper options.
+3. **Diagnostic hooks** (section 11): `SATURN_LEGACY_DDI`, `SATURN_VDP1_LOG`, `SATURN_BUS_TIMING` remain; remove or turn into proper options.
 4. **SCSP DMA timing and 1Fs interrupt** (section 7), **SCU DSP audit remainder** (section 5).
 5. Open hardware questions that need the probe disc (sections 2, 4, 6).
 
@@ -122,7 +122,8 @@ Updated 2026-10-07 (after commit `118a4b42bb6`). Branch `claude/saturn-vdp2-rewr
 - [ ] Old stash entries are still in the shared stash (`optimizations-pre-rebase-onto-master`, `EXTRA`, `garbage`, `extra garbage`, `latestcheckins`, ...): the user decides when to drop them; nothing is dropped without being asked
 
 ## 11. Verification and housekeeping
-- [ ] **Diagnostic hooks to remove or turn into options**: `SCSP_LOG`, `SCSP_LEGACY` (`scsp.cpp`, and the copy in `saturn_cd_hle.cpp`), `SATURN_LEGACY_DDI`, `SATURN_VDP1_LOG` (`saturn.cpp`, `saturn_vdp1.cpp`), `SATURN_BUS_TIMING` (`saturn_bus.cpp`). The generated inventory lists each one under `getenv`
+- [x] `SCSP_LOG` and `SCSP_LEGACY` removed (the log blocks, the per-slot and per-second peak counters, the four legacy switches: the rewritten behaviour is the only one; VF2 audio of the first 9 s is bit-identical before and after)
+- [ ] **Diagnostic hooks still to remove or turn into options**: `SATURN_LEGACY_DDI` (`saturn.cpp`), `SATURN_VDP1_LOG` (`saturn.cpp`, `saturn_vdp1.cpp`), `SATURN_BUS_TIMING` (`saturn_bus.cpp`). The generated inventory lists each one under `getenv`
 - [ ] Move the standalone Lua timing tests (`dmactest2.lua`, `scudma.lua`, `bustest*.lua`, state-hash and audio-analysis scripts) from the session scratchpad into the repository; `regtests/saturn` lives in the other branch only
 - [ ] Regression pass at the end of each area, one game at a time: cotton2, rsgun, vfremix, ffreveng (Saturn); gaxeduel, diehard, vfkids, fhboxers, batmanfr (ST-V); Daytona USA (Japan) boots with the Japanese BIOS; the BIOS animation sound
 - [ ] Update the memory notes after each area (`saturn-rewrite-checklist`, `rewrite-plan-2026-09-29`, `sh2-bus-timing`, `vdp2-line-renderer-progress`, `saturn-vf2-audio`)
@@ -170,7 +171,6 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 
 ### 12.6 `saturn_cd_hle.cpp`
 - [ ] Replaced by the LLE (section 8). The 48 notes each describe a firmware behaviour; re-test the named games (azelpanztai, daytoncej, Choice Cuts, X-Men COTA, Waku Waku 7, Madou Monogatari, leynos2, Galaxy Fight, Area 51) after the LLE
-- [ ] One `getenv("SCSP_LOG")` diagnostic (section 11)
 
 ### 12.7 `sh2.cpp`, `sh7604.*`, `sh7604_bus/sci/wdt.*`
 - [ ] `sh7604.cpp`: use the `sh7604_wdt_device`, `sh7604_sci_device`, `sh7604_bus_device` sub-devices (the BSC could drive the bus cost model in `saturn_bus.cpp`); cps3boot callback; internal map too big when mirrored; FRT external clock; pulirula slave 0 cycles; items to test; output levels A/B; NMIE edge select; undocumented interrupt level; bare-bones unit for 32x:aburnerju
@@ -217,7 +217,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/devices/cpu/sh/sh7604_wdt.cpp` | 1 |
 | `src/devices/machine/nvram.cpp` | 2 |
 | `src/devices/machine/ticket.cpp` | 1 |
-| `src/devices/sound/scsp.cpp` | 5 |
+| `src/devices/sound/scsp.cpp` | 3 |
 | `src/lib/util/cdrom.cpp` | 4 |
 | `src/mame/sega/315-5881_crypt.cpp` | 3 |
 | `src/mame/sega/315-5881_crypt.h` | 1 |
@@ -225,7 +225,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/mame/sega/sat_console.cpp` | 6 |
 | `src/mame/sega/saturn.cpp` | 6 |
 | `src/mame/sega/saturn_bus.cpp` | 1 |
-| `src/mame/sega/saturn_cd_hle.cpp` | 49 |
+| `src/mame/sega/saturn_cd_hle.cpp` | 48 |
 | `src/mame/sega/saturn_dcc.cpp` | 2 |
 | `src/mame/sega/saturn_scu.cpp` | 9 |
 | `src/mame/sega/saturn_vdp1.cpp` | 1 |
@@ -237,6 +237,6 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/mame/sega/stv.cpp` | 28 |
 | `src/mame/sega/stvdev.cpp` | 1 |
 | `src/mame/shared/rax.cpp` | 1 |
-| **40 files with notes, 73 searched files without** | **221** |
+| **40 files with notes, 73 searched files without** | **218** |
 
 <!-- END GENERATED -->

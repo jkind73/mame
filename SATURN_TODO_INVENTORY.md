@@ -133,13 +133,11 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 53: , m_output(*this, tag) // TODO: change to "tag:status"
 
-## src/devices/sound/scsp.cpp (5)
+## src/devices/sound/scsp.cpp (3)
 
-- 46: static bool const on = std::getenv("SCSP_LOG") != nullptr;
-- 52: static unsigned const mask = std::getenv("SCSP_LEGACY") ? unsigned(std::strtoul(std::getenv("SCSP_LEGACY"), nullptr, 16)) : 0;
-- 145: /* TODO */
-- 1535: // TODO: this needs to be timer-ized
-- 1556: /* TODO: don't know if params auto-updates, I guess not ... */
+- 127: /* TODO */
+- 1455: // TODO: this needs to be timer-ized
+- 1476: /* TODO: don't know if params auto-updates, I guess not ... */
 
 ## src/lib/util/cdrom.cpp (4)
 
@@ -184,7 +182,7 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 164: char const *const env = std::getenv("SATURN_BUS_TIMING");
 
-## src/mame/sega/saturn_cd_hle.cpp (49)
+## src/mame/sega/saturn_cd_hle.cpp (48)
 
 - 26: TODO:
 - 180: // FIXME: should be zero but CD auto load and azelpanztai breaks otherwise
@@ -232,9 +230,8 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 2776: // TODO: this may not play well with curfad rejection
 - 2939: // TODO: timings, may be too fast
 - 3005: // TODO: pinpoint cases when this isn't okay
-- 3008: if (std::getenv("SCSP_LOG") && (cd_curfad & 0xff) == 0)
-- 3041: // TODO: untested with cur_track == 0xaa (lead-out)
-- 3057: // TODO: should be correct but somehow still doesn't work
+- 3039: // TODO: untested with cur_track == 0xaa (lead-out)
+- 3055: // TODO: should be correct but somehow still doesn't work
 
 ## src/mame/sega/saturn_dcc.cpp (2)
 
