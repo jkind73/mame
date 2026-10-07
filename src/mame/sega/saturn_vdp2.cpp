@@ -406,9 +406,14 @@ int saturn_vdp2_device::get_vblank()
 
 int saturn_vdp2_device::get_vblank_start_position()
 {
-	// first setting is at 240, the 16 lines are border overscan.
+	// The vertical blank starts after the displayed lines: 224 in the 224 line mode (the 16 lines
+	// below it are overscan the monitor may show, but they are blanking: MiSTer VDP2.sv and Ymir
+	// agree), 240 in the 240 line mode. Batman Forever (ST-V) needs the long blank: it erases a
+	// 352x224 window with the vertical blank erase and covers only the last rows with a polygon,
+	// and that erase is limited by how long the vertical blank lasts (ST-013 4.4); with the blank
+	// at line 240 it cleared about 100 rows and left video of an earlier scene in the others.
 	// TODO: test says that second setting happens at 241, might need further investigation ...
-	const int d_vres[4] = { 240, 240, 256, 256 };
+	const int d_vres[4] = { 224, 240, 256, 256 };
 	int vblank_line;
 
 	const u8 vres_mask = (m_is_pal << 1) | 1;
