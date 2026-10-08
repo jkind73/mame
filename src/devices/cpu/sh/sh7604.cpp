@@ -107,6 +107,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_frc_tcr));
 	save_item(NAME(m_tocr));
 	save_item(NAME(m_frc));
+	save_item(NAME(m_frt_temp));
 	save_item(NAME(m_ocra));
 	save_item(NAME(m_ocrb));
 	save_item(NAME(m_frc_icr));
@@ -163,6 +164,8 @@ void sh7604_device::device_start()
 
 	// DMAC
 	save_item(NAME(m_dmaor));
+	save_item(NAME(m_dma_te_read));
+	save_item(NAME(m_dmaor_read_flags));
 	save_item(STRUCT_MEMBER(m_dmac, drcr));
 	save_item(STRUCT_MEMBER(m_dmac, sar));
 	save_item(STRUCT_MEMBER(m_dmac, dar));
@@ -184,6 +187,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_wcr));
 	save_item(NAME(m_mcr));
 	save_item(NAME(m_rtcsr));
+	save_item(NAME(m_rtcsr_cmf_read));
 	save_item(NAME(m_rtcor));
 	save_item(NAME(m_rtcnt));
 }
@@ -224,6 +228,7 @@ void sh7604_device::device_reset()
 		m_wcr = 0xaaff;
 		m_mcr = 0;
 		m_rtcsr = 0;
+		m_rtcsr_cmf_read = false;
 		m_rtcnt = 0;
 		m_rtcor = 0;
 	}
@@ -306,9 +311,11 @@ void sh7604_device::standby_init()
 	for (int i = 0; i < 2; i++)
 	{
 		m_dmac[i].chcr = 0;
+		m_dma_te_read[i] = false;
 		sh2_dmac_check(i);
 	}
 	m_dmaor = 0;
+	m_dmaor_read_flags = 0;
 
 	// WDT overflow flag, timer mode and enable bits, reset control/status
 	m_wtcsr &= 0x1f;
@@ -719,7 +726,7 @@ attotime sh7604_device::dma_unit_time(uint32_t src, uint32_t dst, unsigned bytes
 	if (burst)
 	{
 		bus(src, 4, false, true);
-		for (unsigned i = 0; i < 4; i++)
+		for (unsigned i = 0; i < bytes / 4; i++)
 			bus(dst + 4 * i, 4, true, false);
 	}
 	else
@@ -734,6 +741,8 @@ void sh7604_device::sh2_do_dma(int dmach)
 {
 	if (m_active_dma_count[dmach] > 0)
 	{
+		uint32_t const previous_src = m_active_dma_src[dmach];
+		uint32_t const previous_dst = m_active_dma_dst[dmach];
 		// process current DMA
 		switch (m_active_dma_size[dmach])
 		{
@@ -896,29 +905,20 @@ void sh7604_device::sh2_do_dma(int dmach)
 				}
 			}
 
-			//schedule next DMA callback, after the bus cycles of this unit
-			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 4, true), dmach);
-
-			uint32_t dmadata = m_program->read_dword(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst, dmadata);
-
-			dmadata = m_program->read_dword(tempsrc + 4);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst + 4, dmadata);
-
-			dmadata = m_program->read_dword(tempsrc + 8);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst + 8, dmadata);
-
-			dmadata = m_program->read_dword(tempsrc + 12);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst + 12, dmadata);
-
+			// Even a short final burst reads four source longwords (9.3.8),
+			// but writes only the remaining count. The source line is fetched first.
+			unsigned const words = std::min(m_active_dma_count[dmach], 4U);
+			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, words * 4, true), dmach);
+			uint32_t data[4];
+			for (unsigned i = 0; i < 4; ++i)
+				data[i] = m_program->read_dword(tempsrc + 4 * i);
+			for (unsigned i = 0; i < words; ++i)
+			{
+				uint32_t value = data[i];
+				if (!m_dma_kludge_cb.isnull())
+					value = m_dma_kludge_cb(tempsrc, tempdst, value, m_active_dma_size[dmach]);
+				m_program->write_dword(tempdst + 4 * i, value);
+			}
 			if (m_active_dma_incd[dmach] == 2)
 				m_active_dma_dst[dmach] -= 16;
 
@@ -926,10 +926,15 @@ void sh7604_device::sh2_do_dma(int dmach)
 			if (m_active_dma_incd[dmach] == 1)
 				m_active_dma_dst[dmach] += 16;
 
-			m_active_dma_count[dmach] -= 4;
+			m_active_dma_count[dmach] -= words;
 			break;
 		}
 		}
+		// Visible registers follow each completed transfer, including on abort (9.3).
+		// Apply deltas so the original address's cache-through/alias bits survive.
+		m_dmac[dmach].sar += m_active_dma_src[dmach] - previous_src;
+		m_dmac[dmach].dar += m_active_dma_dst[dmach] - previous_dst;
+		m_dmac[dmach].tcr = m_active_dma_count[dmach] & 0xffffff;
 	}
 	else // the dma is complete
 	{
@@ -958,7 +963,7 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_dma_current_active_callback)
 
 void sh7604_device::sh2_dmac_check(int dmach)
 {
-	if (m_dmac[dmach].chcr & m_dmaor & 1)
+	if ((m_dmac[dmach].chcr & m_dmaor & 1) && !(m_dmaor & 6))
 	{
 		if (!m_dma_timer_active[dmach] && !(m_dmac[dmach].chcr & 2))
 		{
@@ -1000,7 +1005,6 @@ void sh7604_device::sh2_dmac_check(int dmach)
 			case 3:
 				m_active_dma_src[dmach] &= ~3;
 				m_active_dma_dst[dmach] &= ~3;
-				m_active_dma_count[dmach] &= ~3;
 				break;
 			}
 
@@ -1134,16 +1138,24 @@ void sh7604_device::ftcsr_w(uint8_t data)
 	sh2_recalc_irq();
 }
 
-uint16_t sh7604_device::frc_r()
+uint16_t sh7604_device::frc_r(offs_t offset, uint16_t mem_mask)
 {
 	sh2_timer_resync();
-	return m_frc;
+	if (machine().side_effects_disabled())
+		return m_frc;
+	if (ACCESSING_BITS_8_15)
+		m_frt_temp = m_frc;
+	return (m_frc & 0xff00) | m_frt_temp;
 }
 
 void sh7604_device::frc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	sh2_timer_resync();
-	COMBINE_DATA(&m_frc);
+	// High-byte writes only load TEMP; low-byte writes commit both bytes.
+	if (ACCESSING_BITS_8_15)
+		m_frt_temp = data >> 8;
+	if (ACCESSING_BITS_0_7)
+		m_frc = (uint16_t(m_frt_temp) << 8) | (data & 0xff);
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
@@ -1156,10 +1168,16 @@ uint16_t sh7604_device::ocra_b_r()
 void sh7604_device::ocra_b_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	sh2_timer_resync();
-	if (m_tocr & 0x10)
-		m_ocrb = (m_ocrb & ~mem_mask) | (data & mem_mask);
-	else
-		m_ocra = (m_ocra & ~mem_mask) | (data & mem_mask);
+	if (ACCESSING_BITS_8_15)
+		m_frt_temp = data >> 8;
+	if (ACCESSING_BITS_0_7)
+	{
+		uint16_t const value = (uint16_t(m_frt_temp) << 8) | (data & 0xff);
+		if (m_tocr & 0x10)
+			m_ocrb = value;
+		else
+			m_ocra = value;
+	}
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
@@ -1191,9 +1209,13 @@ void sh7604_device::tocr_w(uint8_t data)
 	sh2_recalc_irq();
 }
 
-uint16_t sh7604_device::frc_icr_r()
+uint16_t sh7604_device::frc_icr_r(offs_t offset, uint16_t mem_mask)
 {
-	return m_frc_icr;
+	if (machine().side_effects_disabled())
+		return m_frc_icr;
+	if (ACCESSING_BITS_8_15)
+		m_frt_temp = m_frc_icr;
+	return (m_frc_icr & 0xff00) | m_frt_temp;
 }
 
 /*
@@ -1700,6 +1722,8 @@ void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::rtcsr_r()
 {
+	if (!machine().side_effects_disabled())
+		m_rtcsr_cmf_read = BIT(m_rtcsr, 7);
 	return m_rtcsr & 0xf8;
 }
 
@@ -1707,7 +1731,11 @@ void sh7604_device::rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
-		m_rtcsr = data & 0xf8;
+	{
+		uint32_t const cmf = m_rtcsr & 0x80;
+		m_rtcsr = (data & 0x78) | ((m_rtcsr_cmf_read && !(data & 0x80)) ? 0 : cmf);
+		m_rtcsr_cmf_read = false;
+	}
 }
 
 uint32_t sh7604_device::rtcnt_r()
@@ -1877,16 +1905,20 @@ void sh7604_device::dmac_tcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 template <int Channel>
 uint32_t sh7604_device::chcr_r()
 {
-	return m_dmac[Channel].chcr;
+	if (!machine().side_effects_disabled())
+		m_dma_te_read[Channel] = BIT(m_dmac[Channel].chcr, 1);
+	return m_dmac[Channel].chcr & 0xffff;
 }
 
 template <int Channel>
 void sh7604_device::chcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	uint32_t old;
-	old = m_dmac[Channel].chcr;
-	COMBINE_DATA(&m_dmac[Channel].chcr);
-	m_dmac[Channel].chcr = (data & ~2) | (old & m_dmac[Channel].chcr & 2);
+	uint32_t const old = m_dmac[Channel].chcr;
+	uint32_t const merged = (old & ~mem_mask) | (data & mem_mask);
+	bool const clear_te = (mem_mask & 2) && !(data & 2) && m_dma_te_read[Channel];
+	m_dmac[Channel].chcr = (merged & 0xfffd) | (clear_te ? 0 : old & 2);
+	if (mem_mask & 2)
+		m_dma_te_read[Channel] = false;
 	sh2_dmac_check(Channel);
 	// TE cleared or IE changed: the request follows the bits
 	sh2_recalc_irq();
@@ -1894,6 +1926,8 @@ void sh7604_device::chcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::dmaor_r()
 {
+	if (!machine().side_effects_disabled())
+		m_dmaor_read_flags = m_dmaor & 6;
 	return m_dmaor & 0xf;
 }
 
@@ -1902,7 +1936,9 @@ void sh7604_device::dmaor_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	if (ACCESSING_BITS_0_7)
 	{
 		uint8_t old = m_dmaor & 0xf;
-		m_dmaor = (data & ~6) | (old & data & 6);
+		uint8_t const clear = m_dmaor_read_flags & mem_mask & ~data;
+		m_dmaor = (data & 9) | (old & 6 & ~clear);
+		m_dmaor_read_flags = 0;
 		sh2_dmac_check(0);
 		sh2_dmac_check(1);
 	}

@@ -73,41 +73,35 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 15: TODO list (not comprehensive):
 
-## src/devices/cpu/sh/sh7604.cpp (27)
+## src/devices/cpu/sh/sh7604.cpp (21)
 
 - 15: TODO: Test and use sh7604_wdt_device, sh7604_sci_device, and sh7604_bus_device as appropriate
 - 47: , m_dma_kludge_cb(*this)
 - 92: m_dma_kludge_cb.resolve();
-- 339: //  TODO: cps3boot breaks with this enabled. Needs callback
-- 343: // TODO: internal map takes way too much resources if mirrored with 0x1ffffe00
-- 539: // TODO: setting 3 is "External clock: count on rising edge"
-- 592: // TODO: saturn:pulirula on slave CPU (0 cycles)
-- 770: if (!m_dma_kludge_cb.isnull())
-- 771: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 815: if (!m_dma_kludge_cb.isnull())
-- 816: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 859: if (!m_dma_kludge_cb.isnull())
-- 860: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 903: if (!m_dma_kludge_cb.isnull())
-- 904: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 908: if (!m_dma_kludge_cb.isnull())
-- 909: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 913: if (!m_dma_kludge_cb.isnull())
-- 914: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
+- 346: //  TODO: cps3boot breaks with this enabled. Needs callback
+- 350: // TODO: internal map takes way too much resources if mirrored with 0x1ffffe00
+- 546: // TODO: setting 3 is "External clock: count on rising edge"
+- 599: // TODO: saturn:pulirula on slave CPU (0 cycles)
+- 779: if (!m_dma_kludge_cb.isnull())
+- 780: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
+- 824: if (!m_dma_kludge_cb.isnull())
+- 825: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
+- 868: if (!m_dma_kludge_cb.isnull())
+- 869: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
 - 918: if (!m_dma_kludge_cb.isnull())
-- 919: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 1035: // TODO: identical to H8 counterpart
-- 1113: // TODO: to be tested
-- 1188: // TODO: output levels A/B (bits 1-0)
-- 1205: // TODO: flip meaning based off NMI edge select bit (NMIE)
-- 1316: // TODO: unemulated, level is seemingly not documented/settable?
-- 1487: // TODO: bare-bones, used for proper 32x:aburnerju sound (on slave side) as buffer storage
+- 919: value = m_dma_kludge_cb(tempsrc, tempdst, value, m_active_dma_size[dmach]);
+- 1039: // TODO: identical to H8 counterpart
+- 1117: // TODO: to be tested
+- 1206: // TODO: output levels A/B (bits 1-0)
+- 1227: // TODO: flip meaning based off NMI edge select bit (NMIE)
+- 1338: // TODO: unemulated, level is seemingly not documented/settable?
+- 1509: // TODO: bare-bones, used for proper 32x:aburnerju sound (on slave side) as buffer storage
 
 ## src/devices/cpu/sh/sh7604.h (3)
 
 - 21: typedef device_delegate<int (uint32_t src, uint32_t dst, uint32_t data, int size)> dma_kludge_delegate;
 - 34: template <typename... T> void set_dma_kludge_callback(T &&... args) { m_dma_kludge_cb.set(std::forward<T>(args)...); }
-- 281: dma_kludge_delegate              m_dma_kludge_cb;
+- 285: dma_kludge_delegate              m_dma_kludge_cb;
 
 ## src/devices/cpu/sh/sh7604_bus.cpp (3)
 

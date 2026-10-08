@@ -9,6 +9,8 @@ cache model. The separate `sh7604_sci_device`, `sh7604_bus_device` and
 not establish conformance of the active CPU.
 
 **The audit is complete; the peripheral implementation is not compliant.**
+Follow-up repairs on 2026-10-08 close the FRT TEMP interface, DMAC visible progress/qualified flag clears/reserved-bit storage, and RTCSR qualified CMF clears. Serial, break and refresh engines remain open.
+
 There are 68 named registers, counting OCRA/B and both DMA channels separately,
 at 67 distinct starting addresses. Eleven UBC registers are unmapped.
 The matrix below covers every named register, including aliases and reserved
@@ -61,17 +63,17 @@ SCI subdevice is also a stub (enabling TX/RX is fatal), not a ready replacement.
 |---|---|---|---|---|
 | TIER | FFFFFE10 | 8 R/W | Writable 8E, bit 0 fixed 1 / 01 | FIXED reserved-bit read-back/write storage; IRQ enables present. |
 | FTCSR | FFFFFE11 | 8 R/W | Flags 8E qualified clear, CCLRA bit 0 R/W / 00 | FIXED bits 6–4; existing read-qualified flags retained. Timer flag timing needs separate tests. |
-| FRC | FFFFFE12 | Ordered high/low 8-bit operations | FFFF / 0000 | FAIL: word handler merges bytes directly; no shared TEMP; high-byte writes take effect too soon, low-byte reads are live. |
-| OCRA | FFFFFE14, TOCR.OCRS=0 | Ordered high/low 8-bit operations | FFFF / 0000 | Selection matches; FAIL write TEMP absent. OCR reads bypass TEMP as specified in 11.3. |
+| FRC | FFFFFE12 | Ordered high/low 8-bit operations | FFFF / 0000 | FIXED shared TEMP: high write latches, low write commits; high read captures low byte. |
+| OCRA | FFFFFE14, TOCR.OCRS=0 | Ordered high/low 8-bit operations | FFFF / 0000 | FIXED shared write TEMP; selection matches. OCR reads bypass TEMP as specified in 11.3. |
 | OCRB | FFFFFE14, TOCR.OCRS=1 | Ordered high/low 8-bit operations | FFFF / 0000 | Same as OCRA. Full standby value FFFF is distinct from reset 0000. |
 | TCR | FFFFFE16 | 8 R/W | 83 / 00 | Mask/internal dividers match; external-clock counting is TODO. |
 | TOCR | FFFFFE17 | 8 R/W | Writable 13, fixed E0 / E0 | Mask/OCR bank match; output levels/pins not implemented. |
-| FICR | FFFFFE18 | Ordered high/low 8-bit reads | FFFF / 0000 | Capture input/edge selection present; FAIL atomic low-byte TEMP read missing. |
+| FICR | FFFFFE18 | Ordered high/low 8-bit reads | FFFF / 0000 | FIXED atomic low-byte TEMP read; capture input/edge selection present. |
 
 Chapter 11.3 explicitly shares an 8-bit TEMP across FRC/OCR/FICR. A high
 write stores TEMP, a low write commits the full word; a high FRC/FICR read
-latches the low byte. OCRA/B reads are the documented exception. The current
-16-bit handler declarations do not supply these semantics. Native word accesses
+latches the low byte. OCRA/B reads are the documented exception. The updated
+16-bit handlers use lane masks to supply these semantics, and debugger reads do not change TEMP. Native word accesses
 are not the documented software sequence. External counting and output compare
 pins remain implementation gaps, independent of masks fixed here.
 
@@ -155,22 +157,22 @@ Manual reset retains UBC, while power-on reset initializes it (4.2.3).
 
 | Register | Address | Legal access | Read-back / reset | Verdict |
 |---|---|---|---|---|
-| SAR0 | FFFFFF80 | 32 R/W | FFFFFFFF / undefined | Storage/map match; FAIL live progress: active source advances separately, SAR not updated. |
-| DAR0 | FFFFFF84 | 32 R/W | FFFFFFFF / undefined | Storage/map match; active destination not reflected. |
-| TCR0 | FFFFFF88 | 32 R/W | 00FFFFFF / undefined | Mask matches; FAIL remaining count not reflected until completion sets zero. |
-| CHCR0 | FFFFFF8C | 32 R/W | 0000FFFF; TE read-one/write-zero / 00000000 | FAIL upper reserved bits retained/read; TE clears without read qualification. Partial writes overwrite other lanes. |
+| SAR0 | FFFFFF80 | 32 R/W | FFFFFFFF / undefined | FIXED visible progress after each completed unit, preserving original alias bits. |
+| DAR0 | FFFFFF84 | 32 R/W | FFFFFFFF / undefined | FIXED visible destination progress after each completed unit. |
+| TCR0 | FFFFFF88 | 32 R/W | 00FFFFFF / undefined | FIXED remaining count follows each completed unit; 24-bit mask retained. |
+| CHCR0 | FFFFFF8C | 32 R/W | 0000FFFF; TE read-one/write-zero / 00000000 | FIXED upper reserved bits/read mask, read-qualified TE clear and lane preservation. |
 | SAR1 | FFFFFF90 | 32 R/W | FFFFFFFF / undefined | Same as SAR0. |
 | DAR1 | FFFFFF94 | 32 R/W | FFFFFFFF / undefined | Same as DAR0. |
 | TCR1 | FFFFFF98 | 32 R/W | 00FFFFFF / undefined | Same as TCR0. |
 | CHCR1 | FFFFFF9C | 32 R/W | 0000FFFF; TE qualified clear / 00000000 | Same as CHCR0. |
 | DRCR0 | FFFFFE71 | 8 R/W | 03 / 00 | Mask matches; external/SCI request selection not implemented by transfer starter. |
 | DRCR1 | FFFFFE72 | 8 R/W | 03 / 00 | Same as DRCR0. |
-| DMAOR | FFFFFFB0 | 32 R/W | 0000000F / 00000000 | Read mask matches; NMIF qualified clear missing, AE not generated for alignment faults; starter ignores NMIF/AE and request mode. |
+| DMAOR | FFFFFFB0 | 32 R/W | 0000000F / 00000000 | FIXED qualified AE/NMIF clears and transfer inhibition when either flag is set; AE generation/NMI input wiring and request mode remain open. |
 
 `sh2_dmac_check` starts when DE/DME allow, without waiting for DRCR/AR
 request selection; misaligned addresses are rounded instead of setting AE.
-The active source/destination/count fields are separate from programmer-visible
-registers. Existing DMAC bus timing does not resolve these state-machine gaps.
+The active source/destination/count fields remain separate, but programmer-visible
+registers now follow every completed unit, including before an abort. Existing DMAC bus timing does not resolve these state-machine gaps.
 Round-robin PR and external handshake/single-address details also need
 implementation-level validation; no conformance claim is made for them.
 VCRDMA0/1 are counted in INTC above.
@@ -183,7 +185,7 @@ VCRDMA0/1 are counted in INTC above.
 | BCR2 | FFFFFFE4 | 32 R/W; 16 R at E6 | 00FC / 00FC | FIXED key/width and reserved bits. |
 | WCR | FFFFFFE8 | 32 R/W; 16 R at EA | FFFF / AAFF | FIXED key/width and upper-word read-back. |
 | MCR | FFFFFFEC | 32 R/W; 16 R at EE | FEFC / 0000 | FIXED key/width and reserved/upper read-back. |
-| RTCSR | FFFFFFF0 | 32 R/W; 16 R at F2 | 00F8; CMF qualified clear / 0000 | FIXED key/width; FAIL CMF software set/clear permissions and refresh IRQ/timer absent. |
+| RTCSR | FFFFFFF0 | 32 R/W; 16 R at F2 | 00F8; CMF qualified clear / 0000 | FIXED key/width and read-qualified CMF clears (software cannot set CMF); refresh IRQ/timer absent. |
 | RTCNT | FFFFFFF4 | 32 R/W; 16 R at F6 | 00FF / 0000 | FIXED key/width; FAIL refresh-clock count and compare not implemented. |
 | RTCOR | FFFFFFF8 | 32 R/W; 16 R at FA | 00FF / 0000 | FIXED key/width; constant stored but no refresh compare. |
 
@@ -224,7 +226,7 @@ with Clang ASan/UBSan. It checks all seven BSC key/width/read-mask rules,
 master/slave MASTER read-back, all 256 write values for TIER/FTCSR/SBYCR,
 FTCSR qualified clears, and WDT stale-key/byte-write rejection. Scheduling is
 stubbed deliberately; this is not a peripheral timing or CPU bus-dispatch test.
-The pre-audit revision compiles with the same fixture and fails an assertion.
+The original mask/key fixture compiled against the pre-audit revision and failed an assertion; later interface tests use the updated method signatures.
 
 macOS build passes with the user's Saturn/ST-V source selection and SDL3 (`OSD=sdl3 USE_LIBSDL=0 -j2`).
 One isolated, low-priority VF Kids run (`-seconds_to_run 3`, video/sound off)
@@ -233,3 +235,21 @@ Missing engines identified here are follow-up implementation tasks, not
 failures of the audit process and not marked complete in the checklist.
 No hardware test, complete SCI transmission test, full-library sweep or illegal
 access-width bus-value measurement is claimed.
+
+Follow-up fixture coverage: actual FRT methods test rollover between byte reads,
+shared TEMP between counter/capture/compare accesses, deferred high writes,
+OCR selection and debugger noninterference. Both DMAC channels test reserved
+bits, software attempts to set TE, qualified clears and lane preservation.
+DMAOR AE/NMIF and RTCSR CMF test read-qualified clears and debugger reads.
+All new latch state is registered for save states; DMAC clear state resets in
+standby, RTCSR clear state follows BSC power/manual reset retention.
+The real-device Lua fixture `scripts/sh7604_dma_test.lua` verifies a longword
+auto-request transfer, payload, final SAR/DAR alias preservation, TCR and TE.
+It also verifies full/short 16-byte bursts (9.3.8): all four source words are fetched, but only the remaining count is written; count is no longer rounded down. The bus-cost helper charges the actual number of destination writes.
+It isolates CPU execution in an IRQ-masked WRAM loop; it is not a game test.
+
+Final follow-up validation: macOS Saturn/ST-V SDL3 build passes; sanitizer
+register fixture passes; burst counts 1–7 pass in all 14 real-device runs
+(interpreter and DRC, sequentially), with untouched destination guards. A final
+isolated 20-second VF Kids run exits normally with video/audio output disabled.
+These checks do not establish long-run/gameplay/audio or hardware timing parity.

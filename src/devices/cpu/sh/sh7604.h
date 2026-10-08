@@ -84,7 +84,7 @@ private:
 	// FRT / FRC
 	uint8_t tier_r();
 	void tier_w(uint8_t data);
-	uint16_t frc_r();
+	uint16_t frc_r(offs_t offset, uint16_t mem_mask);
 	void frc_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 	uint8_t ftcsr_r();
 	void ftcsr_w(uint8_t data);
@@ -94,7 +94,7 @@ private:
 	void frc_tcr_w(uint8_t data);
 	uint8_t tocr_r();
 	void tocr_w(uint8_t data);
-	uint16_t frc_icr_r();
+	uint16_t frc_icr_r(offs_t offset, uint16_t mem_mask);
 
 	// INTC
 	uint16_t ipra_r();
@@ -193,6 +193,7 @@ private:
 	// FRT / FRC
 	uint8_t m_tier, m_ftcsr, m_ftcsr_read_flags, m_frc_tcr, m_tocr;
 	uint16_t m_frc;
+	uint8_t m_frt_temp = 0; // shared byte-access latch (Hardware Manual 11.3)
 	uint16_t m_ocra, m_ocrb, m_frc_icr;
 
 	// INTC
@@ -252,12 +253,15 @@ private:
 		uint32_t chcr;
 	} m_dmac[2];
 	uint8_t m_dmaor;
+	bool m_dma_te_read[2]{};
+	uint8_t m_dmaor_read_flags = 0;
 
 	// misc
 	uint8_t m_sbycr; // CCR lives in m_cache
 
 	// BSC
 	uint32_t m_bcr1, m_bcr2, m_wcr, m_mcr, m_rtcsr, m_rtcor, m_rtcnt;
+	bool m_rtcsr_cmf_read = false;
 
 	uint64_t m_frc_base;
 

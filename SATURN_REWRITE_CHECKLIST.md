@@ -1,6 +1,6 @@
 # Saturn / ST-V source rewrite: status checklist
 
-Updated 2026-10-08 (SH7604 Appendix B audit completed; confirmed register access/read-back defects fixed and validated; missing peripheral engines remain explicit follow-up work). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
+Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/final bursts and BSC CMF permissions completed and validated; missing peripheral engines remain explicit follow-up work). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
 `[x]` done and committed (commit in brackets), `[~]` partly done, `[ ]` not done.
 
 ## How this file stays true
@@ -71,10 +71,14 @@ Updated 2026-10-08 (SH7604 Appendix B audit completed; confirmed register access
 - [ ] SCI DMA request/ack, standby entry/exit audit
 - [x] Audit every SH7604 on-chip register against manual Appendix B: completed 2026-10-08 in `SH7604_REGISTER_AUDIT.md`, all 68 named registers/67 starting addresses, legal widths, read-back/reset rules and SCI event/mode transitions. Fixed BSC keyed longword writes and reserved/upper read-back, atomic WDT keyed word writes, TIER/FTCSR/SBYCR reserved bits. Actual-method ASan/UBSan fixture passes and pre-audit revision fails; macOS Saturn/ST-V SDL3 build passes. This completes the audit, not the missing peripheral implementations below.
 - [ ] Implement SCI serial engine and status rules identified by the audit: TSR/RSR, baud clocks, TX/RX pins, asynchronous/synchronous/multiprocessor modes, SSR read-qualified clears/RO bits, TE/RE transitions and SCI IRQ routing. Current SSR forces ready/end, RDR returns zero; unused SCI subdevice is also a stub.
-- [ ] FRT audit findings: shared TEMP for ordered byte access to FRC/OCR/FICR (11.3), external-clock counting and output-compare pins.
+- [x] FRT shared TEMP for ordered byte access to FRC/OCR/FICR (11.3): high writes deferred until low commit, low reads latched across rollover, shared read/write latch; debugger reads do not alter TEMP. Actual-method ASan/UBSan fixtures pass.
+- [ ] FRT audit remainder: external-clock counting and output-compare pins.
 - [ ] UBC audit findings: eleven missing register mappings and CPU/peripheral break comparisons, masks, sequencing and user-break exceptions (chapter 6).
-- [ ] DMAC audit findings: live SAR/DAR/TCR progress, CHCR reserved bits and qualified TE clear, DMAOR qualified NMIF clear and AE handling, request selection/handshake and priority behavior (chapter 9).
-- [ ] BSC audit findings: refresh clock/counter/compare/IRQ, qualified CMF clear; generic BCR/WCR/MCR interface effects. Keyed-write and read-back rules are completed separately above.
+- [x] DMAC live SAR/DAR/TCR progress after each completed unit (original address alias bits retained), CHCR reserved bits/lane preservation/read-qualified TE clear, DMAOR read-qualified AE/NMIF clear and inhibition (chapter 9). Saved latch state; actual-method ASan/UBSan fixtures pass.
+- [x] DMAC 16-byte final burst (9.3.8): retain counts 1–3, fetch all four source longwords before writes, write only remaining destination words and charge their bus costs. Real-device Lua fixture checks normal transfers and short/full bursts for counts 1–7 under both interpreter and DRC (14 passes). Final macOS build, sanitizer fixture and isolated 20-second VF Kids run pass; audio/gameplay/timing parity is not claimed.
+- [ ] DMAC audit remainder: AE generation, NMI input wiring, request selection/handshake and priority behavior (chapter 9).
+- [x] BSC RTCSR read-qualified CMF clear (7.2): software cannot set CMF; debugger reads do not authorize clears; latch saved, retained with BSC across manual reset. Actual-method ASan/UBSan fixtures pass.
+- [ ] BSC audit remainder: refresh clock/counter/compare/IRQ and generic BCR/WCR/MCR interface effects. Keyed-write/read-back and CMF permissions are completed separately above.
 - [ ] Resolve documented VCRDIV read-back conflict (B.2 lower-word R/W versus 10.2.4 reserved read-zero prose) and corroborate FMR/division result mirror extensions; no guessed change.
 - [ ] DIVU: the extra cycle of a read directly after a write to a division register (manual 10.4.1) needs a hardware test
 - [ ] On-chip register access time (waits for the probe)
@@ -224,7 +228,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/devices/cpu/sh/sh7014_sci.cpp` | 6 |
 | `src/devices/cpu/sh/sh7014_sci.h` | 2 |
 | `src/devices/cpu/sh/sh7014_wdt.cpp` | 1 |
-| `src/devices/cpu/sh/sh7604.cpp` | 27 |
+| `src/devices/cpu/sh/sh7604.cpp` | 21 |
 | `src/devices/cpu/sh/sh7604.h` | 3 |
 | `src/devices/cpu/sh/sh7604_bus.cpp` | 3 |
 | `src/devices/cpu/sh/sh7604_sci.cpp` | 2 |
@@ -249,6 +253,6 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | `src/mame/sega/stv.cpp` | 28 |
 | `src/mame/sega/stvdev.cpp` | 1 |
 | `src/mame/shared/rax.cpp` | 1 |
-| **38 files with notes, 76 searched files without** | **214** |
+| **38 files with notes, 76 searched files without** | **208** |
 
 <!-- END GENERATED -->
