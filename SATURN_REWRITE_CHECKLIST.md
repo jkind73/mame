@@ -163,7 +163,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 - [ ] mamedev issue 15773; the access that must not return 0 or the SH-2 crashes ("might be a CD block bug"); changing the driver configuration screws the NVRAM; 3D Lemmings TH control mode (needs hardware)
 
 ### 12.2 `stv.cpp`, `stvdev.cpp`, `315_5649.cpp`, `315-5881_crypt.*`, `shared/rax.cpp`
-- [ ] Per-game list in the header: aclub (Error 11, voice pitches: re-test after the SCU DMA timing commits, VDP1 contours, IOGA serial), colmns97 stuck envelope, critcrsh 7-seg LED, danchih/danchiq mametesters 6270 (verify and close), fanzonem "Door Open", fhboxers CN18, magzun mic, myfairld mametesters 2642 (re-test after the VDP1 rewrite), smleague/finlarch random hangs (re-test after the bus arbitration), stress, tsuribor analog rod, vfremix mametesters 4445, wasafari (RBG0 not drawn: re-test after the VDP2 rewrite), wwshin window glitches (re-test after the window fixes), yattrmnp
+- [ ] Per-game list in the header: aclub (Error 11, voice pitches: re-test after the SCU DMA timing commits, VDP1 contours, IOGA serial), colmns97 stuck envelope, critcrsh 7-seg LED, danchih/danchiq mametesters 6270 (verify and close), fanzonem "Door Open", fhboxers CN18, magzun mic, myfairld mametesters 2642 (re-test after the VDP1 rewrite), smleague/finlarch random hangs (re-test after the bus arbitration), stress, tsuribor analog rod, wasafari (RBG0 not drawn: re-test after the VDP2 rewrite), wwshin window glitches (re-test after the window fixes), yattrmnp
 - [ ] ROM names (Sega nomenclature, IC positions), upper-nibble output port, BCD decoder chip type, cartridge as A-bus slot option, abus fill (1-filled?), SCSP reset line, SCSP clock (22579200 unknown divider), microphone bindings, RAX output, sense/delta values, BSERVICE/BTEST, coin error in maintenance mode, i486 connection
 - [ ] Default 1P EEPROM images (nine machines, see the inventory)
 - [ ] `stvdev.cpp`: two other clocks (36 MHz, 14.318 MHz); `rax.cpp`: last stage of Batman Forever
@@ -256,3 +256,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 | **38 files with notes, 76 searched files without** | **208** |
 
 <!-- END GENERATED -->
+
+### 12.6 Game-by-game regression pass (2026-10-08)
+- [x] VF Remix MT4445: replayed normal coin/start/character inputs and visually confirmed fights with Wolf, Jeffry and Sarah (plus Akira). The existing rewrite resolves the reported character failure; removed the stale MACHINE_NOT_WORKING flag, retaining imperfect graphics/sound. Reproduction schedules and limits are in `SATURN_GAME_REGRESSIONS.md`; longer play/audio remain open.
+- [~] Sequential survey of ten available ST-V games: eight reach visible attract/fight scenes; VF Kids loses valid CPU execution after about 31 seconds and the DRC aborts around 43 seconds, while Elan-Doree remains black with display disabled in both CPU cores. These are open regressions, not completed fixes. See `SATURN_GAME_REGRESSIONS.md` and `scripts/saturn_game_survey.py`.

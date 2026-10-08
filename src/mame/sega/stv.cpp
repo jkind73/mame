@@ -39,7 +39,8 @@ TODO:
 
 - tsuribor: needs input rod hookup (analog);
 
-- vfremix: https://mametesters.org/view.php?id=4445
+- vfremix: MT4445 black screen for Jeffry/Sarah/Wolf does not reproduce after the rewrite;
+  scripted selection reaches fights with all three (2026-10-08). Retest longer play/audio separately.
 
 - wasafari: eventually prompts for rotating the crank, which is untestable by service mode.
   Enables VDP2 RBG0 layer but doesn't draw at all (lack of a linescroll effect when scrolling
@@ -4306,7 +4307,7 @@ GAME( 1997, nclubv4,   stvbios, stv,      stv,      stvpc_state, init_nameclv3, 
 GAME( 1998, nclubdis,  stvbios, stv,      stv,      stvpc_state, init_stv,              ROT0,   "Sega",                         "Name Club Disney (J 980614 V1.000)", MACHINE_NOT_WORKING ) // errors due to missing security card
 
 // Doing something.. but not enough yet
-GAME( 1995, vfremix,   stvbios, stv,      stv,      stv_state,   init_vfremix,    ROT0,   "Sega",                         "Virtua Fighter Remix (JUETBKAL 950428 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS | MACHINE_NOT_WORKING )
+GAME( 1995, vfremix,   stvbios, stv,      stv,      stv_state,   init_vfremix,    ROT0,   "Sega",                         "Virtua Fighter Remix (JUETBKAL 950428 V1.000)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS )
 GAME( 1996, decathlt,  stvbios, stv_5838, stv,      stv_state,   init_5838,       ROT0,   "Sega",                         "DecAthlete (JUET 960709 V1.001)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING )
 GAME( 1996, decathlto, decathlt,stv_5838, stv,      stv_state,   init_5838,       ROT0,   "Sega",                         "DecAthlete (JUET 960424 V1.000)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING )
 GAME( 1998, twcup98,   stvbios, stv_5881, stv,      stv_state,   init_twcup98,    ROT0,   "Tecmo",                        "Tecmo World Cup '98 (JUET 980410 V1.000)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_GRAPHICS ) // some situations with the GK result in the game stalling, maybe CPU core bug??

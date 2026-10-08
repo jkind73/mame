@@ -290,33 +290,33 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 ## src/mame/sega/stv.cpp (28)
 
 - 12: TODO:
-- 50: - yattrmnp: throws "S ERR=305 SATELLITE CHACKER JAM" (sic), alternates with "DOOR OPEN"
-- 62: TODO: reinstate actual positions, don't mind what the BIOS says.
-- 95: TODO: change this back, use Sega nomenclature not Capcom
-- 172: // TODO: propagate upper nibble to a configurable output port
-- 193: static uint8_t const bcd2hex[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7c, 0x07, 0x7f, 0x67, 0x58, 0x4c, 0x62, 0x49, 0x78, 0x00 }; // TODO: chip type unknown
-- 236: // TODO: handle this as A-Bus slot option
-- 558: //  m_instadma_hack = 1;
-- 979: memset(memregion("abus")->base(), 0x00, 0x3000000); // TODO: 1-filled?
-- 1011: // TODO: SCSP reset line (at bit 3?)
-- 1109: SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
-- 1143: // TODO: microphone bindings, currently hangs on FLAG checks
-- 1205: // FIXME
-- 1217: // TODO: RAX output connected to SCSP?
-- 1805: // TODO: sense/delta values seems wrong
-- 1907: // TODO: BSERVICE and BTEST on PDR2 (?)
-- 1908: // TODO: throws coin error in maintenance mode, only coin 2 works
-- 3105: // TODO: has extra connection to a i486BD according to test mode
-- 3442: // TODO: add 1p eeprom default
-- 3549: // TODO: add 1p eeprom default
-- 3564: // TODO: add 1p eeprom default
-- 3586: // TODO: add 1p eeprom default
-- 3605: // TODO: add 1p eeprom default
-- 3624: // TODO: add 1p eeprom default
-- 3643: // TODO: add 1p eeprom default
-- 3664: // TODO: add 1p eeprom default
-- 3686: // TODO: add 1p eeprom default
-- 3928: // TODO: add 1p eeprom default
+- 51: - yattrmnp: throws "S ERR=305 SATELLITE CHACKER JAM" (sic), alternates with "DOOR OPEN"
+- 63: TODO: reinstate actual positions, don't mind what the BIOS says.
+- 96: TODO: change this back, use Sega nomenclature not Capcom
+- 173: // TODO: propagate upper nibble to a configurable output port
+- 194: static uint8_t const bcd2hex[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7c, 0x07, 0x7f, 0x67, 0x58, 0x4c, 0x62, 0x49, 0x78, 0x00 }; // TODO: chip type unknown
+- 237: // TODO: handle this as A-Bus slot option
+- 559: //  m_instadma_hack = 1;
+- 980: memset(memregion("abus")->base(), 0x00, 0x3000000); // TODO: 1-filled?
+- 1012: // TODO: SCSP reset line (at bit 3?)
+- 1110: SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
+- 1144: // TODO: microphone bindings, currently hangs on FLAG checks
+- 1206: // FIXME
+- 1218: // TODO: RAX output connected to SCSP?
+- 1806: // TODO: sense/delta values seems wrong
+- 1908: // TODO: BSERVICE and BTEST on PDR2 (?)
+- 1909: // TODO: throws coin error in maintenance mode, only coin 2 works
+- 3106: // TODO: has extra connection to a i486BD according to test mode
+- 3443: // TODO: add 1p eeprom default
+- 3550: // TODO: add 1p eeprom default
+- 3565: // TODO: add 1p eeprom default
+- 3587: // TODO: add 1p eeprom default
+- 3606: // TODO: add 1p eeprom default
+- 3625: // TODO: add 1p eeprom default
+- 3644: // TODO: add 1p eeprom default
+- 3665: // TODO: add 1p eeprom default
+- 3687: // TODO: add 1p eeprom default
+- 3929: // TODO: add 1p eeprom default
 
 ## src/mame/sega/stvdev.cpp (1)
 
