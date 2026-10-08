@@ -46,8 +46,37 @@ void test_windows()
 			std::array<uint32_t, 704> pixels{};
 			r->render_line(0, sprites, pixels.data());
 			for (unsigned x = 0; x < cfg.width; ++x)
-				assert(r->m_w_hit[0][x] == (x >= (hires ? 14 : 7) && x <= (hires ? 20 : 10)));
+				assert(r->m_w_hit[0][x] == (x >= (hires ? 14 : 7) && x <= (hires ? (exclusive ? 21 : 20) : 10)));
 		}
+		if (!exclusive) continue;
+		// Cover the complete dedicated coordinate range, including coordinates beyond
+		// the visible width, reversed endpoints, and both pixels of a hi-res unit.
+		constexpr unsigned endpoints[][2] = {
+			{0, 511}, {7, 10}, {11, 10}, {511, 10}, {400, 511},
+			{320, 351}, {351, 351}, {0, 374}, {0, 432},
+		};
+		for (unsigned window = 0; window < 2; ++window)
+			for (bool line_window : {false, true})
+				for (auto const &pair : endpoints) {
+					regs.fill(0);
+					unsigned const b = 0xc0 + 8 * window;
+					regs[b / 2] = pair[0] | 0x200;
+					regs[(b + 4) / 2] = pair[1] | 0x200;
+					if (line_window) {
+						unsigned const l = 0xd8 + 4 * window;
+						regs[l / 2] = 0x8000;
+						regs[(l + 2) / 2] = 0x800;
+						vram[0x1000 / 4] = ((pair[0] | 0x200) << 16) | pair[1] | 0x200;
+					}
+					auto r = std::make_unique<renderer>();
+					r->begin_frame({regs.data(), vram.get(), cram.data()}, cfg);
+					std::array<uint32_t, 704> pixels{};
+					r->render_line(0, sprites, pixels.data());
+					for (unsigned x = 0; x < cfg.width; ++x) {
+						unsigned const counter = hires ? x / 2 : x;
+						assert(r->m_w_hit[window][x] == (counter >= pair[0] && counter <= pair[1]));
+					}
+				}
 	}
 }
 

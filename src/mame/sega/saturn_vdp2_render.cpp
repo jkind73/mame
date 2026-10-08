@@ -1231,7 +1231,13 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 			unsigned const px = hires ? x : (x << 1);
 			unsigned const s = hires ? wsx[w] : (wsx[w] & ~1U);
 			unsigned const e = hires ? wex[w] : (wex[w] & ~1U);
-			m_w_hit[w][x] = (px >= s || wsx[w] >= 0x360) && px <= e && e < 0x360 && e != 0x2ec && wy_hit[w];
+			// Rel.2.5 Table 8.1 gives dedicated modes the full nine-bit coordinate range.
+			// In dedicated hi-res there is no H0: both dots of the final two-dot unit are
+			// inside the inclusive border. The normal-mode H-counter holes do not apply.
+			if (m_cfg.exclusive)
+				m_w_hit[w][x] = px >= s && px <= (e | (hires ? 1U : 0U)) && wy_hit[w];
+			else
+				m_w_hit[w][x] = (px >= s || wsx[w] >= 0x360) && px <= e && e < 0x360 && e != 0x2ec && wy_hit[w];
 		}
 
 	// rotation screens
