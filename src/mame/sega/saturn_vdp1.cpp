@@ -243,9 +243,12 @@ void saturn_vdp1_device::latch_erase_params()
 
 	// The registers are not checked (VDP1 manual 4.4). With X1 >= X3 or Y1 > Y3 the chip erases as if
 	// the area were X3 = X1 + 1, Y3 = Y1: one dot in the normal and high resolution modes, eight in
-	// rotation and HDTV (ST-013 4.4, Figure 4.2).
+	// rotation and HDTV (ST-013 4.4, Figure 4.2). The 8-bit modes erase pairs of pixels
+	// (same section, EWDR): a high-resolution minimum is one word, whereas the eight
+	// pixels of rotation-8 occupy four words.
 	if (m_erase.x_bound <= m_erase.x_start || m_erase.y_end < m_erase.y_start) {
-		m_erase.x_bound = m_erase.x_start + ((m_tvmr & (TVMR_ROTATE | TVMR_HDTV)) ? 8 : 1);
+		unsigned const words = (m_tvmr & (TVMR_ROTATE | TVMR_HDTV)) ? (m_erase.rot8 ? 4 : 8) : 1;
+		m_erase.x_bound = m_erase.x_start + words;
 		m_erase.y_end = m_erase.y_start;
 	}
 }
