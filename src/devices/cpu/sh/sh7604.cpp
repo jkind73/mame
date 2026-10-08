@@ -1097,13 +1097,13 @@ uint8_t sh7604_device::rdr_r()
 
 uint8_t sh7604_device::tier_r()
 {
-	return m_tier;
+	return (m_tier & 0x8e) | 1;
 }
 
 void sh7604_device::tier_w(uint8_t data)
 {
 	sh2_timer_resync();
-	m_tier = data;
+	m_tier = (data & 0x8e) | 1;
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
@@ -1129,7 +1129,7 @@ void sh7604_device::ftcsr_w(uint8_t data)
 	m_ftcsr_read_flags &= ~clear;
 
 	sh2_timer_resync();
-	m_ftcsr = (m_ftcsr & ~clear & (ICF | OCFA | OCFB | OVF)) | (data & ~(ICF | OCFA | OCFB | OVF));
+	m_ftcsr = (m_ftcsr & ~clear & (ICF | OCFA | OCFB | OVF)) | (data & CCLRA);
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
@@ -1547,7 +1547,10 @@ uint16_t sh7604_device::rstcsr_r(offs_t offset, uint16_t mem_mask)
 
 void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	COMBINE_DATA(&m_wtcw[0]);
+	// The key and value must arrive in one word write (12.2.4).
+	if (mem_mask != 0xffff)
+		return;
+	m_wtcw[0] = data;
 	switch (m_wtcw[0] & 0xff00)
 	{
 		case 0x5a00:
@@ -1584,7 +1587,10 @@ void sh7604_device::wtcnt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 void sh7604_device::rstcsr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	COMBINE_DATA(&m_wtcw[1]);
+	// The key and value must arrive in one word write (12.2.4).
+	if (mem_mask != 0xffff)
+		return;
+	m_wtcw[1] = data;
 	switch (m_wtcw[1] & 0xff00)
 	{
 		case 0xa500:
@@ -1617,7 +1623,7 @@ void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		logerror("SH2 set clock multiplier x%d\n", 1 << (data & 3));
 		break;
 	case 0x00ff: // SBYCR
-		m_sbycr = data;
+		m_sbycr = data & 0xdf;
 		if (data & 0x1f)
 			logerror("SH2 module stop selected %02x\n", data);
 		break;
@@ -1646,60 +1652,50 @@ void sh7604_device::ccr_w(uint8_t data)
 // method (0xa55axxxx) and reads back 0.
 uint32_t sh7604_device::bcr1_r()
 {
-	return (m_bcr1 & ~0xe008) | (m_is_slave ? 0x8000 : 0);
+	return (m_bcr1 & 0x1ff7) | (m_is_slave ? 0x8000 : 0);
 }
 
 void sh7604_device::bcr1_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	if (ACCESSING_BITS_0_31)
-	{
-		if ((data & 0xffff0000) == 0xa55a0000)
-		{
-			COMBINE_DATA(&m_bcr1);
-			m_bcr1 &= 0xffff;
-		}
-	}
-	else if (ACCESSING_BITS_0_15)
-		COMBINE_DATA(&m_bcr1);
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_bcr1 = data & 0x1ff7;
 }
 
 uint32_t sh7604_device::bcr2_r()
 {
-	return m_bcr2;
+	return m_bcr2 & 0xfc;
 }
 
 void sh7604_device::bcr2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	if (ACCESSING_BITS_0_31)
-	{
-		if ((data & 0xffff0000) == 0xa55a0000)
-		{
-			COMBINE_DATA(&m_bcr2);
-			m_bcr2 &= 0xffff;
-		}
-	}
-	else if (ACCESSING_BITS_0_15)
-		COMBINE_DATA(&m_bcr2);
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_bcr2 = data & 0xfc;
 }
 
 uint32_t sh7604_device::wcr_r()
 {
-	return m_wcr;
+	return m_wcr & 0xffff;
 }
 
 void sh7604_device::wcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	COMBINE_DATA(&m_wcr);
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_wcr = data & 0xffff;
 }
 
 uint32_t sh7604_device::mcr_r()
 {
-	return m_mcr & ~0x103;
+	return m_mcr & 0xfefc;
 }
 
 void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	COMBINE_DATA(&m_mcr);
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_mcr = data & 0xfefc;
 }
 
 uint32_t sh7604_device::rtcsr_r()
@@ -1709,7 +1705,9 @@ uint32_t sh7604_device::rtcsr_r()
 
 void sh7604_device::rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	COMBINE_DATA(&m_rtcsr);
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_rtcsr = data & 0xf8;
 }
 
 uint32_t sh7604_device::rtcnt_r()
@@ -1719,8 +1717,9 @@ uint32_t sh7604_device::rtcnt_r()
 
 void sh7604_device::rtcnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	COMBINE_DATA(&m_rtcnt);
-	m_rtcnt &= 0xff;
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_rtcnt = data & 0xff;
 }
 
 uint32_t sh7604_device::rtcor_r()
@@ -1730,8 +1729,9 @@ uint32_t sh7604_device::rtcor_r()
 
 void sh7604_device::rtcor_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
-	COMBINE_DATA(&m_rtcor);
-	m_rtcor &= 0xff;
+	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
+	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+		m_rtcor = data & 0xff;
 }
 
 void sh7604_device::set_frt_input(int state)

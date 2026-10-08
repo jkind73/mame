@@ -1,6 +1,6 @@
 # Saturn / ST-V source rewrite: status checklist
 
-Updated 2026-10-08 (the three requested VDP WIP rules are completed; macOS build, sanitizer fixtures and sampled-image comparisons pass; separate scan-timing questions remain open). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
+Updated 2026-10-08 (SH7604 Appendix B audit completed; confirmed register access/read-back defects fixed and validated; missing peripheral engines remain explicit follow-up work). Branch `claude/saturn-vdp2-rewrite-4bb92d`.
 `[x]` done and committed (commit in brackets), `[~]` partly done, `[ ]` not done.
 
 ## How this file stays true
@@ -19,7 +19,7 @@ Updated 2026-10-08 (the three requested VDP WIP rules are completed; macOS build
 - At most one game run at a time, low priority, short `-seconds_to_run` (batches crashed the machine on 2026-10-06 and 2026-10-07).
 
 ## Next up (in this order; the user decides when to switch)
-0. **VDP continuation selected by the user on 2026-10-08**: the three requested WIP rules from `4f444bb9576` are now completed (RPMD mode 2, exclusive-window coordinate layout, invalid erase area). The next VDP work is H/V counters and external latch, with exclusive scan timing tracked separately. Keep the Megamix fetch-latency divergence open until new evidence supports a change. The older speed/audio ordering below remains paused.
+0. **Current user selection, 2026-10-08**: SH7604 Appendix B register audit completed; see `SH7604_REGISTER_AUDIT.md` and section 4 for the findings. The following VDP work remains available when selected. **VDP continuation**: the three requested WIP rules from `4f444bb9576` are now completed (RPMD mode 2, exclusive-window coordinate layout, invalid erase area). The next VDP work is H/V counters and external latch, with exclusive scan timing tracked separately. Keep the Megamix fetch-latency divergence open until new evidence supports a change. The older speed/audio ordering below remains paused.
 1. **Speed**: games run between 95% and 64%. Profile (gdb sampling) says the cost is the SH-2 bus arbitration callback, the SH7604 cache read, and the VDP2 line renderer. Plan: bit-exact fast path in `sh2_bus_arbitrate`, then `sh2_device::cache_read`, then VDP2 `render_line` / `draw_nbg_fetched` / `draw_rbg`; prove each step with the state-hash Lua script; repeat the profile with sound enabled (the first one ran without). The user paused this on 2026-10-07 while the VF2 sound was looked at.
 2. **VF2 sound versus Ymir** (section 7): BIOS chime louder than Ymir, fight sound effects not yet compared.
 3. **Diagnostic hooks**: none left (section 11).
@@ -69,7 +69,13 @@ Updated 2026-10-08 (the three requested VDP WIP rules are completed; macOS build
 - [x] WDT resets the chip, flags follow the manual (`bd3d6979c16`)
 - [x] Reset values of the on-chip registers, power-on vs manual reset (`68cd9c75f69`)
 - [ ] SCI DMA request/ack, standby entry/exit audit
-- [ ] Audit every SH7604 on-chip register against manual Appendix B: addresses, access widths, read-back bits, the SCI state machine
+- [x] Audit every SH7604 on-chip register against manual Appendix B: completed 2026-10-08 in `SH7604_REGISTER_AUDIT.md`, all 68 named registers/67 starting addresses, legal widths, read-back/reset rules and SCI event/mode transitions. Fixed BSC keyed longword writes and reserved/upper read-back, atomic WDT keyed word writes, TIER/FTCSR/SBYCR reserved bits. Actual-method ASan/UBSan fixture passes and pre-audit revision fails; macOS Saturn/ST-V SDL3 build passes. This completes the audit, not the missing peripheral implementations below.
+- [ ] Implement SCI serial engine and status rules identified by the audit: TSR/RSR, baud clocks, TX/RX pins, asynchronous/synchronous/multiprocessor modes, SSR read-qualified clears/RO bits, TE/RE transitions and SCI IRQ routing. Current SSR forces ready/end, RDR returns zero; unused SCI subdevice is also a stub.
+- [ ] FRT audit findings: shared TEMP for ordered byte access to FRC/OCR/FICR (11.3), external-clock counting and output-compare pins.
+- [ ] UBC audit findings: eleven missing register mappings and CPU/peripheral break comparisons, masks, sequencing and user-break exceptions (chapter 6).
+- [ ] DMAC audit findings: live SAR/DAR/TCR progress, CHCR reserved bits and qualified TE clear, DMAOR qualified NMIF clear and AE handling, request selection/handshake and priority behavior (chapter 9).
+- [ ] BSC audit findings: refresh clock/counter/compare/IRQ, qualified CMF clear; generic BCR/WCR/MCR interface effects. Keyed-write and read-back rules are completed separately above.
+- [ ] Resolve documented VCRDIV read-back conflict (B.2 lower-word R/W versus 10.2.4 reserved read-zero prose) and corroborate FMR/division result mirror extensions; no guessed change.
 - [ ] DIVU: the extra cycle of a read directly after a write to a division register (manual 10.4.1) needs a hardware test
 - [ ] On-chip register access time (waits for the probe)
 - [ ] Sporadic `asmjit error 26 InvalidInstruction: mov eax, ebx` in the DRC (VF Kids twice under load, once in another branch's old exe). Hardware instability on this machine is suspected (gcc internal compiler errors, a zeroed git index, crashes under load); investigate the DRC only when it reproduces on a quiet machine
