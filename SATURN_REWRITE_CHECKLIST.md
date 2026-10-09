@@ -152,6 +152,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 
 ### 12.1 `sat_console.cpp`
 - [ ] Decap the SH-1 for the CD block (section 8)
+- [x] SCU acknowledgment: use HOLD_LINE so the CPU clears the request synchronously before the vector callback. The old queued CLEAR_LINE allows a DRC handler that immediately lowers SR to accept the same completion repeatedly. `scripts/saturn_scu_irq_test.lua` executes a real SH7604 ISR and three SCU DMA transfers, checking exactly-once acknowledgment, rearm, masked completion, payload and restored SP. Both cores pass; the parent DRC takes the first completion 33 times. A 122-second VF Kids run no longer causes a host compiler fatal, but its guest execution still fails and becomes black, so the game remains open.
 - [ ] IRQs: some games have problems with timing-accurate IRQs. Plan: list every source (SCU, SH-2 on-chip, SMPC, VDP1/2, SCSP, CD block), verify each edge time against the docs, collect the failing games, fix
 - [ ] ST-V Cart-Dev mode hangs even with the `-dev` BIOS; IC13 games on the dev BIOS do not load
 - [ ] SCU DSP "fair share of issues" (section 12.4)

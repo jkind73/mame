@@ -1243,14 +1243,14 @@ void saturn_scu_device::test_pending_irqs()
 	{
 		m_current_irq_level = irq_level[internal];
 		m_current_vector = 0x40 + internal;
-		m_hostcpu->set_input_line(m_current_irq_level, ASSERT_LINE);
+		m_hostcpu->set_input_line(m_current_irq_level, HOLD_LINE);
 		m_ist &= ~(1 << internal);
 	}
 	else if (external >= 0)
 	{
 		m_current_irq_level = external_level;
 		m_current_vector = 0x50 + external;
-		m_hostcpu->set_input_line(m_current_irq_level, ASSERT_LINE);
+		m_hostcpu->set_input_line(m_current_irq_level, HOLD_LINE);
 		m_ist &= ~(1 << (16 + external));
 		m_abus_ack_pending |= 1 << external;
 	}
@@ -1258,7 +1258,9 @@ void saturn_scu_device::test_pending_irqs()
 
 IRQ_CALLBACK_MEMBER(saturn_scu_device::irq_ack_cb)
 {
-	m_hostcpu->set_input_line(irqline, CLEAR_LINE);
+	// HOLD_LINE is cleared synchronously by standard_irq_callback, before
+	// this vector callback. Queuing CLEAR_LINE here leaves the request pending
+	// while an SH-2 handler lowers SR, allowing the same request to nest again.
 	m_current_irq_level = 0;
 	return m_current_vector;
 }
