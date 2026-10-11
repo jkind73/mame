@@ -16,10 +16,10 @@
 #include <locale>
 
 
-sh_common_execution::sh_common_execution(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, endianness_t endianness, address_map_constructor internal)
+sh_common_execution::sh_common_execution(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, endianness_t endianness, address_map_constructor internal, size_t code_cache_size)
 	: cpu_device(mconfig, type, tag, owner, clock)
 	, m_sh2_state(nullptr)
-	, m_cache(CACHE_SIZE + sizeof(internal_sh2_state))
+	, m_cache(code_cache_size + sizeof(internal_sh2_state))
 	, m_drcuml(nullptr)
 	, m_drcoptions(0)
 	, m_entry(nullptr)
@@ -2103,6 +2103,7 @@ void sh_common_execution::code_flush_cache()
 		static_generate_nocode_handler();
 		static_generate_out_of_cycles();
 		static_generate_entry_point();
+		static_generate_cpu_helpers();
 
 		/* add subroutines for memory accesses */
 		static_generate_memory_accessor(1, false, "read8", m_read8);
@@ -2430,9 +2431,18 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 		int const unmonitored = compiler.labelnum++;
 		int const monitored = compiler.labelnum++;
 		generate_invalid_access_branch(block, compiler, desc, monitored);
-		UML_TEST(block, mem(&m_instruction_monitor), 1);
-		UML_JMPc(block, COND_NZ, monitored);
-		UML_TEST(block, mem(&m_bus_wait_monitor), 1);
+		// These byte flags normally occupy adjacent addresses. One word load
+		// tests both low bits, in either host byte order, at every instruction.
+		if (reinterpret_cast<uintptr_t>(&m_bus_wait_monitor) == reinterpret_cast<uintptr_t>(&m_instruction_monitor) + 1)
+		{
+			UML_TEST(block, mem(&m_instruction_monitor), ENDIANNESS_NATIVE == ENDIANNESS_LITTLE ? 0x00000101 : 0x01010000);
+		}
+		else
+		{
+			UML_TEST(block, mem(&m_instruction_monitor), 1);
+			UML_JMPc(block, COND_NZ, monitored);
+			UML_TEST(block, mem(&m_bus_wait_monitor), 1);
+		}
 		UML_JMPc(block, COND_Z, unmonitored);
 		UML_LABEL(block, monitored);
 		save_fast_iregs(block);

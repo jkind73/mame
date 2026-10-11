@@ -30,8 +30,8 @@
 
 constexpr int SH2_INT_15 = 15;
 
-sh2_device::sh2_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines, uint32_t address_mask)
-	: sh_common_execution(mconfig, type, tag, owner, clock, ENDIANNESS_BIG, internal_map)
+sh2_device::sh2_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines, uint32_t address_mask, size_t code_cache_size)
+	: sh_common_execution(mconfig, type, tag, owner, clock, ENDIANNESS_BIG, internal_map, code_cache_size)
 	, m_bus_ready(*this)
 	, m_bus_observer(*this)
 	, m_bus_timing(*this)
@@ -214,6 +214,73 @@ void sh2_device::func_cache_access()
 	}
 }
 
+// Cache mismatch is rare, but saving every mapped guest register at every
+// instruction site bloats the translated working set. Share the identical exit.
+void sh2_device::static_generate_cpu_helpers()
+{
+	alloc_handle(m_cached_instruction, "cached_instruction");
+	drcuml_block &block(m_drcuml->begin_block(32));
+	UML_HANDLE(block, *m_cached_instruction);
+	UML_GETEXP(block, I0);
+	save_fast_iregs(block);
+	UML_MOV(block, mem(&m_sh2_state->pc), I0);
+	UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), mem(&m_bus_pending));
+	UML_MOV(block, mem(&m_fetch_reuse), 1);
+	UML_CALLC(block, cfunc_cached_instruction, this);
+	UML_EXIT(block, EXECUTE_OUT_OF_CYCLES);
+	block.end();
+
+	// Instruction fetches dominate cache traffic. A hit needs only the tag
+	// comparisons, the documented LRU update and a cached longword load.
+	// Misses and uncached fetches retain the shared bus/fill implementation.
+	alloc_handle(m_instruction_fetch, "instruction_fetch");
+	drcuml_block &fetch(m_drcuml->begin_block(160));
+	UML_HANDLE(fetch, *m_instruction_fetch);
+	constexpr int slow = 1;
+	if (!m_cache_model)
+		UML_JMP(fetch, slow);
+	UML_TEST(fetch, mem(&m_cache.ccr), sh7604_cache::CCR_CE);
+	UML_JMPc(fetch, COND_Z, slow);
+	UML_MOV(fetch, I0, mem(&m_cache_addr));
+	UML_CMP(fetch, I0, 0x20000000);
+	UML_JMPc(fetch, COND_AE, slow);
+	UML_SHR(fetch, I1, I0, 10);
+	UML_AND(fetch, I1, I1, 0x7ffff);
+	UML_SHR(fetch, I0, I0, 4);
+	UML_AND(fetch, I0, I0, 0x3f);
+	static constexpr uint8_t keep[4] = { 0x07, 0x19, 0x2a, 0x34 };
+	static constexpr uint8_t set[4] = { 0x00, 0x20, 0x14, 0x0b };
+	for (unsigned w = 0; w < 4; ++w)
+	{
+		int const next = 2 + w;
+		UML_SHL(fetch, I3, I0, 2);
+		UML_ADD(fetch, I3, I3, w);
+		UML_LOAD(fetch, I2, &m_cache.valid[0][0], I3, SIZE_BYTE, SCALE_x1);
+		UML_CMP(fetch, I2, 0);
+		UML_JMPc(fetch, COND_E, next);
+		UML_LOAD(fetch, I2, &m_cache.tag[0][0], I3, SIZE_DWORD, SCALE_x4);
+		UML_CMP(fetch, I2, I1);
+		UML_JMPc(fetch, COND_NE, next);
+		UML_LOAD(fetch, I2, &m_cache.lru[0], I0, SIZE_BYTE, SCALE_x1);
+		UML_AND(fetch, I2, I2, keep[w]);
+		UML_OR(fetch, I2, I2, set[w]);
+		UML_STORE(fetch, &m_cache.lru[0], I0, I2, SIZE_BYTE, SCALE_x1);
+		UML_SHL(fetch, I3, I3, 2);
+		UML_SHR(fetch, I2, mem(&m_cache_addr), 2);
+		UML_AND(fetch, I2, I2, 3);
+		UML_ADD(fetch, I3, I3, I2);
+		UML_LOAD(fetch, I2, &m_cache.line[0][0][0], I3, SIZE_DWORD, SCALE_x4);
+		UML_MOV(fetch, mem(&m_fetch_data), I2);
+		UML_MOV(fetch, mem(&m_fetch_cached), 1);
+		UML_RET(fetch);
+		UML_LABEL(fetch, next);
+	}
+	UML_LABEL(fetch, slow);
+	UML_CALLC(fetch, cfunc_cache_access, this);
+	UML_RET(fetch);
+	fetch.end();
+}
+
 // Instruction fetches (DRC), by the interpreter's rule: a fetch for every
 // instruction that starts a longword, and for one in the second half of a
 // longword when the previous instruction was not the one just before it
@@ -260,7 +327,7 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 	}
 	UML_MOV(block, mem(&m_cache_addr), desc->pc & ~3);
 	UML_MOV(block, mem(&m_cache_op), timed ? 4 : 2);  // 4: from the cache when it is on, else from the bus
-	UML_CALLC(block, cfunc_cache_access, this);
+	UML_CALLH(block, *m_instruction_fetch);
 	UML_LABEL(block, skip);
 	UML_MOV(block, mem(&m_fetch_pc), desc->pc);
 	if (cached)
@@ -273,18 +340,14 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 		UML_AND(block, I0, I0, 0xffff);
 		UML_CMP(block, I0, desc->opptr);
 		UML_JMPc(block, COND_E, matches);
-		save_fast_iregs(block);
-		UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);
-		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), compiler.cycles - desc->cycles);
+		UML_MOV(block, mem(&m_bus_pending), compiler.cycles - desc->cycles);
 		// A native branch may already have executed before its cached delay slot
 		// differs. Preserve that branch's target when handing the slot to the interpreter.
 		if (ovrpc == SH_OVRPC_DYNAMIC)
 			UML_MOV(block, mem(&m_sh2_state->m_delay), mem(&m_sh2_state->target));
 		else if (ovrpc != SH_OVRPC_NONE)
 			UML_MOV(block, mem(&m_sh2_state->m_delay), ovrpc + 2);
-		UML_MOV(block, mem(&m_fetch_reuse), 1);
-		UML_CALLC(block, cfunc_cached_instruction, this);
-		UML_EXIT(block, EXECUTE_OUT_OF_CYCLES);
+		UML_EXH(block, *m_cached_instruction, desc->pc);
 		UML_LABEL(block, uncached);
 		UML_MOV(block, mem(&m_fetch_cached), 0);
 		UML_LABEL(block, matches);
@@ -1114,8 +1177,56 @@ void sh2_device::static_generate_memory_accessor(int size, int iswrite, const ch
 		}
 		else
 		{
+			// Preserve the accessor's scratch-register contract while serving
+			// data hits in generated code, just as instruction hits are served.
+			UML_DMOV(block, mem(&m_cache_scratch[0]), I1);
+			UML_DMOV(block, mem(&m_cache_scratch[1]), I2);
+			UML_DMOV(block, mem(&m_cache_scratch[2]), I3);
+			UML_SHR(block, I1, I0, 10);
+			UML_AND(block, I1, I1, 0x7ffff);
+			UML_SHR(block, I0, I0, 4);
+			UML_AND(block, I0, I0, 0x3f);
+			int const cache_done = label++;
+			static constexpr uint8_t keep[4] = { 0x07, 0x19, 0x2a, 0x34 };
+			static constexpr uint8_t set[4] = { 0x00, 0x20, 0x14, 0x0b };
+			for (unsigned w = 0; w < 4; ++w)
+			{
+				int const next = label++;
+				UML_SHL(block, I3, I0, 2);
+				UML_ADD(block, I3, I3, w);
+				UML_LOAD(block, I2, &m_cache.valid[0][0], I3, SIZE_BYTE, SCALE_x1);
+				UML_CMP(block, I2, 0);
+				UML_JMPc(block, COND_E, next);
+				UML_LOAD(block, I2, &m_cache.tag[0][0], I3, SIZE_DWORD, SCALE_x4);
+				UML_CMP(block, I2, I1);
+				UML_JMPc(block, COND_NE, next);
+				UML_LOAD(block, I2, &m_cache.lru[0], I0, SIZE_BYTE, SCALE_x1);
+				UML_AND(block, I2, I2, keep[w]);
+				UML_OR(block, I2, I2, set[w]);
+				UML_STORE(block, &m_cache.lru[0], I0, I2, SIZE_BYTE, SCALE_x1);
+				UML_SHL(block, I3, I3, 2);
+				UML_SHR(block, I2, mem(&m_cache_addr), 2);
+				UML_AND(block, I2, I2, 3);
+				UML_ADD(block, I3, I3, I2);
+				UML_LOAD(block, I0, &m_cache.line[0][0][0], I3, SIZE_DWORD, SCALE_x4);
+				if (size != 4)
+				{
+					UML_AND(block, I2, mem(&m_cache_addr), 3);
+					UML_SUB(block, I2, 4 - size, I2);
+					UML_SHL(block, I2, I2, 3);
+					UML_SHR(block, I0, I0, I2);
+					UML_AND(block, I0, I0, size == 1 ? 0xff : 0xffff);
+				}
+				UML_MOV(block, mem(&m_cache_data), I0);
+				UML_JMP(block, cache_done);
+				UML_LABEL(block, next);
+			}
 			UML_CALLC(block, cfunc_cache_access, this);
 			UML_MOV(block, I0, mem(&m_cache_data));
+			UML_LABEL(block, cache_done);
+			UML_DMOV(block, I1, mem(&m_cache_scratch[0]));
+			UML_DMOV(block, I2, mem(&m_cache_scratch[1]));
+			UML_DMOV(block, I3, mem(&m_cache_scratch[2]));
 			UML_RET(block);
 		}
 		UML_LABEL(block, nocache);

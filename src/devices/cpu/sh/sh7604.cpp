@@ -31,8 +31,10 @@ static constexpr int wdtclk_tab[8] = { 1, 6, 7, 8, 9, 10, 12, 13 };
 DEFINE_DEVICE_TYPE(SH7604,  sh7604_device,  "sh2_7604",  "Hitachi SH-2 (SH7604)")
 
 
+// Cache/fetch monitoring enlarges translated code. VF2 exceeds a 32 MiB host
+// cache and repeatedly recompiles its working set; this is not the guest cache.
 sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: sh2_device(mconfig, SH7604, tag, owner, clock, CPU_TYPE_SH2, address_map_constructor(FUNC(sh7604_device::sh7604_map), this), 32, 0xc7ffffff)
+	: sh2_device(mconfig, SH7604, tag, owner, clock, CPU_TYPE_SH2, address_map_constructor(FUNC(sh7604_device::sh7604_map), this), 32, 0xc7ffffff, 256 * 1024 * 1024)
 	, m_smr(0), m_brr(0), m_scr(0), m_tdr(0), m_ssr(0)
 	, m_sci_tx(*this), m_sci_txd(*this), m_sci_sck(*this)
 	, m_ftoa(*this), m_ftob(*this)

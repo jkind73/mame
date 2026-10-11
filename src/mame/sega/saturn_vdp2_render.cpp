@@ -14,6 +14,7 @@
 #include "saturn_vdp_log.h"
 
 #include <algorithm>
+#include <type_traits>
 
 namespace saturn_vdp2_render {
 
@@ -434,13 +435,25 @@ uint32_t renderer::pn_address(nbg_params const &p, geometry const &g, uint32_t s
 // colour format; `pal` is the palette number already in colour code position.
 renderer::layer_dot renderer::make_dot(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const
 {
+	switch (p.cf) {
+	case 0: return make_dot_depth<0>(d, p, raw, pal, pr, cc);
+	case 1: return make_dot_depth<1>(d, p, raw, pal, pr, cc);
+	case 2: return make_dot_depth<2>(d, p, raw, pal, pr, cc);
+	case 3: return make_dot_depth<3>(d, p, raw, pal, pr, cc);
+	default: return make_dot_depth<4>(d, p, raw, pal, pr, cc);
+	}
+}
+
+template <unsigned ColourDepth>
+inline renderer::layer_dot renderer::make_dot_depth(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const
+{
 	layer_dot out;
 	unsigned code = 0;
 	bool opaque = true;
 	bool palette = true;
 	uint32_t rgb = 0;
 
-	switch (p.cf) {
+	switch (ColourDepth) {
 	case 0: {
 		unsigned const dot = raw & 0xf;
 		opaque = dot || p.ctl.tpon;
@@ -678,19 +691,34 @@ void renderer::draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s)
 	// Output stage: dot j of screen cycle g reads the buffers of cycles g and g + 1
 	// through an accumulator that starts at the cycle's source X modulo 8 and adds
 	// the horizontal increment per dot (VDP2.sv 2997-3135).
-	for (unsigned x = 0; x < m_cfg.width; x++) {
-		unsigned const sample_x = x - x % mosaic_h;
-		int const cycle = sample_x >> 3;
-		int64_t const cycle_x = start_x + int64_t(cycle) * 8 * inc_x;
-		uint32_t const offset = uint32_t(((cycle_x & 0x7ffff) + int64_t(sample_x & 7) * inc_x) >> 16);
-		f::dot_ref const ref = f::select_dot(n, p.cf, reduction, offset);
-		if (cycle + int(ref.buffer) < cycles) {
-			f::cycle_dots const &dots = m_fetched[cycle + ref.buffer];
-			f::pattern_name const &attr = dots.attr[ref.cell];
-			s.line[x] = make_dot(d, p, dots.dot[ref.cell][ref.dot], attr.palette, attr.priority, attr.colour_calc);
-		} else {
-			s.line[x] = layer_dot();
+	auto const output = [&](auto depth) {
+		constexpr unsigned colour_depth = decltype(depth)::value;
+		unsigned const cell_bits = (n < 2 && colour_depth < 2 && reduction.half) ? 1 :
+			(n < 2 && colour_depth == 0 && reduction.quarter) ? 2 : 0;
+		unsigned const cell_mask = (1U << cell_bits) - 1;
+		for (unsigned x = 0; x < m_cfg.width; x += mosaic_h) {
+			unsigned const sample_x = x;
+			int const cycle = sample_x >> 3;
+			int64_t const cycle_x = start_x + int64_t(cycle) * 8 * inc_x;
+			uint32_t const offset = uint32_t(((cycle_x & 0x7ffff) + int64_t(sample_x & 7) * inc_x) >> 16);
+			f::dot_ref const ref{ (offset >> (3 + cell_bits)) & 1, (offset >> 3) & cell_mask, offset & 7 };
+			layer_dot dot;
+			if (cycle + int(ref.buffer) < cycles) {
+				f::cycle_dots const &dots = m_fetched[cycle + ref.buffer];
+				f::pattern_name const &attr = dots.attr[ref.cell];
+				dot = make_dot_depth<colour_depth>(d, p, dots.dot[ref.cell][ref.dot], attr.palette, attr.priority, attr.colour_calc);
+			}
+			// Mosaic repeats an already sampled dot. Sampling once per group also
+			// avoids a variable-width division at every dot when mosaic is off.
+			std::fill_n(&s.line[x], std::min(mosaic_h, m_cfg.width - x), dot);
 		}
+	};
+	switch (p.cf) {
+	case 0: output(std::integral_constant<unsigned, 0>{}); break;
+	case 1: output(std::integral_constant<unsigned, 1>{}); break;
+	case 2: output(std::integral_constant<unsigned, 2>{}); break;
+	case 3: output(std::integral_constant<unsigned, 3>{}); break;
+	default: output(std::integral_constant<unsigned, 4>{}); break;
 	}
 	s.have_line = true;
 }
@@ -1256,6 +1284,7 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	bool boken_prev1 = false, boken_prev2 = false;
 	rgb csec_prev1, csec_prev2;
 	bool const exccen = d.exccen && !d.boken;
+	bool const extended_colour = !hires && !m_cfg.exclusive && (exccen || d.boken);
 
 	auto const to_rgb = [](uint32_t c) { return rgb{ uint8_t(c >> 16), uint8_t(c >> 8), uint8_t(c) }; };
 	auto const from_rgb = [](rgb c) { return (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | c.b; };
@@ -1289,6 +1318,18 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 	bk_base.cosl = d.bkcosl;
 	bk_base.dc = m_back;
 
+	// Without colour effects or a shadow dot only the highest-priority image
+	// contributes. Select that image directly instead of constructing all three
+	// stack positions and their unused colour-calculation attributes.
+	bool plain_priority = !extended_colour && !d.bkcoen && !d.sp.ccen && !d.sp.coen;
+	if (r0_active)
+		plain_priority &= !d.rbg[0].ctl.ccen && !d.rbg[0].ctl.coen;
+	for (unsigned i = 0; i < num_active_nbg; ++i) {
+		unsigned const n = active_nbg[i];
+		layer_ctl const &c = (n == 0 && d.r1on) ? d.rbg[1].ctl : d.nbg[n].ctl;
+		plain_priority &= !c.ccen && !c.coen;
+	}
+
 	for (unsigned x = 0; x < width; x++) {
 		sprite_dot const sd = decode_sprite(d, m_cfg.fb_rotate ? sprite.sprite_word_rotated(m_spr_x[x >> (hires ? 1 : 0)], m_spr_y[x >> (hires ? 1 : 0)]) : sprite.sprite_word(x, y));
 		bool const spwin = d.sp_winen;
@@ -1298,6 +1339,38 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		};
 		bool const ccw = hidden(d.ccwin);
 		bool const bok_ok = d.boken && d.crmd == 0;
+		if (plain_priority && !sd.sd) {
+			unsigned priority = 0;
+			uint32_t colour = m_back;
+			bool const sprite_on = !sd.tp && !hidden(d.sp.win);
+			if (!sd.tp)
+				vdp_stat(stat_sprite_dots);
+			if (sprite_on)
+				vdp_stat(stat_sprite_shown);
+			if (sprite_on && d.sp_pri[sd.pr] != 0) {
+				priority = d.sp_pri[sd.pr];
+				bool msb;
+				colour = sd.palette ? cram_rgb(d.crmd, (sd.dc + (d.sp_caos << 8)) & 0x7ff, msb) : sd.dc;
+			}
+			auto const select = [&](nbg_params const &p, layer_dot const &dot) {
+				if (!dot.opaque)
+					return;
+				unsigned const candidate = layer_priority(d, p.ctl, dot.pr, dot.code);
+				if (candidate > priority && !hidden(p.ctl.win)) {
+					priority = candidate;
+					colour = dot.rgb;
+				}
+			};
+			if (r0_active)
+				select(d.rbg[0], m_rbg[0][x]);
+			for (unsigned i = 0; i < num_active_nbg; ++i) {
+				unsigned const n = active_nbg[i];
+				bool const rot = n == 0 && d.r1on;
+				select(rot ? d.rbg[1] : d.nbg[n], rot ? m_rbg[1][x] : m_nbg[n].line[x]);
+			}
+			dest[x] = colour;
+			continue;
+		}
 
 		// sprite
 		unsigned const sprin = d.sp_pri[sd.pr];
@@ -1380,6 +1453,12 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 
 		// dots taking part in the mix (VDP2.sv 3396-3420)
 		screen_dot const first = st.dot[0];
+		// With no mix, offset, shadow or neighbour history, the second images
+		// cannot affect this dot. Keep the full path for all extended/gradation cases.
+		if (!extended_colour && !first.ccen && !first.coen && !first.sden) {
+			dest[x] = first.dc;
+			continue;
+		}
 		screen_dot sec, thd, fth;
 		if (first.boken) {
 			sec = thd = fth = first;
@@ -1409,7 +1488,7 @@ void renderer::render_line(unsigned y, sprite_source const &sprite, uint32_t *de
 		// Extended colour calculation is unavailable in high resolution and dedicated
 		// monitor modes, and normal colour calculation with a palette second image
 		// only works with colour RAM mode 0 there (ST-058 12.1 / 12.2, Table 12.1)
-		if (!hires && !m_cfg.exclusive && (exccen || d.boken)) {
+		if (extended_colour) {
 			rgb const cthd = boken_prev1 ? csec_prev1 : to_rgb(thd.dc);
 			rgb const cfth = boken_prev2 ? csec_prev2 : to_rgb(fth.dc);
 			csec = ext_color_calc(csec, sec.ccen, cthd, thd.palette, thd.ccen, cfth, fth.palette, first.lcen, sec.boken, d.crmd, exccen);

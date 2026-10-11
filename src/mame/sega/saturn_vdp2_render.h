@@ -261,6 +261,8 @@ private:
 	static uint32_t pn_address(nbg_params const &p, struct geometry const &g, uint32_t sx, uint32_t sy);
 	static saturn_vdp2_fetch::schedule fetch_schedule(decoded const &d);
 	layer_dot make_dot(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const;
+	template <unsigned ColourDepth>
+	layer_dot make_dot_depth(decoded const &d, nbg_params const &p, uint32_t raw, unsigned pal, bool pr, bool cc) const;
 	void draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s);
 	layer_dot nbg_dot(decoded const &d, nbg_params const &p, geometry const &g, uint32_t sx, uint32_t sy, int repeat_pn, bool rdbs_gated = false) const;
 	static bool rdbs_allows(decoded const &d, uint32_t address, unsigned role);

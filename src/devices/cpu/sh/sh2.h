@@ -37,7 +37,7 @@ public:
 protected:
 	class sh2_frontend;
 
-	sh2_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines, uint32_t address_mask);
+	sh2_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines, uint32_t address_mask, size_t code_cache_size = CACHE_SIZE);
 	virtual ~sh2_device();
 
 	void check_pending_irq(const char *message);
@@ -88,6 +88,9 @@ protected:
 	uint32_t m_fetch_pc = ~0U;      // PC of the previous instruction fetch
 	uint32_t m_fetch_data = 0;     // prefetched instruction longword
 	uint32_t m_fetch_cached = 0; // accessed by 32-bit UML operations
+	uml::code_handle *m_cached_instruction = nullptr; // shared rare cache-mismatch exit
+	uml::code_handle *m_instruction_fetch = nullptr; // native cache-hit fetch, C++ miss handling
+	uint64_t m_cache_scratch[3] = {}; // transient UML registers preserved by read accessors
 	uint32_t m_fetch_reuse = 0;    // DRC already fetched the interpreter fallback instruction
 
 	bool cache_area(offs_t address) const { return m_cache_model && address < 0x20000000 && m_cache.enabled(); }
@@ -147,6 +150,7 @@ private:
 	virtual const opcode_desc* get_desclist(offs_t pc) override;
 
 	virtual void generate_update_cycles(drcuml_block &block, compiler_state &compiler, uml::parameter param, bool allow_exception) override;
+	virtual void static_generate_cpu_helpers() override;
 	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start, uint32_t ovrpc) override;
 	virtual void static_generate_entry_point() override;
 	virtual void static_generate_memory_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr) override;

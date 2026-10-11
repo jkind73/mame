@@ -31,6 +31,7 @@
 #include "saturn.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <utility>
 
@@ -275,13 +276,22 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 	auto const first_meeting = [&] (unsigned o)
 	{
 		auto &other = m_sh2_bus_log[o];
-		return std::lower_bound(other.begin(), other.end(), start - m_sh2_bus_debt[o],
+		attotime const threshold = start - m_sh2_bus_debt[o];
+		// The CPUs run successive slices. Most searches therefore fall wholly
+		// before or after the peer's history; avoid walking the deque in these
+		// cases, using exactly the binary search's end-time comparison.
+		if (other.empty() || other.back().end <= threshold)
+			return other.end();
+		if (other.front().end > threshold)
+			return other.begin();
+		return std::lower_bound(other.begin(), other.end(), threshold,
 				[] (const bus_interval &i, const attotime &t) { return i.end <= t; });
 	};
 
 	// first wait for every interval that got the bus first; waiting for one can move the access
 	// into another's
 	bool held[BUS_REQUESTERS] = {}; // requester o held the bus until start
+	std::array<decltype(log.begin()), BUS_REQUESTERS> meetings;
 	for (bool moved = true; moved; )
 	{
 		moved = false;
@@ -289,7 +299,8 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 		{
 			if (o == requester)
 				continue;
-			for (auto it = first_meeting(o); it != m_sh2_bus_log[o].end(); ++it)
+			meetings[o] = first_meeting(o);
+			for (auto it = meetings[o]; it != m_sh2_bus_log[o].end(); ++it)
 			{
 				bus_interval const i = shifted(o, *it);
 				if (i.end <= start)
@@ -311,7 +322,9 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 	{
 		if (o == requester)
 			continue;
-		for (auto it = first_meeting(o); it != m_sh2_bus_log[o].end(); ++it)
+		// The final wait pass did not move start, so its search result is
+		// still exact. No peer history changes between these two passes.
+		for (auto it = meetings[o]; it != m_sh2_bus_log[o].end(); ++it)
 		{
 			bus_interval const i = shifted(o, *it);
 			if (i.end <= start)

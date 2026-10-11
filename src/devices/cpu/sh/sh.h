@@ -194,7 +194,7 @@ protected:
 	class frontend;
 	class opcode_desc;
 
-	sh_common_execution(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, endianness_t endianness, address_map_constructor internal);
+	sh_common_execution(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, endianness_t endianness, address_map_constructor internal, size_t code_cache_size = CACHE_SIZE);
 
 	void ADD(uint32_t m, uint32_t n);
 	void ADDI(uint32_t i, uint32_t n);
@@ -455,6 +455,7 @@ public:
 	void sh2drc_add_pcflush(offs_t address);
 
 	virtual void static_generate_entry_point() = 0;
+	virtual void static_generate_cpu_helpers() { }
 	virtual void static_generate_memory_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr) = 0;
 	virtual const opcode_desc* get_desclist(offs_t pc) = 0;
 

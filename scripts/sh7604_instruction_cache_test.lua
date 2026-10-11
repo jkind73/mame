@@ -58,7 +58,38 @@ local function run()
  -- Purging removes the private instruction and refills from RAM.
  mem:write_u8(0xfffffe92,0x11);cpu.state.R7.value=0;cpu.state.CURPC.value=pc;emu.wait(0.0001)
  assert(cpu.state.R7.value==7,'purged instruction did not refill from RAM')
- print('SH7604_INSTRUCTION_CACHE_PASS private cached opcode, cache-through, purge/refill')
+ -- Native data-hit reads must select every way, preserve endian lanes and
+ -- update the real LRU even when RAM disagrees with the private cache.
+ local data=0x06009010
+ local lru={0x00,0x20,0x14,0x0b}
+ for way=0,3 do
+  for size=1,4 do if size~=3 then
+   for offset=0,4-size,size do
+    mem:write_u8(0xfffffe92,0x11|(way<<6))
+    mem:write_u32(data|0x20000000,0xdeadbeef)
+    mem:write_u32(0xc0000010+way*0x400,0x8122ee44)
+    mem:write_u32(0x66009014,0)
+    mem:write_u32(pc|0x20000000,((0x6710+(size==1 and 0 or size==2 and 1 or 2))<<16)|0xaffe)
+    mem:write_u32((pc+4)|0x20000000,0x00090009)
+    cpu.state.R1.value=data+offset;cpu.state.R7.value=0;cpu.state.CURPC.value=pc|0x20000000
+    emu.wait(0.0001)
+    local expected=(0x8122ee44>>((4-size-offset)*8))&((size==4)and 0xffffffff or ((1<<(size*8))-1))
+    if size<4 and (expected&(1<<(size*8-1)))~=0 then expected=expected|((0xffffffff<<(size*8))&0xffffffff)end
+    assert((cpu.state.R7.value&0xffffffff)==expected,'cached data lane mismatch')
+    assert((mem:read_u32(0x66009010)&0x3f0)==(lru[way+1]<<4),'cached data LRU mismatch')
+   end
+  end end
+ end
+ -- A store to CCR can switch the instruction source inside a sequence.
+ -- The following RAM opcode must execute, rather than the cached copy.
+ mem:write_u32(pc,0xe0002100);mem:write_u32(pc+4,0xe709affe);mem:write_u32(pc+8,0x00090009)
+ mem:write_u8(0xfffffe92,0x11)
+ mem:write_u32(0xc0000000,0xe0002100);mem:write_u32(0xc0000004,0xe72aaffe);mem:write_u32(0xc0000008,0x00090009)
+ mem:write_u32(0x66008004,0)
+ cpu.state.R1.value=0xfffffe92;cpu.state.R7.value=0;cpu.state.CURPC.value=pc
+ emu.wait(0.0001)
+ assert(cpu.state.R7.value==9 and mem:read_u8(0xfffffe92)==0,'CCR switch reused cached opcode after disabling CE')
+ print('SH7604_INSTRUCTION_CACHE_PASS private cached opcode, cache-through, purge/refill, data lanes and CCR switch')
 end
 thread=coroutine.create(function()local ok,err=pcall(run);if not ok then print('SH7604_INSTRUCTION_CACHE_FAIL '..tostring(err))end;m:exit()end)
 coroutine.resume(thread)

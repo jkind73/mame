@@ -27,8 +27,6 @@
 #include "screen.h"
 
 
-#include <deque>
-
 class saturn_state : public driver_device
 {
 public:
@@ -78,7 +76,7 @@ protected:
 	// SH-2 external bus timing and master/slave arbitration (saturn_bus.cpp)
 	using bus_interval = saturn_bus::interval;
 	static constexpr unsigned BUS_REQUESTERS = saturn_bus::REQUESTERS;
-	std::deque<bus_interval> m_sh2_bus_log[BUS_REQUESTERS]; // the intervals each requester held the bus, oldest first
+	saturn_bus::interval_history m_sh2_bus_log[BUS_REQUESTERS]; // the intervals each requester held the bus, oldest first
 	attotime m_sh2_bus_debt[BUS_REQUESTERS];                // the delay it owes for accesses it ran past
 	attotime m_sh2_bus_debt_from[BUS_REQUESTERS] = { attotime::never, attotime::never, attotime::never, attotime::never };
 	attotime m_bsc_last_end[2];       // per CPU: when its last bus access ended,
