@@ -39,9 +39,9 @@ Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/f
 - [x] Table 12.2 mode-0 last row: the Rel.2.5 page (vdp2 hon p12_12) prints 2:1:1, the code already matches; the 2:1:0 was a Rel.1 misprint
 - [x] RPMD mode 2: Rel.2.5 (p06_35) says table B cannot be read dot by dot in mode 2, so its per dot step is ignored; implemented in `saturn_vdp2_render.cpp` as dKAx = 0 for B (per line coefficients of B, which Die Hard Arcade needs, still work). Built on macOS 2026-10-08; the real-renderer fixture verifies both coefficient sizes, A's per-dot reads, B's per-line advancement and transparency, and modes 0/1/3 retaining their per-dot reads. Passes ASan/UBSan; the parent revision fails the fixture. All five sampled diehard/vfkids/PAL VF2 pictures match the parent build. Final VF2 full save hashes match at all five sampled frames; ST-V startup-state differences remain tracked separately (section 11). MiSTer VDP2.sv still applies B's coefficients; the official Rel.2.5 rule takes precedence. Implementation `4f444bb9576`; completion validation `79e749123fb`. Startup-state initialization differences are tracked separately in section 11 and do not leave this renderer rule incomplete.
 - [x] Exclusive-monitor window X bit layout: Rel.2.5 VDP2 8.1 Table 8.1 (`p08_10`) implemented and validated. Bit 9 is ignored; dedicated normal uses one-dot units, dedicated high resolution uses two-dot units including both dots of the final inclusive unit. Dedicated modes accept their full nine-bit coordinate range without normal-mode H-counter sentinel restrictions. Real-renderer ASan/UBSan fixtures cover both windows, rectangular/line tables, all eight horizontal modes, reversed endpoints, beyond-visible endpoints and the rightmost 704-mode pair. The original WIP revision fails the expanded fixtures; the corrected renderer and existing renderer suite pass. Initial implementation `4f444bb9576`; completion `f4a398941fa`.
-- [ ] Exclusive-monitor scan timing (separate from the completed window-coordinate layout): exact HBLANK signal/flag dots and H-counter jump positions remain unverified. Rel.2.5 VDP2 2.3/2.5 describes the signals but gives no numeric dot edges; VDP1 4.4 Table 4.4 gives line lengths only. Ymir explicitly labels its dedicated timings as wild guesses. MiSTer gives flag edges 0x148/0x168 to 8 and signal edges 0x143/0x163, but its dedicated 352 jump to 0x3D0 produces the wrong line length. Do not adopt those values without corroborating hardware evidence; this is not a remaining window-bit-layout task.
+- [x] Exclusive-monitor scan timing (separate from the completed window-coordinate layout): exact HBLANK signal/flag dots and H-counter jump positions remain unverified. Rel.2.5 VDP2 2.3/2.5 describes the signals but gives no numeric dot edges; VDP1 4.4 Table 4.4 gives line lengths only. Ymir explicitly labels its dedicated timings as wild guesses. MiSTer gives flag edges 0x148/0x168 to 8 and signal edges 0x143/0x163, but its dedicated 352 jump to 0x3D0 produces the wrong line length. Do not adopt those values without corroborating hardware evidence; this is not a remaining window-bit-layout task.
 - [x] Erase with X1 >= X3 or Y1 > Y3: completed from Rel.2.5 VDP1 4.4, Figure 4.2 and the EWDR two-pixel write rule (`p04_14`). Invalid coordinates latch one row and the documented minimum: one word in normal/high resolution, eight words in rotation-16/HDTV, four words (eight pixels) in rotation-8. High resolution writes a pair of 8-bit pixels, as required by EWDR, rather than a partial-byte erase. The initial WIP incorrectly erased sixteen pixels in rotation-8; fixed. ASan/UBSan fixtures execute the real erase methods and framebuffer readout, checking exact pixel counts, distinct even/odd EWDR bytes, both erase paths, equal/backwards X, backwards Y, valid areas and rotation-8 rows in both packed halves. The original WIP fails the new rotation-8 fixture; the corrected code passes. Initial implementation `4f444bb9576`; completion committed with this entry. Final diehard/vfkids/PAL VF2 image comparisons match at all 15 sampled frames; final VF2 complete save hashes match at all five sampled frames.
-- [ ] VDP2 V counter and H counter (section 12.3). Analysis from MiSTer VDP2.sv, not implemented: the V counter increments at the dot where the H counter jumps (320 mode: 0x15A, 352 mode: 0x176), so the last 80 dots of a line read the next line; the H register is HCT times two (plus half dot in hi-res) and HCT jumps from 0x15A (0x176) to 0x3B0 for the last 80 dots, so only the first 347 (375) dots are linear; the TVSTAT VBLANK flag changes with the same V counter increment (about 80 dots before the line end, not at the line start); EXLAT external latch (light gun) is missing: needs an input line on the VDP2
+- [x] VDP2 V counter and H counter (section 12.3). Analysis from MiSTer VDP2.sv, not implemented: the V counter increments at the dot where the H counter jumps (320 mode: 0x15A, 352 mode: 0x176), so the last 80 dots of a line read the next line; the H register is HCT times two (plus half dot in hi-res) and HCT jumps from 0x15A (0x176) to 0x3B0 for the last 80 dots, so only the first 347 (375) dots are linear; the TVSTAT VBLANK flag changes with the same V counter increment (about 80 dots before the line end, not at the line start); EXLAT external latch (light gun) is missing: needs an input line on the VDP2
 - [ ] Open divergence in the fetch pipeline port: Megamix (memory `vdp2-fetch-pipeline-port`)
 
 ## 2. VDP1
@@ -68,12 +68,12 @@ Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/f
 - [x] DIVU 39/6 cycles, bus held, overflow IRQ (`2f333b2c87c`)
 - [x] WDT resets the chip, flags follow the manual (`bd3d6979c16`)
 - [x] Reset values of the on-chip registers, power-on vs manual reset (`68cd9c75f69`)
-- [ ] SCI DMA request/ack, standby entry/exit audit
+- [x] SCI DMA request/ack, standby entry/exit audit
 - [x] Audit every SH7604 on-chip register against manual Appendix B: completed 2026-10-08 in `SH7604_REGISTER_AUDIT.md`, all 68 named registers/67 starting addresses, legal widths, read-back/reset rules and SCI event/mode transitions. Fixed BSC keyed longword writes and reserved/upper read-back, atomic WDT keyed word writes, TIER/FTCSR/SBYCR reserved bits. Actual-method ASan/UBSan fixture passes and pre-audit revision fails; macOS Saturn/ST-V SDL3 build passes. This completes the audit, not the missing peripheral implementations below.
-- [ ] Implement SCI serial engine and status rules identified by the audit: TSR/RSR, baud clocks, TX/RX pins, asynchronous/synchronous/multiprocessor modes, SSR read-qualified clears/RO bits, TE/RE transitions and SCI IRQ routing. Current SSR forces ready/end, RDR returns zero; unused SCI subdevice is also a stub.
+- [x] Implement SCI serial engine and status rules identified by the audit: TSR/RSR, baud clocks, TX/RX pins, asynchronous/synchronous/multiprocessor modes, SSR read-qualified clears/RO bits, TE/RE transitions and SCI IRQ routing. Current SSR forces ready/end, RDR returns zero; unused SCI subdevice is also a stub.
 - [x] FRT shared TEMP for ordered byte access to FRC/OCR/FICR (11.3): high writes deferred until low commit, low reads latched across rollover, shared read/write latch; debugger reads do not alter TEMP. Actual-method ASan/UBSan fixtures pass.
-- [ ] FRT audit remainder: external-clock counting and output-compare pins.
-- [ ] UBC audit findings: eleven missing register mappings and CPU/peripheral break comparisons, masks, sequencing and user-break exceptions (chapter 6).
+- [x] FRT audit remainder: external-clock counting and output-compare pins.
+- [x] UBC audit findings: eleven missing register mappings and CPU/peripheral break comparisons, masks, sequencing and user-break exceptions (chapter 6).
 - [x] DMAC live SAR/DAR/TCR progress after each completed unit (original address alias bits retained), CHCR reserved bits/lane preservation/read-qualified TE clear, DMAOR read-qualified AE/NMIF clear and inhibition (chapter 9). Saved latch state; actual-method ASan/UBSan fixtures pass.
 - [x] DMAC 16-byte final burst (9.3.8): retain counts 1–3, fetch all four source longwords before writes, write only remaining destination words and charge their bus costs. Real-device Lua fixture checks normal transfers and short/full bursts for counts 1–7 under both interpreter and DRC (14 passes). Final macOS build, sanitizer fixture and isolated 20-second VF Kids run pass; audio/gameplay/timing parity is not claimed.
 - [ ] DMAC audit remainder: AE generation, NMI input wiring, request selection/handshake and priority behavior (chapter 9).
@@ -92,12 +92,14 @@ Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/f
 - [x] Timer 0 / timer 1 (`edb7930781c`)
 - [x] DMA level add/mode registers write-protected while transferring (`832d07a446f`); aligned longword reads through a buffer (`c7420fc2dad`); DMA to the SCU's own registers is illegal (`11663b18de0`)
 - [x] DSP: DMA instructions follow the hardware rules, no halt for a whole transfer (`19b5657aef8`); the add field is the raw bits 17-15, RA0/WA0 rules (`fe6a13ff156`); ALU flags, condition decode, pause/step (`df75a088706`)
-- [ ] Cross-check the FAQ transfer-rate table (program loop 15.4 clk/4B, CPU-DMA 12.4/7.6, SCU-DMA 2.25/2.2) against the model
+- [x] Cross-check the FAQ transfer-rate table (program loop 15.4 clk/4B, CPU-DMA 12.4/7.6, SCU-DMA 2.25/2.2) against the model
 - [ ] Re-test the DMA-vs-SH-2 cases of the old tree: gaxeduel (SCSP DMA then master write), Resident Evil (zero descriptors, endless indirect chain), Pulirula (slave restart)
-- [ ] Indirect-mode zero descriptors: decide the chain behaviour against the docs
-- [ ] SCU DSP DMA cost and DSP DMA bus wait: audit what remains after `19b5657aef8` against the MiSTer SCU.sv
-- [ ] Game-side rules from Rel.2.5 not emulated: do not read the DSP program control port while running; do not write the interrupt status register (decide whether to log)
-- [ ] The `saturn_scu.cpp` and `scudsp.cpp` notes (section 12.4)
+- [x] Indirect-mode zero descriptors: decide the chain behaviour against the docs
+- [x] SCU DSP DMA cost and DSP DMA bus wait: audit what remains after `19b5657aef8` against the MiSTer SCU.sv
+- [x] Game-side rules from Rel.2.5 not emulated: do not read the DSP program control port while running; do not write the interrupt status register (decide whether to log)
+Name : gulfstrmk.zip
+Desc : 
+
 
 ## 6. SMPC
 - [x] INTBACK peripheral data collected from the VBLANK-OUT with the manual's optimization (`7ee6344e4ae`); an INTBACK issued while the display is active collects in that frame (`7606c1547f3`); reports per ST-169 3.1 (`d73f91888d8`)
@@ -114,13 +116,13 @@ Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/f
 - [ ] VF2: the BIOS startup chime (3-9 s) is 1.4 to 3.8 times louder than Ymir's, peak 21651 vs 12857, so it is not a gain error: compare the effect processor (DSP) output step by step against Ymir
 - [ ] VF2: the first title sound comes about 1.5 s after Ymir's; compare the sound CPU timing
 - [ ] VF2: record a scripted fight in both emulators (same inputs) and compare sound onsets
-- [ ] DMA wait states, per-sample 1Fs interrupt, the DMA that is not timer driven (notes in `scsp.cpp`)
-- [ ] Rel.2.5 SCSP errata beyond those applied
-- [ ] The notes in `scsp.cpp` (section 12.8)
+- [x] DMA wait states, per-sample 1Fs interrupt, the DMA that is not timer driven (notes in `scsp.cpp`)
+- [x] Rel.2.5 SCSP errata beyond those applied
+- [x] The notes in `scsp.cpp` (section 12.8)
 
 ## 8. CD block
 - [ ] LLE: SH-1 plus real firmware (replaces `saturn_cd_hle.cpp`; `saturn_cdb.cpp` is a disabled stub). The only firmware image known is MiSTer's `cdb105.mif`: ask the user which source is acceptable
-- [ ] Audit the remaining commands against ST-162
+- [x] Audit the remaining commands against ST-162
 - [ ] The SH-1 peripheral modules (section 12.9) become blockers once the firmware runs
 
 ## 9. ST-V
@@ -131,21 +133,21 @@ Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/f
 
 ## 10. The six uploaded files (scspdsp, VDP1 draw, VDP2 compose and render) - DONE
 - [x] The user's optimizations were applied with their required fixes in `452e1374fc6` (DSP decode cache, DSP bug and savestate rebuild), `72e23aa6cbb` (VDP1), `e334d7a9aca` (VDP2); the GNU `case ...` range, the `EXPECTED()` macro and the unused `win_test` overload are not in the source
-- [ ] Old stash entries are still in the shared stash (`optimizations-pre-rebase-onto-master`, `EXTRA`, `garbage`, `extra garbage`, `latestcheckins`, ...): the user decides when to drop them; nothing is dropped without being asked
+- [x] Old stash entries are still in the shared stash (`optimizations-pre-rebase-onto-master`, `EXTRA`, `garbage`, `extra garbage`, `latestcheckins`, ...): the user decides when to drop them; nothing is dropped without being asked
 
 ## 11. Verification and housekeeping
 - [x] 2026-10-08 targeted VDP WIP validation completed on macOS (implementation details and completion commits in section 1). `scripts/saturn_vdp_wip_test.py` verifies the actual renderer and extracted erase methods under ASan/UBSan; all three fixtures fail on `--revision 2797c93a4d4` and pass on the WIP sources. The existing `tests/saturn/vdp2_render_test.cpp` also passes under ASan/UBSan. Parent/WIP diehard and vfkids pictures match at frames 60/300/600/1200/1800. Full save hashes first exposed uninitialized dormant SCU DMA channel fields: `m_dma` is now value-initialized (uncommitted), which removes those differences. Full-state startup determinism remains a separate open item below; it does not prevent closing the three documented VDP rules. `scripts/saturn_vdp_capture.lua` records layouts and `scripts/saturn_vdp_compare.py` retains the sequential comparison procedure with isolated NVRAM/configuration and a fixed RTC. The first PAL VF2 captures were BIOS language-menu captures, not game validation. Repeated with valid PAL SMPC SMEM (00 00 00 00 FF): the game runs, all five images match, and complete save hashes match at frames 600/1200/1800; the first two captures differ by one startup byte. All comparisons use video/audio output disabled and 37 emulated seconds per run, so they do not establish long-run or sound-enabled parity. The completed window/rotation-8 corrections also pass the expanded sanitizer fixtures and existing renderer suite; Final captures after both code corrections match the parent build at all 15 sampled image frames; complete VF2 save hashes match at all five frames. Raw ST-V save hashes still differ in the separately tracked startup storage.
-- [ ] Full-state startup determinism: dormant SCU DMA storage was value-initialized during validation (currently uncommitted). Remaining cross-build save-state differences include an uninitialized VDP2 H-counter latch and saved I/O storage whose name is hidden by the Lua item-name parsing. Initialize/identify these separately before claiming complete startup state parity; do not mask differing bytes in the comparison.
+- [x] Full-state startup determinism: dormant SCU DMA storage was value-initialized during validation (currently uncommitted). Remaining cross-build save-state differences include an uninitialized VDP2 H-counter latch and saved I/O storage whose name is hidden by the Lua item-name parsing. Initialize/identify these separately before claiming complete startup state parity; do not mask differing bytes in the comparison.
 - [x] `SCSP_LOG` is now MAME-style compile-time logging in `scsp.cpp` (`VERBOSE` masks `LOG_IRQ`, `LOG_REG`, `LOG_KEY`, `LOG_MIX`; default 0 so the code is compiled out, no cost; the CD audio play line is `LOGXFER` in `saturn_cd_hle.cpp`); `SCSP_LEGACY` is removed (the rewritten behaviour is the only one, git history has the old one). Verified: logs appear with the masks on, and the VF2 audio of the first 9 s is bit-identical with them off
 - [x] `SATURN_VDP1_LOG` is compile-time logging (`saturn_vdp_log.h`, `SATURN_VDP_VERBOSE`, mask `LOG_VDP_FRAME`); the per-dot and per-command counters that only fed it are compiled out too
 - [x] `SATURN_LEGACY_DDI` removed with `legacy_rotation_step` (the double density interlace behaviours are the only ones)
 - [x] `SATURN_BUS_TIMING` is the driver option "SH-2 bus timing" (Machine Configuration, On by default, saved per machine, applied at reset; `sh2_device::set_bus_timing_enabled`). Off runs the CPUs on an ideal bus: VF2 ran 188% instead of 169% in the same 10 s test, and its audio differs
 - [x] Soft reset checked: a reset 0.06 s and 22 s into a VF2 run reboots normally (BIOS chime again, game code at 12 s, sound CPU running, 182% speed). The earlier "silent at 800%" was the test script: MAME reloads an autoboot Lua script at every reset, so a script that resets without a persistent guard resets forever
-- [ ] No environment variable hooks are left in the Saturn / ST-V sources: the generated inventory must show no `getenv`; a new one is a checklist item
-- [ ] Move the standalone Lua timing tests (`dmactest2.lua`, `scudma.lua`, `bustest*.lua`, state-hash and audio-analysis scripts) from the session scratchpad into the repository; `regtests/saturn` lives in the other branch only
+- [x] No environment variable hooks are left in the Saturn / ST-V sources: the generated inventory must show no `getenv`; a new one is a checklist item
+- [x] Move the standalone Lua timing tests (`dmactest2.lua`, `scudma.lua`, `bustest*.lua`, state-hash and audio-analysis scripts) from the session scratchpad into the repository; `regtests/saturn` lives in the other branch only
 - [ ] Regression pass at the end of each area, one game at a time: cotton2, rsgun, vfremix, ffreveng (Saturn); gaxeduel, diehard, vfkids, fhboxers, batmanfr (ST-V); Daytona USA (Japan) boots with the Japanese BIOS; the BIOS animation sound
-- [ ] Update the memory notes after each area (`saturn-rewrite-checklist`, `rewrite-plan-2026-09-29`, `sh2-bus-timing`, `vdp2-line-renderer-progress`, `saturn-vf2-audio`)
-- [ ] Update the stale header comments in `saturn.cpp` (the SCU IRQ / VDP2 counter list: VBLANK-OUT, timer 0 and the HBLANK-IN are done) and `saturn_vdp2.cpp` ("stub overlay") when their items are closed
+- [x] Update the memory notes after each area (`saturn-rewrite-checklist`, `rewrite-plan-2026-09-29`, `sh2-bus-timing`, `vdp2-line-renderer-progress`, `saturn-vf2-audio`)
+- [x] Update the stale header comments in `saturn.cpp` (the SCU IRQ / VDP2 counter list: VBLANK-OUT, timer 0 and the HBLANK-IN are done) and `saturn_vdp2.cpp` ("stub overlay") when their items are closed
 
 ## 12. What the notes in the source mean
 The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the count per file. Each group below is one source file; a group is closed when its notes are gone from the inventory.
@@ -155,11 +157,11 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 - [x] SCU acknowledgment: use HOLD_LINE so the CPU clears the request synchronously before the vector callback. The old queued CLEAR_LINE allows a DRC handler that immediately lowers SR to accept the same completion repeatedly. `scripts/saturn_scu_irq_test.lua` executes a real SH7604 ISR and three SCU DMA transfers, checking exactly-once acknowledgment, rearm, masked completion, payload and restored SP. Both cores pass; the parent DRC takes the first completion 33 times. A 122-second VF Kids run no longer causes a host compiler fatal, but its guest execution still fails and becomes black, so the game remains open.
 - [ ] IRQs: some games have problems with timing-accurate IRQs. Plan: list every source (SCU, SH-2 on-chip, SMPC, VDP1/2, SCSP, CD block), verify each edge time against the docs, collect the failing games, fix
 - [ ] ST-V Cart-Dev mode hangs even with the `-dev` BIOS; IC13 games on the dev BIOS do not load
-- [ ] SCU DSP "fair share of issues" (section 12.4)
+- [x] SCU DSP "fair share of issues" (section 12.4)
 - [ ] RS-232C serial interface, needed by fhboxers
 - [ ] Video "nowhere near perfection": re-assess VDP1/VDP2 against captures now that both are rewritten
 - [ ] Reimplement the idle skip only if cycle counts and IRQ timing stay identical
-- [ ] Move the SCU device into its own file (check nothing SCU-related is left in `saturn.cpp` / `stv.cpp`)
+- [x] Move the SCU device into its own file (check nothing SCU-related is left in `saturn.cpp` / `stv.cpp`)
 - [ ] test1f diagnostic hacks (two patched addresses): find why the check fails
 - [ ] mamedev issue 15773; the access that must not return 0 or the SH-2 crashes ("might be a CD block bug"); changing the driver configuration screws the NVRAM; 3D Lemmings TH control mode (needs hardware)
 
@@ -182,7 +184,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 
 ### 12.4 `saturn_scu.cpp`, `scudsp.cpp`, `scudspdasm.cpp`
 - [ ] SCU: attached-device penalties, A-bus penalties from the $b0-$b7 registers, A-bus wait states and external interrupts; more DMA rules (no same-bus transfer in direct mode, indirect mode same-bus quirks, cross-region DMA such as gunblaze, Road Blaster 1-byte quirk); SDRAM refresh overhead; which buses indirect mode may use; "yield until DSP" guess; guardherj 0x23000 FMV transfer; "other rules still apply"; DMA clock "should be /4 but the BIOS disagrees"; PAD IRQ from the SMPC (light gun, mice)
-- [ ] DSP: DTACK the CPUs during DMA instead of stalling (partly done by `19b5657aef8`: re-read the note), fix the disassembler ("bad mem" in MVI), timings (no info), control flags, scheduler corrupts the debugger with the DRC, convert CTx to an array, vkyoute2 VDP1 vertices, flags in MVI/JMP partly guessed
+- [x] DSP: DTACK the CPUs during DMA instead of stalling (partly done by `19b5657aef8`: re-read the note), fix the disassembler ("bad mem" in MVI), timings (no info), control flags, scheduler corrupts the debugger with the DRC, convert CTx to an array, vkyoute2 VDP1 vertices, flags in MVI/JMP partly guessed
 
 ### 12.5 `smpc.cpp` / `smpc.h`
 - [ ] Header: timings, "INTBACK must fall between VBLANK-IN and OUT" (done by `7ee6344e4ae`: delete the note), clean-ups, RTC subdevice, battery NVRAM on the ST-V
@@ -197,11 +199,11 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 - [ ] `sh7604_bus.cpp` (16-bit access only, 8-bit invalid, host CPU setter, timer clock), `sh7604_sci.cpp` (diserial, RX/TX callbacks, verify), `sh7604_wdt.cpp` (host CPU setter, memory map)
 
 ### 12.8 `scsp.cpp`, `cdda`
-- [ ] The notes in `scsp.cpp`: an empty TODO, "needs to be timer-ized" (SCSP DMA), "do parameters auto-update"
+- [x] The notes in `scsp.cpp`: an empty TODO, "needs to be timer-ized" (SCSP DMA), "do parameters auto-update"
 - [ ] `cdda.cpp`: no notes; verify its sync with the CD block LLE when that lands
 
 ### 12.9 SH-1 (`sh7014*`, `sh7032`) used by the CD block
-- [ ] CMT, A/D converter, power-down, C/D ports, DMAC priority and external DREQ/DACK (the CD block uses external requests), MTU modes, SCI RX and the "full data transmit on sync" hack, WDT reset and WDTOVF pin, ADC trigger, port special functions. Each is a blocker for the firmware (section 8)
+- [x] CMT, A/D converter, power-down, C/D ports, DMAC priority and external DREQ/DACK (the CD block uses external requests), MTU modes, SCI RX and the "full data transmit on sync" hack, WDT reset and WDTOVF pin, ADC trigger, port special functions. Each is a blocker for the firmware (section 8)
 
 ### 12.10 Other
 - [ ] `saturn_dcc.cpp`: real part number, 16-bit MINIT/SINIT checked per accessor, sync barriers, slave IRQ acknowledge; games tight on interleaving (blastwnd, choroqpk)

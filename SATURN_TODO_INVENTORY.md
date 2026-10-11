@@ -10,21 +10,10 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 57: // TODO: kana keys
 - 308: TODO: how shift key actually works? EGWord uses it in order to switch between hiragana and katakana modes.
 
-## src/devices/cpu/scudsp/scudsp.cpp (3)
-
-- 65: * - flags computation in MVI and JMP is partly guessed (because of errors in docs)
-- 69: *  TODO:
-- 1125: // TODO: do we need this?
-
-## src/devices/cpu/scudsp/scudspdasm.cpp (2)
-
-- 272: stream << scudsp_dasm_prefix( MVI_Command[1], data); /* TODO: bad mem*/
-- 278: stream << scudsp_dasm_prefix( MVI_Command[0], data ); /* TODO: bad mem*/
-
 ## src/devices/cpu/sh/sh2.cpp (2)
 
-- 426: /* TODO: timing is a guess */
-- 602: /* avoid spurious irqs with this (TODO: needs a better fix) */
+- 470: /* TODO: timing is a guess */
+- 656: /* avoid spurious irqs with this (TODO: needs a better fix) */
 
 ## src/devices/cpu/sh/sh7014.cpp (4)
 
@@ -73,35 +62,39 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 15: TODO list (not comprehensive):
 
+## src/devices/cpu/sh/sh7032.cpp (1)
+
+- 403: // Pin clocks and framing replace the former byte-completion HACK.
+
 ## src/devices/cpu/sh/sh7604.cpp (21)
 
 - 15: TODO: Test and use sh7604_wdt_device, sh7604_sci_device, and sh7604_bus_device as appropriate
-- 47: , m_dma_kludge_cb(*this)
-- 92: m_dma_kludge_cb.resolve();
-- 346: //  TODO: cps3boot breaks with this enabled. Needs callback
-- 350: // TODO: internal map takes way too much resources if mirrored with 0x1ffffe00
-- 546: // TODO: setting 3 is "External clock: count on rising edge"
-- 599: // TODO: saturn:pulirula on slave CPU (0 cycles)
-- 779: if (!m_dma_kludge_cb.isnull())
-- 780: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 824: if (!m_dma_kludge_cb.isnull())
-- 825: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 868: if (!m_dma_kludge_cb.isnull())
-- 869: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 918: if (!m_dma_kludge_cb.isnull())
-- 919: value = m_dma_kludge_cb(tempsrc, tempdst, value, m_active_dma_size[dmach]);
-- 1039: // TODO: identical to H8 counterpart
-- 1117: // TODO: to be tested
-- 1206: // TODO: output levels A/B (bits 1-0)
-- 1227: // TODO: flip meaning based off NMI edge select bit (NMIE)
-- 1338: // TODO: unemulated, level is seemingly not documented/settable?
-- 1509: // TODO: bare-bones, used for proper 32x:aburnerju sound (on slave side) as buffer storage
+- 50: , m_dma_kludge_cb(*this)
+- 115: m_dma_kludge_cb.resolve();
+- 603: //  TODO: cps3boot breaks with this enabled. Needs callback
+- 607: // TODO: internal map takes way too much resources if mirrored with 0x1ffffe00
+- 899: // The legacy external-clock HACK mistook divider zero for a stopped clock.
+- 923: // The legacy flagged-match HACK skipped recurring output and clear events.
+- 1112: if (!m_dma_kludge_cb.isnull())
+- 1113: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
+- 1163: if (!m_dma_kludge_cb.isnull())
+- 1164: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
+- 1213: if (!m_dma_kludge_cb.isnull())
+- 1214: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
+- 1271: if (!m_dma_kludge_cb.isnull())
+- 1272: value = m_dma_kludge_cb(tempsrc, tempdst, value, m_active_dma_size[dmach]);
+- 1409: // TODO: gate external RS=0 transfers on DREQ rather than auto-request.
+- 1527: // Pin clocks and framing replace the former byte-completion HACK.
+- 1942: // The legacy status-observer HACK sees synchronized flags and counter.
+- 2037: // The legacy output-level HACK stored OLVL without driving the compare pins.
+- 2171: // TODO: unemulated, level is seemingly not documented/settable?
+- 2342: // The former buffer-storage HACK is replaced by chapter 6 bus comparisons.
 
 ## src/devices/cpu/sh/sh7604.h (3)
 
 - 21: typedef device_delegate<int (uint32_t src, uint32_t dst, uint32_t data, int size)> dma_kludge_delegate;
 - 34: template <typename... T> void set_dma_kludge_callback(T &&... args) { m_dma_kludge_cb.set(std::forward<T>(args)...); }
-- 285: dma_kludge_delegate              m_dma_kludge_cb;
+- 364: dma_kludge_delegate              m_dma_kludge_cb;
 
 ## src/devices/cpu/sh/sh7604_bus.cpp (3)
 
@@ -126,12 +119,6 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 ## src/devices/machine/ticket.cpp (1)
 
 - 53: , m_output(*this, tag) // TODO: change to "tag:status"
-
-## src/devices/sound/scsp.cpp (3)
-
-- 140: /* TODO */
-- 1527: // TODO: this needs to be timer-ized
-- 1548: /* TODO: don't know if params auto-updates, I guess not ... */
 
 ## src/lib/util/cdrom.cpp (4)
 
@@ -158,68 +145,67 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 16: TODO:
 - 407: TODO:
-- 420: test1f diagnostic hacks:
-- 545: /* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be an actual bug with the CD block. */
-- 631: /* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
-- 778: /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
+- 418: test1f diagnostic hacks:
+- 542: /* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be an actual bug with the CD block. */
+- 629: /* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
+- 776: /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
 
 ## src/mame/sega/saturn.cpp (4)
 
-- 9: @TODO List of things that needs to be implemented:
-- 167: TODO:
-- 242: // TODO: edge triggered?
-- 248: // TODO: actually send a device reset signal to the connected devices
+- 15: TODO: establish whether DISP=0 suppresses SCU VBLANK/HBLANK interrupts
+- 138: // TODO: VDP1 timing and CEF emulation isn't accurate at all.
+- 211: // TODO: edge triggered?
+- 217: // TODO: actually send a device reset signal to the connected devices
 
-## src/mame/sega/saturn_cd_hle.cpp (48)
+## src/mame/sega/saturn_cd_hle.cpp (47)
 
 - 26: TODO:
 - 180: // FIXME: should be zero but CD auto load and azelpanztai breaks otherwise
 - 277: // TODO: move out of here, breaks daytoncej boot
-- 335: // TODO: why bare xfersect without xfersectpos adder?
-- 368: // TODO: is this correct?
-- 515: // TODO: this member must return the register only
-- 534: // TODO: these two are actually never read or written to by host?
-- 561: // TODO: understand how dual-port interface really works out
-- 595: // TODO: calculate timings based off command params
-- 601: /* FIXME: assume Saturn CD-ROMs to have a 2 secs pre-gap for now. */
-- 727: // TODO: shouldn't really read from TOC
-- 732: // TODO: shouldn't require a status change
-- 741: // TODO: as above
-- 763: // TODO: double check this
-- 773: //if((cr1 & 0x81) == 0x00) //guess TODO: nope, Choice Cuts doesn't like it, it crashes if you try to skip the FMV otherwise.
-- 810: // TODO: ESEL happens at the end of the actual reset phase
-- 874: // end data transfer (TODO: needs to be worked on!)
-- 989: // FIXME: Waku Waku 7 sets up track 0, that basically doesn't make any sense. Just skip it for now.
-- 1038: // FIXME: verify implementation with Galaxy Fight
-- 1048: // TODO: need to preserve previous fadstoplay
-- 1103: // TODO: understand the exact condition for pause to standby transition
-- 1125: // Area 51 sets this up (TODO: retest me out)
-- 1165: // TODO: unemulated, can be triggered thru Multiplayer by holding on relevant keys
-- 1271: // TODO: should just require a rejection
-- 1288: // TODO: unverified
-- 1395: // FIXME: verify usage of cr3 LSB
-- 1437: // TODO: buffer full flag
-- 1446: // TODO: what follows should delay a bit
-- 1469: // TODO: bit 3, initialize all partition output connectors
-- 1803: // TODO: transfer shouldn't be here
-- 1813: /*TODO: eventual errors? */
-- 1843: // TODO: essentially same as below minus the deallocation and a guard against being in buffull state
-- 1872: // TODO: check against source being actually populated here
-- 1943: // TODO: how to actually read?
-- 2050: // TODO: doesn't seem enough for leynos2
-- 2062: // TODO: does this really overrides filtering mode as Mednafen suggests?
-- 2064: // TODO: should be behind seek
-- 2070: // FIXME: should be CMOK/EFLS but leynos2 doesn't agree
-- 2132: // TODO: incomplete, needs to actually retrieve from MPEG ROM, just silence popmessage for now.
-- 2283: // TODO: do we need to yield for seek as well?
-- 2308: // TODO: Saturn refuses to boot with this if a disk isn't in and condition is applied!?
-- 2309: // TODO: Check out actual timing of SCDQ acquisition.
-- 2689: // $$$FIXME: what to do with the address info for these?
-- 2776: // TODO: this may not play well with curfad rejection
-- 2939: // TODO: timings, may be too fast
-- 3005: // TODO: pinpoint cases when this isn't okay
-- 3040: // TODO: untested with cur_track == 0xaa (lead-out)
-- 3056: // TODO: should be correct but somehow still doesn't work
+- 331: // HACK: historically the boundary check omitted xfersectpos;
+- 357: // TODO: is this correct?
+- 521: // TODO: this member must return the register only
+- 540: // TODO: these two are actually never read or written to by host?
+- 567: // TODO: understand how dual-port interface really works out
+- 601: // TODO: calculate timings based off command params
+- 607: /* FIXME: assume Saturn CD-ROMs to have a 2 secs pre-gap for now. */
+- 733: // TODO: shouldn't really read from TOC
+- 738: // TODO: shouldn't require a status change
+- 747: // TODO: as above
+- 769: // TODO: double check this
+- 779: //if((cr1 & 0x81) == 0x00) //guess TODO: nope, Choice Cuts doesn't like it, it crashes if you try to skip the FMV otherwise.
+- 816: // TODO: ESEL happens at the end of the actual reset phase
+- 880: // end data transfer (TODO: needs to be worked on!)
+- 997: // FIXME: Waku Waku 7 sets up track 0, that basically doesn't make any sense. Just skip it for now.
+- 1046: // FIXME: verify implementation with Galaxy Fight
+- 1056: // TODO: need to preserve previous fadstoplay
+- 1111: // TODO: understand the exact condition for pause to standby transition
+- 1133: // Area 51 sets this up (TODO: retest me out)
+- 1173: // TODO: unemulated, can be triggered thru Multiplayer by holding on relevant keys
+- 1293: // TODO: unverified
+- 1463: // FIXME: verify usage of cr3 LSB
+- 1522: // TODO: buffer full flag
+- 1531: // TODO: what follows should delay a bit
+- 1554: // TODO: bit 3, initialize all partition output connectors
+- 1888: // TODO: transfer shouldn't be here
+- 1898: /*TODO: eventual errors? */
+- 1928: // TODO: essentially same as below minus the deallocation and a guard against being in buffull state
+- 1957: // TODO: check against source being actually populated here
+- 2028: // TODO: how to actually read?
+- 2135: // TODO: doesn't seem enough for leynos2
+- 2147: // TODO: does this really overrides filtering mode as Mednafen suggests?
+- 2149: // TODO: should be behind seek
+- 2155: // FIXME: should be CMOK/EFLS but leynos2 doesn't agree
+- 2217: // TODO: incomplete, needs to actually retrieve from MPEG ROM, just silence popmessage for now.
+- 2369: // TODO: do we need to yield for seek as well?
+- 2394: // TODO: Saturn refuses to boot with this if a disk isn't in and condition is applied!?
+- 2395: // TODO: Check out actual timing of SCDQ acquisition.
+- 2775: // $$$FIXME: what to do with the address info for these?
+- 2862: // TODO: this may not play well with curfad rejection
+- 3025: // TODO: timings, may be too fast
+- 3091: // TODO: pinpoint cases when this isn't okay
+- 3126: // TODO: untested with cur_track == 0xaa (lead-out)
+- 3142: // TODO: should be correct but somehow still doesn't work
 
 ## src/mame/sega/saturn_dcc.cpp (2)
 
@@ -229,37 +215,36 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 ## src/mame/sega/saturn_scu.cpp (9)
 
 - 7: TODO:
-- 439: // FIXME: should be /4 but saturn BIOS already disagrees
-- 488: // TODO: A-Bus penalties comes from $b0-$b7 registers and are fairly complex
-- 544: // TODO: overhead due of SDRAM refresh?
-- 591: // CD transfers are special even without the hack below
-- 639: // TODO: check if other buses can be used
-- 807: // guess: yield until DSP do its thing
-- 878: //TODO: why guardherj sets up a 0x23000 transfer for the FMV?
-- 884: // TODO: other rules still applies
+- 506: // FIXME: should be /4 but saturn BIOS already disagrees
+- 555: // TODO: A-Bus penalties comes from $b0-$b7 registers and are fairly complex
+- 611: // TODO: overhead due of SDRAM refresh?
+- 658: // CD transfers are special even without the hack below
+- 706: // TODO: check if other buses can be used
+- 886: // HACK: bus durations retain the calibrated cost model; ownership ends at the last acknowledgement.
+- 990: //TODO: why guardherj sets up a 0x23000 transfer for the FMV?
+- 1000: // TODO: other rules still applies
 
-## src/mame/sega/saturn_vdp2.cpp (16)
+## src/mame/sega/saturn_vdp2.cpp (15)
 
-- 7: TODO:
-- 102: // TODO: PAL only 256 mode
-- 179: // TODO: is hblank supposed to return '1' on DISP off as well?
-- 203: // TODO: version
-- 207: // TODO: probably akin to YM7101 equivalent on stock Saturn
-- 246: // TODO: interlace mode "eats" one line, should be 262.5
-- 270: // TODO: divider is always 8, need to compensate out of lack of MAME interlace support
-- 279: // TODO: Unknown for Exclusive modes
-- 293: // TODO: guard against the wrong DOTSEL being configured from SMPC.
-- 305: // TODO: this should just be reserved and return VRESO == 2
-- 315: // TODO: find a software that makes use of this
-- 392: return m_screen->hpos() > m_screen->visible_area().right() ? 1 : 0; // TODO: exclusive monitor modes
-- 415: // TODO: test says that second setting happens at 241, might need further investigation ...
-- 432: // TODO: 263 & 313 needs to be static constexpr
-- 458: return m_hdisplay + 3; // TODO: exclusive monitor modes
-- 465: return 2; // TODO: exclusive monitor modes
+- 108: // TODO: PAL only 256 mode
+- 185: // TODO: is hblank supposed to return '1' on DISP off as well?
+- 209: // TODO: version
+- 213: // TODO: probably akin to YM7101 equivalent on stock Saturn
+- 256: // TODO: interlace mode "eats" one line, should be 262.5
+- 280: // TODO: divider is always 8, need to compensate out of lack of MAME interlace support
+- 289: // TODO: Unknown for Exclusive modes
+- 303: // TODO: guard against the wrong DOTSEL being configured from SMPC.
+- 315: // TODO: this should just be reserved and return VRESO == 2
+- 325: // TODO: find a software that makes use of this
+- 432: return (horizontal_phase() & 0x1ff) >= (BIT(m_hreso, 0) ? 0x168 : 0x148) // horizontal_phase() < 8; // HACK: empirical exclusive monitor edges, no independent h
+- 457: // TODO: test says that second setting happens at 241, might need further investigation ...
+- 476: // TODO: 263 & 313 needs to be static constexpr
+- 502: return (BIT(m_hreso, 0) ? 0x164 : 0x144) * (BIT(m_hreso, 1) ? 2 : 1); // HACK: empirical exclusive monitor signal, odd pre-edge comparator is unreachable
+- 509: return 4 * (BIT(m_hreso, 1) ? 2 : 1); // HACK: empirical exclusive monitor output clear follows phase 2
 
 ## src/mame/sega/saturn_vdp2.h (1)
 
-- 28: // TODO: follows stuff that eventually needs to be privatized
+- 30: // TODO: follows stuff that eventually needs to be privatized
 
 ## src/mame/sega/segabill.cpp (1)
 
@@ -287,36 +272,35 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 80: // TODO: checking against nullptr still returns a device!?
 
-## src/mame/sega/stv.cpp (28)
+## src/mame/sega/stv.cpp (27)
 
 - 12: TODO:
 - 51: - yattrmnp: throws "S ERR=305 SATELLITE CHACKER JAM" (sic), alternates with "DOOR OPEN"
 - 63: TODO: reinstate actual positions, don't mind what the BIOS says.
 - 96: TODO: change this back, use Sega nomenclature not Capcom
-- 173: // TODO: propagate upper nibble to a configurable output port
-- 194: static uint8_t const bcd2hex[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7c, 0x07, 0x7f, 0x67, 0x58, 0x4c, 0x62, 0x49, 0x78, 0x00 }; // TODO: chip type unknown
-- 237: // TODO: handle this as A-Bus slot option
-- 559: //  m_instadma_hack = 1;
-- 980: memset(memregion("abus")->base(), 0x00, 0x3000000); // TODO: 1-filled?
-- 1012: // TODO: SCSP reset line (at bit 3?)
-- 1110: SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
-- 1144: // TODO: microphone bindings, currently hangs on FLAG checks
-- 1206: // FIXME
-- 1218: // TODO: RAX output connected to SCSP?
-- 1806: // TODO: sense/delta values seems wrong
-- 1908: // TODO: BSERVICE and BTEST on PDR2 (?)
-- 1909: // TODO: throws coin error in maintenance mode, only coin 2 works
-- 3106: // TODO: has extra connection to a i486BD according to test mode
-- 3443: // TODO: add 1p eeprom default
-- 3550: // TODO: add 1p eeprom default
-- 3565: // TODO: add 1p eeprom default
-- 3587: // TODO: add 1p eeprom default
-- 3606: // TODO: add 1p eeprom default
-- 3625: // TODO: add 1p eeprom default
-- 3644: // TODO: add 1p eeprom default
-- 3665: // TODO: add 1p eeprom default
-- 3687: // TODO: add 1p eeprom default
-- 3929: // TODO: add 1p eeprom default
+- 172: // TODO: propagate upper nibble to a configurable output port
+- 193: static uint8_t const bcd2hex[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7c, 0x07, 0x7f, 0x67, 0x58, 0x4c, 0x62, 0x49, 0x78, 0x00 }; // TODO: chip type unknown
+- 236: // TODO: handle this as A-Bus slot option
+- 979: memset(memregion("abus")->base(), 0x00, 0x3000000); // TODO: 1-filled?
+- 1011: // TODO: SCSP reset line (at bit 3?)
+- 1112: SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
+- 1147: // TODO: microphone bindings, currently hangs on FLAG checks
+- 1209: // FIXME
+- 1221: // TODO: RAX output connected to SCSP?
+- 1809: // TODO: sense/delta values seems wrong
+- 1911: // TODO: BSERVICE and BTEST on PDR2 (?)
+- 1912: // TODO: throws coin error in maintenance mode, only coin 2 works
+- 3109: // TODO: has extra connection to a i486BD according to test mode
+- 3446: // TODO: add 1p eeprom default
+- 3553: // TODO: add 1p eeprom default
+- 3568: // TODO: add 1p eeprom default
+- 3590: // TODO: add 1p eeprom default
+- 3609: // TODO: add 1p eeprom default
+- 3628: // TODO: add 1p eeprom default
+- 3647: // TODO: add 1p eeprom default
+- 3668: // TODO: add 1p eeprom default
+- 3690: // TODO: add 1p eeprom default
+- 3932: // TODO: add 1p eeprom default
 
 ## src/mame/sega/stvdev.cpp (1)
 
