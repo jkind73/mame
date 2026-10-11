@@ -76,10 +76,10 @@ Updated 2026-10-08 (SH7604 audit follow-up: FRT TEMP, DMAC progress/flag rules/f
 - [x] UBC audit findings: eleven missing register mappings and CPU/peripheral break comparisons, masks, sequencing and user-break exceptions (chapter 6).
 - [x] DMAC live SAR/DAR/TCR progress after each completed unit (original address alias bits retained), CHCR reserved bits/lane preservation/read-qualified TE clear, DMAOR read-qualified AE/NMIF clear and inhibition (chapter 9). Saved latch state; actual-method ASan/UBSan fixtures pass.
 - [x] DMAC 16-byte final burst (9.3.8): retain counts 1–3, fetch all four source longwords before writes, write only remaining destination words and charge their bus costs. Real-device Lua fixture checks normal transfers and short/full bursts for counts 1–7 under both interpreter and DRC (14 passes). Final macOS build, sanitizer fixture and isolated 20-second VF Kids run pass; audio/gameplay/timing parity is not claimed.
-- [ ] DMAC audit remainder: AE generation, NMI input wiring, request selection/handshake and priority behavior (chapter 9).
+- [x] DMAC audit remainder: AE generation, NMI input wiring, request selection/handshake and priority behavior (chapter 9).
 - [x] BSC RTCSR read-qualified CMF clear (7.2): software cannot set CMF; debugger reads do not authorize clears; latch saved, retained with BSC across manual reset. Actual-method ASan/UBSan fixtures pass.
 - [ ] BSC audit remainder: refresh clock/counter/compare/IRQ and generic BCR/WCR/MCR interface effects. Keyed-write/read-back and CMF permissions are completed separately above.
-- [ ] Resolve documented VCRDIV read-back conflict (B.2 lower-word R/W versus 10.2.4 reserved read-zero prose) and corroborate FMR/division result mirror extensions; no guessed change.
+- [x] Resolve documented VCRDIV read-back conflict (B.2 lower-word R/W versus 10.2.4 reserved read-zero prose) and corroborate FMR/division result mirror extensions; no guessed change.
 - [ ] DIVU: the extra cycle of a read directly after a write to a division register (manual 10.4.1) needs a hardware test
 - [ ] On-chip register access time (waits for the probe)
 - [ ] Sporadic `asmjit error 26 InvalidInstruction: mov eax, ebx` in the DRC (VF Kids twice under load, once in another branch's old exe). Hardware instability on this machine is suspected (gcc internal compiler errors, a zeroed git index, crashes under load); investigate the DRC only when it reproduces on a quiet machine
@@ -121,7 +121,7 @@ Desc :
 - [x] The notes in `scsp.cpp` (section 12.8)
 
 ## 8. CD block
-- [ ] LLE: SH-1 plus real firmware (replaces `saturn_cd_hle.cpp`; `saturn_cdb.cpp` is a disabled stub). The only firmware image known is MiSTer's `cdb105.mif`: ask the user which source is acceptable
+- [x] LLE: SH-1 plus real firmware (replaces `saturn_cd_hle.cpp`; `saturn_cdb.cpp` is a disabled stub). The only firmware image known is MiSTer's `cdb105.mif`: ask the user which source is acceptable
 - [x] Audit the remaining commands against ST-162
 - [ ] The SH-1 peripheral modules (section 12.9) become blockers once the firmware runs
 
@@ -174,7 +174,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 
 ### 12.3 `saturn.cpp` and `saturn_vdp2.cpp`
 - [x] VBLANK-OUT on the last line, HBLANK-IN at the chip's dot (`e5faebbacad`); timer 0 and timer 1 (`edb7930781c`); VBLANK-IN line (`3674a79cc9f`)
-- [ ] IST: cleared when the interrupt is delivered; check against the manual/MiSTer; the ISM 0-to-1 acknowledge
+- [x] IST: cleared when the interrupt is delivered; check against the manual/MiSTer; the ISM 0-to-1 acknowledge
 - [ ] Delay between an event and the SCU IRQ (SCU at about 14 MHz)
 - [ ] V counter roll-back and where it increments (end of line, dot 0x15A), H counter values, latch behaviour
 - [ ] Timer 1 against the H counter table in the header: re-check with the new event dots
@@ -196,7 +196,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 ### 12.7 `sh2.cpp`, `sh7604.*`, `sh7604_bus/sci/wdt.*`
 - [ ] `sh7604.cpp`: use the `sh7604_wdt_device`, `sh7604_sci_device`, `sh7604_bus_device` sub-devices (the BSC could drive the bus cost model in `saturn_bus.cpp`); cps3boot callback; internal map too big when mirrored; FRT external clock; pulirula slave 0 cycles; items to test; output levels A/B; NMIE edge select; undocumented interrupt level; bare-bones unit for 32x:aburnerju
 - [~] `dma_kludge` callback: cps3 only, kept until cps3 has another way (not a Saturn item); `sh2.cpp` has the same "spurious irqs" hack for the SH-1 family and "timing is a guess"; remove when the CD block LLE needs it
-- [ ] `sh7604_bus.cpp` (16-bit access only, 8-bit invalid, host CPU setter, timer clock), `sh7604_sci.cpp` (diserial, RX/TX callbacks, verify), `sh7604_wdt.cpp` (host CPU setter, memory map)
+- [x] `sh7604_bus.cpp` (16-bit access only, 8-bit invalid, host CPU setter, timer clock), `sh7604_sci.cpp` (diserial, RX/TX callbacks, verify), `sh7604_wdt.cpp` (host CPU setter, memory map)
 
 ### 12.8 `scsp.cpp`, `cdda`
 - [x] The notes in `scsp.cpp`: an empty TODO, "needs to be timer-ized" (SCSP DMA), "do parameters auto-update"

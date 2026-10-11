@@ -24,6 +24,8 @@ public:
 
 	auto vint_cb() { return m_vint_cb.bind(); }
 	auto hint_cb() { return m_hint_cb.bind(); }
+	// Active-low physical EXLAT pin. Call at the scheduled machine time of the edge.
+	void exlat_w(int state);
 
 	// TODO: follows stuff that eventually needs to be privatized
 	u8 get_hreso() { return m_hreso; }
@@ -55,21 +57,22 @@ private:
 	bool m_is_pal;
 	bool m_dotsel_352;
 
-	u16 m_tvmd, m_old_tvmd;
-	u8 m_disp, m_bdclmd, m_lsmd, m_vreso, m_hreso;
-	bool m_odd_bit;
-	u16 m_exten;
-	bool m_exlten, m_exsyen, m_dasel, m_exbgen;
+	u16 m_tvmd = 0, m_old_tvmd = 0;
+	u8 m_disp = 0, m_bdclmd = 0, m_lsmd = 0, m_vreso = 0, m_hreso = 0;
+	bool m_odd_bit = false;
+	u16 m_exten = 0;
+	bool m_exlten = false, m_exsyen = false, m_dasel = false, m_exbgen = false;
 
-	u16 m_hcounter_latch, m_vcounter_latch;
+	u16 m_hcounter_latch = 0, m_vcounter_latch = 0;
 
-	bool m_exltfg, m_exsyfg;
+	bool m_exltfg = false, m_exsyfg = false;
+	bool m_exlat_level = true;
 
-	u16 m_hdisplay, m_vdisplay;
+	u16 m_hdisplay = 0, m_vdisplay = 0;
 	// size = 313 for PAL
 	u16 true_vcount[313][4];
 
-	bool m_vramsz;
+	bool m_vramsz = false;
 
 	TIMER_CALLBACK_MEMBER( hblank_timer_cb );
 	TIMER_CALLBACK_MEMBER( vblank_timer_cb );
@@ -78,6 +81,8 @@ private:
 	int dot_scale() const;
 	int hblank_in_dot() const;
 	int hblank_out_dot() const;
+	int counter_increment_dot() const;
+	int horizontal_phase() const;
 
 	void init_vcounter_table();
 	void reconfigure_crtc();

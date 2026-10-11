@@ -113,7 +113,7 @@ bool nvram_device::nvram_write(util::write_stream &file)
 {
 	// FIXME: consider width/Endianness
 	auto const [err, actual] = write(file, m_base, m_length);
-	return !err;
+	return !err && (actual == m_length);
 }
 
 

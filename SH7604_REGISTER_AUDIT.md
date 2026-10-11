@@ -9,17 +9,17 @@ cache model. The separate `sh7604_sci_device`, `sh7604_bus_device` and
 not establish conformance of the active CPU.
 
 **The audit is complete; the peripheral implementation is not compliant.**
-Follow-up repairs on 2026-10-08 close the FRT TEMP interface, DMAC visible progress/qualified flag clears/reserved-bit storage, and RTCSR qualified CMF clears. Serial, break and refresh engines remain open.
+Follow-up repairs on 2026-10-08 close the FRT TEMP interface, DMAC visible progress/qualified flag clears/reserved-bit storage, and RTCSR qualified CMF clears. The 2026-10-09 SCI DMA/standby implementation is detailed in `SH7604_SCI_STANDBY_AUDIT.md` and supersedes those original FAIL/Missing verdicts. The serial pin/bit engine and UBC are implemented; the refresh engine is now implemented and verified by `SH7604_MODULE_RECONCILIATION.md` (2026-10-11).
 
 There are 68 named registers, counting OCRA/B and both DMA channels separately,
-at 67 distinct starting addresses. Eleven UBC registers are unmapped.
+at 67 distinct starting addresses. The eleven originally missing UBC register mappings are implemented in the 2026-10-09 follow-up.
 The matrix below covers every named register, including aliases and reserved
 regions separately. “Matches” means the inspected map/storage/read-back rule
 matches the manual, not that peripheral timing has been verified on hardware.
 All widths are in bits; hexadecimal addresses and masks omit the `0x` prefix.
 Undefined power-on values are not treated as failures when initialized to zero.
 
-## SCI — Appendix B pp. 574–578; chapter 13
+## Historical SCI findings (superseded by the 2026-10-09 implementation) — Appendix B pp. 574–578; chapter 13
 
 | Register | Address | Legal access | Read-back / reset | Active implementation verdict |
 |---|---|---|---|---|
@@ -30,7 +30,7 @@ Undefined power-on values are not treated as failures when initialized to zero.
 | SSR | FFFFFE04 | 8 R/W, qualified flags | Reset 84; bits 7–3 read-one/write-zero; bits 2–1 RO; bit 0 R/W | FAIL: read forces 84, write replaces every bit without read qualification. |
 | RDR | FFFFFE05 | 8 R only | FF / 00 | Address/RO match; returns constant zero, no received-data storage. |
 
-### SCI state-machine audit — 13.2.1–13.2.8, 13.3.1–13.3.4
+### Historical SCI state-machine audit (superseded by the 2026-10-09 implementation) — 13.2.1–13.2.8, 13.3.1–13.3.4
 
 | Event / mode | Required hardware behavior | Active CPU |
 |---|---|---|
@@ -62,20 +62,21 @@ SCI subdevice is also a stub (enabling TX/RX is fatal), not a ready replacement.
 | Register | Address | Legal access | Read-back / reset | Verdict |
 |---|---|---|---|---|
 | TIER | FFFFFE10 | 8 R/W | Writable 8E, bit 0 fixed 1 / 01 | FIXED reserved-bit read-back/write storage; IRQ enables present. |
-| FTCSR | FFFFFE11 | 8 R/W | Flags 8E qualified clear, CCLRA bit 0 R/W / 00 | FIXED bits 6–4; existing read-qualified flags retained. Timer flag timing needs separate tests. |
+| FTCSR | FFFFFE11 | 8 R/W | Flags 8E qualified clear, CCLRA bit 0 R/W / 00 | FIXED bits 6–4; existing read-qualified flags retained. Timer flag timing, recurring compares/clear, overflow and write-contention priorities implemented and tested. |
 | FRC | FFFFFE12 | Ordered high/low 8-bit operations | FFFF / 0000 | FIXED shared TEMP: high write latches, low write commits; high read captures low byte. |
-| OCRA | FFFFFE14, TOCR.OCRS=0 | Ordered high/low 8-bit operations | FFFF / 0000 | FIXED shared write TEMP; selection matches. OCR reads bypass TEMP as specified in 11.3. |
-| OCRB | FFFFFE14, TOCR.OCRS=1 | Ordered high/low 8-bit operations | FFFF / 0000 | Same as OCRA. Full standby value FFFF is distinct from reset 0000. |
-| TCR | FFFFFE16 | 8 R/W | 83 / 00 | Mask/internal dividers match; external-clock counting is TODO. |
-| TOCR | FFFFFE17 | 8 R/W | Writable 13, fixed E0 / E0 | Mask/OCR bank match; output levels/pins not implemented. |
-| FICR | FFFFFE18 | Ordered high/low 8-bit reads | FFFF / 0000 | FIXED atomic low-byte TEMP read; capture input/edge selection present. |
+| OCRA | FFFFFE14, TOCR.OCRS=0 | Ordered high/low 8-bit operations | FFFF / FFFF | FIXED shared write TEMP; selection matches. OCR reads bypass TEMP as specified in 11.3. |
+| OCRB | FFFFFE14, TOCR.OCRS=1 | Ordered high/low 8-bit operations | FFFF / FFFF | Same as OCRA. Chapter 11.2.2 specifies FFFF for reset, standby and module stop; the old reset-to-zero implementation is corrected. |
+| TCR | FFFFFE16 | 8 R/W | 83 / 00 | Internal/external counting, retained prescaler phase and clock-switch edges implemented and tested. |
+| TOCR | FFFFFE17 | 8 R/W | Writable 13, fixed E0 / E0 | FTOA/FTOB callbacks and saved output levels implemented; OLVL changes apply at the next match. |
+| FICR | FFFFFE18 | Ordered high/low 8-bit reads | FFFF / 0000 | FIXED atomic low-byte TEMP read; capture input/edge selection and one-drive-clock ICR-read collision deferral implemented. |
 
 Chapter 11.3 explicitly shares an 8-bit TEMP across FRC/OCR/FICR. A high
 write stores TEMP, a low write commits the full word; a high FRC/FICR read
 latches the low byte. OCRA/B reads are the documented exception. The updated
 16-bit handlers use lane masks to supply these semantics, and debugger reads do not change TEMP. Native word accesses
-are not the documented software sequence. External counting and output compare
-pins remain implementation gaps, independent of masks fixed here.
+are not the documented software sequence. The 2026-10-09 FRT implementation
+fixes external counting, compare outputs and the related counter/timing defects;
+see [`SH7604_FRT_IMPLEMENTATION.md`](SH7604_FRT_IMPLEMENTATION.md).
 
 ## INTC — Appendix B pp. 583–587; chapter 5 and 9.2.5/10.2.4
 
@@ -88,8 +89,8 @@ pins remain implementation gaps, independent of masks fixed here.
 | VCRD | FFFFFE68 | 8/16 R/W | 7F00 / 0000 | Mask and FRT overflow vector match. |
 | ICR | FFFFFEE0 | 8/16 R/W | NMIL RO bit 15, writable 0101 / input level | Read-back reports physical NMI level, correct per B.2; nearby “flip meaning” TODO is misleading. NMIE selects edge, not NMIL inversion. |
 | IPRA | FFFFFEE2 | 8/16 R/W | FFF0 / 0000 | Masks and DIVU/DMAC/WDT priorities match. |
-| VCRWDT | FFFFFEE4 | 8/16 R/W | 7F7F / 0000 | WDT vector used; BSC compare-match vector stored but no refresh IRQ source. |
-| VCRDIV | FFFFFF0C | 16/32 R/W | B.2 lower 16 R/W; vector uses 7 bits / undefined | Lower-word read-back matches B.2; chapter 10.2.4 separately says bits 31–7 read zero. Conflict retained for hardware verification. |
+| VCRWDT | FFFFFEE4 | 8/16 R/W | 7F7F / 0000 | WDT and BSC compare-match vectors routed to their active interrupt sources; shared priority and WDT tie precedence. |
+| VCRDIV | FFFFFF0C | 16/32 R/W | B.2 lower 16 R/W; vector uses 7 bits / undefined | Retain lower-sixteen read-back: B.2/10.2.4 charts and YabauseUT’s 0102 write/read expectation agree; vector uses seven bits. Contradictory prose documented in SH7604_DIVU_REGISTER_EVIDENCE.md; no new hardware measurement. |
 | VCRDMA0 | FFFFFFA0 | 32 R/W | Low 8 R/W; software must write VC7=0 / undefined low byte | Implementation masks to 7F; legal 0–127 vectors match. VC7 read-back after prohibited write is not evidence for a safe fix. |
 | VCRDMA1 | FFFFFFA8 | 32 R/W | Same as VCRDMA0 | Same verdict. |
 
@@ -104,7 +105,7 @@ return value; no generic zero/open-bus rule is invented in this audit.
 | WTCSR | FFFFFE80 / FFFFFE80 | 8 R; 16 W, A5 key | Bits 4–3 fixed 1; OVF qualified clear / 18 | FIXED atomic keyed word access. Interval/watchdog scheduling and flag qualifiers present. |
 | WTCNT | FFFFFE81 / FFFFFE80 | 8 R; 16 W, 5A key | FF / 00 | FIXED atomic key; count read resynchronization present. |
 | RSTCSR | FFFFFE83 / FFFFFE82 | 8 R; 16 W, A5 flag / 5A control key | Low 5 bits fixed 1, high E0 / 1F | FIXED atomic key; WOVF qualified clear and controls present. |
-| SBYCR | FFFFFE91 | 8 R/W | DF / 00 | FIXED reserved bit 5. NMI wake applies full-standby initialization; entry/clock halt and individual MSTP/HIZ behavior need audit. |
+| SBYCR | FFFFFE91 | 8 R/W | DF / 00 | FIXED reserved bit 5. Entry initialization, clock halt, NMI settling, module stop and HIZ/CKPACK implemented and verified; see `SH7604_SCI_STANDBY_AUDIT.md`. |
 | CCR | FFFFFE92 | 8 R/W | CF on read; CP bit 4 write-only, bit 5 reserved / 00 | `write_ccr` masks reserved/CP, executes purge and stores other bits; matches inspected rules. Cache arrays are outside Appendix B register inventory. |
 
 WDT write protection is per bus transaction; two byte writes cannot assemble a
@@ -132,26 +133,29 @@ INTC table above to avoid double-counting.
 
 | Register | Address | Legal access | Read-back / reset | Verdict |
 |---|---|---|---|---|
-| BARAH | FFFFFF40 | 16/32 R/W | FFFF / 0000 | Mapped storage only; 32-bit address access spans AH/AL; no break engine. |
-| BARAL | FFFFFF42 | 16 R/W | FFFF / 0000 | Mapped storage only. |
-| BAMRAH | FFFFFF44 | 16/32 R/W | FFFF / 0000 | UNMAPPED. |
-| BAMRAL | FFFFFF46 | 16 R/W | FFFF / 0000 | UNMAPPED. |
-| BBRA | FFFFFF48 | 16/32 R/W | 00FF / 0000 | UNMAPPED. |
-| BARBH | FFFFFF60 | 16/32 R/W | FFFF / 0000 | Mapped storage only; no break engine. |
-| BARBL | FFFFFF62 | 16 R/W | FFFF / 0000 | Mapped storage only. |
-| BAMRBH | FFFFFF64 | 16/32 R/W | FFFF / 0000 | UNMAPPED. |
-| BAMRBL | FFFFFF66 | 16 R/W | FFFF / 0000 | UNMAPPED. |
-| BBRB | FFFFFF68 | 16/32 R/W | 00FF / 0000 | UNMAPPED. |
-| BDRBH | FFFFFF70 | 16/32 R/W | FFFF / 0000 | UNMAPPED. |
-| BDRBL | FFFFFF72 | 16/32 R/W (B.2) | FFFF / 0000 | UNMAPPED; preserve B.2's listed size pending chapter/bus verification. |
-| BDMRBH | FFFFFF74 | 16/32 R/W | FFFF / 0000 | UNMAPPED. |
-| BDMRBL | FFFFFF76 | 16 R/W | FFFF / 0000 | UNMAPPED. |
-| BRCR | FFFFFF78 | 16/32 R/W | F4DC / 0000 | UNMAPPED: CPU/peripheral match flags, sequencing, data compare, interrupt controls absent. |
+| BARAH | FFFFFF40 | 16/32 R/W | FFFF / 0000 | Implemented address comparison; longword access spans AH/AL. |
+| BARAL | FFFFFF42 | 16 R/W | FFFF / 0000 | Implemented address comparison. |
+| BAMRAH | FFFFFF44 | 16/32 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BAMRAL | FFFFFF46 | 16 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BBRA | FFFFFF48 | 16/32 R/W | 00FF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BARBH | FFFFFF60 | 16/32 R/W | FFFF / 0000 | Implemented channel B address comparison. |
+| BARBL | FFFFFF62 | 16 R/W | FFFF / 0000 | Implemented address comparison. |
+| BAMRBH | FFFFFF64 | 16/32 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BAMRBL | FFFFFF66 | 16 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BBRB | FFFFFF68 | 16/32 R/W | 00FF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BDRBH | FFFFFF70 | 16/32 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BDRBL | FFFFFF72 | 16/32 R/W (B.2) | FFFF / 0000 | Implemented lower data halfword; paired longwords follow the big-endian bus lanes. |
+| BDMRBH | FFFFFF74 | 16/32 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BDMRBL | FFFFFF76 | 16 R/W | FFFF / 0000 | Implemented with the listed width/mask and chapter-6 comparison semantics. |
+| BRCR | FFFFFF78 | 16/32 R/W | F4DC / 0000 | Implemented flags, mode/sequencing/data controls and fixed-priority vector-12 exceptions. |
 
-Full UBC repair needs CPU and peripheral bus comparisons, instruction/data
-cycle qualifiers, address/data masks, channel sequencing and user-break
-exceptions. Mapping dummy storage alone would leave the audit failures open.
-Manual reset retains UBC, while power-on reset initializes it (4.2.3).
+Implemented 2026-10-09: CPU instruction/data and on-chip DMA comparisons,
+external bus monitoring, address/data masks, independent/sequential channels,
+SH7000 compatibility, before/after exceptions and deferred masked requests.
+Three-cycle setting latency, dummy-read synchronization, fetch-pair snapshots,
+save/load and reset retention are verified. Full standby stops the UBC clock.
+See [`SH7604_UBC_IMPLEMENTATION.md`](SH7604_UBC_IMPLEMENTATION.md) for the
+implementation and reproducible validation.
 
 ## DMAC — Appendix B pp. 602–606; chapter 9
 
@@ -165,16 +169,22 @@ Manual reset retains UBC, while power-on reset initializes it (4.2.3).
 | DAR1 | FFFFFF94 | 32 R/W | FFFFFFFF / undefined | Same as DAR0. |
 | TCR1 | FFFFFF98 | 32 R/W | 00FFFFFF / undefined | Same as TCR0. |
 | CHCR1 | FFFFFF9C | 32 R/W | 0000FFFF; TE qualified clear / 00000000 | Same as CHCR0. |
-| DRCR0 | FFFFFE71 | 8 R/W | 03 / 00 | Mask matches; external/SCI request selection not implemented by transfer starter. |
+| DRCR0 | FFFFFE71 | 8 R/W | 03 / 00 | Mask matches; SCI RXI/TXI request selection and acknowledgement implemented. External pin level/edge selection, DACK and arbitration are implemented and tested. |
 | DRCR1 | FFFFFE72 | 8 R/W | 03 / 00 | Same as DRCR0. |
-| DMAOR | FFFFFFB0 | 32 R/W | 0000000F / 00000000 | FIXED qualified AE/NMIF clears and transfer inhibition when either flag is set; AE generation/NMI input wiring and request mode remain open. |
+| DMAOR | FFFFFFB0 | 32 R/W | 0000000F / 00000000 | FIXED qualified AE/NMIF clears and transfer inhibition when either flag is set; AE generation, NMI inhibition, external/SCI request selection and channel priority implemented and tested. |
 
-`sh2_dmac_check` starts when DE/DME allow, without waiting for DRCR/AR
-request selection; misaligned addresses are rounded instead of setting AE.
-The active source/destination/count fields remain separate, but programmer-visible
-registers now follow every completed unit, including before an abort. Existing DMAC bus timing does not resolve these state-machine gaps.
-Round-robin PR and external handshake/single-address details also need
-implementation-level validation; no conformance claim is made for them.
+The active controller gates grants on AR/DRCR and the selected physical DREQ
+level/edge. Alignment and illegal on-chip widths raise AE before erroneous
+payload accesses; NMI inhibits new grants. Single-address input/output and
+DACK phase/polarity use real peripheral callbacks. A shared owner implements
+fixed/cycle-steal/burst and retained round-robin priority. Accepted valid units
+finish before abort; TE follows the final-unit conditions in 9.3.8.
+Active requests, payload/beat state, priority, pins and deadlines are saved.
+Both-core connected-device regressions, full Saturn device regressions and
+actual-method ASan/UBSan fixtures pass. See
+[`SH7604_DMAC_IMPLEMENTATION.md`](SH7604_DMAC_IMPLEMENTATION.md) for interfaces,
+request timing, arbitration, save/load and validation evidence. No hardware
+measurement validates the absolute bus-cost model.
 VCRDMA0/1 are counted in INTC above.
 
 ## BSC — Appendix B pp. 607–612; 7.1.4 and 7.2
@@ -185,8 +195,8 @@ VCRDMA0/1 are counted in INTC above.
 | BCR2 | FFFFFFE4 | 32 R/W; 16 R at E6 | 00FC / 00FC | FIXED key/width and reserved bits. |
 | WCR | FFFFFFE8 | 32 R/W; 16 R at EA | FFFF / AAFF | FIXED key/width and upper-word read-back. |
 | MCR | FFFFFFEC | 32 R/W; 16 R at EE | FEFC / 0000 | FIXED key/width and reserved/upper read-back. |
-| RTCSR | FFFFFFF0 | 32 R/W; 16 R at F2 | 00F8; CMF qualified clear / 0000 | FIXED key/width and read-qualified CMF clears (software cannot set CMF); refresh IRQ/timer absent. |
-| RTCNT | FFFFFFF4 | 32 R/W; 16 R at F6 | 00FF / 0000 | FIXED key/width; FAIL refresh-clock count and compare not implemented. |
+| RTCSR | FFFFFFF0 | 32 R/W; 16 R at F2 | 00F8; CMF qualified clear / 0000 | FIXED key/width and read-qualified CMF clears (software cannot set CMF); refresh clock, CMF and CMI implemented. |
+| RTCNT | FFFFFFF4 | 32 R/W; 16 R at F6 | 00FF / 0000 | FIXED key/width; seven clock divisors, eight-bit count/wrap, compare/clear, standby and saved phase implemented. |
 | RTCOR | FFFFFFF8 | 32 R/W; 16 R at FA | 00FF / 0000 | FIXED key/width; constant stored but no refresh compare. |
 
 All seven registers accept writes only as a single 32-bit transaction with
@@ -201,19 +211,20 @@ endian conversion, bus-size selection or DRAM/SDRAM refresh/arbitration.
   Appendix B register was omitted from the matrix. Reserved holes are unmapped
   except the following existing extensions; their read value is not assumed to
   be zero merely because reserved named-register bits read zero.
-- FMR at FFFFFE90: Appendix B calls this address reserved. The source records
-  observed SH7604/CPS3 behavior but only logs clock changes. Retain and classify
-  as a measured extension; it is not a documented Appendix B register.
-- Read-only DVDNTH/DVDNTL mirrors at FFFFFF18/1C: Appendix B marks this area
-  reserved; current implementation exposes division results there. Keep as
-  undocumented mappings pending primary hardware evidence.
+- FMR at FFFFFE90: documented in section 3.3.2/table 3.6, printed pp.55–56,
+  despite Appendix B's omission. Mapping corroborated; the existing handler
+  only logs frequency changes. No clock engine is claimed by this evidence item.
+- DVDNTUH/DVDNTUL result copies at FFFFFF18/1C and FFFFFF38/3C:
+  YabauseUT requires writable storage and division-result replacement.
+  Implemented as saved writable copies; all DIVU +20 register aliases mapped.
+  See SH7604_DIVU_REGISTER_EVIDENCE.md for evidence and hardware limits.
 - B.1's FRC/OCR address labels are displaced in the printed table. B.2 and
   chapter 11 agree on FRC FE12/13, OCRA/B FE14/15, TCR FE16. Those addresses
   match the code; the malformed overview is not grounds to remap them.
 - B.2 misprints DVSR/DVDNT as FFFFFE00/04. Chapter 10 and B.1 use FFFFFF00/04.
-- VCRDIV lower-word R/W chart versus the prose's reserved read-zero statement
-  is a genuine conflict; current read-back follows the chart. Do not silently
-  report either interpretation as experimentally established.
+- VCRDIV read-back follows the sixteen-bit charts, corroborated by YabauseUT
+  requiring 0102 read-back. The prose conflict is resolved as an implementation
+  decision, not represented as a new hardware experiment.
 - VCRDMA's chart includes VC7, but 9.2.5 forbids setting it. Legal vector range
   is 0–127. The existing 7F mask agrees for all permitted writes.
 - ICR.NMIL reflects pin level, independent of edge selection. The source TODO
@@ -253,3 +264,11 @@ register fixture passes; burst counts 1–7 pass in all 14 real-device runs
 (interpreter and DRC, sequentially), with untouched destination guards. A final
 isolated 20-second VF Kids run exits normally with video/audio output disabled.
 These checks do not establish long-run/gameplay/audio or hardware timing parity.
+
+SCI DMA and standby implementation follow-up (2026-10-09): [`SH7604_SCI_STANDBY_AUDIT.md`](SH7604_SCI_STANDBY_AUDIT.md) documents implemented request/acknowledgement and power-down transitions. Its pin engine, SCI status/IRQ/DMA and standby implementation supersedes the historical SCI and standby failure verdicts in this audit.
+
+
+BSC follow-up 2026-10-11: refresh register sampling now includes pending DRC
+sequence cycles, with actual-method interpreter/DRC boundary and no-double-count
+regressions. The remaining generic BCR/WCR/MCR effects are enumerated in
+SH7604_BSC_REMAINDER_AUDIT.md; the original broader item remains incomplete.

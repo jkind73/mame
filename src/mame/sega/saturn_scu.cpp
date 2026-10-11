@@ -29,6 +29,51 @@ C-Bus: $0600'0000 - $07ff'ffff (Work RAM-H, mirrored)
 
 **************************************************************************************************/
 
+/*
+Historical SCU observations moved from the shared driver. These are retained
+as investigation notes, not a description of the current interrupt/timer model.
+
+    - There's definitely an ack mechanism in SCU irqs. This is almost surely done via
+      the ISM register (i.e. going 0->1 to the given bit acks it).
+    - There might be a delay to exactly when SCU irqs happens. This is due to the basic
+      fact that SCU runs at 14-ish MHz, so it needs some time before actually firing the
+      irq.
+    - Timer 0 doesn't work if the TENB bit isn't enabled (documentation is a bit fussy
+      over this).
+    - Timer 0 fires at the HBlank-In signal, not before.
+    - Timer 1 is definitely annoying. Starts from H-Blank signal and starts counting from
+      that position.
+      H counter value 0x282 (642) -> timer 1 fires at setting 1
+      H counter value 0x284 (644) -> 2
+      H counter value 0x2a0 (672) -> 0x10
+      H counter value 0x2c0 (704) -> 0x20
+      H counter value 0x300 (768) -> 0x40
+      H counter value 0x340 (832) -> 0x60
+      H counter value 0x352 (850) -> 0x69
+      H counter value 0x000 (0)   -> 0x6a, V counter goes +1 here (max range?)
+      H counter value 0x02c (44)  -> 0x80
+      H counter value 0x0ec (236) -> 0xe0
+      H counter value 0x12c (300) -> 0x100
+    - Timer 1 seems to count backwards compared to Timer 0 from setting 0x6b onward.
+
+(Preliminary) explanation about this:
+VBLANK-OUT is used at the start of the vblank period. It also sets the timer zero
+variable to 0.
+If the Timer Compare register is zero too,the Timer 0 irq is triggered.
+
+HBLANK-IN is used at the end of each scanline except when in VBLANK-IN/OUT periods.
+
+The timer 0 is also incremented by one at each HBLANK and checked with the value
+of the Timer Compare register;if equal,the timer 0 irq is triggered here too.
+Notice that the timer 0 compare register can be more than the VBLANK maximum range,in
+this case the timer 0 irq is simply never triggered.This is a known Sega Saturn/ST-V "bug".
+
+VBLANK-IN is used at the end of the vblank period.
+
+SCU register[36] is the timer zero compare register.
+SCU register[40] is for IRQ masking.
+*/
+
 #include "emu.h"
 #include "saturn_scu.h"
 
@@ -38,6 +83,7 @@ C-Bus: $0600'0000 - $07ff'ffff (Work RAM-H, mirrored)
 #define LOG_DMA_END      (1 << 2) // log the values at end of DMA
 #define LOG_DMA_STATE    (1 << 3) // log state changes
 #define LOG_DMA_MODE     (1 << 4) // log accepted transfer state
+#define LOG_RULE         (1 << 6)
 #define LOG_DMA_INDIRECT (1 << 5) // log indirect fetches (verbose)
 
 #define VERBOSE (LOG_GENERAL)
@@ -57,6 +103,7 @@ saturn_scu_device::saturn_scu_device(const machine_config &mconfig, const char *
 	, m_scudsp(*this, "scudsp")
 	, m_hostcpu(*this, finder_base::DUMMY_TAG)
 	, m_main_dtack_cb(*this)
+	, m_cbus_cycle_cb(*this)
 	, m_vdp2_penalty_cb(*this, 0)
 {
 }
@@ -219,8 +266,16 @@ uint16_t saturn_scu_device::scudsp_dma_r(offs_t offset, uint16_t mem_mask)
 	offs_t addr = offset & 0x07ff'ffff;
 
 	if (!(addr & 2))
+	{
+		attotime const extra = m_dma_extra;
+		m_dma_extra = attotime::zero;
 		m_dsp_dma_cost += dma_read_cost(addr, 4);
+		m_dsp_dma_extra += m_dma_extra;
+		m_dma_extra = extra;
+	}
 
+	if (addr >= 0x06000000)
+		m_cbus_cycle_cb(addr, 0);
 	return m_hostspace->read_word(addr,mem_mask);
 }
 
@@ -236,7 +291,7 @@ void saturn_scu_device::scudsp_dma_w(offs_t offset, uint16_t data, uint16_t mem_
 	m_dma_extra = attotime::zero;
 	dma_write_cost(scratch, addr, 2);
 	m_dsp_dma_cost += m_dma_cost;
-	m_dsp_dma_extra = std::max(m_dsp_dma_extra, m_dma_extra);
+	m_dsp_dma_extra += m_dma_extra;
 	m_dma_cost = cost;
 	m_dma_extra = extra;
 
@@ -257,7 +312,12 @@ void saturn_scu_device::device_add_mconfig(machine_config &config)
 	m_scudsp->out_irq_callback().set(DEVICE_SELF, FUNC(saturn_scu_device::scudsp_end_w));
 	m_scudsp->in_dma_callback().set(FUNC(saturn_scu_device::scudsp_dma_r));
 	m_scudsp->out_dma_callback().set(FUNC(saturn_scu_device::scudsp_dma_w));
+	m_scudsp->set_dma_ready_callback([this](u32 a,bool write){return !m_host_ready_cb||m_host_ready_cb(a,4,write);});
 	m_scudsp->set_dma_wait_callback([this] () { return scudsp_dma_wait(); });
+	m_scudsp->set_dma_start_callback([this] () {
+		auto const [level, waiting] = check_dma_level_round_robin();
+		return level == -1;
+	});
 	m_scudsp->out_ddwt_callback().set([this] (int state) {
 		if (state)
 			m_dma_status |= DMA_DSP_WAIT;
@@ -265,11 +325,20 @@ void saturn_scu_device::device_add_mconfig(machine_config &config)
 			m_dma_status &= ~(DMA_DSP_WAIT);
 	});
 	m_scudsp->out_ddmv_callback().set([this] (int state) {
-		//m_main_dtack_cb(state);
 		if (state)
+		{
 			m_dma_status |= DMA_DSP_MOVE;
+			set_cpu_halt(m_scudsp->dma_uses_cbus());
+		}
 		else
-			m_dma_status &= ~(DMA_DSP_MOVE);
+		{
+			bool const released = (m_dma_status & DMA_DSP_MOVE) != 0;
+			m_dma_status &= ~DMA_DSP_MOVE;
+			auto const [level, waiting] = check_dma_level_round_robin();
+			set_cpu_halt(level != -1 && m_dma[level].cbus);
+			if (released && (level != -1 || waiting != -1))
+				m_dma_tick_timer->adjust(attotime::zero);
+		}
 	});
 
 }
@@ -319,6 +388,7 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[0].read_address));
 	save_item(NAME(m_dma[0].read_offset));
 	save_item(NAME(m_dma[0].read_buffer_valid));
+	save_item(NAME(m_dma[0].cd_second_pending));
 
 	save_item(NAME(m_dma[1].src));
 	save_item(NAME(m_dma[1].dst));
@@ -345,6 +415,7 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[1].read_address));
 	save_item(NAME(m_dma[1].read_offset));
 	save_item(NAME(m_dma[1].read_buffer_valid));
+	save_item(NAME(m_dma[1].cd_second_pending));
 
 	save_item(NAME(m_dma[2].src));
 	save_item(NAME(m_dma[2].dst));
@@ -371,17 +442,20 @@ void saturn_scu_device::device_start()
 	save_item(NAME(m_dma[2].read_address));
 	save_item(NAME(m_dma[2].read_offset));
 	save_item(NAME(m_dma[2].read_buffer_valid));
+	save_item(NAME(m_dma[2].cd_second_pending));
 
 	save_item(NAME(m_dma_cost));
 	save_item(NAME(m_dma_sdram_reads));
 	save_item(NAME(m_cpu_halt));
 
 	save_item(NAME(m_current_irq_level));
+	save_item(NAME(m_current_vector));
 
 	m_hostspace = &m_hostcpu->space(AS_PROGRAM);
 
 	m_dma_tick_timer = timer_alloc(FUNC(saturn_scu_device::dma_tick_cb), this);
 	m_timer1 = timer_alloc(FUNC(saturn_scu_device::timer1_irq_cb), this);
+	m_irq_dispatch_timer = timer_alloc(FUNC(saturn_scu_device::irq_dispatch), this);
 }
 
 
@@ -410,6 +484,7 @@ void saturn_scu_device::device_reset()
 		m_dma[i].cbus = false;
 		m_dma[i].pending_read = 0;
 		m_dma[i].read_buffer_valid = false;
+	m_dma[i].cd_second_pending = false;
 		m_dma[i].mode = DMA_MODE_RESET;
 	}
 	m_dma_cost = 0;
@@ -420,11 +495,12 @@ void saturn_scu_device::device_reset()
 	m_dma_tick_timer->adjust(attotime::never);
 	m_dma_status = 0;
 	m_current_irq_level = 0;
+	m_current_vector = 0;
+	m_irq_dispatch_timer->adjust(attotime::never);
 
-	// Nope until we have a proper DTACK instead of an HALT,
-	// SMPC triggers this thru dotsel (2 credits meme ...)
-	//m_sound_dtack_cb(0);
-	//m_main_dtack_cb(0);
+	// Reset releases the SCU's bus hold. The driver combines this reason with
+	// the independent SMPC hold; releasing it must not release an SMPC stop.
+	m_main_dtack_cb(0);
 
 	m_tenb = false;
 	m_t1md = false;
@@ -607,6 +683,7 @@ void saturn_scu_device::trigger_dma_direct(uint8_t level)
 	m_dma[level].cbus = src_flags == C_BUS || dst_flags == C_BUS;
 	m_dma[level].pending_read = 0;
 	m_dma[level].read_buffer_valid = false;
+	m_dma[level].cd_second_pending = false;
 
 	m_dma[level].live_src = m_dma[level].src;
 	m_dma[level].live_dst = m_dma[level].dst;
@@ -645,6 +722,7 @@ void saturn_scu_device::trigger_dma_indirect(uint8_t level)
 	m_dma[level].cbus = false;
 	m_dma[level].pending_read = 0;
 	m_dma[level].read_buffer_valid = false;
+	m_dma[level].cd_second_pending = false;
 
 	update_dma_status(level, DMA_STATE_WAIT);
 
@@ -701,7 +779,11 @@ int saturn_scu_device::dma_read_cost(u32 address, unsigned size)
 	else if (a >= 0x0580'0000 && a < 0x0590'0000)
 		half = 8;
 	else if (a >= 0x05a0'0000 && a < 0x05c0'0000)
+	{
 		half = 13;
+		if (m_scsp_wait_cb)
+			m_dma_extra += m_scsp_wait_cb(a >= 0x05b00000);
+	}
 	return halves * half;
 }
 
@@ -709,6 +791,8 @@ uint32_t saturn_scu_device::dma_read(dma_channel_t &ch, u32 address, unsigned si
 {
 	m_dma_cost += ch.pending_read;
 	ch.pending_read = dma_read_cost(address, size);
+	if ((address & 0x07ffffff) >= 0x06000000)
+		m_cbus_cycle_cb(address & 0x07ffffff, 0);
 	return size == 4 ? m_hostspace->read_dword(address) : m_hostspace->read_word(address);
 }
 
@@ -771,9 +855,15 @@ void saturn_scu_device::dma_write_unit(dma_channel_t &ch, unsigned word_add)
 void saturn_scu_device::dma_write_cost(dma_channel_t &ch, u32 address, unsigned size)
 {
 	u32 const a = address & 0x07ff'ffff;
+	if (a >= 0x06000000)
+		m_cbus_cycle_cb(a, 1);
 	int per = 0;
 	if (a >= 0x05a0'0000 && a < 0x05c0'0000)
+	{
 		per = 13;
+		if (m_scsp_wait_cb)
+			m_dma_extra += m_scsp_wait_cb(a >= 0x05b00000);
+	}
 	else if (a >= 0x05c0'0000 && a < 0x05fc'0000)
 		per = 1;
 	else if (a >= 0x0200'0000 && a < 0x0500'0000)
@@ -804,14 +894,27 @@ void saturn_scu_device::set_cpu_halt(bool halt)
 
 TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 {
-	// guess: yield until DSP do its thing
+	// HACK: bus durations retain the calibrated cost model; ownership ends at the last acknowledgement.
+	// Its completion callback wakes queued channels; no polling is necessary.
 	if (m_dma_status & DMA_DSP_MOVE)
 	{
-		m_dma_tick_timer->adjust(attotime::from_ticks(1, m_dma_clock_ref));
+		m_dma_tick_timer->adjust(attotime::never);
 		return;
 	}
 
 	auto [level, wait_level] = check_dma_level_round_robin();
+	if (level == -1 && (m_dma_status & DMA_DSP_WAIT))
+	{
+		m_scudsp->dma_resume();
+		m_dma_tick_timer->adjust(attotime::never);
+		return;
+	}
+	if (level == -1 && wait_level == -1)
+	{
+		set_cpu_halt(false);
+		m_dma_tick_timer->adjust(attotime::never);
+		return;
+	}
 	m_dma_cost = 0;
 	m_dma_extra = attotime::zero;
 
@@ -834,7 +937,12 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			test_pending_irqs();
 
 			update_dma_status(level, DMA_STATE_IDLE);
-			if (wait_level != -1)
+			if (m_dma_status & DMA_DSP_WAIT)
+			{
+				m_scudsp->dma_resume();
+				m_dma_tick_timer->adjust(attotime::never);
+			}
+			else if (wait_level != -1)
 			{
 				update_dma_status(wait_level, DMA_STATE_MOVE);
 				set_cpu_halt(m_dma[wait_level].cbus);
@@ -854,6 +962,9 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 		if ((m_dma[level].mode & DMA_MODE_INDIRECT) && m_dma[level].indirect_fetch_phase)
 		{
 			u32 indirect_src, indirect_dst, indirect_size;
+			if ((m_dma[level].index & 0x07ffffff) >= 0x06000000)
+				for (unsigned offset = 0; offset < 12; offset += 4)
+					m_cbus_cycle_cb((m_dma[level].index + offset) & 0x07ffffff, 0);
 			indirect_size = m_hostspace->read_dword(m_dma[level].index);
 			indirect_dst  = m_hostspace->read_dword(m_dma[level].index + 4);
 			indirect_src  = m_hostspace->read_dword(m_dma[level].index + 8);
@@ -866,17 +977,34 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			auto const src_flags = std::get<0>(get_address_flags(indirect_src, false));
 			auto const dst_flags = std::get<0>(get_address_flags(indirect_dst, true));
 
+			// Indirect mode does not make BIOS/Work RAM-L/SCU register addresses legal.
+			// Reject an invalid descriptor instead of traversing an uninitialized table forever.
+			if (!src_flags || !dst_flags)
+			{
+				update_dma_status(level, DMA_STATE_IDLE);
+				set_cpu_halt(false);
+				m_ist |= IST_DMAILL;
+				test_pending_irqs();
+				m_dma_tick_timer->adjust(attotime::from_ticks(1, m_dma_clock_ref));
+				return;
+			}
+
 			m_dma[level].bbus_sound_access = src_flags == B_BUS_SCSP || dst_flags == B_BUS_SCSP;
 			// the SH-2s wait while this descriptor's transfer uses the C-Bus
 			m_dma[level].cbus = src_flags == C_BUS || dst_flags == C_BUS;
 			set_cpu_halt(m_dma[level].cbus);
 			m_dma[level].pending_read = 0;
 			m_dma[level].read_buffer_valid = false;
+			m_dma[level].cd_second_pending = false;
 
 			m_dma[level].live_src = indirect_src & 0x07ff'ffff;
 			m_dma[level].live_dst = indirect_dst & 0x07ff'ffff;
 			//TODO: why guardherj sets up a 0x23000 transfer for the FMV?
-			m_dma[level].live_size = indirect_size & ((level == 0) ? 0xf'ffff : 0x3'ffff);
+			// Indirect descriptors use all 20 count bits at every level. Zero wraps to
+			// 1 MiB, rather than skipping the descriptor (SCU.sv DMA_WTN_NEXT).
+			m_dma[level].live_size = indirect_size & 0xf'ffff;
+			if (!m_dma[level].live_size)
+				m_dma[level].live_size = 0x100000;
 			m_dma[level].live_count = 0;
 
 			m_dma[level].mode = DMA_MODE_INDIRECT;
@@ -895,6 +1023,7 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 			return;
 		}
 
+		if(!dma_transfer_ready(m_dma[level])) { m_dma_tick_timer->adjust(attotime::from_ticks(1,m_dma_clock_ref));return; }
 		dma_unit_step(level);
 	}
 
@@ -925,11 +1054,63 @@ TIMER_CALLBACK_MEMBER(saturn_scu_device::dma_tick_cb)
 // direct transfer, or of an indirect chain's last descriptor, sets done; the end of an indirect
 // descriptor goes on to fetch the next. When the transfer ends, the source read still pending is
 // charged.
+bool saturn_scu_device::cpu_bus_ready(u32 address) const
+{
+	u32 const a = address & 0x07ffffff;
+	if (a < 0x02000000 || a >= 0x05fc0000 || (a >= 0x05900000 && a < 0x05a00000))
+		return true;
+	return !(m_dma_status & (DMA_DSP_MOVE | DMA_DSP_WAIT | DMA_LV0_MOVE | DMA_LV0_WAIT | DMA_LV1_MOVE | DMA_LV1_WAIT |
+							 DMA_LV2_MOVE | DMA_LV2_WAIT));
+}
+
+bool saturn_scu_device::dma_transfer_ready(dma_channel_t const &ch) const
+{
+	if (!m_host_ready_cb)
+		return true;
+	if (ch.mode & 2)
+	{
+		u32 const dst = (ch.live_dst & 0x07fffffc) + (ch.cd_second_pending ? 4 : 0);
+		return m_host_ready_cb(ch.live_src & 0x07fffffc, 4, false) && m_host_ready_cb(dst, 4, true);
+	}
+	unsigned const size = (ch.live_size - ch.live_count >= 2 && !(ch.live_dst & 1)) ? 2 : 1;
+	if (!m_host_ready_cb(ch.live_dst, size, true))
+		return false;
+	if (!ch.read_buffer_valid)
+		return m_host_ready_cb(ch.live_src & 0x07fffffc, 4, false);
+	if (ch.read_offset + size > 4)
+		return m_host_ready_cb((ch.read_address + ch.src_add) & 0x07ffffff, 4, false);
+	return true;
+}
+
+// An eight-byte CD unit is two separately acknowledged bus reads. The physical
+// FIFO need not contain all eight bytes at once. Preserve the first half while
+// the second awaits the SH-1's next DMA request.
+void saturn_scu_device::dma_cd_waited(dma_channel_t &ch)
+{
+	unsigned const advance = (ch.mode & 1) ? 4 : ch.dst_add * 2;
+	bool const pair = advance == 8 || ((ch.mode & 1) && ch.dst_add == 8);
+	u32 const dst = (ch.live_dst & 0x07fffffc) + (ch.cd_second_pending ? 4 : 0);
+	m_hostspace->write_dword(dst, dma_read(ch, ch.live_src & 0x07fffffc, 4));
+	dma_write_cost(ch, dst, 4);
+	if (pair && !ch.cd_second_pending)
+	{
+		ch.cd_second_pending = true;
+		return;
+	}
+	ch.cd_second_pending = false;
+	ch.live_src += ch.src_add;
+	ch.live_dst += advance;
+	ch.live_count += (ch.mode & 1) ? 4 : (pair ? 8 : 4);
+}
+
 void saturn_scu_device::dma_unit_step(uint8_t level)
 {
 	dma_channel_t &ch = m_dma[level];
 
-	(this->*dma_transfer_table[ch.mode & 3])(ch);
+	if (m_host_ready_cb && (ch.mode & 2))
+		dma_cd_waited(ch);
+	else
+		(this->*dma_transfer_table[ch.mode & 3])(ch);
 	if (ch.live_count >= ch.live_size)
 	{
 		m_dma_cost += ch.pending_read;
@@ -975,7 +1156,7 @@ void saturn_scu_device::dma_unit_step(uint8_t level)
 // descriptor, is left alone.
 uint32_t saturn_scu_device::dma_bus_owner_wait()
 {
-	if (m_dma_status & (DMA_DSP_MOVE | DMA_DSP_WAIT))
+	if (m_dma_status & DMA_DSP_MOVE)
 	{
 		// the DSP's transfer owns the A-Bus and the B-Bus as well: the access waits for it
 		uint64_t const cycles = m_hostcpu->attotime_to_cycles(m_scudsp->dma_finish());
@@ -985,6 +1166,8 @@ uint32_t saturn_scu_device::dma_bus_owner_wait()
 	auto [level, wait_level] = check_dma_level_round_robin();
 	if (level == -1)
 	{
+		if (m_dma_status & DMA_DSP_WAIT)
+			return uint32_t(std::min<uint64_t>(m_hostcpu->attotime_to_cycles(m_scudsp->dma_finish()), 0x7fff'ffff));
 		if (wait_level == -1)
 			return 0;
 		dma_channel_t const &w = m_dma[wait_level];
@@ -996,13 +1179,20 @@ uint32_t saturn_scu_device::dma_bus_owner_wait()
 	}
 
 	dma_channel_t &ch = m_dma[level];
-	if (ch.done || ((ch.mode & DMA_MODE_INDIRECT) && ch.indirect_fetch_phase))
+	if (ch.done)
+	{
+		uint64_t const cycles = m_hostcpu->attotime_to_cycles((m_dma_status & DMA_DSP_WAIT)
+				? m_scudsp->dma_finish(m_dma_tick_timer->remaining()) : m_dma_tick_timer->remaining());
+		return uint32_t(std::min<uint64_t>(cycles, 0x7fff'ffff));
+	}
+	if ((ch.mode & DMA_MODE_INDIRECT) && ch.indirect_fetch_phase)
 		return 0;
 
-	uint64_t total = 0;
+	uint64_t total = m_hostcpu->attotime_to_cycles(m_dma_tick_timer->remaining());
 	attotime extra = attotime::zero;
 	while (!ch.done && !((ch.mode & DMA_MODE_INDIRECT) && ch.indirect_fetch_phase))
 	{
+		if(!dma_transfer_ready(ch))break;
 		m_dma_cost = 0;
 		m_dma_extra = attotime::zero;
 		dma_unit_step(level);
@@ -1010,7 +1200,10 @@ uint32_t saturn_scu_device::dma_bus_owner_wait()
 		extra += m_dma_extra;
 	}
 	total += m_hostcpu->attotime_to_cycles(extra);
-	m_dma_tick_timer->adjust(m_hostcpu->cycles_to_attotime(total));
+	m_dma_tick_timer->adjust(m_hostcpu->cycles_to_attotime(std::max<u64>(total,1)));
+	// Preserve this owner's completion event while scheduling a queued DSP after it.
+	if (ch.done && (m_dma_status & DMA_DSP_WAIT))
+		total = m_hostcpu->attotime_to_cycles(m_scudsp->dma_finish(m_hostcpu->cycles_to_attotime(total)));
 	return uint32_t(std::min<uint64_t>(total, 0x7fff'ffff));
 }
 
@@ -1176,11 +1369,15 @@ uint32_t saturn_scu_device::irq_status_r()
 void saturn_scu_device::irq_mask_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	COMBINE_DATA(&m_ism);
+	m_ism &= 0xbfff; // Chapter 3.5: bit 14 and the upper word are reserved.
 	test_pending_irqs();
 }
 
 void saturn_scu_device::irq_status_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	// Rel.2.5 prohibits software writes because they can lose pending events. Preserve
+	// the hardware write-zero-clear behavior; diagnostics are opt-in through LOG_RULE.
+	LOGMASKED(LOG_RULE, "%s: prohibited IST write %08x mask %08x\n", machine().describe_context(), data, mem_mask);
 //  if(mem_mask != 0xffffffff)
 //      LOG("%s IST write %08x with %08x\n", this->tag(), data, mem_mask);
 
@@ -1262,6 +1459,9 @@ IRQ_CALLBACK_MEMBER(saturn_scu_device::irq_ack_cb)
 	// this vector callback. Queuing CLEAR_LINE here leaves the request pending
 	// while an SH-2 handler lowers SR, allowing the same request to nest again.
 	m_current_irq_level = 0;
+	// Re-arbitrate queued requests after the current vector fetch completes.
+	// Without this, pending IST bits depend on another unrelated register write.
+	m_irq_dispatch_timer->adjust(attotime::zero);
 	return m_current_vector;
 }
 
@@ -1359,6 +1559,11 @@ void saturn_scu_device::scudsp_end_w(int state)
 		return;
 
 	m_ist |= IST_DSP_END;
+	test_pending_irqs();
+}
+
+TIMER_CALLBACK_MEMBER(saturn_scu_device::irq_dispatch)
+{
 	test_pending_irqs();
 }
 

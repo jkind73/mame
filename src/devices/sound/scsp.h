@@ -15,7 +15,7 @@
 #include "diserial.h"
 
 
-#define SCSP_FM_DELAY    0    // delay in number of slots processed before samples are written to the FM ring buffer
+#define SCSP_FM_DELAY    5    // sound-stack writeback latency in slot times
 				// driver code indicates should be 4, but sounds distorted then
 
 
@@ -32,10 +32,12 @@ public:
 	auto irq_cb() { return m_irq_cb.bind(); }
 	auto main_irq_cb() { return m_main_irq_cb.bind(); }
 	auto midi_out_cb() { return m_midi_out_cb.bind(); }
+	void set_saturn_mode(bool enabled) { m_saturn_mode = enabled; }
 
 	// SCSP register access
 	u16 read(offs_t offset);
 	void write(offs_t offset, u16 data, u16 mem_mask = ~0);
+	attotime dma_access_wait(bool registers) const;
 
 	// MIDI I/O access (used for comms on Model 2/3)
 	void midi_in(int state) { rx_w(state); }
@@ -60,6 +62,8 @@ protected:
 	virtual void rcv_complete() override;
 
 private:
+	bool m_saturn_mode = false; // Saturn/ST-V board restrictions, not generic SCSP memory modes
+	attotime m_reset_ready = attotime::zero;
 	enum SCSP_STATE { SCSP_ATTACK, SCSP_DECAY1, SCSP_DECAY2, SCSP_RELEASE };
 
 	struct SCSP_EG_t
@@ -112,6 +116,7 @@ private:
 	u8 m_BUFPTR;
 #if SCSP_FM_DELAY
 	s16 m_DELAYBUF[SCSP_FM_DELAY];
+	bool m_DELAYVALID[SCSP_FM_DELAY];
 	u8 m_DELAYPTR;
 #endif
 	sound_stream * m_stream;
@@ -141,7 +146,8 @@ private:
 
 	// timers
 	emu_timer *m_timerA, *m_timerB, *m_timerC;
-	emu_timer *m_timerS;   // 1 Fs sample interrupt, armed only while it is enabled
+	emu_timer *m_timerS;   // free-running 1 Fs interrupt, independent of enables
+	emu_timer *m_timerDMA;
 
 	// DMA stuff
 	struct
@@ -151,12 +157,17 @@ private:
 		u16 dtlg;
 		u8 dgate;
 		u8 ddir;
+		u16 remaining;
+		u16 data;
+		bool active;
+		bool write_phase;
 	} m_dma;
 
 	u16 m_mcieb;
 	u16 m_mcipd;
 
 	u32 m_eg_counter;    // envelope generator sample counter
+	u64 m_sample_counter = 0; // free-running timer prescaler phase
 	u32 m_lfsr;          // noise generator, 17 bit LFSR advanced once per slot
 	s32 m_log_peak[2];   // SCSP_LOG: output peak of the last second
 	u32 m_log_count;
@@ -173,6 +184,10 @@ private:
 	int m_ASCALES[8][256];
 
 	void exec_dma();       /*state DMA transfer function*/
+	void dma_step();
+	bool dma_memory_reserved(unsigned cycle) const;
+	unsigned memory_cycle() const;
+	TIMER_CALLBACK_MEMBER(dma_tick_cb);
 	u8 DecodeSCI(u8 irq);
 	void CheckPendingIRQ();
 	void SetPending(u16 mask);

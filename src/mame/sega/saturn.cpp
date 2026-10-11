@@ -1,47 +1,19 @@
 // license:LGPL-2.1+
 // copyright-holders:David Haywood, Angelo Salese, Olivier Galibert, Mariusz Wojcieszek, R. Belmont
-// Saturn/ST-V shared driver state: SCU/SMPC glue, VDP2 memories and the scanline hook.
+// Saturn/ST-V shared driver state: board control wiring, VDP2 memories and the scanline hook.
 // The VDP1 is in saturn_vdp1.cpp, the VDP2 picture in saturn_vdp2_render.cpp.
 /**************************************************************************************************
 
     Sega Saturn (c) 1994 Sega
 
-    @TODO List of things that needs to be implemented:
-    - There's definitely an ack mechanism in SCU irqs. This is almost surely done via
-      the ISM register (i.e. going 0->1 to the given bit acks it).
-    - There might be a delay to exactly when SCU irqs happens. This is due to the basic
-      fact that SCU runs at 14-ish MHz, so it needs some time before actually firing the
-      irq.
-    - Vblank-Out actually happens at the last screen line, not at 0.
-    - VDP2 V counter has a similar roll-back as MD correspondent register:
-      vpos line 0 == 0x1ff (Vblank-Out happens here)
-      vpos line 1 == 0
-      ...
-      vpos line 241 == 0xf0 (Vblank-In happens here)
-      vpos line 246 == 0xf5
-      vpos line 247 == 0x1ef (rolls back here)
-      vpos line 263 == 0x1ff again
-    - HBlank bit seems to follow a normal logic instead.
-    - Timer 0 doesn't work if the TENB bit isn't enabled (documentation is a bit fussy
-      over this).
-    - Timer 0 fires at the HBlank-In signal, not before.
-    - VDP2 H Counter actually counts x2 in non Hi-Res mode.
-    - Timer 1 is definitely annoying. Starts from H-Blank signal and starts counting from
-      that position.
-      H counter value 0x282 (642) -> timer 1 fires at setting 1
-      H counter value 0x284 (644) -> 2
-      H counter value 0x2a0 (672) -> 0x10
-      H counter value 0x2c0 (704) -> 0x20
-      H counter value 0x300 (768) -> 0x40
-      H counter value 0x340 (832) -> 0x60
-      H counter value 0x352 (850) -> 0x69
-      H counter value 0x000 (0)   -> 0x6a, V counter goes +1 here (max range?)
-      H counter value 0x02c (44)  -> 0x80
-      H counter value 0x0ec (236) -> 0xe0
-      H counter value 0x12c (300) -> 0x100
-    - Timer 1 seems to count backwards compared to Timer 0 from setting 0x6b onward.
-    - Yabause claims that if VDP2 DISP bit isn't enabled then vblank irqs (hblank too?)
-      doesn't happen.
+    Scan events and counters are owned by saturn_vdp2_device. It schedules
+    VBLANK-IN/OUT and HBLANK-IN edges and supplies the latched H/V counters;
+    saturn_scu_device receives these edges and advances its timer 0/1 state.
+    See VDP2_SCAN_TIMING_IMPLEMENTATION.md for the timing model and its
+    unverified dedicated-monitor assumptions.
+
+    TODO: establish whether DISP=0 suppresses SCU VBLANK/HBLANK interrupts
+    on hardware; TVSTAT's forced VBLANK indication is a separate behavior.
 
 **************************************************************************************************/
 
@@ -50,8 +22,6 @@
 #include "emu.h"
 #include "saturn.h"
 
-#include "cpu/scudsp/scudsp.h"
-
 #include "saturn_vdp_log.h"
 
 #include "video.h"
@@ -59,6 +29,8 @@
 
 void saturn_state::machine_start()
 {
+	save_item(NAME(m_scu_halt));
+	save_item(NAME(m_system_halt));
 	// a loaded state starts with a free SH-2 bus
 	machine().save().register_postload(save_prepost_delegate(FUNC(saturn_state::sh2_bus_reset), this));
 }
@@ -66,6 +38,9 @@ void saturn_state::machine_start()
 
 void saturn_state::machine_reset()
 {
+	m_scu_halt = false;
+	m_system_halt = false;
+	update_cpu_halt();
 	m_scsp_last_line = 0;
 
 	sh2_bus_reset();
@@ -88,6 +63,17 @@ void saturn_state::machine_reset()
 
 }
 
+
+// Keep the existing 68000 bus cost and add a contended SCSP DMA grant, rounded
+// up to a CPU clock. The other SCSP bus remains available during that phase.
+unsigned saturn_state::sound_dma_wait(bool registers)
+{
+	attotime const wait = m_scsp->dma_access_wait(registers);
+	u64 cycles = m_audiocpu->attotime_to_cycles(wait);
+	if (m_audiocpu->cycles_to_attotime(cycles) < wait)
+		++cycles;
+	return 1 + cycles;
+}
 
 void saturn_state::soundram_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
@@ -120,6 +106,9 @@ void saturn_state::backupram_w(offs_t offset, uint8_t data)
 }
 
 
+// Rel.2.5 SCSP erratum 2 / STN-51 prohibits RESET and TAS in Saturn software.
+// This is not a new CPU exception. RESET retains the Out Run compatibility path
+// in the SMPC and does not reset the SCSP; TAS retains the CPU's normal fallback.
 void saturn_state::m68k_reset_callback(int state)
 {
 	logerror("m68k RESET opcode triggered\n");
@@ -146,27 +135,7 @@ void saturn_state::scsp_irq(offs_t offset, uint8_t data)
 }
 
 
-/*
-(Preliminary) explanation about this:
-VBLANK-OUT is used at the start of the vblank period. It also sets the timer zero
-variable to 0.
-If the Timer Compare register is zero too,the Timer 0 irq is triggered.
-
-HBLANK-IN is used at the end of each scanline except when in VBLANK-IN/OUT periods.
-
-The timer 0 is also incremented by one at each HBLANK and checked with the value
-of the Timer Compare register;if equal,the timer 0 irq is triggered here too.
-Notice that the timer 0 compare register can be more than the VBLANK maximum range,in
-this case the timer 0 irq is simply never triggered.This is a known Sega Saturn/ST-V "bug".
-
-VBLANK-IN is used at the end of the vblank period.
-
-SCU register[36] is the timer zero compare register.
-SCU register[40] is for IRQ masking.
-
-TODO:
-- VDP1 timing and CEF emulation isn't accurate at all.
-*/
+// TODO: VDP1 timing and CEF emulation isn't accurate at all.
 
 void saturn_state::vint_callback(int state)
 {
@@ -256,13 +225,6 @@ void saturn_state::system_reset_w(int state)
 	memset(m_vdp2_cram.get(),0x00,0x080000);
 	m_vdp1->system_reset();
 	//A-Bus
-}
-
-void saturn_state::system_halt_w(int state)
-{
-	m_maincpu->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
-	m_slave->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
-	m_audiocpu->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
 }
 
 void saturn_state::dot_select_w(int state)
@@ -408,15 +370,15 @@ VIDEO_START_MEMBER(saturn_state, vdp2_video_start)
 class saturn_state::vdp2_sprite_fb : public saturn_vdp2_render::sprite_source
 {
 public:
-	vdp2_sprite_fb(saturn_vdp1_device const &vdp1, bool half_lines, bool half_res, bool double_res)
-		: m_vdp1(vdp1), m_half_lines(half_lines), m_half_res(half_res), m_double_res(double_res)
+	vdp2_sprite_fb(saturn_vdp1_device const &vdp1, bool half_lines, bool half_res, bool double_res, bool single_field = false, unsigned parity = 0)
+		: m_vdp1(vdp1), m_half_lines(half_lines), m_half_res(half_res), m_double_res(double_res), m_single_field(single_field), m_parity(parity)
 	{
 	}
 
 	virtual uint16_t sprite_word(unsigned x, unsigned y) const override
 	{
 		unsigned const dx = (x << (m_half_res ? 1 : 0)) >> (m_double_res ? 1 : 0);
-		return m_half_lines ? m_vdp1.display_pixel_field(dx, y) : m_vdp1.display_pixel(dx, y >> (m_half_lines ? 1 : 0));
+		return m_half_lines ? m_vdp1.display_pixel_field(dx, m_single_field ? 2 * y + m_parity : y) : m_vdp1.display_pixel(dx, y);
 	}
 
 	virtual uint16_t sprite_word_rotated(int32_t x, int32_t y) const override
@@ -429,6 +391,8 @@ private:
 	bool m_half_lines;
 	bool m_half_res;
 	bool m_double_res;
+	bool m_single_field;
+	unsigned m_parity;
 };
 
 // Called at the start of every scanline: draws that line of the VDP2 picture
@@ -440,12 +404,14 @@ void saturn_state::vdp2_scanline(int scanline)
 	if (scanline < 0 || scanline >= 512 || scanline > m_screen->visible_area().bottom())
 		return;
 
-	// A frame that frame skipping does not display needs no picture: the VDP2 only reads, so
-	// nothing else depends on the pixels. What the rest of the machine does depend on is the
-	// VDP1 erase that follows the read-out of the frame buffer, row by row, and that is kept.
-	// The decision is taken at the first line so that a frame is either drawn whole or not at all.
+	// Progressive pictures can omit rendering when presentation is skipped, while retaining
+	// VDP1 erase timing. Double-density interlace must render every field: the next presented
+	// picture also contains this field's rows. Otherwise repeated skips of one parity leave
+	// old rows woven into a much newer field. Exclusive modes render complete pictures.
+	// Latch the decision at the first line so a field is either drawn whole or not at all.
 	if (scanline == 0)
-		m_vdp2_skip_frame = machine().video().skip_this_frame();
+		m_vdp2_skip_frame = machine().video().skip_this_frame()
+				&& (m_vdp2->get_lsmd() != 3 || BIT(m_vdp2->get_hreso(), 2));
 	if (m_vdp2_skip_frame)
 	{
 		if (m_vdp2->get_lsmd() != 3 || (scanline & 1))
@@ -496,9 +462,10 @@ void saturn_state::vdp2_scanline(int scanline)
 	bool const plain = !m_vdp1->hdtv() && !m_vdp1->rotate();
 	vdp2_sprite_fb const sprites(
 			*m_vdp1,
-			cfg.lsmd == 3,
+			!cfg.exclusive && (cfg.lsmd == 3 || (cfg.lsmd == 1 && m_vdp1->display_interlace())),
 			plain && m_vdp1->bpp8() && (hreso & 6) == 0,
-			(plain && !m_vdp1->bpp8() && (hreso & 6) == 2) || BIT(hreso, 2));
+			(plain && !m_vdp1->bpp8() && (hreso & 6) == 2) || ((hreso & 6) == 6),
+			cfg.lsmd == 1, m_screen->frame_number() & 1);
 
 	// double density interlace: each 1/60 s field shows the lines of one parity, the lines of the
 	// other parity keep what the previous field drew (the two fields are different pictures)

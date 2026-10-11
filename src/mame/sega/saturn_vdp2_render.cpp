@@ -195,7 +195,8 @@ void renderer::decode(decoded &d) const
 			p.inc_x = (bits(R(b + 8), 2, 0) << 8) | bits(R(b + 10), 15, 8);
 			p.inc_y = (bits(R(b + 12), 2, 0) << 8) | bits(R(b + 14), 15, 8);
 			unsigned const s = 8 * n;
-			p.vcell = flag(scrctl, s);
+			// STN-24: vertical cell scroll is unavailable in high-resolution modes.
+			p.vcell = !m_cfg.hires && flag(scrctl, s);
 			p.lsx = flag(scrctl, s + 1);
 			p.lsy = flag(scrctl, s + 2);
 			p.lzm = flag(scrctl, s + 3);

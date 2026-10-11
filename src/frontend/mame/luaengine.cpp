@@ -72,6 +72,7 @@ namespace {
 
 struct save_item
 {
+	std::string name;
 	void *base;
 	unsigned int size;
 	unsigned int count;
@@ -1272,6 +1273,7 @@ void lua_engine::initialize()
  *
  * emu.item(item_index)
  *
+ * item.name - full registered save-item name, including module and device tag
  * item.size - size of the raw data type
  * item.count - number of entries
  *
@@ -1281,7 +1283,10 @@ void lua_engine::initialize()
  */
 
 	auto item_type = emu.new_usertype<save_item>("item", sol::call_constructor, sol::initializers([this](save_item &item, int index) {
-					if(machine().save().indexed_item(index, item.base, item.size, item.valcount, item.blockcount, item.stride))
+					new (&item) save_item{};
+					char const *const name = machine().save().indexed_item(index, item.base, item.size, item.valcount, item.blockcount, item.stride);
+					item.name = name ? name : "";
+					if (name)
 					{
 						item.count = item.valcount * item.blockcount;
 					}
@@ -1296,6 +1301,7 @@ void lua_engine::initialize()
 					}
 				}));
 	item_type.set("size", sol::readonly(&save_item::size));
+	item_type.set("name", sol::readonly(&save_item::name));
 	item_type.set("count", sol::readonly(&save_item::count));
 	item_type.set("read",
 		[this] (save_item &item, int offset) -> sol::object
@@ -1757,7 +1763,7 @@ void lua_engine::initialize()
 			[this] (device_t &dev)
 			{
 				sol::table table = sol().create_table();
-				std::string const tag = dev.tag();
+				std::string const tag = std::string("/") + dev.tag() + "/";
 				for (int i = 0; ; i++)
 				{
 					char const *item;
@@ -1767,9 +1773,11 @@ void lua_engine::initialize()
 					if (!item)
 						break;
 
-					char const *name = &strchr(item, '/')[1];
-					if (!strncmp(tag.c_str(), name, tag.length()) && (name[tag.length()] == '/'))
-						table[name + tag.length() + 1] = i;
+					// Module descriptions can contain slashes (e.g. "I/O Controller").
+					// Match the complete device-tag component instead of the first slash.
+					auto const position = std::string_view(item).find(tag);
+					if (position != std::string_view::npos)
+						table[item + position + tag.length()] = i;
 				}
 				return table;
 			});

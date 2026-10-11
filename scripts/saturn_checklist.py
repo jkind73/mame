@@ -3,6 +3,8 @@
 
   saturn_checklist.py scan     rewrite SATURN_TODO_INVENTORY.md and the note table of the
                                checklist from the source (run it after every change)
+  saturn_checklist.py scan --inventory-only
+                               regenerate only the separate inventory; preserve checklist
   saturn_checklist.py check    fail when either of them no longer matches the source, or
                                when a commit changes Saturn sources without the checklist
                                (used by the pre-commit hook, see install-hook)
@@ -109,10 +111,11 @@ def with_table(checklist, table):
     return pattern.sub(lambda m: table, checklist)
 
 
-def scan():
+def scan(inventory_only=False):
     found = notes()
     write(INVENTORY, inventory_text(found))
-    write(CHECKLIST, with_table(read(CHECKLIST), table_text(found)))
+    if not inventory_only:
+        write(CHECKLIST, with_table(read(CHECKLIST), table_text(found)))
     print(f"{sum(len(v) for v in found.values())} notes in {len(found)} files written")
 
 
@@ -146,18 +149,26 @@ def install_hook():
     git_dir = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], cwd=ROOT, text=True).strip()
     hooks = os.path.join(os.path.abspath(os.path.join(ROOT, git_dir)), "hooks")
     path = os.path.join(hooks, "pre-commit")
-    line = 'python "$(git rev-parse --show-toplevel)/scripts/saturn_checklist.py" check --hook || exit 1'
+    # the hooks are shared by every worktree, so skip the ones without this script; macOS has
+    # only python3, Windows usually only python (its python3 can be a store stub that exists
+    # but does not run), so try to run python3 before falling back
+    line = ('S="$(git rev-parse --show-toplevel)/scripts/saturn_checklist.py"; '
+            'if [ -f "$S" ]; then if python3 -c "" 2>/dev/null; then PY=python3; else PY=python; fi; '
+            '"$PY" "$S" check --hook || exit 1; fi')
     old = open(path).read() if os.path.exists(path) else "#!/bin/sh\n"
-    if "saturn_checklist.py" not in old:
-        with open(path, "w", newline="\n") as f:
-            f.write(old.rstrip("\n") + "\n" + line + "\n")
+    # replace the line of an older install instead of adding a second one
+    kept = [l for l in old.splitlines() if "saturn_checklist.py" not in l]
+    with open(path, "w", newline="\n") as f:
+        f.write("\n".join(kept).rstrip("\n") + "\n" + line + "\n")
+    # git skips a hook that is not executable without saying so
+    os.chmod(path, os.stat(path).st_mode | 0o111)
     print("hook installed:", path)
 
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "scan":
-        scan()
+        scan("--inventory-only" in sys.argv)
     elif cmd == "check":
         sys.exit(check("--hook" in sys.argv))
     elif cmd == "install-hook":

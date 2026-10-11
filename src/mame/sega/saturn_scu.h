@@ -26,6 +26,7 @@ public:
 
 	template <typename T> void set_hostcpu(T &&tag) { m_hostcpu.set_tag(std::forward<T>(tag)); }
 	auto main_dtack_cb()  { return m_main_dtack_cb.bind(); }
+	auto cbus_cycle_cb() { return m_cbus_cycle_cb.bind(); }
 	auto vdp2_penalty_cb() { return m_vdp2_penalty_cb.bind(); }
 
 	// I/O operations
@@ -41,6 +42,9 @@ public:
 	// A-Bus and B-Bus is put on hold"). Runs the moving transfer's remaining units now, so their
 	// data lands before the access, and returns the SH-2 cycles the access waits.
 	uint32_t dma_bus_owner_wait();
+	bool cpu_bus_ready(u32 address) const;
+	void set_host_ready_callback(std::function<bool(u32,unsigned,bool)> cb) { m_host_ready_cb=std::move(cb); }
+	void set_scsp_wait_callback(std::function<attotime (bool)> cb) { m_scsp_wait_cb = std::move(cb); }
 
 	void vblank_out_w(int state);
 	void vblank_in_w(int state);
@@ -75,10 +79,13 @@ protected:
 	virtual void device_clock_changed() override;
 
 private:
+	std::function<bool(u32,unsigned,bool)> m_host_ready_cb;
+	std::function<attotime (bool)> m_scsp_wait_cb;
 	required_device<scudsp_cpu_device> m_scudsp;
 	required_device<sh7604_device> m_hostcpu;
 	address_space *m_hostspace;
 	devcb_write_line m_main_dtack_cb;
+	devcb_write32 m_cbus_cycle_cb;
 	devcb_read8      m_vdp2_penalty_cb;
 
 	enum dma_id : int {
@@ -152,12 +159,14 @@ private:
 	uint32_t m_aref;     // AREF A-Bus refresh register (ST-97 3.6)
 	bool m_rsel;         // RSEL SDRAM select bit (ST-97 3.7)
 	uint32_t m_asr[2];   // A-Bus set registers ASR0 (0x25fe00b0), ASR1 (0x25fe00b4)
-	uint32_t m_t0c;
-	uint32_t m_t1s;
+	uint32_t m_t0c = 0;
+	uint32_t m_t1s = 0;
 	uint32_t m_dma_status;
 	bool m_t1md;
 	bool m_tenb;
 	int m_current_irq_level;
+	emu_timer *m_irq_dispatch_timer = nullptr;
+	TIMER_CALLBACK_MEMBER(irq_dispatch);
 	uint8_t m_current_vector;
 	uint16_t m_timer0_counter;
 	uint32_t m_dma_clock_ref;
@@ -201,7 +210,8 @@ private:
 		uint32_t    read_address;  // the longword the buffer holds
 		uint8_t     read_offset;   // the next byte of it to hand out; 4 when it is used up
 		bool        read_buffer_valid;
-	}m_dma[3];
+		bool        cd_second_pending = false;
+	}m_dma[3]{};
 
 	// SH-2 cycles the accesses of the current DMA unit took, the extra time a B-Bus device holds
 	// the transfer off, the count of C-Bus source reads (the SDRAM slowdown), and whether the
@@ -219,6 +229,8 @@ private:
 	uint16_t dma_read_word(dma_channel_t &ch);
 	void dma_write_unit(dma_channel_t &ch, unsigned word_add);
 	void dma_write_cost(dma_channel_t &ch, u32 address, unsigned size);
+	bool dma_transfer_ready(dma_channel_t const &ch) const;
+	void dma_cd_waited(dma_channel_t &ch);
 	void dma_unit_step(uint8_t level);
 	void set_cpu_halt(bool halt);
 

@@ -46,13 +46,18 @@ struct sh7604_device {
     bool m_dma_te_read[2]{};
     uint8_t m_dmaor=0, m_dmaor_read_flags=0;
     void sh2_dmac_check(unsigned) {}
+    int m_dma_owner=-1;bool m_dma_ack_high[2]{};void dma_dack_drive(unsigned,int){}
     uint8_t m_tier=1, m_ftcsr=0, m_ftcsr_read_flags=0, m_sbycr=0;
     uint16_t m_wtcw[2]{}, m_wtcnt=0, m_wtcsr=0, m_rstcsr=0;
     bool m_wtcsr_ovf_read=false, m_rstcsr_wovf_read=false;
     struct { void adjust(int) {} } timer, *m_wdtimer=&timer;
     struct attotime { static constexpr int never=0; };
-    void sh2_timer_resync() {} void sh2_timer_activate() {} void sh2_recalc_irq() {}
+    uint64_t m_frt_icr_read_cycle=~uint64_t(0),m_frt_clear_cycle=~uint64_t(0);uint64_t frt_cycles(){return 0;}
+    void refresh_resync() {} void refresh_activate() {}
+    unsigned m_refresh_phase=0;
+    void sh2_timer_resync(int=0) {} void sh2_timer_activate() {} void sh2_recalc_irq() {}
     void sh2_wtcnt_recalc() {} void sh2_wdt_activate() {}
+    void module_standby(uint8_t) {}
     template<typename... T> void logerror(T...) {}
     // DECLARATIONS
 };
@@ -101,6 +106,8 @@ int main() {
         d.ftcsr_w(v); assert(d.m_ftcsr==(v&1));
         d.fmr_sbycr_w(0,v,0xff); assert(d.m_sbycr==(v&0xdf));
     }
+    d.m_wtcsr=0x20; d.fmr_sbycr_w(0,0x80,0xff); assert(d.m_sbycr==0);
+    d.m_wtcsr=0; d.fmr_sbycr_w(0,0x80,0xff); assert(d.m_sbycr==0x80);
     d.m_ftcsr=0x8e; d.m_ftcsr_read_flags=0;
     d.ftcsr_w(0); assert(d.m_ftcsr==0x8e);
     d.m_ftcsr_read_flags=0x8e; d.ftcsr_w(0); assert(d.m_ftcsr==0);

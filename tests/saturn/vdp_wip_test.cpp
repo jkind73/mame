@@ -128,6 +128,26 @@ void test_rotation()
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
+	// STN-24: both NBG cell-scroll enables are ignored in high resolution,
+	// independently of the cycle pattern and including dedicated high resolution.
+	{
+		std::array<uint16_t, 256> regs{};
+		regs[0x9a / 2] = 0x0101;
+		auto r = std::make_unique<renderer>();
+		memory mem{};
+		mem.regs = regs.data();
+		for (unsigned mode = 0; mode < 8; ++mode) {
+			screen_config cfg;
+			cfg.hires = mode & 2;
+			cfg.exclusive = mode & 4;
+			cfg.hreso = mode;
+			r->set_config(mem, cfg);
+			decoded d{};
+			r->decode(d);
+			assert(d.nbg[0].vcell == !(mode & 2));
+			assert(d.nbg[1].vcell == !(mode & 2));
+		}
+	}
 	if (!std::strcmp(argv[1], "windows")) test_windows();
 	else if (!std::strcmp(argv[1], "rotation")) test_rotation();
 	else return 2;

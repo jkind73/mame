@@ -50,10 +50,14 @@ public:
 	auto out_ddwt_callback() { return m_out_ddwt_cb.bind(); }
 	auto out_ddmv_callback() { return m_out_ddmv_cb.bind(); }
 	// the time the SCU takes for the bus accesses of the last DMA unit
+	void set_dma_ready_callback(std::function<bool(u32,bool)> cb) { m_dma_ready_cb=std::move(cb); }
 	void set_dma_wait_callback(std::function<attotime ()> cb) { m_dma_wait_cb = std::move(cb); }
+	void set_dma_start_callback(std::function<bool ()> cb) { m_dma_start_cb = std::move(cb); }
+	void dma_resume();
+	bool dma_uses_cbus() const { return ((m_dma.dir ? m_dma.dst : m_dma.src) & 0x07000000) == 0x06000000; }
 
 	// the host SH-2 needs the buses of a running DMA: run it to its end now, returns the time it took
-	attotime dma_finish();
+	attotime dma_finish(attotime prior_wait = attotime::zero);
 
 	/* port 0 */
 	uint32_t program_control_r();
@@ -75,9 +79,8 @@ protected:
 
 	// device_execute_interface overrides
 	virtual uint32_t execute_min_cycles() const noexcept override { return 1; }
-	virtual uint32_t execute_max_cycles() const noexcept override { return 7; }
+	virtual uint32_t execute_max_cycles() const noexcept override { return 1; }
 	virtual void execute_run() override;
-	virtual void execute_set_input(int inputnum, int state) override;
 
 	// device_memory_interface overrides
 	virtual space_config_vector memory_space_config() const override;
@@ -93,7 +96,12 @@ protected:
 	devcb_write16        m_out_dma_cb;
 	devcb_write_line     m_out_ddwt_cb;
 	devcb_write_line     m_out_ddmv_cb;
+	std::function<bool(u32,bool)> m_dma_ready_cb;
 	std::function<attotime ()> m_dma_wait_cb;
+	std::function<bool ()> m_dma_start_cb;
+	bool m_dma_wait_ready = false;
+	bool m_dma_forced = false;
+	attotime m_dma_force_cost = attotime::zero;
 
 private:
 	enum {
@@ -124,9 +132,14 @@ private:
 	address_space_config m_data_config;
 
 	uint8_t   m_pc;   /* registers */
+	uint8_t   m_instruction_pc;
 	uint32_t  m_flags;  /* flags */
 	uint8_t   m_ra;
-	uint8_t   m_ct0,m_ct1,m_ct2,m_ct3;
+	uint8_t   m_ct[4];
+	bool      m_loop_active;
+	uint8_t   m_loop_pc;
+	uint32_t  m_loop_opcode;
+	bool      m_delay_pending;
 	uint8_t   m_delay;                                   /* Delay */
 	uint8_t   m_top;                                     /*Jump Command memory*/
 	uint16_t  m_lop;                                    /*Counter Register*/   /*12-bits*/
@@ -156,7 +169,8 @@ private:
 	enum dma_state_t : uint8_t {
 		DMA_STATE_IDLE = 0,
 		DMA_STATE_WAIT,
-		DMA_STATE_MOVE
+		DMA_STATE_MOVE,
+		DMA_STATE_END
 	};
 	uint8_t m_dma_state;
 	TIMER_CALLBACK_MEMBER(dma_tick_cb);
@@ -165,7 +179,7 @@ private:
 	uint32_t get_source_mem_value(uint8_t mode);
 	void set_dest_mem_reg( uint32_t mode, uint32_t value );
 	void set_dest_mem_reg_2( uint32_t mode, uint32_t value );
-	uint32_t compute_condition( uint32_t condition );
+	uint32_t compute_condition( uint32_t condition ) const;
 	uint32_t get_mem_source_dma( uint32_t memcode );
 	void set_dest_dma_mem( uint32_t memcode, uint32_t value );
 

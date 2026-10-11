@@ -4,8 +4,10 @@
 
 Sega Saturn VDP2 (c) 1995 Sega/Yamaha
 
-TODO:
-- stub overlay for screen timings and not much else
+Owns video mode registers, raster timing, blanking events, H/V counters,
+external latching and CPU/DMA VRAM arbitration. Pixel fetching and composition
+are implemented in saturn_vdp2_render.cpp. Dedicated-monitor edge positions
+use the documented provisional model; they have not been measured on hardware.
 
 **************************************************************************************************/
 
@@ -59,6 +61,7 @@ void saturn_vdp2_device::device_start()
 
 	save_item(NAME(m_exltfg));
 	save_item(NAME(m_exsyfg));
+	save_item(NAME(m_exlat_level));
 
 	save_item(NAME(m_hcounter_latch));
 	save_item(NAME(m_vcounter_latch));
@@ -71,6 +74,9 @@ void saturn_vdp2_device::device_start()
 
 void saturn_vdp2_device::device_reset()
 {
+	m_exlten = m_exltfg = m_exsyfg = false;
+	m_exten = 0;
+	m_hcounter_latch = m_vcounter_latch = 0;
 	m_odd_bit = 1;
 	// shouldn't really matter
 	m_old_tvmd = 0xffff;
@@ -234,6 +240,10 @@ int saturn_vdp2_device::get_hblank_duration()
 	const int base_htotal[2] = { 427, 455 };
 
 	int res = base_htotal[BIT(m_hreso, 0)];
+	// VDP1 Table 4.4: 852/848 system clocks per dedicated-monitor raster.
+	// At the dedicated normal dot rate these are 426/424 dots.
+	if (BIT(m_hreso, 2))
+		res = BIT(m_hreso, 0) ? 424 : 426;
 
 	// x2 horizontal resolution in 640/704 modes
 	if(BIT(m_hreso, 1))
@@ -256,7 +266,7 @@ int saturn_vdp2_device::get_vblank_duration()
 	// Exclusive modes
 	if(BIT(m_hreso, 2))
 	{
-		res = BIT(m_hreso, 0) ? 561 : 525;
+		res = BIT(m_hreso, 0) ? 562 : 525;
 	}
 
 	return res;
@@ -333,11 +343,41 @@ void saturn_vdp2_device::reconfigure_crtc()
 	schedule_vblank();
 }
 
+int saturn_vdp2_device::horizontal_phase() const
+{
+	int const scale = BIT(m_hreso, 1) ? 2 : 1;
+	int const x = m_screen->hpos() / scale;
+	if (BIT(m_hreso, 2)) {
+		int const slots = x / 2;
+		int const before = BIT(m_hreso, 0) ? 188 : 173;
+		return slots < before ? slots * 2 : (BIT(m_hreso, 0) ? 0x3d0 : 0x3b0) + (slots - before) * 2;
+	}
+	int const before = BIT(m_hreso, 0) ? 375 : 347;
+	return x < before ? x : 0x3b0 + x - before;
+}
+
+int saturn_vdp2_device::counter_increment_dot() const
+{
+	int const dot = BIT(m_hreso, 2) ? (BIT(m_hreso, 0) ? 364 : 346) : (BIT(m_hreso, 0) ? 375 : 347);
+	return dot * (BIT(m_hreso, 1) ? 2 : 1);
+}
+
+void saturn_vdp2_device::exlat_w(int state)
+{
+	bool const level = bool(state);
+	if (m_exlat_level && !level && m_exlten) {
+		m_hcounter_latch = get_hcounter();
+		m_vcounter_latch = get_vcounter();
+		m_exltfg = true;
+	}
+	m_exlat_level = level;
+}
+
 int saturn_vdp2_device::get_hcounter()
 {
 	int hcount;
 
-	hcount = m_screen->hpos();
+	hcount = horizontal_phase();
 
 	switch(m_hreso & 6)
 	{
@@ -348,7 +388,7 @@ int saturn_vdp2_device::get_hcounter()
 			break;
 		// Hi-Res
 		case 2:
-			hcount &= 0x3ff;
+			hcount = ((hcount & 0x1ff) << 1) | (m_screen->hpos() & 1);
 			break;
 		// Exclusive Normal
 		case 4:
@@ -368,19 +408,19 @@ int saturn_vdp2_device::get_vcounter()
 {
 	int vcount;
 
-	vcount = m_screen->vpos();
+	vcount = (m_screen->vpos() + (m_screen->hpos() >= counter_increment_dot())) % m_screen->height();
 
 	// Exclusive Monitor
 	if(BIT(m_hreso, 2))
-		return vcount & 0x3ff;
+		return vcount < (BIT(m_hreso, 0) ? 503 : 490) ? vcount : vcount + (BIT(m_hreso, 0) ? 0x3c5 - 503 : 0x3dd - 490);
 
-	// Double Density Interlace
-	if(m_lsmd == 3)
-		return (vcount & ~1) | (m_screen->frame_number() & 1);
-
-	// docs says << 1, but according to HW tests it's a typo.
-	assert((vcount & 0x1ff) < std::size(true_vcount));
-	return (true_vcount[vcount & 0x1ff][m_vreso]); // Non-interlace
+	// Vertical counter skips depend on TV standard and active-height mode.
+	int const mode = m_is_pal ? std::min<int>(m_vreso, 2) : (m_vreso & 1);
+	int const before = m_is_pal ? (mode == 0 ? 259 : mode == 1 ? 267 : 275) : (mode == 0 ? 237 : 245);
+	int const target = m_is_pal ? (mode == 0 ? 0x1ca : mode == 1 ? 0x1d2 : 0x1da) : (mode == 0 ? 0x1e6 : 0x1ee);
+	int const line = m_lsmd == 3 ? vcount / 2 : vcount;
+	int const counter = line < before ? line : target + line - before;
+	return m_lsmd == 3 ? (counter << 1) | (m_screen->frame_number() & 1) : counter;
 }
 
 // The TVSTAT HBLANK flag is set from dot 0x144 (0x164 in a 352 dot mode) until dot 4 of the
@@ -389,7 +429,7 @@ int saturn_vdp2_device::get_vcounter()
 int saturn_vdp2_device::get_hblank()
 {
 	if (BIT(m_hreso, 2))
-		return m_screen->hpos() > m_screen->visible_area().right() ? 1 : 0; // TODO: exclusive monitor modes
+		return (horizontal_phase() & 0x1ff) >= (BIT(m_hreso, 0) ? 0x168 : 0x148) || horizontal_phase() < 8; // HACK: empirical exclusive monitor edges, no independent hardware verification
 
 	int const dot = m_screen->hpos() / dot_scale();
 	int const start = BIT(m_hreso, 0) ? 0x164 : 0x144;
@@ -398,7 +438,7 @@ int saturn_vdp2_device::get_hblank()
 
 int saturn_vdp2_device::get_vblank()
 {
-	int const cur_v = m_screen->vpos();
+	int const cur_v = (m_screen->vpos() + (m_screen->hpos() >= counter_increment_dot())) % m_screen->height();
 	int const first = get_vblank_start_position() * get_ystep_count();
 
 	return cur_v >= first && cur_v < m_screen->height() - 1 ? 1 : 0;
@@ -406,6 +446,8 @@ int saturn_vdp2_device::get_vblank()
 
 int saturn_vdp2_device::get_vblank_start_position()
 {
+	if (BIT(m_hreso, 2))
+		return 480;
 	// The vertical blank starts after the displayed lines: 224 in the 224 line mode (the 16 lines
 	// below it are overscan the monitor may show, but they are blanking: MiSTer VDP2.sv and Ymir
 	// agree), 240 in the 240 line mode. Batman Forever (ST-V) needs the long blank: it erases a
@@ -424,6 +466,8 @@ int saturn_vdp2_device::get_vblank_start_position()
 
 int saturn_vdp2_device::get_ystep_count()
 {
+	if (BIT(m_hreso, 2))
+		return 1;
 	int max_y = m_screen->height();
 	int y_step;
 
@@ -455,14 +499,14 @@ int saturn_vdp2_device::dot_scale() const
 int saturn_vdp2_device::hblank_in_dot() const
 {
 	if (BIT(m_hreso, 2))
-		return m_hdisplay + 3; // TODO: exclusive monitor modes
+		return (BIT(m_hreso, 0) ? 0x164 : 0x144) * (BIT(m_hreso, 1) ? 2 : 1); // HACK: empirical exclusive monitor signal, odd pre-edge comparator is unreachable
 	return ((BIT(m_hreso, 0) ? 0x163 : 0x143) - (BIT(m_hreso, 1) ? 1 : 0)) * dot_scale();
 }
 
 int saturn_vdp2_device::hblank_out_dot() const
 {
 	if (BIT(m_hreso, 2))
-		return 2; // TODO: exclusive monitor modes
+		return 4 * (BIT(m_hreso, 1) ? 2 : 1); // HACK: empirical exclusive monitor output clear follows phase 2
 	return (BIT(m_hreso, 1) ? 1 : 2) * dot_scale();
 }
 

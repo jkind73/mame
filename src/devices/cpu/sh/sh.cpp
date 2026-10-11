@@ -1623,6 +1623,7 @@ void sh_common_execution::XTRCT(uint32_t m, uint32_t n)
 /*  SLEEP */
 void sh_common_execution::SLEEP()
 {
+	notify_sleep_entry();
 	/* 0 = normal mode */
 	/* 1 = enters into power-down mode */
 	/* 2 = go out the power-down mode after an exception */
@@ -1933,6 +1934,8 @@ void sh_common_execution::execute_one(const uint16_t opcode)
 }
 
 // DRC / UML related
+void cfunc_execute_monitored(void *param) { ((sh_common_execution *)param)->execute_monitored(); }
+void cfunc_sleep_entry(void *param) { ((sh_common_execution *)param)->notify_sleep_entry(); }
 void cfunc_unimplemented(void *param) { ((sh_common_execution *)param)->func_unimplemented(); }
 void cfunc_MAC_W(void *param) { ((sh_common_execution *)param)->func_MAC_W(); }
 void cfunc_MAC_L(void *param) { ((sh_common_execution *)param)->func_MAC_L(); }
@@ -2420,8 +2423,28 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 	/* update the icount map variable */
 	UML_MAPVAR(block, MAPVAR_CYCLES, compiler.cycles);                             // mapvar  CYCLES,compiler.cycles
 
+	// UBC needs an instruction boundary even inside an already compiled block.
+	// When armed, run the remaining slice with the shared instruction interpreter.
+	if (m_cpu_type == CPU_TYPE_SH2)
+	{
+		int const unmonitored = compiler.labelnum++;
+		int const monitored = compiler.labelnum++;
+		generate_invalid_access_branch(block, compiler, desc, monitored);
+		UML_TEST(block, mem(&m_instruction_monitor), 1);
+		UML_JMPc(block, COND_NZ, monitored);
+		UML_TEST(block, mem(&m_bus_wait_monitor), 1);
+		UML_JMPc(block, COND_Z, unmonitored);
+		UML_LABEL(block, monitored);
+		save_fast_iregs(block);
+		UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);
+		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), compiler.cycles - desc->cycles);
+		UML_CALLC(block, cfunc_execute_monitored, this);
+		UML_EXIT(block, EXECUTE_OUT_OF_CYCLES);
+		UML_LABEL(block, unmonitored);
+	}
+
 	/* instruction fetch side effects (the SH7604 cache) */
-	generate_instruction_fetch(block, compiler, desc, m_fetch_sequence_start);
+	generate_instruction_fetch(block, compiler, desc, m_fetch_sequence_start, ovrpc);
 	m_fetch_sequence_start = false;
 
 	/* if we want a probe, add it here */
@@ -3724,6 +3747,8 @@ bool sh_common_execution::generate_group_0(drcuml_block &block, compiler_state &
 		// sleep mode != 2: stay asleep by re-executing this instruction until an
 		// exception wakes us (same behavior as the SH interpreter)
 		compiler_state asleep(compiler);
+		UML_MOV(block, mem(&m_sh2_state->arg0), compiler.cycles);
+		UML_CALLC(block, cfunc_sleep_entry, this);
 		UML_MOV(block, mem(&m_sh2_state->sleep_mode), 0x1);                // mov sleep_mode, #1
 		generate_update_cycles(block, asleep, desc->pc, true);             // repeat this insn
 		UML_HASHJMP(block, 0, desc->pc, *m_nocode);                        // jmp desc->pc

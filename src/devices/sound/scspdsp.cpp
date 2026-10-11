@@ -297,8 +297,9 @@ void SCSPDSP::Step()
 
 	--DEC;
 	// the slots fill one MIXS bank while the program reads the other (MiSTer SCSP.sv MIXS_GEN, Ymir mixStack)
-	std::copy(std::begin(MIXS), std::end(MIXS), std::begin(MIXSPrev));
-	std::fill(std::begin(MIXS), std::end(MIXS), 0);
+	for (unsigned i = 0; i < 16; ++i)
+		std::swap(MIXS[i], MIXSPrev[i]);
+	MixWritten = 0;
 	//if (f)
 		//fclose(f);
 }
@@ -306,7 +307,11 @@ void SCSPDSP::Step()
 void SCSPDSP::SetSample(s32 sample, int SEL, int MXL)
 {
 	//MIXS[SEL] += sample << (MXL + 1)/*7*/;
-	MIXS[SEL] += sample;
+	if (MixWritten & (1U << SEL))
+		MIXS[SEL] += sample;
+	else
+		MIXS[SEL] = sample;
+	MixWritten |= 1U << SEL;
 	//if (MXL)
 		//int a = 1;
 }

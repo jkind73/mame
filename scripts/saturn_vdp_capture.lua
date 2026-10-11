@@ -5,7 +5,7 @@ local machine = manager.machine
 local screen = machine.screens[":screen"]
 local directory = machine.options.entries["snapshot_directory"]:value()
 local frames = 0
-local targets = { [60] = true, [300] = true, [600] = true, [1200] = true, [1800] = true }
+local targets = { [1] = true, [60] = true, [300] = true, [600] = true, [1200] = true, [1800] = true }
 local names = {}
 for tag, device in pairs(machine.devices) do
 	for name, index in pairs(device.items) do names[index] = tag .. "/" .. name end
@@ -16,7 +16,7 @@ for index = 0, 100000 do
 	local item = emu.item(index)
 	if item.size == 0 then break end
 	local size = item.size * item.count
-	layout:write(string.format("%d\t%d\t%d\t%s\n", index, offset, size, names[index] or "?"))
+	layout:write(string.format("%d\t%d\t%d\t%s\n", index, offset, size, item.name or names[index] or "?"))
 	offset = offset + size
 end
 layout:close()

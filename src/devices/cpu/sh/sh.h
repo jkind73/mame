@@ -92,6 +92,11 @@ class sh_common_execution : public cpu_device
 {
 
 public:
+	virtual void execute_monitored() { }
+	uint8_t m_instruction_monitor = 0;
+	uint8_t m_bus_wait_monitor = 0;
+	void notify_sleep_entry() { if (!m_sh2_state->sleep_mode) sleep_enter(m_isdrc ? m_sh2_state->arg0 : 0); }
+
 	// Data that needs to be stored close to the generated DRC code
 	struct internal_sh2_state
 	{
@@ -408,11 +413,13 @@ public:
 		uml::code_label  labelnum;                   /* index for local labels */
 	};
 
+	virtual void sleep_enter(unsigned pending_cycles) { }
 	virtual void sh2_exception(const char *message, int irqline) { fatalerror("sh2_exception in base classs\n"); }
 
 	virtual void generate_update_cycles(drcuml_block &block, compiler_state &compiler, uml::parameter param, bool allow_exception) = 0;
 	// Emitted before each instruction; sequence_start marks the first instruction of a sequence.
-	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start) { }
+	virtual void generate_invalid_access_branch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, int target) { }
+	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start, uint32_t ovrpc) { }
 	bool m_fetch_sequence_start = false;
 	uint32_t m_tas_read = 0;     // the next byte read is TAS.B's, which bypasses the SH7604 cache (8.4.4)
 

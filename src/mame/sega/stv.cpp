@@ -111,7 +111,6 @@ by introdon in ST-V ("SG0000000"), and according to the manual it's even wrong.
 #include "saturn_cd_hle.h"
 
 #include "cpu/m68000/m68000.h"
-#include "cpu/scudsp/scudsp.h"
 #include "cpu/sh/sh7604.h"
 #include "sound/scsp.h"
 
@@ -556,7 +555,6 @@ void stv_state::init_fhboxers()
 
 	init_stv();
 
-//  m_instadma_hack = 1;
 }
 
 void stv_state::init_groovef()
@@ -953,13 +951,14 @@ void stv_state::stvcd_mem(address_map &map)
 // same as base saturn
 void stv_state::sound_mem(address_map &map)
 {
-	map(0x000000, 0x0fffff).before_delay(NAME([](offs_t) { return 1; })).ram().share("sound_ram");
-	map(0x100000, 0x100fff).before_delay(NAME([](offs_t) { return 1; })).rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
+	map(0x000000, 0x07ffff).before_delay(NAME([this] (offs_t) { return sound_dma_wait(false); })).ram().share("sound_ram");
+	map(0x100000, 0x100fff).before_delay(NAME([this] (offs_t) { return sound_dma_wait(true); })).rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
 }
 
 void stv_state::scsp_mem(address_map &map)
 {
-	map(0x000000, 0x0fffff).ram().share("sound_ram");
+	// Rel.2.5 chapter 1: the board contains one 4Mbit (512KiB) DRAM, not two.
+	map(0x000000, 0x07ffff).ram().share("sound_ram");
 }
 
 
@@ -1024,6 +1023,7 @@ void stv_state::stv(machine_config &config)
 	// Model the SH7604 cache (section 8)
 	m_maincpu->set_cache_emulation(true);
 	m_maincpu->set_bus_timing_callback(FUNC(stv_state::master_bus_cycles));
+	m_maincpu->set_bus_observer_callback(FUNC(stv_state::master_bus_observe));
 	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
 	TIMER(config, "scantimer").configure_scanline(FUNC(stv_state::saturn_scanline), "screen", 0, 1);
 
@@ -1032,6 +1032,7 @@ void stv_state::stv(machine_config &config)
 	m_slave->set_is_slave(1);
 	m_slave->set_cache_emulation(true);
 	m_slave->set_bus_timing_callback(FUNC(stv_state::slave_bus_cycles));
+	m_slave->set_bus_observer_callback(FUNC(stv_state::slave_bus_observe));
 	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
 
 	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
@@ -1044,8 +1045,9 @@ void stv_state::stv(machine_config &config)
 
 	SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
 	m_scu->set_hostcpu(m_maincpu);
-	m_scu->main_dtack_cb().set_inputline(m_maincpu, INPUT_LINE_HALT);
-	m_scu->main_dtack_cb().append_inputline(m_slave, INPUT_LINE_HALT);
+	m_scu->set_scsp_wait_callback([this] (bool registers) { return m_scsp->dma_access_wait(registers); });
+	m_scu->cbus_cycle_cb().set(FUNC(stv_state::scu_cbus_cycle));
+	m_scu->main_dtack_cb().set(FUNC(stv_state::scu_halt_w));
 
 	SMPC_HLE(config, m_smpc_hle, XTAL(4'000'000));
 	m_smpc_hle->set_screen_tag("screen");
@@ -1108,6 +1110,7 @@ void stv_state::stv(machine_config &config)
 	SPEAKER(config, "speaker", 2).front();
 
 	SCSP(config, m_scsp, 22579200); // TODO : Unknown clock, divider
+	m_scsp->set_saturn_mode(true);
 	m_scsp->set_addrmap(0, &stv_state::scsp_mem);
 	m_scsp->irq_cb().set(FUNC(stv_state::scsp_irq));
 	m_scsp->main_irq_cb().set(m_scu, FUNC(saturn_scu_device::sound_req_w));

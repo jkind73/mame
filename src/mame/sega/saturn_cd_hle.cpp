@@ -325,22 +325,11 @@ inline u32 saturn_cd_hle_device::dataxfer_long_r()
 			// make sure we have sectors left
 			if (xfersect < xfersectnum)
 			{
-				// get next longword
-				rv = get_u32be(&transpart->blocks[xfersectpos+xfersect]->data[xferoffs]);
-
-				xferdnum += 4;
-				xferoffs += 4;
-
-				// did we run out of sector?
-				// TODO: why bare xfersect without xfersectpos adder?
+				// Two physical word transfers also handle a long read straddling sectors.
+				rv = u32(dataxfer_word_r()) << 16;
+				rv |= dataxfer_word_r();
+				// HACK: historically the boundary check omitted xfersectpos;
 				// - groovef/vfkidsk would use that, no apparent change in their own issues
-				if (xferoffs >= transpart->blocks[xfersect]->size)
-				{
-					LOG("Finished xfer of block %d of %d\n", xfersect+1, xfersectnum);
-
-					xferoffs = 0;
-					xfersect++;
-				}
 			}
 			else    // sectors are done, kill 'em all if we can
 			{
@@ -417,7 +406,24 @@ inline void saturn_cd_hle_device::dataxfer_long_w(u32 data)
 
 inline u16 saturn_cd_hle_device::dataxfer_word_r()
 {
+	if (machine().side_effects_disabled())
+		return 0;
 	u16 rv;
+	// The sector FIFO is 16 bits wide. Homebrew (including CroNSF) reads
+	// words rather than using the BIOS's paired longword transfers.
+	if (xfertype32 == XFERTYPE32_GETSECTOR || xfertype32 == XFERTYPE32_GETDELETESECTOR) {
+		if (xfersect >= xfersectnum)
+			return 0xffff;
+		blockT const *const block = transpart->blocks[xfersectpos + xfersect];
+		rv = get_u16be(&block->data[xferoffs]);
+		xferoffs += 2;
+		xferdnum += 2;
+		if (xferoffs >= block->size) {
+			xferoffs = 0;
+			++xfersect;
+		}
+		return rv;
+	}
 
 	rv = 0xffff;
 	switch (xfertype)
@@ -627,7 +633,7 @@ void saturn_cd_hle_device::cr_standard_return(uint16_t cur_status)
 	if (!m_cdrom_image->exists())
 	{
 		// preserve whatever command is currently set
-		cr1 = cd_stat | (cr1 & 0xff);
+		cr1 = cur_status | (cr1 & 0xff);
 		//cr2 = 0;
 		//cr3 = 0;
 		//cr4 = 0;
@@ -792,7 +798,7 @@ void saturn_cd_hle_device::cmd_init_cdsystem()
 		for(int i=0;i<MAX_FILTERS;i++)
 		{
 			filters[i].fad = 0;
-			filters[i].range = 0xffffffff;
+			filters[i].range = 0;
 			filters[i].mode = 0;
 			filters[i].chan = 0;
 			filters[i].smmask = 0;
@@ -940,6 +946,8 @@ void saturn_cd_hle_device::cmd_end_data_transfer()
 
 
 	xferdnum = 0;
+	xfertype = XFERTYPE_INVALID;
+	xfertype32 = XFERTYPE32_INVALID;
 	hirqreg |= CMOK;
 
 	LOGXFER("\t%04x %04x %04x %04x %04x\n", hirqreg, cr1, cr2, cr3, cr4);
@@ -1253,6 +1261,13 @@ void saturn_cd_hle_device::cmd_set_cddevice_connection()
 
 	LOGCMD("%s: Set CD Device Connection filter # %x\n", machine().describe_context(), param);
 
+	if (param != 0xff && param >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
+
 	cddevicenum = param;
 
 	// a param of 0xff disconnects
@@ -1261,17 +1276,7 @@ void saturn_cd_hle_device::cmd_set_cddevice_connection()
 		cddevice = (filterT *)nullptr;
 	}
 	else
-	{
-		if (param < MAX_FILTERS)
-		{
-			cddevice = &filters[param];
-		}
-		else
-		{
-			// TODO: should just require a rejection
-			popmessage("saturn_cd_hle.cpp: cmd_set_cddevice_connection() with param %02x", param);
-		}
-	}
+		cddevice = &filters[param];
 
 	hirqreg |= (CMOK|ESEL);
 	cr_standard_return(cd_stat);
@@ -1304,6 +1309,13 @@ void saturn_cd_hle_device::cmd_set_filter_range()
 	// cr3 hi = filter num.
 	uint8_t fnum = (cr3 >> 8) & 0xff;
 
+	if (fnum >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
+
 	LOGCMD("%s: Set Filter Range\n", machine().describe_context());
 
 	filters[fnum].fad = ((cr1 & 0xff)<<16) | cr2;
@@ -1317,13 +1329,44 @@ void saturn_cd_hle_device::cmd_set_filter_range()
 
 void saturn_cd_hle_device::cmd_get_filter_range()
 {
-	popmessage("saturn_cd_hle.cpp: cmd_get_filter_range() (unemulated)");
+	unsigned const filter = cr3 >> 8;
+	if (filter >= MAX_FILTERS)
+		cr_standard_return(CD_STAT_REJECT);
+	else
+	{
+		cr1 = cd_stat | ((filters[filter].fad >> 16) & 0xff);
+		cr2 = filters[filter].fad & 0xffff;
+		cr3 = (filter << 8) | ((filters[filter].range >> 16) & 0xff);
+		cr4 = filters[filter].range & 0xffff;
+	}
+	hirqreg |= CMOK;
+}
+
+void saturn_cd_hle_device::cmd_get_filter_connection()
+{
+	unsigned const filter = cr3 >> 8;
+	if (filter >= MAX_FILTERS)
+		cr_standard_return(CD_STAT_REJECT);
+	else
+	{
+		cr1 = cd_stat;
+		cr2 = (filters[filter].condtrue << 8) | filters[filter].condfalse;
+		cr3 = filter << 8;
+		cr4 = 0;
+	}
 	hirqreg |= CMOK;
 }
 
 void saturn_cd_hle_device::cmd_set_filter_subheader_conditions()
 {
 	uint8_t fnum = (cr3 >> 8) & 0xff;
+
+	if (fnum >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
 
 	LOGCMD("%s: Set Filter Subheader conditions %x => chan %x masks %x fid %x vals %x\n", machine().describe_context(), fnum, cr1 & 0xff, cr2, cr3 & 0xff, cr4);
 
@@ -1344,26 +1387,44 @@ void saturn_cd_hle_device::cmd_get_filter_subheader_conditions()
 	// Get Filter Subheader conditions
 	uint8_t fnum = (cr3 >> 8) & 0xff;
 
+	if (fnum >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
+
 	LOGCMD("%s: Get Filter Subheader conditions %x => chan %x masks %x fid %x vals %x\n", machine().describe_context(), fnum, cr1 & 0xff, cr2, cr3 & 0xff, cr4);
 
 	cr1 = cd_stat | (filters[fnum].chan & 0xff);
 	cr2 = (filters[fnum].smmask << 8) | (filters[fnum].cimask & 0xff);
-	cr3 = filters[fnum].fid;
+	cr3 = (fnum << 8) | filters[fnum].fid;
 	cr4 = (filters[fnum].smval << 8) | (filters[fnum].cival & 0xff);
 
-	hirqreg |= (CMOK|ESEL);
+	hirqreg |= CMOK;
 }
 
 void saturn_cd_hle_device::cmd_set_filter_mode()
 {
 	// Set Filter Mode
 	uint8_t fnum = (cr3 >> 8) & 0xff;
+
+	if (fnum >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
 	uint8_t mode = (cr1 & 0xff);
 
 	// initialize filter?
 	if (mode & 0x80)
 	{
-		memset(&filters[fnum], 0, sizeof(filterT));
+		uint8_t const pass = filters[fnum].condtrue;
+		uint8_t const fail = filters[fnum].condfalse;
+		filters[fnum] = {};
+		filters[fnum].condtrue = pass;
+		filters[fnum].condfalse = fail;
 	}
 	else
 	{
@@ -1379,6 +1440,13 @@ void saturn_cd_hle_device::cmd_get_filter_mode()
 {
 	uint8_t fnum = (cr3 >> 8) & 0xff;
 
+	if (fnum >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
+
 	LOGCMD("%s: Get Filter Mode fnum %x\n", machine().describe_context(), fnum);
 
 	cr1 = cd_stat | (filters[fnum].mode & 0xff);
@@ -1386,7 +1454,7 @@ void saturn_cd_hle_device::cmd_get_filter_mode()
 	cr3 = 0;
 	cr4 = 0;
 
-	hirqreg |= (CMOK|ESEL);
+	hirqreg |= CMOK;
 }
 
 void saturn_cd_hle_device::cmd_set_filter_connection()
@@ -1396,7 +1464,24 @@ void saturn_cd_hle_device::cmd_set_filter_connection()
 	// (false condition?)
 	uint8_t fnum = (cr3 >> 8) & 0xff;
 
+	if (fnum >= MAX_FILTERS)
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
+
 	LOGCMD("%s: Set Filter Connection %x => mode %x parm %04x\n", machine().describe_context(), fnum, cr1 & 0xf, cr2);
+
+	unsigned const pass = cr2 >> 8;
+	unsigned const fail = cr2 & 0xff;
+	if (((cr1 & 1) && pass != 0xff && pass >= MAX_FILTERS) ||
+		((cr1 & 2) && fail != 0xff && fail >= MAX_FILTERS))
+	{
+		cr_standard_return(CD_STAT_REJECT);
+		hirqreg |= CMOK;
+		return;
+	}
 
 	if (cr1 & 1)    // set true condition
 		filters[fnum].condtrue = (cr2 >> 8) & 0xff;
@@ -1474,7 +1559,7 @@ void saturn_cd_hle_device::cmd_reset_selector()
 		for(i = 0; i < MAX_FILTERS; i++)
 		{
 			filters[i].fad = 0;
-			filters[i].range = 0xffffffff;
+			filters[i].range = 0;
 			filters[i].mode = 0;
 			filters[i].chan = 0;
 			filters[i].smmask = 0;
@@ -1602,7 +1687,7 @@ void saturn_cd_hle_device::cmd_get_sector_information()
 
 	LOGCMD("%s: Get Sector Info (bufno %d sectoffs %04x)\n", machine().describe_context(), bufnum, sectoffs);
 
-	if (bufnum >= MAX_FILTERS || !partitions[bufnum].blocks[sectoffs])
+	if (bufnum >= MAX_FILTERS || sectoffs >= partitions[bufnum].numblks || !partitions[bufnum].blocks[sectoffs])
 	{
 		LOGWARN("CD: invalid buffer number\n");
 		cr_standard_return(CD_STAT_REJECT);
@@ -1614,7 +1699,7 @@ void saturn_cd_hle_device::cmd_get_sector_information()
 	cr2 = partitions[bufnum].blocks[sectoffs]->FAD & 0xffff;
 	cr3 = ((partitions[bufnum].blocks[sectoffs]->fnum & 0xff) << 8) | (partitions[bufnum].blocks[sectoffs]->chan & 0xff);
 	cr4 = ((partitions[bufnum].blocks[sectoffs]->subm & 0xff) << 8) | (partitions[bufnum].blocks[sectoffs]->cinf & 0xff);
-	hirqreg |= (CMOK|ESEL);
+	hirqreg |= CMOK;
 }
 
 void saturn_cd_hle_device::cmd_set_sector_length()
@@ -2230,6 +2315,7 @@ void saturn_cd_hle_device::cd_exec_command()
 		case 0x44: cmd_set_filter_mode(); break;
 		case 0x45: cmd_get_filter_mode(); break;
 		case 0x46: cmd_set_filter_connection(); break;
+		case 0x47: cmd_get_filter_connection(); break;
 		case 0x48: cmd_reset_selector(); break;
 
 		case 0x50: cmd_get_buffer_size(); break;

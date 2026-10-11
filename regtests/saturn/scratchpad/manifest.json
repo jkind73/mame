@@ -1,0 +1,87 @@
+[
+  {
+    "file": "dmactest.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/dmactest.lua",
+    "sha256": "35bdd41c6d475a579def165c11a33b329cf4c69502ff88553db7b26edf014059"
+  },
+  {
+    "file": "dmactest2.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/dmactest2.lua",
+    "sha256": "b27c557bb2ed24f51238210a8ec7133a2ff4c6443525353404611d3b8b25c443"
+  },
+  {
+    "file": "scudma.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/scudma.lua",
+    "sha256": "9c89223ec3a1b146fb03e888e9b996d4de959148c2f212c92bddf9942b7675a1"
+  },
+  {
+    "file": "scudma2.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/scudma2.lua",
+    "sha256": "f65f89cc5ccb5db12c0af934b0497a538fdf0540bfc7685bccf451e816594563"
+  },
+  {
+    "file": "scudma_edges.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/scudma_edges.lua",
+    "sha256": "de2e0081aa406d678f523f79bdd1f83c3c5a8c73414bfe56af165d3f5341d8da"
+  },
+  {
+    "file": "scudma_v2.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/scudma_v2.lua",
+    "sha256": "31a28152b2212dddb6d77c4c731e21fa53be1c7fdd3545341c83610b475b57b6"
+  },
+  {
+    "file": "bustest.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/bustest.lua",
+    "sha256": "3c4e78f80445b6b1bb76cf36dcd9744bef5f47cc21232fa76e1c6fd7536115df"
+  },
+  {
+    "file": "bustest2.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/bustest2.lua",
+    "sha256": "dd3ec3171e366693a134cd50ce3f2d8eab8b4a528bf16dbd4b0847c416688d98"
+  },
+  {
+    "file": "bustest3.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/bustest3.lua",
+    "sha256": "7a01dcdbd1678ca482a29d24f5c742fc6814bde35eb76dd3e39d181e143fb1ab"
+  },
+  {
+    "file": "bustest4.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/bustest4.lua",
+    "sha256": "7522732be06c5d78babb8fd71a5580efd9f627b23e9d576da149ee7312fc650f"
+  },
+  {
+    "file": "hashrun.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/hashrun.lua",
+    "sha256": "c2ddbb6b2cb8fc137b235fcdf53a28da1616b4365de670ac27f63e7faa54c8d9"
+  },
+  {
+    "file": "sramhash.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/sramhash.lua",
+    "sha256": "db8ffd6c6a2d2ec95d0c881446bf285529caf1d3efb79d3edb1258029369bfda"
+  },
+  {
+    "file": "stcmp.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/stcmp.lua",
+    "sha256": "2289c70136879e5958f556a93d11540c368b94edc56a5f33221661b8e7b03190"
+  },
+  {
+    "file": "sfx.py",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/sfx.py",
+    "sha256": "f2b57f53407463ea6dbcf624afc82c9cba2c63e6039e34b326826726fb5b55bd"
+  },
+  {
+    "file": "keyon.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/keyon.lua",
+    "sha256": "010c0d0ae3129ed44f0091da07afa1ec7478e562ab056780dca025818b66bd40"
+  },
+  {
+    "file": "kcount.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/kcount.lua",
+    "sha256": "7abbfae5df311942e91ee531c7388281a8a9791e55dbce13eaa85cd124ad212d"
+  },
+  {
+    "file": "sndtap.lua",
+    "source": "/Volumes/aurora16/Users/jkind/AppData/Local/Temp/claude/C--Users-jkind-mameSaturn-mame--claude-worktrees-saturn-vdp2-rewrite-4bb92d/280fbb31-1110-4acb-af33-0544bb4a08d0/scratchpad/sndtap.lua",
+    "sha256": "23aef90fd25c305fa8c0c74dee0874910b0ad11693a4ab5f2df034d639ec22b6"
+  }
+]

@@ -94,6 +94,14 @@ unsigned saturn_state::cpu_bus_waits(uint32_t address, bool write, unsigned bits
   The finish times are machine times, since a CPU's cycle count restarts when
   the CPU is reset.
 */
+void saturn_state::sh2_bus_observe(unsigned cpu, offs_t address, unsigned size, bool write, bool fill)
+{
+	uint32_t const a = address & 0x07ffffff;
+	sh7604_device &peer = cpu ? *m_maincpu : *m_slave;
+	for (unsigned offset = 0; offset < (fill ? 16U : size); offset += a < 0x02000000 ? 2 : 4)
+		peer.ubc_external_cycle(a + offset, write);
+}
+
 int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma)
 {
 	sh7604_device &exec = cpu ? *m_slave : *m_maincpu;
@@ -103,6 +111,7 @@ int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bo
 	};
 	uint64_t t = 0;
 	uint32_t const a = address & 0x07ffffff;
+
 
 	if (a < 0x02000000)
 	{
@@ -142,6 +151,15 @@ int saturn_state::sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bo
 		// manual 2.1). The SCU's own registers stay reachable.
 		if (a < 0x05fc0000 && !(a >= 0x05900000 && a < 0x05a00000))
 			t += m_scu->dma_bus_owner_wait();
+
+		if (a >= 0x05a00000 && a < 0x05c00000)
+		{
+			attotime const wait = m_scsp->dma_access_wait(a >= 0x05b00000);
+			u64 clocks = exec.attotime_to_cycles(wait);
+			if (exec.cycles_to_attotime(clocks) < wait)
+				++clocks;
+			t += clocks;
+		}
 
 		// the chips behind the SCU, as measured by the probe (they are the extra clocks, so one
 		// is added for the access itself)
@@ -327,4 +345,25 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 	if (exec.cycles_to_attotime(waited) < wait)
 		++waited;
 	return waited + cycles;
+}
+
+// Board bus holds combine the SCU grant with the independent SMPC system stop.
+void saturn_state::update_cpu_halt()
+{
+	int const line = (m_system_halt || m_scu_halt) ? ASSERT_LINE : CLEAR_LINE;
+	m_maincpu->set_input_line(INPUT_LINE_HALT, line);
+	m_slave->set_input_line(INPUT_LINE_HALT, line);
+}
+
+void saturn_state::scu_halt_w(int state)
+{
+	m_scu_halt = bool(state);
+	update_cpu_halt();
+}
+
+void saturn_state::system_halt_w(int state)
+{
+	m_system_halt = bool(state);
+	update_cpu_halt();
+	m_audiocpu->set_input_line(INPUT_LINE_HALT, state ? ASSERT_LINE : CLEAR_LINE);
 }

@@ -1,0 +1,81 @@
+--- a/src/mame/sega/sat_console.cpp
++++ b/src/mame/sega/sat_console.cpp
+@@ -427,6 +427,8 @@
+ #include <cstdlib>
+ #include "saturn.h"
+ 
++#include "saturn_cdb.h"
++#include "sound/cdda.h"
+ #include "saturn_cd_hle.h"
+ 
+ #include "cpu/m68000/m68000.h"
+@@ -452,7 +454,7 @@
+ 		: saturn_state(mconfig, type, tag)
+ 		, m_exp(*this, "exp")
+ 		, m_nvram(*this, "nvram")
+-		, m_saturn_cd_hle(*this, "saturn_cd_hle")
++		, m_saturn_cdb(*this, "saturn_cdb")
+ 		, m_ctrl1(*this, "ctrl1")
+ 		, m_ctrl2(*this, "ctrl2")
+ 	{ }
+@@ -519,7 +521,7 @@
+ 
+ 	required_device<sat_cart_slot_device> m_exp;
+ 	required_device<nvram_device> m_nvram;
+-	required_device<saturn_cd_hle_device> m_saturn_cd_hle;
++	required_device<saturn_cdb_device> m_saturn_cdb;
+ 
+ 	required_device<saturn_control_port_device> m_ctrl1;
+ 	required_device<saturn_control_port_device> m_ctrl2;
+@@ -564,7 +566,7 @@
+ //  map(0x04000000, 0x047fffff).ram(); // External Battery RAM area
+ 	map(0x04ffffff, 0x04ffffff).r(FUNC(sat_console_state::saturn_cart_type_r));
+ 	map(0x05000000, 0x057fffff).r(FUNC(sat_console_state::abus_dummy_r));
+-	map(0x05800000, 0x0589ffff).m(m_saturn_cd_hle, FUNC(saturn_cd_hle_device::amap));
++	map(0x05800000, 0x0589ffff).m(m_saturn_cdb, FUNC(saturn_cdb_device::amap));
+ 	/* Sound */
+ 	map(0x05a00000, 0x05a7ffff).rw(FUNC(sat_console_state::soundram_r), FUNC(sat_console_state::soundram_w));
+ 	map(0x05b00000, 0x05b00fff).rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write));
+@@ -603,13 +605,13 @@
+ INPUT_CHANGED_MEMBER(sat_console_state::tray_open)
+ {
+ 	if(newval)
+-		m_saturn_cd_hle->set_tray_open();
++		m_saturn_cdb->set_tray_open();
+ }
+ 
+ INPUT_CHANGED_MEMBER(sat_console_state::tray_close)
+ {
+ 	if(newval)
+-		m_saturn_cd_hle->set_tray_close();
++		m_saturn_cdb->set_tray_close();
+ }
+ 
+ static INPUT_PORTS_START( saturn )
+@@ -895,9 +897,23 @@
+ 	m_scsp->add_route(0, "speaker", 1.0, 0);
+ 	m_scsp->add_route(1, "speaker", 1.0, 1);
+ 
+-	SATURN_CD_HLE(config, m_saturn_cd_hle);
+-	m_saturn_cd_hle->add_route(0, "scsp", 1.0, 0);
+-	m_saturn_cd_hle->add_route(1, "scsp", 1.0, 1);
++	SATURN_CDB(config, m_saturn_cdb, 20000000);
++	m_saturn_cdb->set_lle(true);
++	m_saturn_cdb->set_host_wait_callback([this](bool active) { m_maincpu->set_bus_wait_active(active); m_slave->set_bus_wait_active(active); });
++	m_saturn_cdb->set_host_notify_callback([this]() { m_maincpu->sh2_notify_dma_data_available(); m_slave->sh2_notify_dma_data_available(); });
++	m_maincpu->set_bus_ready_callback(NAME([this](offs_t a,unsigned size,bool write) { return m_scu->cpu_bus_ready(a)&&m_saturn_cdb->host_bus_ready(a,size,write); }));
++	m_slave->set_bus_ready_callback(NAME([this](offs_t a,unsigned size,bool write) { return m_scu->cpu_bus_ready(a)&&m_saturn_cdb->host_bus_ready(a,size,write); }));
++	m_scu->set_host_ready_callback([this](u32 a,unsigned size,bool write) { return m_saturn_cdb->host_bus_ready(a,size,write); });
++	auto dma_ready=[this](u32 src,u32 dst,u32 data,int size) { unsigned const bytes=size==3?4:1U<<size;return m_saturn_cdb->host_bus_ready(src,bytes,false)&&m_saturn_cdb->host_bus_ready(dst,bytes,true); };
++	m_maincpu->set_dma_fifo_data_available_callback(NAME(dma_ready));
++	m_slave->set_dma_fifo_data_available_callback(NAME(dma_ready));
++	CDROM(config, "cdrom").set_interface("cdrom");
++	m_saturn_cdb->set_cdrom_tag("^cdrom");
++	cdda_device &cdda(CDDA(config, "cdda"));
++	cdda.set_cdrom_tag("cdrom");
++	cdda.add_route(0, "scsp", 1.0, 0);
++	cdda.add_route(1, "scsp", 1.0, 1);
++	m_saturn_cdb->set_cdda_tag("^cdda");
+ 
+ 	SATURN_CONTROL_PORT(config, "ctrl1", saturn_controls, "joypad");
+ 	SATURN_CONTROL_PORT(config, "ctrl2", saturn_controls, "joypad");

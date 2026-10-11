@@ -12,7 +12,6 @@ TODO:
 - fix intback issue with inputs (according to the docs, it should fall in between
   VBLANK-IN and OUT, for obvious reasons);
 - clean-ups;
-- RTC subdevice (unknown type, handled here for convenience);
 - Does ST-V even has a battery backed NVRAM?
 
 Notes:
@@ -48,6 +47,37 @@ SMPC NVRAM contents:
 // device type definition
 DEFINE_DEVICE_TYPE(SMPC_HLE, smpc_hle_device, "smpc_hle", "Sega Saturn SMPC HLE (Hitachi HD404920FS 315-5744)")
 
+DEFINE_DEVICE_TYPE(SMPC_RTC, smpc_rtc_device, "smpc_rtc", "SMPC battery-backed calendar")
+
+smpc_rtc_device::smpc_rtc_device(const machine_config &config, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(config, SMPC_RTC, tag, owner, clock)
+{
+}
+void smpc_rtc_device::device_start()
+{
+	save_item(NAME(m_data));
+	save_item(NAME(m_host_initialized));
+	m_timer = timer_alloc(FUNC(smpc_rtc_device::increment), this);
+	// Warm resets do not advance or rephase the battery-backed oscillator.
+	m_timer->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
+}
+void smpc_rtc_device::initialize_from_host(int year, int month, int day, int weekday, int hour, int minute, int second)
+{
+	// MAME reinitializes RTC interfaces on every machine reset. The SMPC's
+	// battery clock must retain SETTIME and keep running through a warm reset.
+	if (m_host_initialized)
+		return;
+	m_host_initialized = true;
+	auto const bcd = [](unsigned value) { return u8((value / 10) * 16 + value % 10); };
+	m_data[0] = bcd(year / 100);
+	m_data[1] = bcd(year % 100);
+	m_data[2] = ((weekday - 1) << 4) | month;
+	m_data[3] = bcd(day);
+	m_data[4] = bcd(hour);
+	m_data[5] = bcd(minute);
+	m_data[6] = bcd(second);
+}
+
 void smpc_hle_device::io_map(address_map &map)
 {
 	map(0x00, 0x7f).lr8(NAME([this] (offs_t offset) {
@@ -79,6 +109,7 @@ void smpc_hle_device::io_map(address_map &map)
 smpc_hle_device::smpc_hle_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, SMPC_HLE, tag, owner, clock)
 	, device_rtc_interface(mconfig, *this)
+	, m_rtc(*this, "rtc")
 	, m_mini_nvram(*this, "smem")
 	, m_mshres(*this)
 	, m_mshnmi(*this)
@@ -108,7 +139,7 @@ void smpc_hle_device::device_add_mconfig(machine_config &config)
 {
 	NVRAM(config, "smem", nvram_device::DEFAULT_ALL_0);
 
-	// TODO: custom RTC subdevice
+	SMPC_RTC(config, m_rtc);
 }
 
 //-------------------------------------------------
@@ -150,7 +181,6 @@ void smpc_hle_device::device_start()
 	save_item(NAME(m_periph_report));
 	save_item(NAME(m_periph_offset));
 	save_item(NAME(m_resb));
-	save_item(NAME(m_rtc_data));
 	save_item(NAME(m_smem));
 	save_item(NAME(m_ckchg_tick));
 	save_item(NAME(m_prev_sshoff));
@@ -159,7 +189,6 @@ void smpc_hle_device::device_start()
 
 	m_cmd_timer = timer_alloc(FUNC(smpc_hle_device::handle_command), this);
 	m_syshalt_timer = timer_alloc(FUNC(smpc_hle_device::system_halt), this);
-	m_rtc_timer = timer_alloc(FUNC(smpc_hle_device::handle_rtc_increment), this);
 	m_intback_timer = timer_alloc(FUNC(smpc_hle_device::intback_continue_request), this);
 	m_sndres_timer = timer_alloc(FUNC(smpc_hle_device::sound_reset), this);
 }
@@ -209,7 +238,6 @@ void smpc_hle_device::device_reset()
 	m_vin_time = attotime::never;
 	m_frame_time = attotime::never;
 
-	m_rtc_timer->adjust(attotime::zero, 0, attotime::from_seconds(1));
 }
 
 
@@ -219,13 +247,7 @@ void smpc_hle_device::device_reset()
 
 void smpc_hle_device::rtc_clock_updated(int year, int month, int day, int day_of_week, int hour, int minute, int second)
 {
-	m_rtc_data[0] = DectoBCD(year / 100);
-	m_rtc_data[1] = DectoBCD(year % 100);
-	m_rtc_data[2] = ((day_of_week - 1) << 4) | month;
-	m_rtc_data[3] = DectoBCD(day);
-	m_rtc_data[4] = DectoBCD(hour);
-	m_rtc_data[5] = DectoBCD(minute);
-	m_rtc_data[6] = DectoBCD(second);
+	m_rtc->initialize_from_host(year, month, day, day_of_week, hour, minute, second);
 }
 
 
@@ -422,6 +444,8 @@ void smpc_hle_device::command_register_w(uint8_t data)
 		logerror("SMPC: COMREG = %02x!?\n", data);
 
 	m_command_in_progress = true;
+	// SMPC 2.5: OREG31 identifies the accepted command while SF is still set.
+	m_oreg[31] = m_comreg;
 	switch(m_comreg)
 	{
 		// gnine97/gnine98 and spinoffs wants two consecutive SSHON to resolve as a NOP
@@ -604,8 +628,7 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command)
 		{
 			LOGMASKED(LOG_COMMAND, "SMPC: %02x SETTIME\n", m_comreg);
 
-			for(int i = 0; i < 7; i++)
-				m_rtc_data[i] = m_ireg[i];
+			m_rtc->write(m_ireg);
 			break;
 		}
 
@@ -663,7 +686,7 @@ void smpc_hle_device::resolve_intback()
 		m_oreg[0] = ((m_smem[4] & 0x80) | ((!m_NMI_reset & 1) << 6));
 
 		for(i = 0; i < 7; i++)
-			m_oreg[1+i] = m_rtc_data[i];
+			m_oreg[1+i] = m_rtc->read(i);
 
 		m_oreg[8] = 0; // CTG0 / CTG1?
 
@@ -840,73 +863,67 @@ int smpc_hle_device::DectoBCD(int num)
 //  RTC handling
 //**************************************************************************
 
-TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_rtc_increment)
+TIMER_CALLBACK_MEMBER(smpc_rtc_device::increment)
 {
 	const uint8_t dpm[12] = { 0x31, 0x28, 0x31, 0x30, 0x31, 0x30, 0x31, 0x31, 0x30, 0x31, 0x30, 0x31 };
 	int year_num, year_count;
 
-	/*
-	    m_smpc.rtc_data[0] = DectoBCD(systime.local_time.year /100);
-	    m_smpc.rtc_data[1] = DectoBCD(systime.local_time.year %100);
-	    m_smpc.rtc_data[2] = (systime.local_time.weekday << 4) | (systime.local_time.month+1);
-	    m_smpc.rtc_data[3] = DectoBCD(systime.local_time.mday);
-	    m_smpc.rtc_data[4] = DectoBCD(systime.local_time.hour);
-	    m_smpc.rtc_data[5] = DectoBCD(systime.local_time.minute);
-	    m_smpc.rtc_data[6] = DectoBCD(systime.local_time.second);
-	*/
 
-	m_rtc_data[6]++;
+	// Invalid SETTIME input is undefined by Sega; avoid indexing beyond the calendar.
+	if ((m_data[2] & 15) < 1 || (m_data[2] & 15) > 12)
+		return;
+	m_data[6]++;
 
 	/* seconds from 9 -> 10*/
-	if((m_rtc_data[6] & 0x0f) >= 0x0a)         { m_rtc_data[6]+=0x10; m_rtc_data[6]&=0xf0; }
+	if((m_data[6] & 0x0f) >= 0x0a)         { m_data[6]+=0x10; m_data[6]&=0xf0; }
 	/* seconds from 59 -> 0 */
-	if((m_rtc_data[6] & 0xf0) >= 0x60)         { m_rtc_data[5]++;     m_rtc_data[6] = 0; }
+	if((m_data[6] & 0xf0) >= 0x60)         { m_data[5]++;     m_data[6] = 0; }
 	/* minutes from 9 -> 10 */
-	if((m_rtc_data[5] & 0x0f) >= 0x0a)         { m_rtc_data[5]+=0x10; m_rtc_data[5]&=0xf0; }
+	if((m_data[5] & 0x0f) >= 0x0a)         { m_data[5]+=0x10; m_data[5]&=0xf0; }
 	/* minutes from 59 -> 0 */
-	if((m_rtc_data[5] & 0xf0) >= 0x60)         { m_rtc_data[4]++;     m_rtc_data[5] = 0; }
+	if((m_data[5] & 0xf0) >= 0x60)         { m_data[4]++;     m_data[5] = 0; }
 	/* hours from 9 -> 10 */
-	if((m_rtc_data[4] & 0x0f) >= 0x0a)         { m_rtc_data[4]+=0x10; m_rtc_data[4]&=0xf0; }
+	if((m_data[4] & 0x0f) >= 0x0a)         { m_data[4]+=0x10; m_data[4]&=0xf0; }
 	/* hours from 23 -> 0 */
-	if((m_rtc_data[4] & 0xff) >= 0x24)             { m_rtc_data[3]++; m_rtc_data[2]+=0x10; m_rtc_data[4] = 0; }
+	if((m_data[4] & 0xff) >= 0x24)             { m_data[3]++; m_data[2]+=0x10; m_data[4] = 0; }
 	/* week day name sunday -> monday */
-	if((m_rtc_data[2] & 0xf0) >= 0x70)             { m_rtc_data[2]&=0x0f; }
+	if((m_data[2] & 0xf0) >= 0x70)             { m_data[2]&=0x0f; }
 	/* day number 9 -> 10 */
-	if((m_rtc_data[3] & 0x0f) >= 0x0a)             { m_rtc_data[3]+=0x10; m_rtc_data[3]&=0xf0; }
+	if((m_data[3] & 0x0f) >= 0x0a)             { m_data[3]+=0x10; m_data[3]&=0xf0; }
 
 	// year BCD to dec conversion (for the leap year stuff)
 	{
-		year_num = (m_rtc_data[1] & 0xf);
+		year_num = (m_data[1] & 0xf);
 
-		for(year_count = 0; year_count < (m_rtc_data[1] & 0xf0); year_count += 0x10)
+		for(year_count = 0; year_count < (m_data[1] & 0xf0); year_count += 0x10)
 			year_num += 0xa;
 
-		year_num += (m_rtc_data[0] & 0xf)*0x64;
+		year_num += (m_data[0] & 0xf)*0x64;
 
-		for(year_count = 0; year_count < (m_rtc_data[0] & 0xf0); year_count += 0x10)
+		for(year_count = 0; year_count < (m_data[0] & 0xf0); year_count += 0x10)
 			year_num += 0x3e8;
 	}
 
 	/* month +1 check */
-	/* the RTC have a range of 1980 - 2100, so we don't actually need to support the leap year special conditions */
-	if(((year_num % 4) == 0) && (m_rtc_data[2] & 0xf) == 2)
+	/* Sega specifies leap-year correction through 2099 (SMPC 2.5). */
+	if(((year_num % 4) == 0) && (m_data[2] & 0xf) == 2)
 	{
-		if((m_rtc_data[3] & 0xff) >= dpm[(m_rtc_data[2] & 0xf)-1]+1+1)
-			{ m_rtc_data[2]++; m_rtc_data[3] = 0x01; }
+		if((m_data[3] & 0xff) >= dpm[(m_data[2] & 0xf)-1]+1+1)
+			{ m_data[2]++; m_data[3] = 0x01; }
 	}
-	else if((m_rtc_data[3] & 0xff) >= dpm[(m_rtc_data[2] & 0xf)-1]+1){ m_rtc_data[2]++; m_rtc_data[3] = 0x01; }
+	else if((m_data[3] & 0xff) >= dpm[(m_data[2] & 0xf)-1]+1){ m_data[2]++; m_data[3] = 0x01; }
 	/* year +1 check */
-	if((m_rtc_data[2] & 0x0f) > 12)                { m_rtc_data[1]++;  m_rtc_data[2] = (m_rtc_data[2] & 0xf0) | 0x01; }
+	if((m_data[2] & 0x0f) > 12)                { m_data[1]++;  m_data[2] = (m_data[2] & 0xf0) | 0x01; }
 	/* year from 9 -> 10 */
-	if((m_rtc_data[1] & 0x0f) >= 0x0a)             { m_rtc_data[1]+=0x10; m_rtc_data[1]&=0xf0; }
-	/* year from 99 -> 100 */
-	if((m_rtc_data[1] & 0xf0) >= 0xa0)             { m_rtc_data[0]++; m_rtc_data[1] = 0; }
+	if((m_data[1] & 0x0f) >= 0x0a)             { m_data[1]+=0x10; m_data[1]&=0xf0; }
+	/* year from 99 -> 100, including BCD century carry */
+	if((m_data[1] & 0xf0) >= 0xa0)             { m_data[0]++; if ((m_data[0] & 15) >= 10) m_data[0] += 6; m_data[1] = 0; }
 
 	// probably not SO precise, here just for reference ...
 	/* year from 999 -> 1000 */
-	//if((m_rtc_data[0] & 0x0f) >= 0x0a)               { m_rtc_data[0]+=0x10; m_rtc_data[0]&=0xf0; }
+	//if((m_data[0] & 0x0f) >= 0x0a)               { m_data[0]+=0x10; m_data[0]&=0xf0; }
 	/* year from 9999 -> 0 */
-	//if((m_rtc_data[0] & 0xf0) >= 0xa0)               { m_rtc_data[0] = 0; } //roll over
+	//if((m_data[0] & 0xf0) >= 0xa0)               { m_data[0] = 0; } //roll over
 }
 
 

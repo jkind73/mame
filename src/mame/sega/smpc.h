@@ -21,6 +21,25 @@
 
 // ======================> smpc_hle_device
 
+// Battery-backed calendar inside the SMPC, advanced once per emulated second.
+// This is an internal HLE component, not an additional executing CPU.
+class smpc_rtc_device : public device_t
+{
+public:
+	smpc_rtc_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+	u8 read(unsigned i) const { return m_data[i]; }
+	void write(const u8 *data) { std::copy_n(data, 7, m_data); }
+	void initialize_from_host(int year, int month, int day, int weekday, int hour, int minute, int second);
+protected:
+	virtual void device_start() override ATTR_COLD;
+private:
+	u8 m_data[7]{};
+	bool m_host_initialized = false;
+	emu_timer *m_timer = nullptr;
+	TIMER_CALLBACK_MEMBER(increment);
+};
+DECLARE_DEVICE_TYPE(SMPC_RTC, smpc_rtc_device)
+
 class smpc_hle_device : public device_t,
 						public device_rtc_interface
 {
@@ -99,7 +118,7 @@ private:
 
 	emu_timer *m_cmd_timer;
 	emu_timer *m_syshalt_timer;
-	emu_timer *m_rtc_timer;
+	required_device<smpc_rtc_device> m_rtc;
 	emu_timer *m_intback_timer;
 	emu_timer *m_sndres_timer;
 	bool m_has_ctrl_ports;
@@ -114,7 +133,6 @@ private:
 	uint8_t m_ireg[7];
 	uint8_t m_intback_buf[3];
 	uint8_t m_oreg[32];
-	uint8_t m_rtc_data[7];
 	uint8_t m_smem[5];
 	uint8_t m_comreg;
 	uint8_t m_ckchg_tick;
@@ -148,7 +166,6 @@ private:
 	void periph_collect_start();
 	void periph_data_wanted();
 	TIMER_CALLBACK_MEMBER(intback_continue_request);
-	TIMER_CALLBACK_MEMBER(handle_rtc_increment);
 	TIMER_CALLBACK_MEMBER(sound_reset);
 	TIMER_CALLBACK_MEMBER(handle_command);
 	TIMER_CALLBACK_MEMBER(system_halt);

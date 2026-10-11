@@ -62,18 +62,15 @@
  * - after each instruction, X and Y is multiplied and contents are loaded into MUL register
  * - fixed RL8
  * - fixed MVI
- * - flags computation in MVI and JMP is partly guessed (because of errors in docs)
+ * - MVI/JMP conditions are verified against ST-97 Tables 4.2-4.4.
  * - added reading DSP mem from SH2 side
  * - overworked disassembler
  *
- *  TODO:
- * - find a way to DTACK CPUs when DMA-ing rather than stalling this;
- * - Fix disassembler;
- * - Fix timings (no info available so far);
- * - Add control flags;
- * - Scheduler corrupts a lot in debugger, particularly with DRC enabled;
- * - convert CTx to array;
- * - vkyoute2: heavy glitches with VDP1 vertices going haywire;
+ *  Timing: one instruction per DSP clock (master / 4); parallel bus moves
+ *  share that instruction clock. DMA acknowledges asynchronously using the
+ *  SCU bus wait model. Absolute bus timing has not been checked on hardware.
+ *  Control, debugger scheduling and vkyoute2 regressions are recorded in
+ *  SCU_DSP_CORE_AUDIT.md.
  *
  *
  *************************************************************************************************/
@@ -81,6 +78,10 @@
 #include "emu.h"
 #include "scudsp.h"
 #include "scudspdasm.h"
+
+#define LOG_RULE (1U << 1)
+#define VERBOSE (0)
+#include "logmacro.h"
 
 
 DEFINE_DEVICE_TYPE(SCUDSP, scudsp_cpu_device, "scudsp", "Sega SCUDSP")
@@ -93,7 +94,7 @@ DEFINE_DEVICE_TYPE(SCUDSP, scudsp_cpu_device, "scudsp", "Sega SCUDSP")
 #define SET_V(_val) (m_flags = ((m_flags & ~0x00080000) | ((_val) ? 0x00080000 : 0)))
 
 
-#define FLAGS_MASK 0x06ff8000
+#define FLAGS_MASK 0x00fd0000 // T0, S, Z, C, V, E and EX; the other control bits are write-only
 
 #define scudsp_readop(A) m_program->read_dword(A)
 #define scudsp_writeop(A, B) m_program->write_dword(A, B)
@@ -128,32 +129,32 @@ uint32_t scudsp_cpu_device::get_source_mem_value(uint8_t mode)
 	switch( mode )
 	{
 		case 0x0:   /* M0 */
-			value = scudsp_readmem(m_ct0,0);
+			value = scudsp_readmem(m_ct[0],0);
 			break;
 		case 0x1:   /* M1 */
-			value = scudsp_readmem(m_ct1,1);
+			value = scudsp_readmem(m_ct[1],1);
 			break;
 		case 0x2:   /* M2 */
-			value = scudsp_readmem(m_ct2,2);
+			value = scudsp_readmem(m_ct[2],2);
 			break;
 		case 0x3:   /* M3 */
-			value = scudsp_readmem(m_ct3,3);
+			value = scudsp_readmem(m_ct[3],3);
 			break;
 		case 0x4:   /* MC0 */
-			value = scudsp_readmem(m_ct0++,0);
-			m_ct0 &= 0x3f;
+			value = scudsp_readmem(m_ct[0]++,0);
+			m_ct[0] &= 0x3f;
 			break;
 		case 0x5:   /* MC1 */
-			value = scudsp_readmem(m_ct1++,1);
-			m_ct1 &= 0x3f;
+			value = scudsp_readmem(m_ct[1]++,1);
+			m_ct[1] &= 0x3f;
 			break;
 		case 0x6:   /* MC2 */
-			value = scudsp_readmem(m_ct2++,2);
-			m_ct2 &= 0x3f;
+			value = scudsp_readmem(m_ct[2]++,2);
+			m_ct[2] &= 0x3f;
 			break;
 		case 0x7:   /* MC3 */
-			value = scudsp_readmem(m_ct3++,3);
-			m_ct3 &= 0x3f;
+			value = scudsp_readmem(m_ct[3]++,3);
+			m_ct[3] &= 0x3f;
 			break;
 	}
 
@@ -165,20 +166,20 @@ void scudsp_cpu_device::set_dest_mem_reg( uint32_t mode, uint32_t value )
 	switch( mode )
 	{
 		case 0x0:   /* MC0 */
-			scudsp_writemem(m_ct0++,0,value);
-			m_ct0 &= 0x3f;
+			scudsp_writemem(m_ct[0]++,0,value);
+			m_ct[0] &= 0x3f;
 			break;
 		case 0x1:   /* MC1 */
-			scudsp_writemem(m_ct1++,1,value);
-			m_ct1 &= 0x3f;
+			scudsp_writemem(m_ct[1]++,1,value);
+			m_ct[1] &= 0x3f;
 			break;
 		case 0x2:   /* MC2 */
-			scudsp_writemem(m_ct2++,2,value);
-			m_ct2 &= 0x3f;
+			scudsp_writemem(m_ct[2]++,2,value);
+			m_ct[2] &= 0x3f;
 			break;
 		case 0x3:   /* MC3 */
-			scudsp_writemem(m_ct3++,3,value);
-			m_ct3 &= 0x3f;
+			scudsp_writemem(m_ct[3]++,3,value);
+			m_ct[3] &= 0x3f;
 			break;
 		case 0x4:   /* RX */
 			// the multiplier works on whatever is in RX, however it got there
@@ -201,22 +202,23 @@ void scudsp_cpu_device::set_dest_mem_reg( uint32_t mode, uint32_t value )
 			/* ??? */
 			break;
 		case 0xa:   /* LOP */
-			m_lop = value;
+			if (!m_loop_active)
+				m_lop = value & 0x0fff;
 			break;
 		case 0xb:   /* TOP */
 			m_top = value;
 			break;
 		case 0xc:   /* CT0 */
-			m_ct0 = value & 0x3f;
+			m_ct[0] = value & 0x3f;
 			break;
 		case 0xd:   /* CT1 */
-			m_ct1 = value & 0x3f;
+			m_ct[1] = value & 0x3f;
 			break;
 		case 0xe:   /* CT2 */
-			m_ct2 = value & 0x3f;
+			m_ct[2] = value & 0x3f;
 			break;
 		case 0xf:   /* CT3 */
-			m_ct3 = value & 0x3f;
+			m_ct[3] = value & 0x3f;
 			break;
 	}
 }
@@ -232,7 +234,8 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 		switch( mode )
 		{
 			case 0xc:   /* PC */
-				m_delay = m_pc;  /* address next after this command will be executed twice */
+				m_delay = m_pc;
+				m_delay_pending = true;  /* address next after this command will be executed twice */
 				m_top = m_pc;
 				m_pc = value;
 				break;
@@ -240,7 +243,7 @@ void scudsp_cpu_device::set_dest_mem_reg_2( uint32_t mode, uint32_t value )
 	}
 }
 
-uint32_t scudsp_cpu_device::compute_condition( uint32_t condition )
+uint32_t scudsp_cpu_device::compute_condition( uint32_t condition ) const
 {
 	// ST-97 Tables 4.2-4.4: bit 0 Z, bit 1 S, bit 2 C, bit 3 T0 select the flags that are ORed together;
 	// bit 5 set tests for the flags being 1, clear tests for all of them being 0 (NZ, NS, NZS, NC, NT0)
@@ -261,24 +264,24 @@ void scudsp_cpu_device::set_dest_dma_mem( uint32_t memcode, uint32_t value )
 		switch(memcode)
 		{
 			case 0x0:   /* MC0 */
-				scudsp_writemem(m_ct0, 0, value);
-				m_ct0 ++;
-				m_ct0 &= 0x3f;
+				scudsp_writemem(m_ct[0], 0, value);
+				m_ct[0] ++;
+				m_ct[0] &= 0x3f;
 				break;
 			case 0x1:   /* MC1 */
-				scudsp_writemem(m_ct1, 1, value);
-				m_ct1 ++;
-				m_ct1 &= 0x3f;
+				scudsp_writemem(m_ct[1], 1, value);
+				m_ct[1] ++;
+				m_ct[1] &= 0x3f;
 				break;
 			case 0x2:   /* MC2 */
-				scudsp_writemem(m_ct2, 2, value);
-				m_ct2 ++;
-				m_ct2 &= 0x3f;
+				scudsp_writemem(m_ct[2], 2, value);
+				m_ct[2] ++;
+				m_ct[2] &= 0x3f;
 				break;
 			case 0x3:   /* MC3 */
-				scudsp_writemem(m_ct3, 3, value);
-				m_ct3 ++;
-				m_ct3 &= 0x3f;
+				scudsp_writemem(m_ct[3], 3, value);
+				m_ct[3] ++;
+				m_ct[3] &= 0x3f;
 				break;
 		}
 	}
@@ -290,24 +293,24 @@ uint32_t scudsp_cpu_device::get_mem_source_dma( uint32_t memcode )
 	switch( memcode & 0x3 )
 	{
 		case 0x0:
-			value = scudsp_readmem(m_ct0, 0);
-			m_ct0 ++;
-			m_ct0 &= 0x3f;
+			value = scudsp_readmem(m_ct[0], 0);
+			m_ct[0] ++;
+			m_ct[0] &= 0x3f;
 			break;
 		case 0x1:
-			value = scudsp_readmem(m_ct1, 1);
-			m_ct1 ++;
-			m_ct1 &= 0x3f;
+			value = scudsp_readmem(m_ct[1], 1);
+			m_ct[1] ++;
+			m_ct[1] &= 0x3f;
 			break;
 		case 0x2:
-			value = scudsp_readmem(m_ct2, 2);
-			m_ct2 ++;
-			m_ct2 &= 0x3f;
+			value = scudsp_readmem(m_ct[2], 2);
+			m_ct[2] ++;
+			m_ct[2] &= 0x3f;
 			break;
 		case 0x3:
-			value = scudsp_readmem(m_ct3, 3);
-			m_ct3 ++;
-			m_ct3 &= 0x3f;
+			value = scudsp_readmem(m_ct[3], 3);
+			m_ct[3] ++;
+			m_ct[3] &= 0x3f;
 			break;
 	}
 	return value;
@@ -316,23 +319,33 @@ uint32_t scudsp_cpu_device::get_mem_source_dma( uint32_t memcode )
 
 uint32_t scudsp_cpu_device::program_control_r()
 {
-	const u32 flags = m_flags & FLAGS_MASK;
+	// The EX latch permits PR to resume the program, but a paused program is
+	// reported as not running (DSP.sv EX & ~EP; ST-97 3.3).
+	const u32 flags = (m_flags & FLAGS_MASK) & ~(m_paused ? (1U << EXF) : 0U);
 
 	if (!machine().side_effects_disabled())
 	{
+		// Rel.2.5 warns that polling here while executing can suppress the end interrupt.
+		if (BIT(m_flags, EXF))
+			LOGMASKED(LOG_RULE, "%s: DSP control read while executing may suppress its end interrupt\n",
+				machine().describe_context());
 		// clear overflow and end flag on host reads of this port
 		m_flags &= ~(1 << VF);
 		m_flags &= ~(1 << EF);
 		m_out_irq_cb(0);
 	}
 
-	return ((m_pc + 1) & 0xff) | flags;
+	// Execution already advances m_pc past the instruction, including END.
+	// The port reports that address, not a second increment (ST-97 4.3).
+	return m_pc | flags;
 }
 
 void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	bool const was_running = BIT(m_flags, EXF);
+	bool const pause_command = ACCESSING_BITS_24_31 && (BIT(data, EPF) || BIT(data, PRF));
 	// PR/EP (bits 26/25) resume and pause a running program (ST-97 3.3)
-	if (ACCESSING_BITS_24_31)
+	if (pause_command && was_running)
 	{
 		if (BIT(data, EPF))
 			m_paused = true;
@@ -343,15 +356,21 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 	// set new PC if transfer enable is set, not while the program is executing
 	// NOTE: doesn't get transfered in flags
 	if (BIT(data, LEF) && ACCESSING_BITS_0_15 && !BIT(m_flags, EXF))
+	{
 		m_pc = data & 0xff;
+		m_delay_pending = false;
+		m_loop_active = false;
+	}
 
-	if (ACCESSING_BITS_16_23)
+	// Pause/resume commands take precedence over EX/ES, including full-width
+	// host writes with EX=0. They must not stop the program they are pausing.
+	if (ACCESSING_BITS_16_23 && !pause_command)
 	{
 		// EX starts/stops the program
 		m_flags = (m_flags & ~(1 << EXF)) | (data & (1 << EXF));
 
 		// ES executes one step while the program is stopped, ignored while executing
-		if (BIT(data, ESF) && !BIT(m_flags, EXF))
+		if (BIT(data, ESF) && !was_running && !BIT(m_flags, EXF))
 		{
 			const int icount = m_icount;
 			m_update_mul = 0;
@@ -360,8 +379,11 @@ void scudsp_cpu_device::program_control_w(offs_t offset, uint32_t data, uint32_t
 		}
 	}
 
-	// run DSP if EXF is on
-	set_input_line(INPUT_LINE_RESET, (BIT(m_flags, EXF)) ? CLEAR_LINE : ASSERT_LINE);
+	// EX controls instruction execution, not the device reset input. Releasing
+	// RESET calls device_reset(), which would cancel an independent active DMA.
+	// Release the SCU's physical startup reset; stopping through EX never asserts it.
+	if (BIT(m_flags, EXF))
+		set_input_line(INPUT_LINE_RESET, CLEAR_LINE);
 }
 
 void scudsp_cpu_device::program_w(uint32_t data)
@@ -574,29 +596,47 @@ void scudsp_cpu_device::op_alu(uint32_t opcode)
 			break;
 	}
 
-	/* update CT registers */
-	if (update_ct[0]) { m_ct0++; m_ct0 &= 0x3f; };
-	if (update_ct[1]) { m_ct1++; m_ct1 &= 0x3f; };
-	if (update_ct[2]) { m_ct2++; m_ct2 &= 0x3f; };
-	if (update_ct[3]) { m_ct3++; m_ct3 &= 0x3f; };
 
-
+	// All parallel reads use the original CT address. Commit each bank's increment
+	// once, after the D1 move too; an explicit CT write takes precedence.
+	unsigned const d1_dest = (opcode >> 8) & 0xf;
+	auto const d1_write = [this, &update_ct] (unsigned dest, uint32_t value)
+	{
+		if (dest < 4)
+		{
+			scudsp_writemem(m_ct[dest], dest, value);
+			update_ct[dest] = 1;
+		}
+		else
+			set_dest_mem_reg(dest, value);
+	};
 	/* D1-Bus */
 	switch( (opcode & 0x3000) >> 12 )
 	{
 		case 0x0:   /* NOP */
 			break;
 		case 0x1:   /* MOV SImm,[d] */
-			set_dest_mem_reg((opcode & 0xf00) >> 8, int32_t(int8_t(opcode & 0xff)));
+			d1_write((opcode & 0xf00) >> 8, int32_t(int8_t(opcode & 0xff)));
 			break;
 		case 0x2:
 			/* ??? */
 			break;
 		case 0x3:   /* MOV [s],[d] */
-			set_dest_mem_reg((opcode & 0xf00) >> 8, get_source_mem_reg_value(opcode & 0xf));
+		{
+			unsigned source = opcode & 0xf;
+			if (source >= 4 && source < 8)
+			{
+				source &= 3;
+				update_ct[source] = 1;
+			}
+			d1_write((opcode & 0xf00) >> 8, get_source_mem_reg_value(source));
 			break;
+		}
 	}
 
+	for (unsigned bank = 0; bank < 4; ++bank)
+		if (update_ct[bank] && !((((opcode >> 12) & 3) == 1 || ((opcode >> 12) & 3) == 3) && d1_dest == 12 + bank))
+			m_ct[bank] = (m_ct[bank] + 1) & 0x3f;
 	m_icount -= 1;
 }
 
@@ -626,7 +666,7 @@ void scudsp_cpu_device::op_move_immediate( uint32_t opcode )
 // sound upload uses bit 16 in the form with the counter in RAM; MiSTer SCU.sv takes DSP_DSO[17:15]
 // whatever the form). A read steps its source by a longword when the field is not 0 and bit 1 is set,
 // or the source is on the B-Bus; a write adds the SCU's write add value of the field (0, 2, 4, 8 ...
-// 128 bytes) after every 16 bit access (SCU.sv DMA_RA_NEW, DMA_WA_NEW). RA0 follows each unit of a
+// 128 bytes) after each B-Bus halfword or C-Bus longword (SCU.sv DMA_RA_NEW, DMA_WA_NEW). RA0 follows each unit of a
 // read when bit 1 is set and WA0 each unit but the last of a write, unless the instruction holds
 // them; at the end of the transfer a read that did not step RA0 and every write add a longword
 // (SCU.sv DMA_END && DMA_DSP).
@@ -660,6 +700,9 @@ void scudsp_cpu_device::op_dma( uint32_t opcode )
 
 	// take some time to actually set above, push in wait state
 	m_dma_state = DMA_STATE_WAIT;
+	m_dma_wait_ready = false;
+	m_dma_forced = false;
+	m_dma_force_cost = attotime::zero;
 	m_out_ddwt_cb(1);
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::from_ticks(4, this->clock()));
@@ -674,12 +717,14 @@ void scudsp_cpu_device::op_jump( uint32_t opcode )
 		if ( compute_condition( (opcode & 0x3f80000) >> 19 ) )
 		{
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc = opcode & 0xff;
 		}
 	}
 	else
 	{
 		m_delay = m_pc;
+		m_delay_pending = true;
 		m_pc = opcode & 0xff;
 	}
 
@@ -690,13 +735,11 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 {
 	if ( opcode & 0x8000000 )
 	{
-		/* LPS */
-		if ( m_lop != 0 )
-		{
-			m_lop--;
-			m_delay = m_pc;
-			m_pc--;
-		}
+		// LPS repeats the prefetched instruction, not the LPS instruction itself.
+		// Reexecuting LPS between iterations doubled the repetition's cycle cost.
+		m_loop_pc = m_pc;
+		m_loop_opcode = scudsp_readop(m_pc++);
+		m_loop_active = true;
 	}
 	else
 	{
@@ -705,6 +748,7 @@ void scudsp_cpu_device::op_loop(uint32_t opcode)
 		{
 			m_lop--;
 			m_delay = m_pc;
+			m_delay_pending = true;
 			m_pc = m_top;
 		}
 	}
@@ -721,8 +765,8 @@ void scudsp_cpu_device::op_end(uint32_t opcode)
 	}
 
 	// clear the execute control flag (not running anymore)
+	m_loop_active = false;
 	m_flags &= ~(1 << EXF);
-	set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
 	m_icount -= 1;
 }
 
@@ -752,6 +796,9 @@ void scudsp_cpu_device::dma_end()
 	m_dma.ex = 0;
 	m_flags &= ~(1 << T0F);
 	m_dma_state = DMA_STATE_IDLE;
+	m_dma_wait_ready = false;
+	m_dma_forced = false;
+	m_dma_force_cost = attotime::zero;
 	if (m_dma.dir == 0 && m_dma.bank == 4)
 		m_pc = m_top;
 	if (m_stalled)
@@ -766,26 +813,36 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 	switch(m_dma_state)
 	{
 		case DMA_STATE_IDLE:
+		case DMA_STATE_END:
 			dma_end();
 			break;
 		case DMA_STATE_WAIT:
+			if (m_dma_start_cb && !m_dma_start_cb())
+			{
+				m_dma_wait_ready = true;
+				m_dma_timer->adjust(attotime::never);
+				break;
+			}
+			m_dma_wait_ready = false;
 			m_out_ddwt_cb(0);
 			m_out_ddmv_cb(1);
-			m_dma_state = DMA_STATE_MOVE;
-			m_dma_timer->adjust(attotime::from_ticks(1, this->clock()));
+			m_dma_state = m_dma_forced ? DMA_STATE_END : DMA_STATE_MOVE;
+			m_dma_timer->adjust(m_dma_forced ? m_dma_force_cost : attotime::from_ticks(1, this->clock()));
 			break;
 		case DMA_STATE_MOVE:
 		{
+			if (m_dma_ready_cb && !m_dma_ready_cb(m_dma.dir ? m_dma.dst : m_dma.src, m_dma.dir != 0))
+			{
+				m_dma_timer->adjust(attotime::from_ticks(1, clock()));
+				break;
+			}
 			exec_dma();
 			m_dma.count++;
 			if (m_dma.count >= m_dma.size)
-			{
-				dma_end();
-				break;
-			}
+				m_dma_state = DMA_STATE_END;
 
-			// the next unit follows after the bus accesses of this one, at least one tick of the
-			// DSP clock (70 nsec a.k.a. 1/~14 MHz)
+			// Completion, like the next unit, follows after this unit's bus accesses,
+			// with a minimum of one DSP tick (70 nsec a.k.a. 1/~14 MHz).
 			attotime wait = !m_dma_wait_cb ? attotime::zero : m_dma_wait_cb();
 			attotime const tick = attotime::from_ticks(1, this->clock());
 			m_dma_timer->adjust(wait > tick ? wait : tick);
@@ -794,35 +851,63 @@ TIMER_CALLBACK_MEMBER(scudsp_cpu_device::dma_tick_cb)
 	}
 }
 
+// The SCU signals that the current DMA owner released the engine. Do not shorten
+// the instruction's initial request delay if it has not expired yet.
+void scudsp_cpu_device::dma_resume()
+{
+	if (m_dma_state == DMA_STATE_WAIT && m_dma_wait_ready)
+		m_dma_timer->adjust(attotime::zero);
+}
+
 // The host asks for the buses while the DMA runs: its remaining units are carried out at once
-attotime scudsp_cpu_device::dma_finish()
+attotime scudsp_cpu_device::dma_finish(attotime prior_wait)
 {
 	if (m_dma_state == DMA_STATE_IDLE)
 		return attotime::zero;
 
-	attotime total = attotime::zero;
-	if (m_dma_state == DMA_STATE_WAIT)
-	{
-		m_out_ddwt_cb(0);
-		m_out_ddmv_cb(1);
-		m_dma_state = DMA_STATE_MOVE;
-	}
+	attotime const pending = m_dma_wait_ready ? attotime::zero : m_dma_timer->remaining();
+	if (m_dma_forced)
+		return pending + (m_dma_state == DMA_STATE_WAIT ? m_dma_force_cost : attotime::zero);
+
+	// Fast-forward payload ordering for a host access, but preserve busy/ownership until
+	// the scheduled acknowledgement. A queued request starts only after the prior owner.
+	if (m_dma_state == DMA_STATE_WAIT && prior_wait == attotime::zero
+			&& m_dma_start_cb && !m_dma_start_cb())
+		return attotime::zero;
+
 	attotime const tick = attotime::from_ticks(1, this->clock());
+	attotime cost = m_dma_state == DMA_STATE_WAIT ? tick : attotime::zero;
 	while (m_dma.count < m_dma.size)
 	{
+		if (m_dma_ready_cb && !m_dma_ready_cb(m_dma.dir ? m_dma.dst : m_dma.src, m_dma.dir != 0))
+		{
+			attotime const delay = pending + cost + tick;
+			m_dma_timer->adjust(delay);
+			return delay;
+		}
 		exec_dma();
 		m_dma.count++;
 		attotime const wait = !m_dma_wait_cb ? attotime::zero : m_dma_wait_cb();
-		total += wait > tick ? wait : tick;
+		cost += wait > tick ? wait : tick;
 	}
-	m_dma_timer->adjust(attotime::never);
-	dma_end();
-	return total;
+	m_dma_forced = true;
+	if (m_dma_state == DMA_STATE_WAIT)
+	{
+		m_dma_force_cost = cost;
+		attotime const start = prior_wait > pending ? prior_wait : pending;
+		m_dma_wait_ready = false;
+		m_dma_timer->adjust(start);
+		return start + cost;
+	}
+
+	m_dma_state = DMA_STATE_END;
+	m_dma_timer->adjust(pending + cost);
+	return pending + cost;
 }
 
 // One transfer unit of a longword. The external side is a pair of 16 bit accesses; on the B-Bus a
-// write moves the address by the write add value after each of them, on the other buses a longword
-// is written and the address moves by twice the value (Work RAM-H takes 4 bytes). The external
+// write moves the address by the write add value after each of them; on the other buses a longword
+// is written and the address moves by the value once. The external
 // address registers follow unless the instruction holds them (DMAH).
 void scudsp_cpu_device::exec_dma()
 {
@@ -864,7 +949,7 @@ void scudsp_cpu_device::exec_dma()
 		{
 			m_out_dma_cb(m_dma.dst, data >> 16 );
 			m_out_dma_cb(m_dma.dst + 2, data & 0xffff );
-			m_dma.dst += 2 * half;
+			m_dma.dst += half;
 		}
 
 		// WA0 follows every unit but the last (the end of the transfer adds its own longword)
@@ -878,9 +963,10 @@ void scudsp_cpu_device::exec_dma()
 // CT, starts another DMA, or writes RA0 or WA0). The DSP is not stopped otherwise.
 bool scudsp_cpu_device::dma_conflict(uint32_t opcode) const
 {
-	unsigned const bank = m_dma.bank;
-	if (bank > 3)
-		return (opcode & 0xf0000000) == 0xc0000000;   // only another DMA (and the PC writes) are stopped
+	unsigned const bank = m_dma.bank & 3;
+	// Conditional MVI with a false condition decodes no destination write.
+	if ((opcode >> 30) == 2 && BIT(opcode, 25) && !compute_condition((opcode >> 19) & 0x7f))
+		return false;
 
 	auto const source = [bank] (unsigned s) { return (s & 3) == bank && (s < 8); };
 	auto const dest = [bank] (unsigned d) { return d == bank || d == 0xc + bank || d == 6 || d == 7; };
@@ -911,7 +997,8 @@ bool scudsp_cpu_device::dma_conflict(uint32_t opcode) const
 			return false;
 		}
 		case 2: // MVI
-			return (opcode & 0x3c000000) >> 26 == bank || ((opcode >> 26) & 0xf) == 6 || ((opcode >> 26) & 0xf) == 7;
+			return ((opcode >> 26) & 0xf) == bank || ((opcode >> 26) & 0xf) == 6
+				|| ((opcode >> 26) & 0xf) == 7 || (m_dma.bank == 4 && ((opcode >> 26) & 0xf) == 0xc);
 		case 3:
 			return ((opcode >> 28) & 3) == 0;   // another DMA
 	}
@@ -925,12 +1012,12 @@ void scudsp_cpu_device::execute_one()
 
 	m_update_mul = 0;
 
-	debugger_instruction_hook(m_pc);
+	uint8_t const instruction_pc = m_loop_active ? m_loop_pc : (m_delay_pending ? m_delay : m_pc);
 
 	// a program that needs what the running DMA uses waits for its end
 	if (m_dma_state != DMA_STATE_IDLE && !m_stalled)
 	{
-		uint32_t const next = scudsp_readop(m_delay ? m_delay : m_pc);
+		uint32_t const next = m_loop_active ? m_loop_opcode : scudsp_readop(instruction_pc);
 		if (dma_conflict(next))
 		{
 			m_stalled = true;
@@ -940,10 +1027,22 @@ void scudsp_cpu_device::execute_one()
 		}
 	}
 
-	if ( m_delay )
+	m_instruction_pc = instruction_pc;
+	debugger_instruction_hook(instruction_pc);
+
+	if (m_loop_active)
+	{
+		opcode = m_loop_opcode;
+		if (m_lop)
+			--m_lop;
+		else
+			m_loop_active = false;
+	}
+	else if (m_delay_pending)
 	{
 		opcode = scudsp_readop(m_delay);
 		m_delay = 0;
+		m_delay_pending = false;
 	}
 	else
 	{
@@ -992,7 +1091,7 @@ void scudsp_cpu_device::execute_one()
 void scudsp_cpu_device::execute_run()
 {
 	// execution is paused by the host through the program control port
-	if (m_paused)
+	if (m_paused || !BIT(m_flags, EXF))
 	{
 		m_icount = 0;
 		return;
@@ -1001,7 +1100,7 @@ void scudsp_cpu_device::execute_run()
 	do
 	{
 		execute_one();
-	} while( m_icount > 0 );
+	} while (m_icount > 0 && BIT(m_flags, EXF));
 }
 
 device_memory_interface::space_config_vector scudsp_cpu_device::memory_space_config() const
@@ -1017,9 +1116,14 @@ void scudsp_cpu_device::device_start()
 	m_dma_timer = timer_alloc(FUNC(scudsp_cpu_device::dma_tick_cb), this);
 
 	m_pc = 0;
+	m_instruction_pc = 0;
 	m_flags = 0;
 	m_paused = false;
 	m_delay = 0;
+	m_delay_pending = false;
+	m_loop_active = false;
+	m_loop_pc = 0;
+	m_loop_opcode = 0;
 	m_top = 0;
 	m_lop = 0;
 	memset(&m_rx, 0x00, sizeof(m_rx));
@@ -1033,10 +1137,10 @@ void scudsp_cpu_device::device_start()
 	m_ra0 = 0;
 	m_wa0 = 0;
 	m_ra = 0;
-	m_ct0 = 0;
-	m_ct1 = 0;
-	m_ct2 = 0;
-	m_ct3 = 0;
+	m_ct[0] = 0;
+	m_ct[1] = 0;
+	m_ct[2] = 0;
+	m_ct[3] = 0;
 	memset(&m_dma, 0x00, sizeof(m_dma));
 	m_stalled = false;
 
@@ -1044,15 +1148,17 @@ void scudsp_cpu_device::device_start()
 	m_data = &space(AS_DATA);
 
 	save_item(NAME(m_pc));
+	save_item(NAME(m_instruction_pc));
 	save_item(NAME(m_ra));
 
-	save_item(NAME(m_ct0));
-	save_item(NAME(m_ct1));
-	save_item(NAME(m_ct2));
-	save_item(NAME(m_ct3));
+	save_item(NAME(m_ct));
 
 	save_item(NAME(m_flags));
 	save_item(NAME(m_delay));
+	save_item(NAME(m_delay_pending));
+	save_item(NAME(m_loop_active));
+	save_item(NAME(m_loop_pc));
+	save_item(NAME(m_loop_opcode));
 	save_item(NAME(m_paused));
 
 	save_item(NAME(m_top));
@@ -1081,6 +1187,9 @@ void scudsp_cpu_device::device_start()
 	save_item(NAME(m_dma.dir));
 	save_item(NAME(m_dma.count));
 	save_item(NAME(m_dma_state));
+	save_item(NAME(m_dma_wait_ready));
+	save_item(NAME(m_dma_forced));
+	save_item(NAME(m_dma_force_cost));
 	save_item(NAME(m_stalled));
 
 	// Register state for debugger
@@ -1100,12 +1209,12 @@ void scudsp_cpu_device::device_start()
 	state_add( SCUDSP_RA0, "RA0", m_ra0).formatstr("%08X");
 	state_add( SCUDSP_WA0, "WA0", m_wa0).formatstr("%08X");
 	state_add( SCUDSP_RA, "RA", m_ra ).formatstr("%02X");
-	state_add( SCUDSP_CT0, "CT0", m_ct0 ).formatstr("%02X");
-	state_add( SCUDSP_CT1, "CT1", m_ct1 ).formatstr("%02X");
-	state_add( SCUDSP_CT2, "CT2", m_ct2 ).formatstr("%02X");
-	state_add( SCUDSP_CT3, "CT3", m_ct3 ).formatstr("%02X");
+	state_add( SCUDSP_CT0, "CT0", m_ct[0] ).formatstr("%02X");
+	state_add( SCUDSP_CT1, "CT1", m_ct[1] ).formatstr("%02X");
+	state_add( SCUDSP_CT2, "CT2", m_ct[2] ).formatstr("%02X");
+	state_add( SCUDSP_CT3, "CT3", m_ct[3] ).formatstr("%02X");
 	state_add( STATE_GENPC, "GENPC", m_pc ).noshow();
-	state_add( STATE_GENPCBASE, "CURPC", m_pc ).noshow();
+	state_add( STATE_GENPCBASE, "CURPC", m_instruction_pc ).noshow();
 	state_add( STATE_GENFLAGS, "GENFLAGS", m_flags ).formatstr("%17s").noshow();
 
 	set_icountptr(m_icount);
@@ -1117,20 +1226,12 @@ void scudsp_cpu_device::device_reset()
 	m_out_ddmv_cb(0);
 	m_dma_timer->adjust(attotime::never);
 	m_dma_state = DMA_STATE_IDLE;
+	m_dma_wait_ready = false;
+	m_dma_forced = false;
+	m_dma_force_cost = attotime::zero;
 	if (m_stalled)
 		set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
 	m_stalled = false;
-}
-
-// TODO: do we need this?
-void scudsp_cpu_device::execute_set_input(int irqline, int state)
-{
-	switch(irqline)
-	{
-		case INPUT_LINE_RESET:
-			//m_reset_state = state;
-			break;
-	}
 }
 
 void scudsp_cpu_device::program_map(address_map &map)
@@ -1163,7 +1264,7 @@ void scudsp_cpu_device::state_string_export(const device_state_entry &entry, std
 		case STATE_GENFLAGS:
 			str = string_format("%s%s%s%c%c%c%c%c%s%s%s",
 				m_flags & 0x4000000 ? "PR":"..",
-				m_flags & 0x2000000 ? "EP":"..",
+				m_paused ? "EP":"..",
 				m_flags & 0x800000 ? "T0":"..",
 				m_flags & 0x400000 ? 'S':'.',
 				m_flags & 0x200000 ? 'Z':'.',

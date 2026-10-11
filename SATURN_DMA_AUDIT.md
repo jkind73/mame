@@ -35,7 +35,7 @@ Sega's local `segahtml/faq/prog/p07_10.htm` reports measured 256-byte transfers 
 
 1. **SCU DMA (VDP1, VDP2, SCSP)**:
    - For 256-byte bulk transfers (64 longwords), the SCU DMA model closely matches Sega's hardware measurements.
-   - In MAME (`saturn_scu.cpp`), transfers to VDP1 and VDP2 execute in 16-bit word units (`dma_write_unit`), each costing 1 cycle (`dma_write_cost`, `per=1`), giving a base write cost of 2.0 cycles per longword. SDRAM source reads from Work RAM-H are pipelined with zero base wait, adding a 6-cycle penalty every 31 longwords (`dma_read_cost`, line 756), or $+0.1935$ clocks per longword. The theoretical throughput is $(64 \times 2 + 12) / 64 = 2.1875$ clocks/4B, matching Sega's measured **2.20** clocks/4B for VDP2. The synthetic test fixture (`saturn_transfer_rate_test.lua`) captures the interval ending at the first write to the final longword (leaving out the 128th halfword write beat), yielding $138 / 64 = 2.1524$ clocks/4B.
+   - In MAME (`saturn_scu.cpp`), transfers to VDP1 and VDP2 execute in 16-bit word units (`dma_write_unit`), each costing 1 cycle (`dma_write_cost`, `per=1`), giving a base write cost of 2.0 cycles per longword. SDRAM source reads from Work RAM-H are pipelined with zero base wait, adding a 6-cycle penalty every 31 longwords (`dma_read_cost`, line 756), or $+0.1935$ clocks per longword. The theoretical throughput is $(64 \times 2 + 12) / 64 = 2.1875$ clocks/4B, matching Sega's measured **2.20** clocks/4B for VDP2. The synthetic test fixture (`saturn_transfer_rate_test.lua`) captures the interval ending at the first write to the final longword (leaving out the 128th halfword write beat), reporting 2.1524 clocks/4B after clock normalization. The earlier expression `138 / 64 = 2.1524` was incorrect (`138 / 64 = 2.15625`); the measured normalized interval must not be replaced by that integer-cycle approximation.
    - For VDP1, Sega measured **2.25** clocks/4B ($5.36\ \mu\text{s}$ vs $5.20\ \mu\text{s}$ for VDP2). MAME models B-bus writes uniformly at 1 cycle across `0x05c00000`–`0x05fc0000`, so it does not add the $\approx 0.05$ clock hardware elongation present on the VDP1 bus interface.
    - For SCSP RAM, MAME charges 13 clocks per 16-bit word write (`per=13`), giving $2 \times 13 = 26$ clocks per longword. Combined with SDRAM read overhead and bus arbitration, this yields **25.65** clocks/4B vs Sega's measured **26.80** clocks/4B (a 4.3% difference).
    - For small transfers (e.g. 16 bytes), the FAQ documents that SCU-DMA throughput drops to 5.00 clocks/4B (VDP2) and 5.97 clocks/4B (VDP1) due to $\ge 20$ clocks preprocessing and $\ge 12$ clocks postprocessing fixed overhead ($\ge 32$ clocks total). MAME models direct channel start delay (`DMA_START_DELAY = 12`) but does not implement the full destination-dependent fixed overhead curve for short transfers.
@@ -43,13 +43,13 @@ Sega's local `segahtml/faq/prog/p07_10.htm` reports measured 256-byte transfers 
 2. **CPU-DMA (SH-2 on-chip DMAC)**:
    - CPU-DMA to SCSP RAM closely matches hardware: **32.41** clocks/4B in MAME vs **32.70** clocks/4B in the FAQ (0.9% variance).
    - CPU-DMA to VDP1 is **11.38** clocks/4B in MAME vs **12.40** clocks/4B in the FAQ. MAME charges 8 wait clocks on 32-bit writes to VDP1 VRAM (`saturn_bus.cpp`), resulting in $(7\text{ SDRAM read burst} + 4 \times (1 + 8)\text{ writes}) / 4 \approx 10.75$ plus arbitration.
-   - CPU-DMA to VDP2 is **5.41** clocks/4B in MAME vs **7.60** clocks/4B in the FAQ. MAME charges 2 wait clocks on 32-bit writes to VDP2 VRAM, giving $(7 + 4 \times (1 + 2)) / 4 = 4.75$ plus arbitration. In hardware, DMAC channel bus acquisition/tenure and BSC handshake account for the additional cycles in 16-byte burst mode.
+   - CPU-DMA to VDP2 is **5.41** clocks/4B in MAME vs **7.60** clocks/4B in the FAQ. MAME charges 2 wait clocks on 32-bit writes to VDP2 VRAM, giving $(7 + 4 \times (1 + 2)) / 4 = 4.75$ plus arbitration. Bus acquisition and BSC handshaking are possible contributors; these results alone do not prove which mechanism supplies the missing cycles.
 
 3. **Program copy loop**:
    - In Sega's hardware measurements, software copy loops to VDP1 and VDP2 took identical time ($36.75\ \mu\text{s}$ and $36.58\ \mu\text{s}$, exactly **15.40** clocks/4B).
-   - In MAME, the synthetic cached copy loop yields **16.84** clocks/4B for VDP1 and **10.83** clocks/4B for VDP2. This disparity occurs because MAME stalls the CPU synchronously on every single peripheral write based on probe wait constants (8 for VDP1, 2 for VDP2). On real SH7604 silicon, single posted writes into the BSC write buffer allow the CPU instruction pipeline and SDRAM read latency to dominate the loop timing, decoupling software loop execution time from peripheral write wait differences.
+   - In MAME, the synthetic cached copy loop yields **16.84** clocks/4B for VDP1 and **10.83** clocks/4B for VDP2. This disparity occurs because MAME stalls the CPU synchronously on every single peripheral write based on probe wait constants (8 for VDP1, 2 for VDP2). The measurement establishes a discrepancy, but does not establish its hardware cause. A posted-write-buffer explanation is unproven and must not drive a timing change without primary evidence. The exact Sega loop, cache state, arbitration and timing endpoints need comparison before assigning a cause.
 
-The cross-check confirms that SCU-DMA and SCSP transfer models align with Sega's published figures, and identifies the exact architectural mechanisms (BSC write buffering, B-bus handshake disparity, and setup overhead curves) governing the remaining CPU-side variances. No artificial constants should be tuned to force a match against the FAQ table. The cross-check requirement is complete.
+The comparison is complete, but timing parity is not. SCU measurements are lower bounds, CPU tests include completion-marker/polling costs, and CPU-to-VDP2 differs substantially. These are emulated-time measurements, not host emulation-speed benchmarks. Hardware mechanisms behind the remaining differences are not established by this table. No artificial constants should be tuned merely to force a match. Commit `55014f670e5` contains documentation/checklist/inventory changes, not transfer-timing implementation fixes.
 
 ## Named game regressions
 
@@ -86,3 +86,27 @@ Checklist changes in this audit: only the existing indirect-zero-descriptor and 
 Follow-up 2026-10-10: the existing SCU DSP DMA cost/bus-wait marker was completed after the implementation and both-core tests described in SCU_DSP_DMA_IMPLEMENTATION.md. No checklist item text was changed.
 
 Follow-up 2026-10-10: Cross-check of the FAQ transfer-rate table against the model is completed with architectural breakdown above. The checklist entry is marked [x] without changing item text.
+
+
+## SH7604 request/arbitration follow-up — 2026-10-11
+
+The active DMAC now implements external DREQ/DACK, single-address ports and
+shared channel ownership, including fixed and retained round-robin priority.
+See [SH7604_DMAC_IMPLEMENTATION.md](SH7604_DMAC_IMPLEMENTATION.md). The existing
+chapter-9 remainder is complete as an implementation/software validation item.
+No absolute real-hardware timing verification is claimed.
+
+Rebuilt real-device FAQ fixture, 256 bytes, clocks per four bytes:
+
+| Path | DRC VDP1 / VDP2 / SCSP | Interpreter VDP1 / VDP2 / SCSP |
+|---|---|---|
+| Program loop | 16.8438 / 10.8281 / 37.8125 | 16.8750 / 10.8438 / 37.8281 |
+| SH-2 DMAC | 10.9062 / 5.0000 / 32.0000 | 10.9375 / 4.9062 / 31.9375 |
+| SCU DMA | 2.1524 / 2.1524 / 25.6524 | 2.1524 / 2.1524 / 25.6524 |
+
+All nine payloads pass on both cores. CPU-DMA rates changed with the replacement
+unit/grant scheduler and independent DMA suspension; the older table remains a
+historical measurement of the previous implementation. Program-loop and SCU
+results are unchanged. The measured CPU-DMA rates still differ from Sega's
+reference; these measurements do not establish cycle-exact bus timing.
+Artifacts: `/private/tmp/sh7604-dmac-rate-final-20261011`.

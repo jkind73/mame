@@ -12,7 +12,7 @@
  *
  *****************************************************************************/
 /*
-TODO: Test and use sh7604_wdt_device, sh7604_sci_device, and sh7604_bus_device as appropriate
+The on-chip SCI, WDT and BSC share this CPU's clock, interrupt controller and reset state.
 */
 
 
@@ -34,12 +34,16 @@ DEFINE_DEVICE_TYPE(SH7604,  sh7604_device,  "sh2_7604",  "Hitachi SH-2 (SH7604)"
 sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: sh2_device(mconfig, SH7604, tag, owner, clock, CPU_TYPE_SH2, address_map_constructor(FUNC(sh7604_device::sh7604_map), this), 32, 0xc7ffffff)
 	, m_smr(0), m_brr(0), m_scr(0), m_tdr(0), m_ssr(0)
+	, m_sci_tx(*this), m_sci_txd(*this), m_sci_sck(*this)
+	, m_ftoa(*this), m_ftob(*this)
 	, m_tier(0), m_ftcsr(0), m_ftcsr_read_flags(0), m_frc_tcr(0), m_tocr(0), m_frc(0), m_ocra(0), m_ocrb(0), m_frc_icr(0)
 	, m_ipra(0), m_iprb(0), m_vcra(0), m_vcrb(0), m_vcrc(0), m_vcrd(0), m_vcrwdt(0), m_vcrdiv(0), m_intc_icr(0), m_vecmd(false), m_nmie(false)
 	, m_divu_ovf(false), m_divu_ovfie(false), m_dvsr(0), m_dvdntl(0), m_dvdnth(0)
 	, m_wtcnt(0), m_wtcsr(0), m_rstcsr(0)
+	, m_dma_dack{{*this}, {*this}}, m_dma_read{{*this, 0xffffffff}, {*this, 0xffffffff}}, m_dma_write{{*this}, {*this}}
 	, m_dmaor(0)
 	, m_sbycr(0)
+	, m_standby_hiz(*this), m_ckpack(*this)
 	, m_bcr1(0), m_bcr2(0), m_wcr(0), m_mcr(0), m_rtcsr(0), m_rtcor(0), m_rtcnt(0)
 	, m_frc_base(0), m_frt_input(0)
 	, m_timer(nullptr), m_wdtimer(nullptr)
@@ -48,8 +52,10 @@ sh7604_device::sh7604_device(const machine_config &mconfig, const char *tag, dev
 	, m_dma_fifo_data_available_cb(*this)
 	, m_ftcsr_read_cb(*this)
 {
+	m_frt_clockrate = clock;
 	std::fill(std::begin(m_vcrdma), std::end(m_vcrdma), 0);
 	std::fill(std::begin(m_dma_timer_active), std::end(m_dma_timer_active), 0);
+	m_onchip_width_checks = true;
 	std::fill(std::begin(m_active_dma_incs), std::end(m_active_dma_incs), 0);
 	std::fill(std::begin(m_active_dma_incd), std::end(m_active_dma_incd), 0);
 	std::fill(std::begin(m_active_dma_size), std::end(m_active_dma_size), 0);
@@ -84,8 +90,42 @@ void sh7604_device::device_start()
 	m_dma_current_active_timer[1] = timer_alloc(FUNC(sh7604_device::sh2_dma_current_active_callback), this);
 	m_dma_current_active_timer[1]->adjust(attotime::never);
 
+	for (unsigned ch = 0; ch < 2; ++ch)
+	{
+		m_dma_dack_timer[ch] = timer_alloc(FUNC(sh7604_device::dma_dack_tick), this);
+		m_dma_dack_timer[ch]->adjust(attotime::never);
+	}
 	m_divu_timer = timer_alloc(FUNC(sh7604_device::divu_timer_cb), this);
 	m_divu_timer->adjust(attotime::never);
+	m_standby_timer = timer_alloc(FUNC(sh7604_device::standby_wake), this);
+	m_standby_timer->adjust(attotime::never);
+	m_refresh_timer = timer_alloc(FUNC(sh7604_device::refresh_tick), this);
+	m_refresh_timer->adjust(attotime::never);
+	m_refresh_clockrate = clock();
+	m_refresh_epoch = machine().time();
+	m_frt_capture_timer = timer_alloc(FUNC(sh7604_device::frt_capture_callback), this);
+	m_frt_capture_timer->adjust(attotime::never);
+	m_sci_timer = timer_alloc(FUNC(sh7604_device::sci_tx_complete), this);
+	m_sci_timer->adjust(attotime::never);
+	m_sci_rx_timer = timer_alloc(FUNC(sh7604_device::sci_rx_tick), this);
+	m_sci_clock_timer = timer_alloc(FUNC(sh7604_device::sci_clock_tick), this);
+	m_sci_rx_timer->adjust(attotime::never);
+	m_sci_clock_timer->adjust(attotime::never);
+	state_add(0x100, "RXD", m_sci_pin_value).mask(1).callimport().callexport();
+	state_add(0x101, "SCK", m_sci_pin_value).mask(1).callimport().callexport();
+	state_add(0x102, "TXD", m_sci_txd_level).mask(1).readonly();
+	state_add(0x103, "SCKOUT", m_sci_sck_level).mask(1).readonly();
+	state_add(0x104, "FTCI", m_sci_pin_value).mask(1).callimport().callexport();
+	state_add(0x105, "FTOA", m_frt_output[0]).mask(1).readonly();
+	state_add(0x106, "FTOB", m_frt_output[1]).mask(1).readonly();
+	state_add(0x107, "FTI", m_sci_pin_value).mask(1).callimport().callexport();
+	machine().save().register_postload(save_prepost_delegate(FUNC(sh7604_device::power_postload), this));
+	state_add(0x108, "DREQ0", m_sci_pin_value).mask(1).callimport().callexport();
+	state_add(0x109, "DREQ1", m_sci_pin_value).mask(1).callimport().callexport();
+	state_add(0x10a, "DACK0", m_sci_pin_value).mask(1).readonly().callexport();
+	state_add(0x10b, "DACK1", m_sci_pin_value).mask(1).readonly().callexport();
+	state_add(0x10c, "DMADATA0", m_dma_io_data[0]);
+	state_add(0x10d, "DMADATA1", m_dma_io_data[1]);
 	m_track_pending = true;
 
 	/* resolve callbacks */
@@ -94,6 +134,31 @@ void sh7604_device::device_start()
 	m_ftcsr_read_cb.resolve();
 
 	// SCI
+	save_item(NAME(m_tx_frame));
+	save_item(NAME(m_tx_bit));
+	save_item(NAME(m_tx_bits));
+	save_item(NAME(m_tx_stop));
+	save_item(NAME(m_tx_format));
+	save_item(NAME(m_tx_data));
+	save_item(NAME(m_tx_mpbt));
+	save_item(NAME(m_tx_ext_count));
+	save_item(NAME(m_tx_prefetched));
+	save_item(NAME(m_rx_busy));
+	save_item(NAME(m_rsr));
+	save_item(NAME(m_rx_stage));
+	save_item(NAME(m_rx_format));
+	save_item(NAME(m_rx_parity));
+	save_item(NAME(m_rx_errors));
+	save_item(NAME(m_rx_mp));
+	save_item(NAME(m_rx_ext_count));
+	save_item(NAME(m_sci_rxd));
+	save_item(NAME(m_sci_sck_in));
+	save_item(NAME(m_sci_txd_level));
+	save_item(NAME(m_sci_sck_level));
+	save_item(NAME(m_rdr));
+	save_item(NAME(m_tsr));
+	save_item(NAME(m_ssr_read));
+	save_item(NAME(m_sci_busy));
 	save_item(NAME(m_smr));
 	save_item(NAME(m_brr));
 	save_item(NAME(m_scr));
@@ -113,6 +178,15 @@ void sh7604_device::device_start()
 	save_item(NAME(m_frc_icr));
 	save_item(NAME(m_frc_base));
 	save_item(NAME(m_frt_input));
+	save_item(NAME(m_frt_clock_input));
+	save_item(NAME(m_frt_output));
+	save_item(NAME(m_frt_epoch));
+	save_item(NAME(m_frt_clockrate));
+	save_item(NAME(m_frt_generation));
+	save_item(NAME(m_frt_capture_pending));
+	save_item(NAME(m_frt_capture_clock_delay));
+	save_item(NAME(m_frt_icr_read_cycle));
+	save_item(NAME(m_frt_clear_cycle));
 
 	// INTC
 	save_item(NAME(m_irq_level.frc));
@@ -141,6 +215,7 @@ void sh7604_device::device_start()
 	save_item(NAME(m_nmie));
 
 	// DIVU
+	save_item(NAME(m_divu_shadow));
 	save_item(NAME(m_divu_ovf));
 	save_item(NAME(m_divu_ovfie));
 	save_item(NAME(m_divu_busy));
@@ -157,12 +232,66 @@ void sh7604_device::device_start()
 	save_item(NAME(m_wtcw));
 
 	// UBC
-	save_item(NAME(m_barah));
-	save_item(NAME(m_baral));
-	save_item(NAME(m_barbh));
-	save_item(NAME(m_barbl));
+	save_item(NAME(m_ubc));
+	save_item(NAME(m_ubc_live));
+	save_item(NAME(m_ubc_fetch));
+	save_item(NAME(m_ubc_previous_pc));
+	save_item(NAME(m_ubc_ready));
+	save_item(NAME(m_ubc_dirty));
+	save_item(NAME(m_ubc_pending));
+	save_item(NAME(m_ubc_sequence));
+	save_item(NAME(m_ubc_inhibit));
+	save_item(NAME(m_ubc_fetch_sequence));
+	save_item(NAME(m_instruction_monitor));
 
 	// DMAC
+	save_item(NAME(m_dma_timer_active));
+	save_item(NAME(m_active_dma_incs));
+	save_item(NAME(m_active_dma_incd));
+	save_item(NAME(m_active_dma_size));
+	save_item(NAME(m_active_dma_steal));
+	save_item(NAME(m_active_dma_src));
+	save_item(NAME(m_active_dma_dst));
+	save_item(NAME(m_active_dma_count));
+	save_item(NAME(m_dma_dreq));
+	save_item(NAME(m_dma_dack_level));
+	save_item(NAME(m_dma_dreq_driven));
+	save_item(NAME(m_dma_edge));
+	save_item(NAME(m_dma_edge_burst));
+	save_item(NAME(m_dma_ack_high));
+	save_item(NAME(m_dma_requests));
+	save_item(NAME(m_dma_ack_count));
+	save_item(NAME(m_dma_io_data));
+	save_item(NAME(m_dma_ready));
+	save_item(NAME(m_dma_detect_after));
+	save_item(NAME(m_dma_ack_start));
+	save_item(NAME(m_dma_ack_end));
+	save_item(NAME(m_dma_owner));
+	save_item(NAME(m_dma_priority));
+	save_item(NAME(m_dma_step));
+	save_item(NAME(m_dma_step_count));
+	save_item(NAME(m_dma_count_delta));
+	save_item(NAME(m_dma_src_delta));
+	save_item(NAME(m_dma_dst_delta));
+	save_item(NAME(m_dma_unit_control));
+	save_item(NAME(m_dma_unit_src));
+	save_item(NAME(m_dma_unit_dst));
+	save_item(NAME(m_dma_data));
+	save_item(NAME(m_dma_committed));
+	save_item(NAME(m_dma_cancelled));
+	save_item(NAME(m_dma_staged));
+	save_item(NAME(m_dma_bus_end));
+	save_item(NAME(m_dma_pause_time));
+	save_item(STRUCT_MEMBER(m_dma_steps, address));
+	save_item(STRUCT_MEMBER(m_dma_steps, bytes));
+	save_item(STRUCT_MEMBER(m_dma_steps, word));
+	save_item(STRUCT_MEMBER(m_dma_steps, shift));
+	save_item(STRUCT_MEMBER(m_dma_steps, write));
+	for (unsigned i = 0; i < 32; ++i)
+	{
+		save_item(NAME(m_dma_steps[i].start), i);
+		save_item(NAME(m_dma_steps[i].end), i);
+	}
 	save_item(NAME(m_dmaor));
 	save_item(NAME(m_dma_te_read));
 	save_item(NAME(m_dmaor_read_flags));
@@ -173,6 +302,13 @@ void sh7604_device::device_start()
 	save_item(STRUCT_MEMBER(m_dmac, chcr));
 
 	// misc
+	save_item(NAME(m_module_div_remaining));
+	save_item(NAME(m_module_dma_remaining));
+	save_item(NAME(m_clock_pause));
+	save_item(NAME(m_standby));
+	save_item(NAME(m_standby_waking));
+	save_item(NAME(m_nmi_pin));
+	save_item(NAME(m_standby_entry));
 	save_item(NAME(m_sbycr));
 	save_item(NAME(m_cache.ccr));
 	save_item(NAME(m_cache.tag));
@@ -180,6 +316,9 @@ void sh7604_device::device_start()
 	save_item(NAME(m_cache.lru));
 	save_item(NAME(m_cache.line));
 	save_item(NAME(m_fetch_pc));
+	save_item(NAME(m_fetch_data));
+	save_item(NAME(m_fetch_cached));
+	save_item(NAME(m_fetch_reuse));
 
 	// BSC
 	save_item(NAME(m_bcr1));
@@ -190,12 +329,27 @@ void sh7604_device::device_start()
 	save_item(NAME(m_rtcsr_cmf_read));
 	save_item(NAME(m_rtcor));
 	save_item(NAME(m_rtcnt));
+	save_item(NAME(m_refresh_epoch));
+	save_item(NAME(m_refresh_clockrate));
+	save_item(NAME(m_refresh_phase));
 }
 
 void sh7604_device::device_reset()
 {
+	refresh_resync();
 	bool const manual = m_manual_reset;
 	uint8_t const rstcsr = m_rstcsr;
+	m_standby = m_standby_waking = m_clock_pause = false;
+	m_standby_hiz(0);
+	m_ckpack(1);
+	m_standby_timer->adjust(attotime::never);
+	resume(SUSPEND_REASON_CLOCK);
+	m_nmi_pin = CLEAR_LINE;
+	m_sci_dma_access = -1;
+	m_sbycr = 0;
+	m_module_div_remaining = attotime::never;
+	for (auto &remaining : m_module_dma_remaining)
+		remaining = attotime::never;
 	sh2_device::device_reset();
 
 	// The registers of the on-chip modules take their initial values (Hardware Manual, the register
@@ -231,24 +385,33 @@ void sh7604_device::device_reset()
 		m_rtcsr_cmf_read = false;
 		m_rtcnt = 0;
 		m_rtcor = 0;
+		m_refresh_phase = 0;
 	}
+	m_refresh_epoch = machine().time();
+	m_refresh_clockrate = clock();
+	refresh_activate();
 	sh2_recalc_irq();
 
 	// CCR resets to zero (section 8.2); this disables the cache without implying a purge
 	// of cache memory, which reset does not initialize (8.5.1).
 	m_cache.ccr = 0;
 	m_fetch_pc = ~0U;
+	m_fetch_data = 0;
+	m_fetch_cached = false;
+	m_fetch_reuse = false;
 
 	m_divu_busy = false;
 	m_divu_ovf_pending = false;
 	m_divu_timer->adjust(attotime::never);
 
 	m_frc = 0;
-	m_ocra = 0;
-	m_ocrb = 0;
+	m_ocra = 0xffff;
+	m_ocrb = 0xffff;
 	m_frc_icr = 0;
-	m_frc_base = 0;
-	m_frt_input = 0;
+	m_frc_base = m_frt_epoch = frt_cycles();
+	frt_drive(0, 0);
+	frt_drive(1, 0);
+	sh2_timer_activate();
 
 	for (int i = 0; i < 2; i++)
 	{
@@ -270,13 +433,18 @@ void sh7604_device::device_reset()
 		m_rstcsr = 0;
 	m_wdt_reset = false;
 
+	m_ubc_inhibit = m_ubc_fetch_sequence = false;
+	m_ubc_previous_pc = 0xffffffff;
+
 	// a manual reset leaves the BSC and UBC alone (Hardware Manual 4.2.3)
 	if (!manual)
 	{
-		m_barah = 0;
-		m_baral = 0;
-		m_barbh = 0;
-		m_barbl = 0;
+		std::fill(std::begin(m_ubc), std::end(m_ubc), 0);
+		std::fill(std::begin(m_ubc_live), std::end(m_ubc_live), 0);
+		m_ubc_dirty = m_ubc_pending = m_ubc_sequence = m_ubc_inhibit = false;
+		m_instruction_monitor = 0;
+		std::fill(std::begin(m_ubc_fetch), std::end(m_ubc_fetch), 0);
+		m_ubc_previous_pc = 0xffffffff;
 	}
 }
 
@@ -285,10 +453,145 @@ void sh7604_device::device_reset()
 // - saturn:madden98u leaves a slave FRT input capture pending on the master when it changes
 //   the system clock (the BIOS enters standby while the SMPC switches the PLL), it would
 //   otherwise dispatch to the slave SH2 that the clock change turned off
-void sh7604_device::standby_init()
+void sh7604_device::device_clock_changed()
 {
-	// FRT
+	if (m_refresh_timer)
+		refresh_resync();
+	uint32_t const old_clock = m_frt_clockrate;
+	attotime const capture_remaining = m_frt_capture_timer ? m_frt_capture_timer->remaining() : attotime::never;
+	if (m_frt_capture_pending && !capture_remaining.is_never() && old_clock)
+		m_frt_capture_clock_delay = capture_remaining * old_clock;
+	sh2_device::device_clock_changed();
+	m_frt_clockrate = clock();
+	m_refresh_clockrate = clock();
+	m_refresh_epoch = machine().time();
+	if (m_refresh_timer)
+		refresh_activate();
+	if (m_timer)
+	{
+		sh2_timer_resync();
+		sh2_timer_activate();
+	}
+	if (m_frt_capture_pending)
+		m_frt_capture_timer->adjust(clock() ? m_frt_capture_clock_delay / clock() : attotime::never);
+	// The execute interface resumes CLOCK on a frequency change. Full standby
+	// must survive the BIOS/SMPC PLL switch until its qualified NMI wake.
+	if (m_standby)
+		suspend(SUSPEND_REASON_CLOCK, false);
+}
+
+void sh7604_device::power_postload()
+{
+	m_ftoa(m_frt_output[0]);
+	m_ftob(m_frt_output[1]);
+	if (m_standby)
+		suspend(SUSPEND_REASON_CLOCK, false);
+	m_sci_txd(m_sci_txd_level);
+	m_sci_sck(m_sci_sck_level);
+	m_standby_hiz(m_standby && BIT(m_sbycr, 6));
+	m_ckpack(!m_clock_pause);
+	for (unsigned ch = 0; ch < 2; ++ch)
+		m_dma_dack[ch](dma_dack_level(ch));
+}
+
+void sh7604_device::sleep_enter(unsigned pending_cycles)
+{
+	if (!BIT(m_sbycr, 7) || BIT(m_wtcsr, 5))
+		return;
+
+	refresh_resync();
+	// Table 14.3 initialization belongs to entry, before clocks stop.
+	sh2_wtcnt_recalc();
+	standby_init();
+	m_standby = true;
+	m_standby_waking = false;
+	m_standby_entry = local_time() + cycles_to_attotime(pending_cycles);
+	refresh_activate();
+	m_standby_hiz(BIT(m_sbycr, 6));
+	m_timer->adjust(attotime::never);
+	m_divu_timer->adjust(attotime::never);
+	m_divu_busy = false; // DIVU contents are undefined in standby.
+	if (suspended(SUSPEND_REASON_DMA)) resume(SUSPEND_REASON_DMA);
+	suspend(SUSPEND_REASON_CLOCK, false);
+}
+
+void sh7604_device::ckpreq_w(int state)
+{
+	// In clock-input mode the host changes/stops CKIO after CKPACK goes low.
+	// Internal state remains full standby until the qualified NMI settles (14.4.4).
+	if (!state && m_standby && !(m_wtcsr & 0x20))
+	{
+		m_clock_pause = true;
+		m_ckpack(0);
+	}
+}
+
+void sh7604_device::execute_set_input(int inputnum, int state)
+{
+	if (inputnum != INPUT_LINE_NMI)
+	{
+		sh2_device::execute_set_input(inputnum, state);
+		return;
+	}
+
+	// ASSERT_LINE is the low level of the active-low NMI pin.
+	if (state == m_nmi_pin)
+		return;
+	m_nmi_pin = state;
+	if ((state == CLEAR_LINE) != m_nmie)
+		return;
+
+	// Chapter 9.2.7: NMI inhibits both DMAC channels, including an idle DMAC.
+	m_dmaor |= 2;
+	sh2_dmac_check(0);
+	sh2_dmac_check(1);
+
+	if (m_standby)
+	{
+		// NMI is not sampled during SLEEP or the following five clocks (14.4.1).
+		if (!m_standby_waking && machine().time() >= m_standby_entry + cycles_to_attotime(6))
+		{
+			m_standby_waking = true;
+			m_standby_timer->adjust(cycles_to_attotime((256U - m_wtcnt) << wdtclk_tab[m_wtcsr & 7]));
+		}
+		return;
+	}
+
+	// Base SH2 consumes an interrupt assertion rather than physical pin edges.
+	sh2_device::execute_set_input(INPUT_LINE_NMI, CLEAR_LINE);
+	sh2_device::execute_set_input(INPUT_LINE_NMI, ASSERT_LINE);
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::standby_wake)
+{
+	m_standby = m_standby_waking = false;
+	m_refresh_epoch = machine().time();
+	refresh_activate();
+	m_wtcnt = 0;
+	m_standby_hiz(0);
+	if (m_clock_pause)
+	{
+		m_clock_pause = false;
+		m_ckpack(1);
+	}
+	m_frc_base = m_frt_epoch = frt_cycles();
+	sh2_timer_activate();
+	resume(SUSPEND_REASON_CLOCK);
+	sh2_device::execute_set_input(INPUT_LINE_NMI, CLEAR_LINE);
+	sh2_device::execute_set_input(INPUT_LINE_NMI, ASSERT_LINE);
+}
+
+void sh7604_device::frt_reset()
+{
 	sh2_timer_resync();
+	m_frt_generation++;
+	m_frt_capture_pending = false;
+	m_frt_capture_clock_delay = attotime::never;
+	m_frt_icr_read_cycle = m_frt_clear_cycle = ~uint64_t(0);
+	m_frt_capture_timer->adjust(attotime::never);
+	m_frc_base = m_frt_epoch = frt_cycles();
+	frt_drive(0, 0);
+	frt_drive(1, 0);
 	m_tier = 0x01;
 	m_ftcsr = 0;
 	m_ftcsr_read_flags = 0;
@@ -298,21 +601,106 @@ void sh7604_device::standby_init()
 	m_frc_tcr = 0;
 	m_tocr = 0xe0;
 	m_frc_icr = 0;
+	m_frt_temp = 0;
 	sh2_timer_activate();
+}
+
+void sh7604_device::module_standby(uint8_t old)
+{
+	uint8_t const stopped = m_sbycr & ~old;
+	uint8_t const restarted = old & ~m_sbycr;
+	if (stopped & 1)
+		sci_reset();
+	if (stopped & 2)
+		frt_reset();
+	if (restarted & 2)
+	{
+		m_frc_base = m_frt_epoch = frt_cycles();
+		sh2_timer_activate();
+	}
+	if (stopped & 4)
+	{
+		m_module_div_remaining = m_divu_timer->remaining();
+		m_divu_timer->adjust(attotime::never);
+	}
+	if ((restarted & 4) && m_divu_busy)
+	{
+		m_divu_done = machine().time() + m_module_div_remaining;
+		m_divu_timer->adjust(m_module_div_remaining);
+	}
+	if (stopped & 0x10)
+	{
+		m_dma_pause_time = machine().time();
+		for (unsigned ch = 0; ch < 2; ++ch) m_dma_dack_timer[ch]->adjust(attotime::never);
+	}
+	if (restarted & 0x10)
+	{
+		attotime const pause = machine().time() - m_dma_pause_time;
+		if (m_dma_owner >= 0)
+		{
+			m_dma_bus_end += pause;
+			for (unsigned i = 0; i < m_dma_step_count; ++i) { m_dma_steps[i].start += pause; m_dma_steps[i].end += pause; }
+		}
+		for (unsigned ch = 0; ch < 2; ++ch)
+		{
+			m_dma_ready[ch] += pause;
+			m_dma_detect_after[ch] += pause;
+			for (unsigned i = 0; i < m_dma_ack_count[ch]; ++i) { m_dma_ack_start[ch][i] += pause; m_dma_ack_end[ch][i] += pause; }
+			if (!m_dma_dack[ch].isunset()) dma_dack_tick(ch);
+		}
+	}
+	for (int channel = 0; channel < 2; channel++)
+	{
+		if (stopped & 0x10)
+		{
+			m_module_dma_remaining[channel] = m_dma_current_active_timer[channel]->remaining();
+			m_dma_current_active_timer[channel]->adjust(attotime::never);
+		}
+		if (restarted & 0x10)
+		{
+			if (m_dma_timer_active[channel] == 1 && !m_module_dma_remaining[channel].is_never())
+				m_dma_current_active_timer[channel]->adjust(m_module_dma_remaining[channel], channel);
+			else
+				sh2_dmac_check(channel);
+		}
+	}
+	sci_update();
+}
+
+void sh7604_device::standby_init()
+{
+	frt_reset();
 
 	// SCI
-	m_smr = 0;
-	m_brr = 0xff;
-	m_scr = 0;
-	m_tdr = 0xff;
-	m_ssr = 0x84;
+	sci_reset();
 
+	m_dma_owner = -1;
+	m_dma_priority = m_dma_step = m_dma_step_count = m_dma_count_delta = 0;
+	m_dma_src_delta = m_dma_dst_delta = 0;
+	m_dma_unit_control = m_dma_unit_src = m_dma_unit_dst = 0;
+	m_dma_committed = m_dma_cancelled = m_dma_staged = false;
+	m_dma_bus_end = m_dma_pause_time = attotime::zero;
+	std::fill(std::begin(m_dma_data), std::end(m_dma_data), 0);
+	for (auto &step : m_dma_steps) step = {};
+	for (unsigned ch = 0; ch < 2; ++ch)
+	{
+		m_dma_edge[ch] = m_dma_edge_burst[ch] = false;
+		m_dma_requests[ch] = m_dma_ack_count[ch] = 0;
+		m_dma_ready[ch] = m_dma_detect_after[ch] = attotime::zero;
+		m_dma_io_data[ch] = 0xffffffff;
+		m_dma_ack_high[ch] = false;
+		std::fill(std::begin(m_dma_ack_start[ch]), std::end(m_dma_ack_start[ch]), attotime::zero);
+		std::fill(std::begin(m_dma_ack_end[ch]), std::end(m_dma_ack_end[ch]), attotime::zero);
+		m_dma_dack_timer[ch]->adjust(attotime::never);
+		dma_dack_drive(ch, 1);
+	}
 	// DMAC channel control and operation registers
 	for (int i = 0; i < 2; i++)
 	{
 		m_dmac[i].chcr = 0;
 		m_dma_te_read[i] = false;
-		sh2_dmac_check(i);
+		m_dma_current_active_timer[i]->adjust(attotime::never);
+		m_dma_timer_active[i] = 0;
 	}
 	m_dmaor = 0;
 	m_dmaor_read_flags = 0;
@@ -321,6 +709,7 @@ void sh7604_device::standby_init()
 	m_wtcsr &= 0x1f;
 	m_wdtimer->adjust(attotime::never);
 	m_rstcsr = 0;
+	dma_update_halt();
 
 	sh2_recalc_irq();
 }
@@ -392,34 +781,19 @@ void sh7604_device::sh7604_map(address_map &map)
 	map(0xfffffee4, 0xfffffee5).rw(FUNC(sh7604_device::vcrwdt_r), FUNC(sh7604_device::vcrwdt_w));
 
 	// DIVU
-	map(0xffffff00, 0xffffff03).rw(FUNC(sh7604_device::dvsr_r), FUNC(sh7604_device::dvsr_w));
-	map(0xffffff04, 0xffffff07).rw(FUNC(sh7604_device::dvdnt_r), FUNC(sh7604_device::dvdnt_w));
-	map(0xffffff08, 0xffffff0b).rw(FUNC(sh7604_device::dvcr_r), FUNC(sh7604_device::dvcr_w));
+	map(0xffffff00, 0xffffff03).mirror(0x20).rw(FUNC(sh7604_device::dvsr_r), FUNC(sh7604_device::dvsr_w));
+	map(0xffffff04, 0xffffff07).mirror(0x20).rw(FUNC(sh7604_device::dvdnt_r), FUNC(sh7604_device::dvdnt_w));
+	map(0xffffff08, 0xffffff0b).mirror(0x20).rw(FUNC(sh7604_device::dvcr_r), FUNC(sh7604_device::dvcr_w));
 	// INTC third section
-	map(0xffffff0c, 0xffffff0f).rw(FUNC(sh7604_device::vcrdiv_r), FUNC(sh7604_device::vcrdiv_w));
-	// DIVU continued (64-bit plus mirrors)
-	map(0xffffff10, 0xffffff13).rw(FUNC(sh7604_device::dvdnth_r), FUNC(sh7604_device::dvdnth_w));
-	map(0xffffff14, 0xffffff17).rw(FUNC(sh7604_device::dvdntl_r), FUNC(sh7604_device::dvdntl_w));
-	map(0xffffff18, 0xffffff1b).r(FUNC(sh7604_device::dvdnth_r));
-	map(0xffffff1c, 0xffffff1f).r(FUNC(sh7604_device::dvdntl_r));
+	map(0xffffff0c, 0xffffff0f).mirror(0x20).rw(FUNC(sh7604_device::vcrdiv_r), FUNC(sh7604_device::vcrdiv_w));
+	// DIVU continued. YabauseUT sh2.c div_mirror_test exercises both windows.
+	map(0xffffff10, 0xffffff13).mirror(0x20).rw(FUNC(sh7604_device::dvdnth_r), FUNC(sh7604_device::dvdnth_w));
+	map(0xffffff14, 0xffffff17).mirror(0x20).rw(FUNC(sh7604_device::dvdntl_r), FUNC(sh7604_device::dvdntl_w));
+	map(0xffffff18, 0xffffff1f).mirror(0x20).rw(FUNC(sh7604_device::divu_shadow_r), FUNC(sh7604_device::divu_shadow_w));
 
 	// UBC
-	map(0xffffff40, 0xffffff41).rw(FUNC(sh7604_device::barah_r), FUNC(sh7604_device::barah_w));
-	map(0xffffff42, 0xffffff43).rw(FUNC(sh7604_device::baral_r), FUNC(sh7604_device::baral_w));
-//  map(0xffffff44, 0xffffff45).rw(FUNC(sh7604_device::bamrah_r), FUNC(sh7604_device::bamrah_w));
-//  map(0xffffff46, 0xffffff47).rw(FUNC(sh7604_device::bamral_r), FUNC(sh7604_device::bamral_w));
-//  map(0xffffff48, ).rw(FUNC(sh7604_device::bbra_r), FUNC(sh7604_device::bbra_w));
-
-	map(0xffffff60, 0xffffff61).rw(FUNC(sh7604_device::barbh_r), FUNC(sh7604_device::barbh_w));
-	map(0xffffff62, 0xffffff63).rw(FUNC(sh7604_device::barbl_r), FUNC(sh7604_device::barbl_w));
-//  map(0xffffff64, 0xffffff65).rw(FUNC(sh7604_device::bamrbh_r), FUNC(sh7604_device::bamrbh_w));
-//  map(0xffffff66, 0xffffff67).rw(FUNC(sh7604_device::bamrbl_r), FUNC(sh7604_device::bamrbl_w));
-//  map(0xffffff68, ).rw(FUNC(sh7604_device::bbrb_r), FUNC(sh7604_device::bbrb_w));
-//  map(0xffffff70, 0xffffff71).rw(FUNC(sh7604_device::bdrbh_r), FUNC(sh7604_device::bdrbh_w));
-//  map(0xffffff72, 0xffffff73).rw(FUNC(sh7604_device::bdrbl_r), FUNC(sh7604_device::bdrbl_w));
-//  map(0xffffff74, 0xffffff75).rw(FUNC(sh7604_device::bdmrbh_r), FUNC(sh7604_device::bdmrbh_w));
-//  map(0xffffff76, 0xffffff77).rw(FUNC(sh7604_device::bdmrbl_r), FUNC(sh7604_device::bdmrbl_w));
-//  map(0xffffff78, 0xffffff79).rw(FUNC(sh7604_device::brcr_r), FUNC(sh7604_device::brcr_w));
+	map(0xffffff40, 0xffffff4b).rw(FUNC(sh7604_device::ubc_r), FUNC(sh7604_device::ubc_w));
+	map(0xffffff60, 0xffffff79).rw(FUNC(sh7604_device::ubc_b_r), FUNC(sh7604_device::ubc_b_w));
 
 	// DMAC
 	map(0xffffff80, 0xffffff83).rw(FUNC(sh7604_device::sar_r<0>), FUNC(sh7604_device::sar_w<0>));
@@ -451,14 +825,24 @@ void sh7604_device::sh2_exception(const char *message, int irqline)
 {
 	int vector;
 
-	// leaving standby mode (SLEEP with SBYCR.SBY set)
-	if (irqline == 16 && m_sh2_state->sleep_mode == 1 && BIT(m_sbycr, 7))
-		standby_init();
+	// Full standby accepts only a qualified NMI after its settling timer.
+	if (m_standby)
+		return;
 
 	if (irqline != 16)
 	{
 		if (irqline <= ((m_sh2_state->sr >> 4) & 15)) /* If the cpu forbids this interrupt */
 			return;
+
+		if (irqline == 15 && m_ubc_pending)
+		{
+			if (m_ubc_inhibit || m_sh2_state->m_delay)
+				return;
+			m_ubc_pending = false;
+			sh2_exception_internal(message, 15, 12);
+			sh2_recalc_irq();
+			return;
+		}
 
 		// an on-chip source takes the interrupt when no IRL input of the same level is pending: the
 		// IRL inputs rank above the on-chip sources (Hardware Manual table 5.4). The source stays
@@ -541,87 +925,154 @@ void sh7604_device::cache_data_w(offs_t offset, uint32_t data, uint32_t mem_mask
 	COMBINE_DATA(&m_cache.data_array(offset << 2));
 }
 
-void sh7604_device::sh2_timer_resync()
+uint64_t sh7604_device::frt_cycles() const
 {
-	// TODO: setting 3 is "External clock: count on rising edge"
-	int divider = div_tab[m_frc_tcr & 3];
-	uint64_t cur_time = total_cycles();
-	uint64_t add = (cur_time - m_frc_base) >> divider;
+	return total_cycles() + ((m_isdrc && executing()) ? m_bus_pending : 0);
+}
 
-	if (add > 0)
+void sh7604_device::frt_drive(unsigned channel, int level)
+{
+	level = !!level;
+	if (m_frt_output[channel] != level)
 	{
-		if (divider)
-			m_frc += add;
-
-		m_frc_base = cur_time;
+		m_frt_output[channel] = level;
+		if (channel)
+			m_ftob(level);
+		else
+			m_ftoa(level);
 	}
+}
+
+void sh7604_device::frt_advance(uint64_t ticks, bool internal, int write_kind)
+{
+	uint32_t const generation = m_frt_generation;
+	uint64_t const now = frt_cycles();
+	unsigned const divider = div_tab[m_frc_tcr & 3];
+	uint64_t const period = internal ? (1U << divider) : 0;
+	uint64_t const end = internal ? now - ((now - m_frt_epoch) & (period - 1)) : now;
+	while (ticks && clock() && generation == m_frt_generation && !m_standby && !BIT(m_sbycr, 1))
+	{
+		// Count clocks even when no flag or pin can change. In clear-on-A
+		// mode the counter still cycles while OCFA remains asserted.
+		bool const quiet_a = (m_ftcsr & OCFA) && m_frt_output[0] == BIT(m_tocr, 1);
+		bool const quiet_b = (m_ftcsr & OCFB) && m_frt_output[1] == BIT(m_tocr, 0);
+		if ((!write_kind || end != now) && quiet_a)
+		{
+			if ((m_ftcsr & CCLRA) && m_frc <= m_ocra && (m_ocrb > m_ocra || quiet_b))
+			{
+				uint64_t const first = uint32_t(m_ocra) - m_frc + 1;
+				if (ticks < first)
+					m_frc += ticks;
+				else
+				{
+					uint64_t const residual = (ticks - first) % (uint32_t(m_ocra) + 1);
+					m_frt_clear_cycle = end - residual * period;
+					m_frc = residual;
+				}
+				return;
+			}
+			if (!(m_ftcsr & CCLRA) && quiet_b && (m_ftcsr & OVF))
+			{
+				m_frc += ticks;
+				return;
+			}
+		}
+
+		// 11.4.6: match is signalled on the clock leaving the matching count.
+		uint32_t const a = uint16_t(m_ocra - m_frc) + 1U;
+		uint32_t const b = uint16_t(m_ocrb - m_frc) + 1U;
+		uint32_t const overflow = 0x10000U - m_frc;
+		uint32_t const next = std::min({a, b, overflow});
+		if (ticks < next)
+		{
+			m_frc += ticks;
+			break;
+		}
+		uint16_t const preceding = m_frc + next - 1;
+		uint64_t const event_cycle = end - (ticks - next) * period;
+		bool const collision = event_cycle == now;
+		// 11.7: an OCR low write suppresses its concurrent match. An FRC
+		// write defeats increment, while compare-A clear defeats that write.
+		bool const match_a = next == a && !(collision && write_kind == 2);
+		bool const match_b = next == b && !(collision && write_kind == 3);
+		bool const clear = match_a && BIT(m_ftcsr, 0);
+		int const level_a = BIT(m_tocr, 1), level_b = BIT(m_tocr, 0);
+		bool const increment = !(collision && write_kind == 1);
+		m_frc = clear ? 0 : uint16_t(preceding + (increment ? 1 : 0));
+		if (clear)
+			m_frt_clear_cycle = event_cycle;
+		if (match_a)
+			m_ftcsr |= OCFA;
+		if (match_b)
+			m_ftcsr |= OCFB;
+		if (!clear && increment && next == overflow)
+			m_ftcsr |= OVF;
+		ticks -= next;
+		if (match_a)
+			frt_drive(0, level_a);
+		if (generation != m_frt_generation || m_standby || BIT(m_sbycr, 1))
+			return;
+		if (match_b)
+			frt_drive(1, level_b);
+		if (generation != m_frt_generation || m_standby || BIT(m_sbycr, 1))
+			return;
+		sh2_recalc_irq();
+	}
+}
+
+void sh7604_device::frt_clock_w(int state)
+{
+	state = !!state;
+	if (state == m_frt_clock_input)
+		return;
+	int const previous = m_frt_clock_input;
+	m_frt_clock_input = state;
+	// The legacy external-clock HACK mistook divider zero for a stopped clock.
+	if (!previous && state && clock() && (m_frc_tcr & 3) == 3 && !m_standby && !BIT(m_sbycr, 1))
+		frt_advance(1);
+}
+
+void sh7604_device::sh2_timer_resync(int write_kind)
+{
+	uint64_t const now = frt_cycles();
+	if (m_standby || BIT(m_sbycr, 1) || (m_frc_tcr & 3) == 3)
+	{
+		m_frc_base = now;
+		return;
+	}
+	unsigned const divider = div_tab[m_frc_tcr & 3];
+	uint64_t const ticks = ((now - m_frt_epoch) >> divider) - ((m_frc_base - m_frt_epoch) >> divider);
+	m_frc_base = now;
+	frt_advance(ticks, true, write_kind);
 }
 
 void sh7604_device::sh2_timer_activate()
 {
-	int max_delta = 0xfffff;
-
 	m_timer->adjust(attotime::never);
-
-	uint16_t frc = m_frc;
-	if (!(m_ftcsr & OCFA))
-	{
-		uint16_t delta = m_ocra - frc;
-		if (delta < max_delta)
-			max_delta = delta;
-	}
-
-	if (!(m_ftcsr & OCFB) && (m_ocra <= m_ocrb || !(m_ftcsr & CCLRA)))
-	{
-		uint16_t delta = m_ocrb - frc;
-		if (delta < max_delta)
-			max_delta = delta;
-	}
-
-	if (!(m_ftcsr & OVF) && !(m_ftcsr & CCLRA))
-	{
-		int delta = 0x10000 - frc;
-		if (delta < max_delta)
-			max_delta = delta;
-	}
-
-	if (max_delta != 0xfffff)
-	{
-		int divider = div_tab[m_frc_tcr & 3];
-		if (divider)
-		{
-			max_delta <<= divider;
-			m_frc_base = total_cycles();
-			m_timer->adjust(cycles_to_attotime(max_delta));
-		}
-		else
-		{
-			// TODO: saturn:pulirula on slave CPU (0 cycles)
-			logerror("SH2.%s: Timer event in %d cycles of external clock\n", tag(), max_delta);
-		}
-	}
+	if (!clock() || m_standby || BIT(m_sbycr, 1) || (m_frc_tcr & 3) == 3)
+		return;
+	// The legacy flagged-match HACK skipped recurring output and clear events.
+	// Wake for flag/pin changes; resync maintains all intervening counter clears.
+	uint32_t delta = 0x10001;
+	if (!(m_ftcsr & OCFA) || m_frt_output[0] != BIT(m_tocr, 1))
+		delta = uint16_t(m_ocra - m_frc) + 1U;
+	bool const reachable_b = !(m_ftcsr & CCLRA) || m_ocrb <= m_ocra || (m_frc > m_ocra && m_ocrb >= m_frc);
+	if (reachable_b && (!(m_ftcsr & OCFB) || m_frt_output[1] != BIT(m_tocr, 0)))
+		delta = std::min(delta, uint16_t(m_ocrb - m_frc) + 1U);
+	if (!(m_ftcsr & OVF) && (!(m_ftcsr & CCLRA) || m_frc > m_ocra))
+		delta = std::min(delta, 0x10000U - m_frc);
+	if (delta == 0x10001)
+		return;
+	unsigned const divider = div_tab[m_frc_tcr & 3];
+	uint64_t const phase = (frt_cycles() - m_frt_epoch) & ((1U << divider) - 1);
+	uint64_t const clocks = (uint64_t(delta) << divider) - phase;
+	attotime const now = executing() ? local_time() + cycles_to_attotime(m_isdrc ? m_bus_pending : 0) : machine().time();
+	m_timer->adjust(now + cycles_to_attotime(clocks) - machine().time());
 }
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sh2_timer_callback)
 {
 	sh2_timer_resync();
-	uint16_t frc = m_frc;
-
-	if (frc == m_ocrb)
-		m_ftcsr |= OCFB;
-
-	if (frc == 0x0000)
-		m_ftcsr |= OVF;
-
-	if (frc == m_ocra)
-	{
-		m_ftcsr |= OCFA;
-
-		if (m_ftcsr & CCLRA)
-			m_frc = 0;
-	}
-
-	sh2_recalc_irq();
 	sh2_timer_activate();
 }
 
@@ -688,355 +1139,783 @@ TIMER_CALLBACK_MEMBER(sh7604_device::sh2_wdtimer_callback)
 
 void sh7604_device::sh2_notify_dma_data_available()
 {
-	//printf("call notify\n");
-
-	for (int dmach=0;dmach<2;dmach++)
-	{
-		//printf("m_dma_timer_active[dmach] %04x\n", m_dma_timer_active[dmach]);
-
-		if (m_dma_timer_active[dmach]==2) // 2 = stalled
-		{
-			//printf("resuming stalled dma\n");
-			m_dma_timer_active[dmach]=1;
-			m_dma_current_active_timer[dmach]->adjust(attotime::zero, dmach);
-		}
-	}
-
+	// A FIFO adapter can have no request at initial enable as well as stall an
+	// existing transfer. Reconsider both states when the board supplies data.
+	for (unsigned ch = 0; ch < 2; ++ch)
+		sh2_dmac_check(ch);
 }
 
-// The time one DMAC transfer unit takes. The DMAC drives the bus controller like
-// the CPU does (MiSTer SH7604 DMAC.sv: DMA_RD / DMA_WR through DBUS, waiting on
-// DBUS_WAIT; Mednafen sh7095.inc DMA_DoTransfer through BSC_BusRead /
-// BSC_BusWrite). With the driver's bus timing every external access of the unit
-// costs what it costs the CPU, plus the cycle the CPU's instruction timing counts
-// for it, and the DMAC arbitrates for the bus as a requester of its own, against
-// its CPU and the other CPU; the next unit starts when this one's accesses end.
-// A 16 byte burst reads its four longwords as one line fill and then writes them.
-// Without bus timing, and for a unit between on-chip addresses, units are two
-// cycles apart.
+// The bus controller charges a unit once; acknowledgement callbacks and
+// single-address ports need its individual bus beats as well. Unconnected pins
+// keep the existing one-callback-per-unit path used by Saturn.
 attotime sh7604_device::dma_unit_time(uint32_t src, uint32_t dst, unsigned bytes, bool burst)
 {
-	attotime const start = machine().time();
-	attotime end = start;
-	auto const bus = [this, &end] (uint32_t address, unsigned access_size, bool write, bool fill)
+	int const ch = m_dma_owner;
+	uint32_t const control = m_dma_unit_control;
+	bool const single = BIT(control, 3), input = single && BIT(control, 8);
+	attotime cursor = machine().time();
+	attotime const cycle = cycles_to_attotime(1);
+	m_dma_step_count = m_dma_step = 0;
+	m_dma_ack_count[ch] = 0;
+	auto const cost = [&] (uint32_t address, unsigned size, bool write, bool fill)
 	{
-		if (m_bus_timed && address < 0x40000000)
-			end += cycles_to_attotime(m_bus_timing(address, access_size, write, fill, end, true) + 1);
+		if (m_bus_observed && address < 0x40000000)
+			m_bus_observer(address, size, write, fill);
+		return (m_bus_timed && address < 0x40000000)
+			? cycles_to_attotime(m_bus_timing(address, size, write, fill, cursor, true) + 1) : cycle;
 	};
-	if (burst)
+	auto const append = [&] (uint32_t address, unsigned size, unsigned word, bool write, attotime duration)
 	{
-		bus(src, 4, false, true);
-		for (unsigned i = 0; i < bytes / 4; i++)
-			bus(dst + 4 * i, 4, true, false);
+		unsigned const area = (address >> 25) & 3;
+		unsigned const memory = m_bcr1 & 7;
+		bool const synchronous = (area == 2 && (memory == 4 || memory == 5)) || (area == 3 && (memory == 1 || memory == 5));
+		bool const special = (area == 2 && (memory == 4 || memory == 5)) || (area == 3 && memory >= 1 && memory <= 5 && memory != 4);
+		unsigned const width_code = area ? (m_bcr2 >> (area * 2)) & 3 : 3;
+		unsigned const width = address >= 0xe0000000 ? size : special ? (BIT(m_mcr, 6) ? 4 : 2) : (width_code ? 1U << (width_code - 1) : 4);
+		unsigned const beat = std::min(size, width), count = size / beat;
+		duration = std::max(duration, cycle * count);
+		for (unsigned i = 0; i < count; ++i)
+		{
+			auto &step = m_dma_steps[m_dma_step_count++];
+			step.address = address + i * beat;
+			step.bytes = beat;
+			step.word = word;
+			step.shift = (size - (i + 1) * beat) * 8;
+			step.write = write;
+			step.start = cursor;
+			cursor += duration / count;
+			step.end = cursor;
+			if (single || (write == bool(BIT(control, 8))))
+			{
+				if (synchronous && !write && m_dma_ack_count[ch] && m_dma_ack_end[ch][m_dma_ack_count[ch] - 1] + cycle / 2 == step.start)
+					m_dma_ack_end[ch][m_dma_ack_count[ch] - 1] = step.end - cycle / 2;
+				else
+				{
+					unsigned const ack = m_dma_ack_count[ch]++;
+					m_dma_ack_start[ch][ack] = step.start;
+					m_dma_ack_end[ch][ack] = step.end - cycle / 2;
+				}
+			}
+		}
+	};
+	if (single)
+		append(input ? dst : src, bytes, 0, input, cost(input ? dst : src, bytes, input, false));
+	else if (burst)
+	{
+		attotime const read = std::max(cost(src, 4, false, true), cycle * 4);
+		for (unsigned i = 0; i < 4; ++i)
+			append(src + i * 4, 4, i, false, i ? cycle : read - cycle * 3);
+		for (unsigned i = 0; i < bytes / 4; ++i)
+			append(dst + i * 4, 4, i, true, cost(dst + i * 4, 4, true, false));
 	}
 	else
 	{
-		bus(src, bytes, false, false);
-		bus(dst, bytes, true, false);
+		append(src, bytes, 0, false, cost(src, bytes, false, false));
+		append(dst, bytes, 0, true, cost(dst, bytes, true, false));
 	}
-	return end == start ? cycles_to_attotime(2) : end - start;
+	return cursor - machine().time();
 }
 
-void sh7604_device::sh2_do_dma(int dmach)
+void sh7604_device::dma_dack_drive(unsigned ch, int level)
 {
-	if (m_active_dma_count[dmach] > 0)
+	if (m_dma_dack_level[ch] != level)
 	{
-		uint32_t const previous_src = m_active_dma_src[dmach];
-		uint32_t const previous_dst = m_active_dma_dst[dmach];
-		// process current DMA
-		switch (m_active_dma_size[dmach])
-		{
-		case 0:
-		{
-			// we need to know the src / dest ahead of time without changing them
-			// to allow for the callback to check if we can process the DMA at this
-			// time (we need to know where we're reading / writing to/from)
-
-			uint32_t tempsrc = m_active_dma_src[dmach];
-			if (m_active_dma_incs[dmach] == 2)
-				tempsrc--;
-
-			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst--;
-
-			if (!m_dma_fifo_data_available_cb.isnull())
-			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					return;
-				}
-			}
-
-			//schedule next DMA callback, after the bus cycles of this unit
-			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 1, false), dmach);
-
-			uint32_t dmadata = m_program->read_byte(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_byte(tempdst, dmadata);
-
-			if (m_active_dma_incs[dmach] == 2)
-				m_active_dma_src[dmach]--;
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach]--;
-
-			if (m_active_dma_incs[dmach] == 1)
-				m_active_dma_src[dmach]++;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach]++;
-
-			m_active_dma_count[dmach]--;
-			break;
-		}
-
-		case 1:
-		{
-			uint32_t tempsrc = m_active_dma_src[dmach];
-			if (m_active_dma_incs[dmach] == 2)
-				tempsrc -= 2;
-
-			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst -= 2;
-
-			if (!m_dma_fifo_data_available_cb.isnull())
-			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					return;
-				}
-			}
-
-			//schedule next DMA callback, after the bus cycles of this unit
-			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 2, false), dmach);
-
-			// check: should this really be using read_word_32 / write_word_32?
-			uint32_t dmadata = m_program->read_word(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_word(tempdst, dmadata);
-
-			if (m_active_dma_incs[dmach] == 2)
-				m_active_dma_src[dmach] -= 2;
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach] -= 2;
-
-			if (m_active_dma_incs[dmach] == 1)
-				m_active_dma_src[dmach] += 2;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach] += 2;
-
-			m_active_dma_count[dmach]--;
-			break;
-		}
-
-		case 2:
-		{
-			uint32_t tempsrc = m_active_dma_src[dmach];
-			if (m_active_dma_incs[dmach] == 2)
-				tempsrc -= 4;
-
-			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst -= 4;
-
-			if (!m_dma_fifo_data_available_cb.isnull())
-			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					return;
-				}
-			}
-
-			//schedule next DMA callback, after the bus cycles of this unit
-			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, 4, false), dmach);
-
-			uint32_t dmadata = m_program->read_dword(tempsrc);
-			if (!m_dma_kludge_cb.isnull())
-				dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-			m_program->write_dword(tempdst, dmadata);
-
-			if (m_active_dma_incs[dmach] == 2)
-				m_active_dma_src[dmach] -= 4;
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach] -= 4;
-
-			if (m_active_dma_incs[dmach] == 1)
-				m_active_dma_src[dmach] += 4;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach] += 4;
-
-			m_active_dma_count[dmach]--;
-			break;
-		}
-
-		case 3:
-		{
-			// shouldn't this really be 4 calls here instead?
-
-			uint32_t tempsrc = m_active_dma_src[dmach];
-
-			uint32_t tempdst = m_active_dma_dst[dmach];
-			if (m_active_dma_incd[dmach] == 2)
-				tempdst -= 16;
-
-			if (!m_dma_fifo_data_available_cb.isnull())
-			{
-				int available = m_dma_fifo_data_available_cb(tempsrc, tempdst, 0, m_active_dma_size[dmach]);
-
-				if (!available)
-				{
-					//printf("dma stalled\n");
-					m_dma_timer_active[dmach] = 2; // mark as stalled
-					fatalerror("SH2 dma_callback_fifo_data_available == 0 in unsupported mode\n");
-				}
-			}
-
-			// Even a short final burst reads four source longwords (9.3.8),
-			// but writes only the remaining count. The source line is fetched first.
-			unsigned const words = std::min(m_active_dma_count[dmach], 4U);
-			m_dma_current_active_timer[dmach]->adjust(dma_unit_time(tempsrc, tempdst, words * 4, true), dmach);
-			uint32_t data[4];
-			for (unsigned i = 0; i < 4; ++i)
-				data[i] = m_program->read_dword(tempsrc + 4 * i);
-			for (unsigned i = 0; i < words; ++i)
-			{
-				uint32_t value = data[i];
-				if (!m_dma_kludge_cb.isnull())
-					value = m_dma_kludge_cb(tempsrc, tempdst, value, m_active_dma_size[dmach]);
-				m_program->write_dword(tempdst + 4 * i, value);
-			}
-			if (m_active_dma_incd[dmach] == 2)
-				m_active_dma_dst[dmach] -= 16;
-
-			m_active_dma_src[dmach] += 16;
-			if (m_active_dma_incd[dmach] == 1)
-				m_active_dma_dst[dmach] += 16;
-
-			m_active_dma_count[dmach] -= words;
-			break;
-		}
-		}
-		// Visible registers follow each completed transfer, including on abort (9.3).
-		// Apply deltas so the original address's cache-through/alias bits survive.
-		m_dmac[dmach].sar += m_active_dma_src[dmach] - previous_src;
-		m_dmac[dmach].dar += m_active_dma_dst[dmach] - previous_dst;
-		m_dmac[dmach].tcr = m_active_dma_count[dmach] & 0xffffff;
+		m_dma_dack_level[ch] = level;
+		m_dma_dack[ch](level);
 	}
-	else // the dma is complete
+}
+
+int sh7604_device::dma_dack_level(unsigned ch) const
+{
+	attotime const now = BIT(m_sbycr, 4) ? m_dma_pause_time : machine().time();
+	bool active = false;
+	for (unsigned i = 0; i < m_dma_ack_count[ch]; ++i)
+		active |= now >= m_dma_ack_start[ch][i] && now < m_dma_ack_end[ch][i];
+	return active == m_dma_ack_high[ch];
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::dma_dack_tick)
+{
+	unsigned const ch = param & 1;
+	dma_dack_drive(ch, dma_dack_level(ch));
+	attotime next = attotime::never;
+	for (unsigned i = 0; i < m_dma_ack_count[ch]; ++i)
 	{
-		// int dma = param & 1;
-
-		// fever soccer uses cycle-stealing mode, resume the CPU now DMA has finished
-		if (m_active_dma_steal[dmach])
-		{
-			resume(SUSPEND_REASON_HALT);
-		}
-
-		LOG("SH2: DMA %d complete\n", dmach);
-		m_dmac[dmach].tcr = 0;
-		m_dmac[dmach].chcr |= 2;
-		m_dma_timer_active[dmach] = 0;
-		sh2_recalc_irq();
-
+		if (m_dma_ack_start[ch][i] > machine().time()) next = std::min(next, m_dma_ack_start[ch][i]);
+		if (m_dma_ack_end[ch][i] > machine().time()) next = std::min(next, m_dma_ack_end[ch][i]);
 	}
+	m_dma_dack_timer[ch]->adjust(next.is_never() ? next : next - machine().time(), ch);
+}
+
+void sh7604_device::dma_run_step(unsigned ch, unsigned index)
+{
+	auto const &step = m_dma_steps[index];
+	unsigned const bytes = step.bytes;
+	uint32_t const mask = bytes == 4 ? 0xffffffff : (1U << (bytes * 8)) - 1;
+	bool const single = BIT(m_dma_unit_control, 3);
+	if (!m_dma_dack[ch].isunset())
+		dma_dack_drive(ch, dma_dack_level(ch));
+	m_sci_dma_access = ch;
+	if (step.write)
+	{
+		uint32_t value;
+		if (single)
+			value = m_dma_read[ch].isunset() ? m_dma_io_data[ch] & mask : m_dma_read[ch](0, mask);
+		else
+		{
+			if (!m_dma_kludge_cb.isnull() && step.shift + bytes * 8 == (m_active_dma_size[ch] == 3 ? 32U : (8U << m_active_dma_size[ch])))
+				m_dma_data[step.word] = m_dma_kludge_cb(m_dma_unit_src, m_dma_unit_dst, m_dma_data[step.word], m_active_dma_size[ch]);
+			value = (m_dma_data[step.word] >> step.shift) & mask;
+		}
+		if (bytes == 1) m_program->write_byte(step.address, value);
+		else if (bytes == 2) m_program->write_word(step.address, value);
+		else m_program->write_dword(step.address, value);
+		ubc_compare(step.address, value, bytes, true, false, true);
+	}
+	else
+	{
+		uint32_t const value = bytes == 1 ? m_program->read_byte(step.address) : bytes == 2 ? m_program->read_word(step.address) : m_program->read_dword(step.address);
+		m_dma_data[step.word] |= (value & mask) << step.shift;
+		ubc_compare(step.address, value, bytes, false, false, true);
+		if (single)
+		{
+			m_dma_io_data[ch] = value & mask;
+			m_dma_write[ch](0, value, mask);
+		}
+	}
+	m_sci_dma_access = -1;
+}
+
+void sh7604_device::dma_commit_unit(unsigned ch)
+{
+	m_active_dma_src[ch] += m_dma_src_delta;
+	m_active_dma_dst[ch] += m_dma_dst_delta;
+	m_active_dma_count[ch] -= m_dma_count_delta;
+	m_dmac[ch].sar += m_dma_src_delta;
+	m_dmac[ch].dar += m_dma_dst_delta;
+	m_dmac[ch].tcr = m_active_dma_count[ch] & 0xffffff;
+	m_dma_committed = true;
+}
+
+void sh7604_device::dma_update_halt()
+{
+	bool burst = m_dma_owner >= 0 && m_active_dma_steal[m_dma_owner];
+	for (unsigned ch = 0; ch < 2; ++ch)
+		burst |= m_dma_timer_active[ch] == 1 && m_active_dma_steal[ch] && sci_dma_requested(ch);
+	if (burst != suspended(SUSPEND_REASON_DMA))
+	{
+		if (burst) suspend(SUSPEND_REASON_DMA, true);
+		else resume(SUSPEND_REASON_DMA);
+	}
+	if (m_dma_owner < 0 && !m_dma_timer_active[0] && !m_dma_timer_active[1] && !BIT(m_dmaor, 3))
+		m_dma_priority = 0;
+}
+
+void sh7604_device::sh2_do_dma(int ch)
+{
+	if (m_standby || BIT(m_sbycr, 4)) return;
+	unsigned const size = m_active_dma_size[ch], bytes = 1U << std::min(size, 2U);
+	uint32_t const control = m_dmac[ch].chcr;
+	bool const single = BIT(control, 3), input = single && BIT(control, 8);
+	uint32_t const src = m_active_dma_src[ch] - ((!input && size != 3 && m_active_dma_incs[ch] == 2) ? bytes : 0);
+	uint32_t const dst = m_active_dma_dst[ch] - ((!single || input) && m_active_dma_incd[ch] == 2 ? (size == 3 ? 16 : bytes) : 0);
+	auto const invalid = [bytes] (uint32_t address)
+	{
+		return (address & (bytes - 1)) || (address >= 0xffffff00 && bytes == 1) || (address >= 0xfffffe00 && address < 0xffffff00 && bytes == 4);
+	};
+	if ((!input && invalid(src)) || ((!single || input) && invalid(dst)))
+	{
+		m_dmaor |= 4;
+		sh2_dmac_check(0); sh2_dmac_check(1);
+		return;
+	}
+	if (!m_dma_fifo_data_available_cb.isnull() && !m_dma_fifo_data_available_cb(src, dst, 0, size))
+	{
+		m_dma_timer_active[ch] = 2;
+		m_dma_current_active_timer[ch]->adjust(attotime::never);
+		dma_update_halt();
+		return;
+	}
+	m_dma_owner = ch;
+	m_dma_unit_control = control;
+	m_dma_unit_src = src; m_dma_unit_dst = dst;
+	m_dma_src_delta = input ? 0 : size == 3 ? 16 : m_active_dma_incs[ch] == 1 ? int(bytes) : m_active_dma_incs[ch] == 2 ? -int(bytes) : 0;
+	m_dma_dst_delta = single && !input ? 0 : m_active_dma_incd[ch] == 1 ? int(size == 3 ? 16 : bytes) : m_active_dma_incd[ch] == 2 ? -int(size == 3 ? 16 : bytes) : 0;
+	m_dma_count_delta = size == 3 ? std::min(m_active_dma_count[ch], 4U) : 1;
+	std::fill(std::begin(m_dma_data), std::end(m_dma_data), 0);
+	m_dma_committed = m_dma_cancelled = false;
+	m_dma_ack_high[ch] = BIT(control, 7);
+	m_dma_bus_end = machine().time() + dma_unit_time(src, dst, size == 3 ? m_dma_count_delta * 4 : bytes, size == 3);
+	// A level burst has already accepted requests ahead of its first DACK
+	// (9.3.7 figs. 9.46/47: three single; 9.50/51: two dual).
+	if (!BIT(control, 9) && !m_dmac[ch].drcr && !BIT(control, 6))
+	{
+		if (m_dma_dreq[ch] == BIT(control, 5) && BIT(control, 4))
+			m_dma_requests[ch] = single ? 3 : 2;
+		if (m_dma_requests[ch]) --m_dma_requests[ch];
+	}
+	else m_dma_requests[ch] = 0;
+	if (!BIT(control, 9) && !m_dmac[ch].drcr && BIT(control, 6))
+	{
+		m_dma_edge[ch] = false;
+		m_dma_edge_burst[ch] = BIT(control, 4);
+	}
+	m_dma_detect_after[ch] = (m_dma_ack_count[ch] ? m_dma_ack_start[ch][0] : machine().time()) + cycles_to_attotime(2);
+	if (!m_dma_dack[ch].isunset()) dma_dack_tick(ch);
+	m_dma_staged = !m_dma_dack[ch].isunset() || (single && (!m_dma_read[ch].isunset() || !m_dma_write[ch].isunset()));
+	if (!m_dma_staged)
+	{
+		while (m_dma_step < m_dma_step_count) dma_run_step(ch, m_dma_step++);
+		dma_commit_unit(ch);
+	}
+	for (unsigned other = 0; other < 2; ++other)
+		m_dma_current_active_timer[other]->adjust(attotime::never);
+	m_dma_current_active_timer[ch]->adjust(m_dma_staged ? attotime::zero : m_dma_bus_end - machine().time(), ch);
+	dma_update_halt();
 }
 
 TIMER_CALLBACK_MEMBER(sh7604_device::sh2_dma_current_active_callback)
 {
-	sh2_do_dma(param & 1);
+	attotime const now = machine().time();
+	if (m_standby || BIT(m_sbycr, 4)) return;
+	if (m_dma_owner >= 0)
+	{
+		unsigned const ch = m_dma_owner;
+		while (!m_dma_committed && m_dma_step < m_dma_step_count && m_dma_steps[m_dma_step].start <= now)
+			dma_run_step(ch, m_dma_step++);
+		if (!m_dma_committed && m_dma_step == m_dma_step_count) dma_commit_unit(ch);
+		if (now < m_dma_bus_end)
+		{
+			attotime const next = m_dma_committed ? m_dma_bus_end : m_dma_steps[m_dma_step].start;
+			m_dma_current_active_timer[ch]->adjust(std::max(attotime::zero, next - now), ch);
+			return;
+		}
+		m_dma_owner = -1;
+		m_dma_priority = ch ^ 1;
+		m_dma_ack_count[ch] = 0;
+		dma_dack_drive(ch, !m_dma_ack_high[ch]);
+		if (!m_active_dma_count[ch])
+		{
+			// A final completed unit still sets TE if NMIF/AE/DME ended the
+			// transfer at this boundary (9.3.8); DE forced stop does not.
+			if (BIT(m_dmac[ch].chcr, 0)) m_dmac[ch].chcr |= 2;
+			m_dma_timer_active[ch] = 0;
+			m_dma_edge_burst[ch] = false;
+			m_dma_requests[ch] = 0;
+			sh2_recalc_irq();
+		}
+		else if (m_dma_cancelled) m_dma_timer_active[ch] = 0;
+		else
+		{
+			m_dma_ready[ch] = now;
+			if (!BIT(m_dmac[ch].chcr, 9) && !m_dmac[ch].drcr && !BIT(m_dmac[ch].chcr, 4))
+				m_dma_ready[ch] = std::max(now, m_dma_detect_after[ch] + cycles_to_attotime(3));
+		}
+	}
+	bool ready[2]{};
+	attotime next = attotime::never;
+	for (unsigned ch = 0; ch < 2; ++ch)
+	{
+		m_dma_current_active_timer[ch]->adjust(attotime::never);
+		if (!m_dma_timer_active[ch]) continue;
+		if (!(m_dmac[ch].chcr & m_dmaor & 1) || (m_dmaor & 6)) { sh2_dmac_check(ch); continue; }
+		if (!sci_dma_requested(ch) || (!m_dma_fifo_data_available_cb.isnull() &&
+			!m_dma_fifo_data_available_cb(m_active_dma_src[ch], m_active_dma_dst[ch], 0, m_active_dma_size[ch])))
+		{ m_dma_timer_active[ch] = 2; continue; }
+		m_dma_timer_active[ch] = 1;
+		if (m_dma_ready[ch] <= now) ready[ch] = true;
+		else next = std::min(next, m_dma_ready[ch]);
+	}
+	if (ready[0] || ready[1])
+	{
+		unsigned const preferred = BIT(m_dmaor, 3) ? m_dma_priority : (m_active_dma_steal[0] ? 0 : m_dma_priority);
+		unsigned const ch = ready[preferred] ? preferred : preferred ^ 1;
+		sh2_do_dma(ch);
+		// An unavailable FIFO/error must not prevent the other channel running.
+		if (m_dma_owner < 0)
+			m_dma_current_active_timer[ch ^ 1]->adjust(attotime::zero, ch ^ 1);
+	}
+	else if (!next.is_never()) m_dma_current_active_timer[0]->adjust(next - now, 0);
+	dma_update_halt();
 }
 
-
-void sh7604_device::sh2_dmac_check(int dmach)
+void sh7604_device::sh2_dmac_check(int ch)
 {
-	if ((m_dmac[dmach].chcr & m_dmaor & 1) && !(m_dmaor & 6))
+	bool const enabled = (m_dmac[ch].chcr & m_dmaor & 1) && !(m_dmaor & 6) && !(m_dmac[ch].chcr & 2);
+	if (!enabled)
 	{
-		if (!m_dma_timer_active[dmach] && !(m_dmac[dmach].chcr & 2))
+		m_dma_edge[ch] = m_dma_edge_burst[ch] = false;
+		m_dma_requests[ch] = 0;
+		if (m_dma_owner == ch)
+			m_dma_cancelled = true; // finish the accepted read/write unit, then stop
+		else { m_dma_timer_active[ch] = 0; m_dma_current_active_timer[ch]->adjust(attotime::never); }
+		dma_update_halt();
+		return;
+	}
+	if (m_standby || BIT(m_sbycr, 4)) return;
+	if (!sci_dma_requested(ch)) return;
+	if (!m_dma_timer_active[ch])
+	{
+		uint32_t const control = m_dmac[ch].chcr;
+		bool const single = BIT(control, 3), input = single && BIT(control, 8);
+		m_active_dma_incs[ch] = input ? 0 : (control >> 12) & 3;
+		m_active_dma_incd[ch] = single && !input ? 0 : (control >> 14) & 3;
+		m_active_dma_size[ch] = (control >> 10) & 3;
+		m_active_dma_steal[ch] = BIT(control, 4); // TB=1 is burst, not cycle-steal.
+		if (m_active_dma_incs[ch] == 3 || m_active_dma_incd[ch] == 3 || (single && (m_active_dma_size[ch] == 3 || BIT(control, 9) || m_dmac[ch].drcr)))
 		{
-			m_active_dma_incd[dmach] = (m_dmac[dmach].chcr >> 14) & 3;
-			m_active_dma_incs[dmach] = (m_dmac[dmach].chcr >> 12) & 3;
-			m_active_dma_size[dmach] = (m_dmac[dmach].chcr >> 10) & 3;
-			m_active_dma_steal[dmach] = (m_dmac[dmach].chcr & 0x10);
+			LOG("SH7604 DMA: prohibited address/request configuration on channel %d\n", ch);
+			return;
+		}
+		m_active_dma_src[ch] = m_dmac[ch].sar < 0xe0000000 ? m_dmac[ch].sar & m_am : m_dmac[ch].sar;
+		m_active_dma_dst[ch] = m_dmac[ch].dar < 0xe0000000 ? m_dmac[ch].dar & m_am : m_dmac[ch].dar;
+		m_active_dma_count[ch] = m_dmac[ch].tcr ? m_dmac[ch].tcr : 0x1000000;
+		m_dma_ready[ch] = machine().time() + cycles_to_attotime(BIT(control, 9) || m_dmac[ch].drcr ? 2 : 3);
+		m_dma_timer_active[ch] = 1;
+	}
+	else if (m_dma_timer_active[ch] == 2)
+	{
+		m_dma_timer_active[ch] = 1;
+		m_dma_ready[ch] = std::max(m_dma_ready[ch], machine().time() + cycles_to_attotime(BIT(m_dmac[ch].chcr, 9) || m_dmac[ch].drcr ? 2 : 3));
+	}
+	if (m_dma_owner < 0 && m_dma_timer_active[ch] == 1)
+		m_dma_current_active_timer[ch]->adjust(std::max(attotime::zero, m_dma_ready[ch] - machine().time()), ch);
+	dma_update_halt();
+}
 
-			if (m_active_dma_incd[dmach] == 3 || m_active_dma_incs[dmach] == 3)
-			{
-				LOG("SH2: DMA: bad increment values (%d, %d, %d, %04x)\n", m_active_dma_incd[dmach], m_active_dma_incs[dmach], m_active_dma_size[dmach], m_dmac[dmach].chcr);
-				return;
-			}
-			m_active_dma_src[dmach]   = m_dmac[dmach].sar;
-			m_active_dma_dst[dmach]   = m_dmac[dmach].dar;
-			m_active_dma_count[dmach] = m_dmac[dmach].tcr;
-			if (!m_active_dma_count[dmach])
-				m_active_dma_count[dmach] = 0x1000000;
+void sh7604_device::dma_request_w(unsigned ch, int level)
+{
+	assert(ch < 2);
+	level = !!level;
+	m_dma_dreq_driven[ch] = true;
+	if (m_dma_dreq[ch] == level) return;
+	m_dma_dreq[ch] = level;
+	uint32_t const control = m_dmac[ch].chcr;
+	if (m_standby || BIT(m_sbycr, 4) || !(control & m_dmaor & 1) || (m_dmaor & 6) || BIT(control, 1) || BIT(control, 9) || m_dmac[ch].drcr || level != BIT(control, 5)) return;
+	if (BIT(control, 6))
+	{
+		if (m_dma_edge_burst[ch] || machine().time() < m_dma_detect_after[ch]) return;
+		m_dma_edge[ch] = true;
+	}
+	else m_dma_requests[ch] = std::max(m_dma_requests[ch], 1U);
+	sh2_dmac_check(ch);
+}
 
-			LOG("SH2: DMA %d start %x, %x, %x, %04x, %d, %d, %d\n", dmach, m_active_dma_src[dmach], m_active_dma_dst[dmach], m_active_dma_count[dmach], m_dmac[dmach].chcr, m_active_dma_incs[dmach], m_active_dma_incd[dmach], m_active_dma_size[dmach]);
+// Request/acknowledgement is independent of the CPU interrupt mask (9.3.2).
+bool sh7604_device::sci_dma_requested(int ch) const
+{
+	if (BIT(m_dmac[ch].chcr, 9)) return true;
+	switch (m_dmac[ch].drcr)
+	{
+	case 0:
+		// Preserve the existing 32X FIFO connection as a board request adapter;
+		// a real pin connection supersedes it. Unconnected Saturn pins are high.
+		if (!m_dma_dreq_driven[ch] && !m_dma_fifo_data_available_cb.isnull())
+			return m_dma_fifo_data_available_cb(m_dmac[ch].sar & m_am, m_dmac[ch].dar & m_am, 0, (m_dmac[ch].chcr >> 10) & 3) != 0;
+		return BIT(m_dmac[ch].chcr, 6) ? m_dma_edge[ch] || m_dma_edge_burst[ch] : m_dma_requests[ch] || m_dma_dreq[ch] == BIT(m_dmac[ch].chcr, 5);
+	case 1: return !m_standby && !BIT(m_sbycr, 0) && (m_scr & m_ssr & 0x40);
+	case 2: return !m_standby && !BIT(m_sbycr, 0) && (m_scr & m_ssr & 0x80);
+	default: return false;
+	}
+}
 
-			m_dma_timer_active[dmach] = 1;
+void sh7604_device::sci_reset()
+{
+	m_smr = m_scr = m_rdr = m_ssr_read = 0;
+	m_brr = m_tdr = 0xff;
+	m_ssr = 0x84;
+	m_sci_busy = m_tx_prefetched = m_rx_busy = false;
+	m_tx_frame = 0;
+	m_tx_bit = m_tx_bits = m_tx_stop = m_tx_format = m_tx_data = m_tx_mpbt = m_tx_ext_count = 0;
+	m_rsr = m_rx_stage = m_rx_format = m_rx_parity = m_rx_errors = m_rx_mp = m_rx_ext_count = 0;
+	m_sci_timer->adjust(attotime::never);
+	m_sci_rx_timer->adjust(attotime::never);
+	m_sci_clock_timer->adjust(attotime::never);
+	sci_drive_txd(1);
+	sci_drive_sck(1);
+}
 
-			m_active_dma_src[dmach] &= m_am;
-			m_active_dma_dst[dmach] &= m_am;
+unsigned sh7604_device::sci_bit_clocks() const
+{
+	// Tables 13.3/13.4: phi / (128 or 16 * (BRR+1) * 4^CKS).
+	return ((m_smr & 0x80) ? 16U : 128U) * (unsigned(m_brr) + 1) * (1U << (2 * (m_smr & 3)));
+}
 
-			switch (m_active_dma_size[dmach])
-			{
-			case 0:
-				break;
-			case 1:
-				m_active_dma_src[dmach] &= ~1;
-				m_active_dma_dst[dmach] &= ~1;
-				break;
-			case 2:
-				m_active_dma_src[dmach] &= ~3;
-				m_active_dma_dst[dmach] &= ~3;
-				break;
-			case 3:
-				m_active_dma_src[dmach] &= ~3;
-				m_active_dma_dst[dmach] &= ~3;
-				break;
-			}
+void sh7604_device::sci_drive_txd(int state)
+{
+	if (m_sci_txd_level != state)
+	{
+		m_sci_txd_level = state;
+		m_sci_txd(state);
+	}
+}
 
-			// start DMA timer
+void sh7604_device::sci_drive_sck(int state)
+{
+	if (m_sci_sck_level != state)
+	{
+		m_sci_sck_level = state;
+		m_sci_sck(state);
+	}
+}
 
-			// fever soccer uses cycle-stealing mode, requiring the CPU to be halted
-			if (m_active_dma_steal[dmach])
-			{
-				//printf("cycle stealing DMA\n");
-				suspend(SUSPEND_REASON_HALT, 1);
-			}
+void sh7604_device::sci_reclock()
+{
+	if (m_standby || BIT(m_sbycr, 0))
+	{
+		m_sci_timer->adjust(attotime::never);
+		m_sci_rx_timer->adjust(attotime::never);
+		m_sci_clock_timer->adjust(attotime::never);
+		return;
+	}
 
-			m_dma_current_active_timer[dmach]->adjust(cycles_to_attotime(2), dmach);
+	if (m_smr & 0x80)
+	{
+		m_sci_clock_timer->adjust(attotime::never);
+		m_sci_rx_timer->adjust(attotime::never);
+		bool const active = !(m_scr & 2) && !(m_ssr & 0x38) &&
+			((m_scr & 0x10) || ((m_scr & 0x20) && (m_sci_busy || m_tx_prefetched || !(m_ssr & 0x80))));
+		if (active)
+		{
+			if (!m_sci_timer->enabled() || m_sci_timer->expire().is_never())
+				m_sci_timer->adjust(cycles_to_attotime(sci_bit_clocks() / 2));
+		}
+		else
+		{
+			m_sci_timer->adjust(attotime::never);
+			if (!(m_scr & 2))
+				sci_drive_sck(1);
 		}
 	}
 	else
 	{
-		if (m_dma_timer_active[dmach])
+		if (!m_sci_busy || !(m_scr & 0x20) || (m_scr & 2))
+			m_sci_timer->adjust(attotime::never);
+		else if (!m_sci_timer->enabled() || m_sci_timer->expire().is_never())
+			m_sci_timer->adjust(cycles_to_attotime(sci_bit_clocks()));
+		if ((m_scr & 3) == 1)
 		{
-			LOG("SH2: DMA %d cancelled in-flight\n", dmach);
-			//m_dma_complete_timer[dmach]->adjust(attotime::never);
-			m_dma_current_active_timer[dmach]->adjust(attotime::never, dmach);
-
-			m_dma_timer_active[dmach] = 0;
+			if (!m_sci_clock_timer->enabled() || m_sci_clock_timer->expire().is_never())
+				m_sci_clock_timer->adjust(cycles_to_attotime(sci_bit_clocks() / 2));
+		}
+		else
+		{
+			m_sci_clock_timer->adjust(attotime::never);
+			sci_drive_sck(1);
 		}
 	}
 }
 
-/*
- * SCI
- */
-// TODO: identical to H8 counterpart
+void sh7604_device::sci_update()
+{
+	sci_reclock();
+	sh2_recalc_irq();
+	for (int channel = 0; channel < 2; channel++)
+		sh2_dmac_check(channel);
+}
+
+void sh7604_device::sci_load_tsr()
+{
+	m_tsr = m_tdr;
+	m_tx_mpbt = m_ssr & 1;
+	m_tx_prefetched = true;
+	m_ssr |= 0x80;
+	m_ssr_read &= ~0x80;
+}
+
+// Pin clocks and framing replace the former byte-completion HACK.
+void sh7604_device::sci_start()
+{
+	if (m_standby || BIT(m_sbycr, 0) || m_sci_busy || !(m_scr & 0x20) ||
+		((m_smr & 0x80) && (m_ssr & 0x38)) || (!m_tx_prefetched && (m_ssr & 0x80)))
+		return;
+	if (!m_tx_prefetched)
+		sci_load_tsr();
+	m_tx_prefetched = false;
+	m_sci_busy = true;
+	m_tx_format = m_smr;
+	m_tx_bit = m_tx_ext_count = 0;
+	m_tx_data = m_tsr;
+	if (m_tx_format & 0x80)
+	{
+		m_tx_frame = m_tx_data;
+		m_tx_bits = 8;
+		m_tx_stop = 7;
+	}
+	else
+	{
+		unsigned const bits = (m_tx_format & 0x40) ? 7 : 8;
+		m_tx_data &= (1U << bits) - 1;
+		m_tx_frame = uint32_t(m_tx_data) << 1; // start bit is zero
+		m_tx_stop = 1 + bits;
+		if (m_tx_format & 0x24)
+		{
+			unsigned parity = 0;
+			for (unsigned i = 0; i < bits; i++)
+				parity ^= BIT(m_tx_data, i);
+			unsigned const extra = (m_tx_format & 4) ? m_tx_mpbt : (parity ^ BIT(m_tx_format, 4));
+			m_tx_frame |= extra << m_tx_stop++;
+		}
+		unsigned const stops = (m_tx_format & 8) ? 2 : 1;
+		m_tx_frame |= ((1U << stops) - 1) << m_tx_stop;
+		m_tx_bits = m_tx_stop + stops;
+		if (!(m_scr & 2))
+			sci_tx_step();
+	}
+	sci_update();
+}
+
+void sh7604_device::sci_tx_step()
+{
+	if (!m_sci_busy)
+		return;
+	if (m_tx_bit == m_tx_bits)
+	{
+		sci_transmit_complete();
+		return;
+	}
+	sci_drive_txd(BIT(m_tx_frame, m_tx_bit));
+	// 13.3.2/13.3.4: the queue is inspected when the stop bit/MSB is output,
+	// not after its interval. Keep the old frame data while preloading TSR.
+	if (m_tx_bit == m_tx_stop)
+	{
+		if (!(m_ssr & 0x80))
+			sci_load_tsr();
+		else
+			m_ssr |= 4;
+		sci_update();
+	}
+	m_tx_bit++;
+}
+
+void sh7604_device::sci_transmit_complete()
+{
+	if (!m_sci_busy)
+		return;
+	m_sci_busy = false;
+	m_sci_tx(m_tx_data);
+	if (!(m_tx_format & 0x80))
+	{
+		sci_drive_txd(1);
+		sci_start();
+		if ((m_scr & 2) && m_sci_busy)
+			sci_tx_step();
+	}
+	sci_update();
+}
+
+void sh7604_device::sci_rx_start()
+{
+	m_rx_busy = true;
+	m_rx_format = m_smr;
+	m_rsr = m_rx_stage = m_rx_parity = m_rx_errors = m_rx_mp = 0;
+	m_rx_ext_count = 8; // external async clock is 16 times the bit rate
+	if (!(m_rx_format & 0x80) && !(m_scr & 2))
+		m_sci_rx_timer->adjust(cycles_to_attotime(sci_bit_clocks() / 2));
+}
+
+void sh7604_device::sci_sample_rx()
+{
+	if (!m_rx_busy)
+		return;
+	if (m_rx_format & 0x80)
+	{
+		m_rsr |= m_sci_rxd << m_rx_stage++;
+		if (m_rx_stage < 8)
+			return;
+	}
+	else
+	{
+		unsigned const bits = (m_rx_format & 0x40) ? 7 : 8;
+		bool const extra = (m_rx_format & 0x24) != 0;
+		if (!m_rx_stage)
+		{
+			if (m_sci_rxd) // reject a short/false start
+				m_rx_busy = false;
+			else
+				m_rx_stage = 1;
+			return;
+		}
+		if (m_rx_stage <= bits)
+		{
+			m_rsr |= m_sci_rxd << (m_rx_stage - 1);
+			m_rx_parity ^= m_sci_rxd;
+			m_rx_stage++;
+			return;
+		}
+		if (extra && m_rx_stage == bits + 1)
+		{
+			if (m_rx_format & 4)
+				m_rx_mp = m_sci_rxd;
+			else if (m_sci_rxd != (m_rx_parity ^ BIT(m_rx_format, 4)))
+				m_rx_errors |= 8;
+			m_rx_stage++;
+			return;
+		}
+		if (!m_sci_rxd)
+			m_rx_errors |= 0x10;
+	}
+	m_rx_busy = false;
+	sci_receive_byte(m_rsr, m_rx_errors, m_rx_mp);
+}
+
+void sh7604_device::sci_receive_byte(uint8_t data, uint8_t errors, bool mpb)
+{
+	if (m_standby || BIT(m_sbycr, 0) || !(m_scr & 0x10) || (m_ssr & 0x38))
+		return;
+	if ((m_rx_format & 0x84) == 4)
+	{
+		m_ssr = (m_ssr & ~2) | (mpb ? 2 : 0);
+		if ((m_scr & 8) && !mpb)
+		{
+			sci_update(); // MPIE suppresses data and errors until an address frame
+			return;
+		}
+		if (mpb)
+			m_scr &= ~8;
+	}
+	if (m_ssr & 0x40)
+		errors |= 0x20;
+	m_ssr |= errors & 0x38;
+	if (!(errors & 0x20))
+		m_rdr = data;
+	if (!errors)
+		m_ssr |= 0x40;
+	sci_update();
+}
+
+void sh7604_device::sci_sync_edge(bool rising)
+{
+	if (m_ssr & 0x38)
+		return;
+	if (!rising)
+	{
+		sci_start();
+		if (m_sci_busy)
+			sci_tx_step();
+		if ((m_scr & 0x10) && !m_rx_busy)
+			sci_rx_start();
+	}
+	else
+	{
+		if (m_rx_busy)
+			sci_sample_rx();
+		if (m_sci_busy && m_tx_bit == 8)
+			sci_transmit_complete();
+	}
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_tx_complete)
+{
+	if (m_smr & 0x80)
+	{
+		if (m_sci_sck_level)
+		{
+			sci_sync_edge(false);
+			sci_drive_sck(0);
+		}
+		else
+		{
+			sci_drive_sck(1);
+			sci_sync_edge(true);
+		}
+	}
+	else
+		sci_tx_step();
+	sci_reclock();
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_rx_tick)
+{
+	sci_sample_rx();
+	if (m_rx_busy && m_rx_stage)
+		m_sci_rx_timer->adjust(cycles_to_attotime(sci_bit_clocks()));
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::sci_clock_tick)
+{
+	sci_drive_sck(!m_sci_sck_level);
+	sci_reclock();
+}
+
+void sh7604_device::sci_rxd_w(int state)
+{
+	int const old = m_sci_rxd;
+	m_sci_rxd = !!state;
+	if (!m_standby && !BIT(m_sbycr, 0) && !(m_smr & 0x80) && (m_scr & 0x10) &&
+		old && !m_sci_rxd && !m_rx_busy && !(m_ssr & 0x38))
+		sci_rx_start();
+}
+
+void sh7604_device::sci_sck_w(int state)
+{
+	state = !!state;
+	if (m_sci_sck_in == state)
+		return;
+	m_sci_sck_in = state;
+	if (m_standby || BIT(m_sbycr, 0) || !(m_scr & 2))
+		return;
+	if (m_smr & 0x80)
+		sci_sync_edge(state);
+	else if (state)
+	{
+		if (m_sci_busy)
+		{
+			if (!m_tx_ext_count)
+				sci_tx_step();
+			m_tx_ext_count = (m_tx_ext_count + 1) & 15;
+		}
+		if (m_rx_busy && !--m_rx_ext_count)
+		{
+			sci_sample_rx();
+			m_rx_ext_count = 16;
+		}
+	}
+}
+
+void sh7604_device::state_import(const device_state_entry &entry)
+{
+	if (entry.index() == STATE_GENPC || entry.index() == STATE_GENPCBASE)
+		m_ubc_previous_pc = 0xffffffff;
+	// Accept debugger SR changes at an instruction boundary, outside delay slots,
+	// and without creating an unstacked exception that DRC entry discards.
+	if (entry.index() == SH_SR)
+	{
+		m_test_irq = 1;
+		return;
+	}
+
+	if (entry.index() == 0x108 || entry.index() == 0x109)
+		dma_request_w(entry.index() - 0x108, m_sci_pin_value);
+	else if (entry.index() == 0x104)
+		frt_clock_w(m_sci_pin_value);
+	else if (entry.index() == 0x107)
+		set_frt_input(m_sci_pin_value);
+	else if (entry.index() == 0x100)
+		sci_rxd_w(m_sci_pin_value);
+	else if (entry.index() == 0x101)
+		sci_sck_w(m_sci_pin_value);
+	else
+		sh2_device::state_import(entry);
+}
+
+void sh7604_device::state_export(const device_state_entry &entry)
+{
+	if (entry.index() == 0x108 || entry.index() == 0x109)
+		m_sci_pin_value = m_dma_dreq[entry.index() - 0x108];
+	else if (entry.index() == 0x10a || entry.index() == 0x10b)
+		m_sci_pin_value = dma_dack_level(entry.index() - 0x10a);
+	else if (entry.index() == 0x104)
+		m_sci_pin_value = m_frt_clock_input;
+	else if (entry.index() == 0x107)
+		m_sci_pin_value = m_frt_input;
+	else if (entry.index() == 0x100)
+		m_sci_pin_value = m_sci_rxd;
+	else if (entry.index() == 0x101)
+		m_sci_pin_value = m_sci_sck_in;
+	else
+		sh2_device::state_export(entry);
+}
 
 uint8_t sh7604_device::smr_r()
 {
@@ -1046,6 +1925,12 @@ uint8_t sh7604_device::smr_r()
 void sh7604_device::smr_w(uint8_t data)
 {
 	m_smr = data;
+	if (!(m_scr & 0x30))
+	{
+		m_sci_timer->adjust(attotime::never);
+		m_sci_clock_timer->adjust(attotime::never);
+		sci_reclock();
+	}
 }
 
 uint8_t sh7604_device::brr_r()
@@ -1056,6 +1941,11 @@ uint8_t sh7604_device::brr_r()
 void sh7604_device::brr_w(uint8_t data)
 {
 	m_brr = data;
+	if (!(m_scr & 0x30))
+	{
+		m_sci_clock_timer->adjust(attotime::never);
+		sci_reclock();
+	}
 }
 
 uint8_t sh7604_device::scr_r()
@@ -1065,7 +1955,23 @@ uint8_t sh7604_device::scr_r()
 
 void sh7604_device::scr_w(uint8_t data)
 {
+	uint8_t const old = m_scr;
 	m_scr = data;
+	if (!(data & 0x20))
+	{
+		m_sci_busy = m_tx_prefetched = false;
+		m_ssr |= 0x84;
+		sci_drive_txd(1);
+	}
+	if (!(data & 0x10))
+	{
+		m_rx_busy = false;
+		m_sci_rx_timer->adjust(attotime::never);
+	}
+	if (!(old & 0x10) && (data & 0x10) && !(m_smr & 0x80) && !m_sci_rxd && !(m_ssr & 0x38))
+		sci_rx_start();
+	sci_start();
+	sci_update();
 }
 
 uint8_t sh7604_device::tdr_r()
@@ -1076,23 +1982,46 @@ uint8_t sh7604_device::tdr_r()
 void sh7604_device::tdr_w(uint8_t data)
 {
 	m_tdr = data;
-	//printf("%c", data & 0xff);
+	if (m_sci_dma_access >= 0)
+	{
+		m_ssr &= ~0x84;
+		m_ssr_read &= ~0x80;
+		sci_start();
+		sci_update();
+	}
 }
 
 uint8_t sh7604_device::ssr_r()
 {
-	// 0x84 is needed by EGWord on Saturn to make it to boot for some reason.
-	return m_ssr | 0x84;
+	if (!machine().side_effects_disabled())
+		m_ssr_read = m_ssr & 0xf8;
+	return m_ssr;
 }
 
 void sh7604_device::ssr_w(uint8_t data)
 {
-	m_ssr = data;
+	uint8_t const cleared = m_ssr & m_ssr_read & ~data & 0xf8;
+	m_ssr = (m_ssr & ~cleared & 0xfe) | (data & 1);
+	m_ssr_read = 0;
+	if (cleared & 0x80)
+		m_ssr &= ~4;
+	if (!(m_scr & 0x20))
+		m_ssr |= 0x84;
+	if ((cleared & 0x38) && !(m_ssr & 0x38) && (m_scr & 0x10) && !(m_smr & 0x80) && !m_sci_rxd && !m_rx_busy)
+		sci_rx_start();
+	sci_start();
+	sci_update();
 }
 
 uint8_t sh7604_device::rdr_r()
 {
-	return 0;
+	if (m_sci_dma_access >= 0 && !machine().side_effects_disabled())
+	{
+		m_ssr &= ~0x40;
+		m_ssr_read &= ~0x40;
+		sci_update();
+	}
+	return m_rdr;
 }
 
 /*
@@ -1114,8 +2043,9 @@ void sh7604_device::tier_w(uint8_t data)
 
 uint8_t sh7604_device::ftcsr_r()
 {
-	// TODO: to be tested
-	if (!m_ftcsr_read_cb.isnull())
+	sh2_timer_resync();
+	// The legacy status-observer HACK sees synchronized flags and counter.
+	if (!m_ftcsr_read_cb.isnull() && !machine().side_effects_disabled())
 		m_ftcsr_read_cb((((m_tier << 24) | (m_ftcsr << 16)) & 0xffff0000) | m_frc);
 
 	// a status flag can only be cleared after it has been read as 1
@@ -1150,11 +2080,11 @@ uint16_t sh7604_device::frc_r(offs_t offset, uint16_t mem_mask)
 
 void sh7604_device::frc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	sh2_timer_resync();
+	sh2_timer_resync(ACCESSING_BITS_0_7 ? 1 : 0);
 	// High-byte writes only load TEMP; low-byte writes commit both bytes.
 	if (ACCESSING_BITS_8_15)
 		m_frt_temp = data >> 8;
-	if (ACCESSING_BITS_0_7)
+	if (ACCESSING_BITS_0_7 && m_frt_clear_cycle != frt_cycles())
 		m_frc = (uint16_t(m_frt_temp) << 8) | (data & 0xff);
 	sh2_timer_activate();
 	sh2_recalc_irq();
@@ -1167,7 +2097,7 @@ uint16_t sh7604_device::ocra_b_r()
 
 void sh7604_device::ocra_b_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	sh2_timer_resync();
+	sh2_timer_resync(ACCESSING_BITS_0_7 ? ((m_tocr & 0x10) ? 3 : 2) : 0);
 	if (ACCESSING_BITS_8_15)
 		m_frt_temp = data >> 8;
 	if (ACCESSING_BITS_0_7)
@@ -1190,7 +2120,13 @@ uint8_t sh7604_device::frc_tcr_r()
 void sh7604_device::frc_tcr_w(uint8_t data)
 {
 	sh2_timer_resync();
+	uint64_t const now = frt_cycles() - m_frt_epoch;
+	auto const clock_level = [this, now](unsigned select) { return select == 3 ? !m_frt_clock_input : BIT(now, div_tab[select] - 1); };
+	bool const before = clock_level(m_frc_tcr & 3);
 	m_frc_tcr = data & 0x83;
+	// 11.7(5): changing a high selected clock to a low clock is an edge.
+	if (before && !clock_level(m_frc_tcr & 3))
+		frt_advance(1);
 	sh2_timer_activate();
 	sh2_recalc_irq();
 }
@@ -1203,7 +2139,7 @@ uint8_t sh7604_device::tocr_r()
 void sh7604_device::tocr_w(uint8_t data)
 {
 	sh2_timer_resync();
-	// TODO: output levels A/B (bits 1-0)
+	// The legacy output-level HACK stored OLVL without driving the compare pins.
 	m_tocr = data & 0x13;
 	sh2_timer_activate();
 	sh2_recalc_irq();
@@ -1214,7 +2150,10 @@ uint16_t sh7604_device::frc_icr_r(offs_t offset, uint16_t mem_mask)
 	if (machine().side_effects_disabled())
 		return m_frc_icr;
 	if (ACCESSING_BITS_8_15)
+	{
+		m_frt_icr_read_cycle = frt_cycles();
 		m_frt_temp = m_frc_icr;
+	}
 	return (m_frc_icr & 0xff00) | m_frt_temp;
 }
 
@@ -1224,8 +2163,7 @@ uint16_t sh7604_device::frc_icr_r(offs_t offset, uint16_t mem_mask)
 
 uint16_t sh7604_device::intc_icr_r()
 {
-	// TODO: flip meaning based off NMI edge select bit (NMIE)
-	uint16_t nmilv = m_nmi_line_state == ASSERT_LINE ? 0 : 0x8000;
+	uint16_t const nmilv = m_nmi_pin == ASSERT_LINE ? 0 : 0x8000;
 	return nmilv | (m_intc_icr & 0x0101);
 }
 
@@ -1324,7 +2262,8 @@ void sh7604_device::vcrwdt_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	sh2_recalc_irq();
 }
 
-// VCRDIV is a word register where bits 6-0 have a meaning, reads back written word value
+// 10.2.4/B.2 charts and YabauseUT div_mirror_test support 16-bit read-back.
+// Only bits 6-0 select the vector; 10.2.4 reserved-read-zero prose conflicts.
 uint32_t sh7604_device::vcrdiv_r()
 {
 	divu_wait();
@@ -1335,7 +2274,7 @@ void sh7604_device::vcrdiv_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	divu_wait();
 	COMBINE_DATA(&m_vcrdiv);
-	// TODO: unemulated, level is seemingly not documented/settable?
+	// The DIVU priority comes from IPRA; only the vector comes from VCRDIV.
 	m_irq_vector.divu = m_vcrdiv & 0x7f;
 	sh2_recalc_irq();
 }
@@ -1419,6 +2358,21 @@ void sh7604_device::dvdntl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	divu_start(dividend);
 }
 
+// These are writable result copies, not alternate dividend/start ports.
+// YabauseUT checks their write/read access and replacement by both divisions;
+// Yabause and Mednafen retain them separately from the dividend registers.
+uint32_t sh7604_device::divu_shadow_r(offs_t offset)
+{
+	divu_wait();
+	return m_divu_shadow[offset & 1];
+}
+
+void sh7604_device::divu_shadow_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	divu_wait();
+	COMBINE_DATA(&m_divu_shadow[offset & 1]);
+}
+
 // The unit takes 39 cycles from the write of the dividend (Hardware Manual 10.3), 6 when the
 // operation overflows. An access to any of its registers while it runs waits for the end of the
 // operation (10.4.1; MiSTer DIVU.sv holds the bus with IBUS_BUSY while STEP is running), so the
@@ -1497,6 +2451,8 @@ void sh7604_device::divu_start(int64_t dividend)
 
 void sh7604_device::divu_run(unsigned cycles)
 {
+	m_divu_shadow[0] = m_dvdnth;
+	m_divu_shadow[1] = m_dvdntl;
 	m_divu_busy = true;
 	m_divu_done = local_time() + cycles_to_attotime(m_bus_pending + cycles);
 	m_divu_timer->adjust(m_divu_done - machine().time());
@@ -1506,46 +2462,243 @@ void sh7604_device::divu_run(unsigned cycles)
  * UBC
  */
 
-// TODO: bare-bones, used for proper 32x:aburnerju sound (on slave side) as buffer storage
-
-uint16_t sh7604_device::barah_r()
+// The former buffer-storage HACK is replaced by chapter 6 bus comparisons.
+// Chapter 6: UBC registers are CPU-only, and byte accesses are prohibited.
+uint16_t sh7604_device::ubc_r(offs_t offset, uint16_t mem_mask)
 {
-	return m_barah;
+	if (mem_mask != 0xffff || m_sci_dma_access >= 0 || (offset >= 21 && offset <= 23) || offset == 5)
+		return 0;
+	if (!machine().side_effects_disabled())
+		ubc_commit(); // documented dummy read synchronizes changed settings
+	return m_ubc[offset];
 }
 
-uint16_t sh7604_device::baral_r()
+void sh7604_device::ubc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	return m_baral;
+	if (mem_mask != 0xffff || m_sci_dma_access >= 0 || (offset >= 21 && offset <= 23) || offset == 5)
+		return;
+	uint16_t const mask = (offset == 4 || offset == 20) ? 0x00ff : offset == 28 ? 0xf4dc : 0xffff;
+	m_ubc[offset] = data & mask;
+	m_ubc_dirty = true;
+	m_ubc_ready = local_time() + cycles_to_attotime(3 + (m_isdrc ? m_bus_pending : 0));
+	// Gate generated code immediately; comparison settings retain their latency.
+	m_instruction_monitor = 1;
 }
 
-void sh7604_device::barah_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+void sh7604_device::ubc_commit()
 {
-	COMBINE_DATA(&m_barah);
+	if (m_ubc_dirty)
+	{
+		std::copy(std::begin(m_ubc), std::end(m_ubc), std::begin(m_ubc_live));
+		m_ubc_dirty = false;
+		if (!(m_ubc_live[28] & 0xc000))
+			m_ubc_sequence = false;
+	}
+	m_instruction_monitor = (m_ubc_live[4] || ((m_ubc_live[28] & 0x1000) && m_ubc_live[20]) || m_ubc_pending || m_ubc_fetch[4] || ((m_ubc_fetch[28] & 0x1000) && m_ubc_fetch[20]));
 }
 
-void sh7604_device::baral_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+bool sh7604_device::ubc_compare(uint32_t address, uint32_t data, unsigned size, bool write, bool fetch, bool peripheral, bool external, bool after)
 {
-	COMBINE_DATA(&m_baral);
+	if (m_standby)
+		return false;
+	if (m_ubc_dirty && local_time() >= m_ubc_ready)
+		ubc_commit();
+	uint16_t const *const settings = fetch ? m_ubc_fetch : m_ubc_live;
+	bool const modern = BIT(settings[28], 12);
+	if (external && (!modern || !BIT(settings[28], 13)))
+		return false;
+	bool matched[2]{};
+	bool const sequenced = modern && BIT(settings[28], 4);
+	bool const prior_sequence = (fetch && after) ? m_ubc_fetch_sequence : m_ubc_sequence;
+	for (unsigned channel = 0; channel < (modern ? 2U : 1U); channel++)
+	{
+		unsigned const base = channel * 16;
+		uint16_t const bus = settings[base + 4];
+		if (!(bus & (peripheral ? 0x80 : 0x40)) || !(bus & (fetch ? 0x10 : 0x20)) || !(bus & (write ? 8 : 4)))
+			continue;
+		unsigned const operand = bus & 3;
+		if (!external && operand && operand != (size == 4 ? 3 : size))
+			continue;
+		if (fetch && modern && BIT(settings[28], channel ? 2 : 10) != after)
+			continue;
+		uint32_t const bar = (uint32_t(settings[base]) << 16) | settings[base + 1];
+		uint32_t mask = (uint32_t(settings[base + 2]) << 16) | settings[base + 3];
+		if (modern && !fetch && !external)
+			mask |= size - 1;
+		if ((bar ^ address) & ~mask)
+			continue;
+		if (channel && BIT(settings[28], 3) && !fetch && !external)
+		{
+			if (!operand)
+				continue; // data comparison requires an explicitly selected size
+			uint32_t const expected = (uint32_t(settings[24]) << 16) | settings[25];
+			uint32_t const ignored = (uint32_t(settings[26]) << 16) | settings[27];
+			uint32_t const actual = size == 1 ? (data & 0xff) * 0x101 : data;
+			uint32_t const valid = size == 4 ? 0xffffffff : 0xffff;
+			if ((expected ^ actual) & ~ignored & valid)
+				continue;
+		}
+		matched[channel] = true;
+	}
+	bool interrupt = false;
+	for (unsigned channel = 0; channel < 2; channel++)
+	{
+		if (!matched[channel] || (sequenced && channel && !prior_sequence))
+			continue;
+		if (modern)
+		{
+			uint16_t const flag = (peripheral ? 0x4000 : 0x8000) >> (channel * 8);
+			m_ubc[28] |= flag;
+			m_ubc_live[28] |= flag;
+		}
+		if (sequenced && !channel)
+			m_ubc_sequence = true;
+		else
+			interrupt = true;
+	}
+	if (interrupt)
+	{
+		m_ubc_pending = true;
+		m_instruction_monitor = 1;
+		sh2_recalc_irq();
+	}
+	return interrupt;
 }
 
-uint16_t sh7604_device::barbh_r()
+void sh7604_device::ubc_accept()
 {
-	return m_barbh;
+	if (m_ubc_pending && !m_standby && !m_sh2_state->m_delay && !m_ubc_inhibit &&
+		!m_sh2_state->pending_nmi && (m_sh2_state->sr & SH_I) < SH_I)
+	{
+		m_ubc_pending = false;
+		sh2_exception_internal("UBC", 15, 12);
+		sh2_recalc_irq();
+	}
 }
 
-uint16_t sh7604_device::barbl_r()
+bool sh7604_device::instruction_access_valid(uint32_t address, unsigned size)
 {
-	return m_barbl;
+	// Table 4.6: bytes in the word/longword module area and longwords in
+	// the byte/word module area are CPU address errors, not peripheral writes.
+	if (!((size == 1 && address >= 0xffffff00) ||
+		(size == 4 && address >= 0xfffffe00 && address < 0xffffff00)))
+		return true;
+	debugger_exception_hook(9);
+	uint32_t const pc = m_sh2_state->m_delay ? m_sh2_state->pc - 2 : m_sh2_state->pc;
+	m_sh2_state->m_delay = 0;
+	m_sh2_state->r[15] -= 4;
+	write_long(m_sh2_state->r[15], m_sh2_state->sr);
+	m_sh2_state->r[15] -= 4;
+	write_long(m_sh2_state->r[15], pc);
+	m_sh2_state->pc = read_long(m_sh2_state->vbr + 9 * 4) & m_am;
+	m_sh2_state->icount -= 5;
+	return false;
 }
 
-void sh7604_device::barbh_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+bool sh7604_device::instruction_before(uint32_t pc, uint16_t opcode)
 {
-	COMBINE_DATA(&m_barbh);
+	if (!sh2_device::instruction_before(pc, opcode))
+		return false;
+	if (m_ubc_dirty && local_time() >= m_ubc_ready)
+		ubc_commit();
+	bool const new_fetch = !(pc & 2) || m_ubc_previous_pc != pc - 2;
+	if (new_fetch)
+		std::copy(std::begin(m_ubc_live), std::end(m_ubc_live), std::begin(m_ubc_fetch));
+	m_ubc_previous_pc = pc;
+	if (!m_ubc_dirty)
+		ubc_commit();
+	if (!m_instruction_monitor)
+		return true;
+	m_ubc_fetch_sequence = m_ubc_sequence;
+	bool const delayed = m_sh2_state->m_delay != 0;
+	if (BIT(m_ubc_fetch[28], 12))
+		ubc_compare(pc, opcode, 2, false, true, false);
+	else if (new_fetch)
+	{
+		// SH7000 mode compares fetched instructions, including the other half
+		// of the longword that a subsequent branch may never execute (6.3.8).
+		ubc_compare(pc & ~3U, 0, 2, false, true, false);
+		ubc_compare((pc & ~3U) + 2, 0, 2, false, true, false);
+	}
+	uint32_t const oldpc = m_sh2_state->pc;
+	if (!delayed)
+		ubc_accept();
+	return oldpc == m_sh2_state->pc;
 }
 
-void sh7604_device::barbl_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+void sh7604_device::instruction_after(uint32_t pc, uint16_t opcode)
 {
-	COMBINE_DATA(&m_barbl);
+	if (!m_instruction_monitor)
+		return;
+	if (BIT(m_ubc_fetch[28], 12))
+		ubc_compare(pc, opcode, 2, false, true, false, false, true);
+	// LDC (including memory forms) inhibits interrupts through the next instruction.
+	bool const ldc = ((opcode & 0xf00f) == 0x400e && ((opcode >> 4) & 15) <= 2) ||
+		((opcode & 0xf00f) == 0x4007 && ((opcode >> 4) & 15) <= 2);
+	m_ubc_inhibit = ldc;
+	ubc_accept();
+}
+
+void sh7604_device::execute_run()
+{
+	// Finish an interpreter delay slot before returning to compiled code.
+	if (m_instruction_monitor || (m_isdrc && m_sh2_state->m_delay))
+		execute_monitored();
+	else
+		sh2_device::execute_run();
+}
+
+void sh7604_device::execute_monitored()
+{
+	bool const drc = m_isdrc;
+	m_isdrc = false;
+	m_bus_pending = 0;
+	sh2_device::execute_run();
+	m_isdrc = drc;
+}
+
+void sh7604_device::ubc_external_cycle(uint32_t address, bool write)
+{
+	ubc_compare(address & 0x07ffffff, 0, 1, write, false, true, true);
+}
+
+uint8_t sh7604_device::read_byte(offs_t offset)
+{
+	uint8_t const data = sh2_device::read_byte(offset);
+	ubc_compare(offset, data, 1, false, false, false);
+	return data;
+}
+
+uint16_t sh7604_device::read_word(offs_t offset)
+{
+	uint16_t const data = sh2_device::read_word(offset);
+	ubc_compare(offset, data, 2, false, false, false);
+	return data;
+}
+
+uint32_t sh7604_device::read_long(offs_t offset)
+{
+	uint32_t const data = sh2_device::read_long(offset);
+	ubc_compare(offset, data, 4, false, false, false);
+	return data;
+}
+
+void sh7604_device::write_byte(offs_t offset, uint8_t data)
+{
+	sh2_device::write_byte(offset, data);
+	ubc_compare(offset, data, 1, true, false, false);
+}
+
+void sh7604_device::write_word(offs_t offset, uint16_t data)
+{
+	sh2_device::write_word(offset, data);
+	ubc_compare(offset, data, 2, true, false, false);
+}
+
+void sh7604_device::write_long(offs_t offset, uint32_t data)
+{
+	sh2_device::write_long(offset, data);
+	ubc_compare(offset, data, 4, true, false, false);
 }
 
 /*
@@ -1645,10 +2798,12 @@ void sh7604_device::fmr_sbycr_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		logerror("SH2 set clock multiplier x%d\n", 1 << (data & 3));
 		break;
 	case 0x00ff: // SBYCR
-		m_sbycr = data & 0xdf;
-		if (data & 0x1f)
-			logerror("SH2 module stop selected %02x\n", data);
+	{
+		uint8_t const old = m_sbycr;
+		m_sbycr = (data & 0xdf) & ((m_wtcsr & 0x20) ? 0x7f : 0xff);
+		module_standby(old);
 		break;
+	}
 	}
 }
 
@@ -1722,6 +2877,7 @@ void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 uint32_t sh7604_device::rtcsr_r()
 {
+	refresh_resync();
 	if (!machine().side_effects_disabled())
 		m_rtcsr_cmf_read = BIT(m_rtcsr, 7);
 	return m_rtcsr & 0xf8;
@@ -1732,14 +2888,21 @@ void sh7604_device::rtcsr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
 	{
+		refresh_resync();
+		uint32_t const old_select = m_rtcsr & 0x38;
 		uint32_t const cmf = m_rtcsr & 0x80;
 		m_rtcsr = (data & 0x78) | ((m_rtcsr_cmf_read && !(data & 0x80)) ? 0 : cmf);
 		m_rtcsr_cmf_read = false;
+		if ((m_rtcsr & 0x38) != old_select)
+			m_refresh_phase = 0;
+		refresh_activate();
+		sh2_recalc_irq();
 	}
 }
 
 uint32_t sh7604_device::rtcnt_r()
 {
+	refresh_resync();
 	return m_rtcnt & 0xff;
 }
 
@@ -1747,7 +2910,11 @@ void sh7604_device::rtcnt_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+	{
+		refresh_resync();
 		m_rtcnt = data & 0xff;
+		refresh_activate();
+	}
 }
 
 uint32_t sh7604_device::rtcor_r()
@@ -1759,7 +2926,68 @@ void sh7604_device::rtcor_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+	{
+		refresh_resync();
 		m_rtcor = data & 0xff;
+		refresh_activate();
+	}
+}
+
+// Chapter 7.2: the refresh interval timer runs even with MCR.RFSH clear.
+// Keep its counter lazy; only an unlatched enabled interrupt needs a scheduler
+// event. SDRAM refresh polling must not introduce millions of host callbacks.
+void sh7604_device::refresh_resync()
+{
+	// DRC sequence cycles are committed after the sequence. Include them at
+	// a register access, as FRT/DIVU do, so both engines sample the same time.
+	attotime const now = executing() ? local_time() + cycles_to_attotime(m_isdrc ? m_bus_pending : 0) : machine().time();
+	unsigned const select = (m_rtcsr >> 3) & 7;
+	static constexpr unsigned divisors[8] = { 0, 4, 16, 64, 256, 1024, 2048, 4096 };
+	if (!select || !m_refresh_clockrate || m_standby)
+	{
+		m_refresh_epoch = now;
+		return;
+	}
+	if (now <= m_refresh_epoch)
+		return;
+	attotime const elapsed = now - m_refresh_epoch;
+	uint64_t const cycles = uint64_t(elapsed.seconds()) * m_refresh_clockrate + elapsed.attoseconds() / HZ_TO_ATTOSECONDS(m_refresh_clockrate);
+	m_refresh_epoch += attotime::from_ticks(cycles, m_refresh_clockrate);
+	uint64_t const total = cycles + m_refresh_phase;
+	m_refresh_phase = total % divisors[select];
+	uint64_t ticks = total / divisors[select];
+	unsigned const distance = uint8_t(m_rtcor - m_rtcnt) ? uint8_t(m_rtcor - m_rtcnt) : 256;
+	if (ticks >= distance)
+	{
+		ticks -= distance;
+		m_rtcnt = ticks % (m_rtcor ? m_rtcor : 256);
+		bool const new_match = !(m_rtcsr & 0x80);
+		m_rtcsr |= 0x80;
+		if (new_match)
+			sh2_recalc_irq();
+	}
+	else
+		m_rtcnt = (m_rtcnt + ticks) & 0xff;
+}
+
+void sh7604_device::refresh_activate()
+{
+	unsigned const select = (m_rtcsr >> 3) & 7;
+	static constexpr unsigned divisors[8] = { 0, 4, 16, 64, 256, 1024, 2048, 4096 };
+	if (!select || !clock() || m_standby || (m_rtcsr & 0xc0) != 0x40)
+		m_refresh_timer->adjust(attotime::never);
+	else
+	{
+		unsigned const distance = uint8_t(m_rtcor - m_rtcnt) ? uint8_t(m_rtcor - m_rtcnt) : 256;
+		attotime const edge = m_refresh_epoch + attotime::from_ticks(distance * divisors[select] - m_refresh_phase, clock());
+		m_refresh_timer->adjust(std::max(attotime::zero, edge - machine().time()));
+	}
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::refresh_tick)
+{
+	refresh_resync();
+	refresh_activate();
 }
 
 void sh7604_device::set_frt_input(int state)
@@ -1768,6 +2996,8 @@ void sh7604_device::set_frt_input(int state)
 		return;
 
 	m_frt_input = state;
+	if (!clock() || m_standby || BIT(m_sbycr, 1))
+		return;
 
 	if (m_frc_tcr & 0x80)
 	{
@@ -1780,11 +3010,34 @@ void sh7604_device::set_frt_input(int state)
 			return;
 	}
 
+	if (frt_cycles() == m_frt_icr_read_cycle)
+	{
+		// 11.4.4: an upper ICR read delays capture by one f/4 drive clock.
+		m_frt_capture_pending = true;
+		m_frt_capture_clock_delay = cycles_to_attotime(4) * clock();
+		attotime const now = executing() ? local_time() + cycles_to_attotime(m_isdrc ? m_bus_pending : 0) : machine().time();
+		m_frt_capture_timer->adjust(now + cycles_to_attotime(4) - machine().time());
+	}
+	else
+		frt_capture();
+}
+
+void sh7604_device::frt_capture()
+{
 	sh2_timer_resync();
 	m_frc_icr = m_frc;
 	m_ftcsr |= ICF;
-	//logerror("SH2.%s: ICF activated (%x)\n", tag(), m_sh2_state->pc & AM);
 	sh2_recalc_irq();
+}
+
+TIMER_CALLBACK_MEMBER(sh7604_device::frt_capture_callback)
+{
+	if (m_frt_capture_pending && clock() && !m_standby && !BIT(m_sbycr, 1))
+	{
+		m_frt_capture_pending = false;
+		m_frt_capture_clock_delay = attotime::never;
+		frt_capture();
+	}
 }
 
 // The interrupt controller (Hardware Manual 5.2.5, table 5.4). Every on-chip source is a level
@@ -1805,6 +3058,9 @@ void sh7604_device::sh2_recalc_irq()
 		}
 	};
 
+	if (m_ubc_pending)
+		request(15, 12);
+
 	// DIVU overflow
 	if (m_divu_ovf && m_divu_ovfie)
 		request(m_irq_level.divu, m_irq_vector.divu);
@@ -1819,6 +3075,20 @@ void sh7604_device::sh2_recalc_irq()
 	// WDT interval
 	if (m_wtcsr & 0x80)
 		request(m_irq_level.wdt, (m_vcrwdt >> 8) & 0x7f);
+
+	// BSC refresh compare shares the WDT priority, below WDT on a tie.
+	if ((m_rtcsr & 0xc0) == 0xc0)
+		request(m_irq_level.wdt, m_vcrwdt & 0x7f);
+
+	// SCI default source priority: ERI, RXI, TXI, TEI.
+	if ((m_scr & 0x40) && (m_ssr & 0x38))
+		request(m_irq_level.sci, m_vcra >> 8);
+	if ((m_scr & m_ssr & 0x40))
+		request(m_irq_level.sci, m_vcra);
+	if ((m_scr & m_ssr & 0x80))
+		request(m_irq_level.sci, m_vcrb >> 8);
+	if ((m_scr & m_ssr & 4))
+		request(m_irq_level.sci, m_vcrb);
 
 	// FRT: input capture, output compare, overflow
 	uint8_t const frt = m_tier & m_ftcsr;
@@ -1862,6 +3132,7 @@ template <int Channel>
 void sh7604_device::drcr_w(uint8_t data)
 {
 	m_dmac[Channel].drcr = data & 3;
+	sh2_dmac_check(Channel);
 	sh2_recalc_irq();
 }
 
@@ -1919,6 +3190,11 @@ void sh7604_device::chcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	m_dmac[Channel].chcr = (merged & 0xfffd) | (clear_te ? 0 : old & 2);
 	if (mem_mask & 2)
 		m_dma_te_read[Channel] = false;
+	if (m_dma_owner != Channel)
+	{
+		m_dma_ack_high[Channel] = BIT(m_dmac[Channel].chcr, 7);
+		dma_dack_drive(Channel, !m_dma_ack_high[Channel]);
+	}
 	sh2_dmac_check(Channel);
 	// TE cleared or IE changed: the request follows the bits
 	sh2_recalc_irq();

@@ -40,11 +40,13 @@
 //   LOG_IRQ  sound CPU interrupt level changes
 //   LOG_REG  every write to the common registers, with the CPU that wrote it
 //   LOG_KEY  key on / key off / stop of a slot: envelope, mixer routing, first sample bytes, loudest output
+//   LOG_RULE violations of Saturn reset/MEM4MB/interrupt-level software requirements
 //   LOG_MIX  once per second: output peak, master volume, DAC18B, CD audio input slots, DSP state
 #define LOG_IRQ  (1U << 1)
 #define LOG_REG  (1U << 2)
 #define LOG_KEY  (1U << 3)
 #define LOG_MIX  (1U << 4)
+#define LOG_RULE (1U << 5) // Rel.2.5 Saturn software restrictions; diagnostic only
 #define VERBOSE 0
 #include "logmacro.h"
 
@@ -94,7 +96,7 @@
 #define MDYSL(slot)     ((slot->udata.data[0x7] >> 0x0) & 0x003F)
 
 #define OCT(slot)       ((slot->udata.data[0x8] >> 0xB) & 0x000F)
-#define FNS(slot)       ((slot->udata.data[0x8] >> 0x0) & 0x03FF)
+#define FNS(slot)       ((slot->udata.data[0x8] >> 0x0) & 0x07FF)
 
 #define LFORE(slot)     ((slot->udata.data[0x9] >> 0x0) & 0x8000)
 #define LFOF(slot)      ((slot->udata.data[0x9] >> 0xA) & 0x001F)
@@ -120,7 +122,6 @@
 #define MOEMPTY()   ((m_udata.data[2] >> 0x0) & 0x0800)
 #define MIOVF()     ((m_udata.data[2] >> 0x0) & 0x0400)
 #define MIFULL()    ((m_udata.data[2] >> 0x0) & 0x0200)
-#define MIEMPTY()   ((m_udata.data[2] >> 0x0) & 0x0100)
 
 #define SCILV0()    ((m_udata.data[0x24/2] >> 0x0) & 0xff)
 #define SCILV1()    ((m_udata.data[0x26/2] >> 0x0) & 0xff)
@@ -137,8 +138,6 @@
 
 #define USEDSP
 
-/* TODO */
-//#define dma_transfer_end  ((scsp_regs[0x24/2] & 0x10) >> 4) | (((scsp_regs[0x26/2] & 0x10) >> 4) << 1) | (((scsp_regs[0x28/2] & 0x10) >> 4) << 2)
 
 static const float SDLT[8] = {-1000000.0f,-36.0f,-30.0f,-24.0f,-18.0f,-12.0f,-6.0f,0.0f};
 
@@ -199,6 +198,8 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	m_TimCnt[2] = 0;
 	m_cur_irq_level = 0;
 	m_timerS = nullptr;
+	m_timerDMA = nullptr;
+	memset(&m_dma, 0, sizeof(m_dma));
 }
 
 //-------------------------------------------------
@@ -239,6 +240,7 @@ void scsp_device::device_start()
 	save_item(NAME(m_BUFPTR));
 #if SCSP_FM_DELAY
 	save_item(NAME(m_DELAYBUF));
+	save_item(NAME(m_DELAYVALID));
 	save_item(NAME(m_DELAYPTR));
 #endif
 
@@ -263,6 +265,8 @@ void scsp_device::device_start()
 	save_item(NAME(m_TimPris));
 	save_item(NAME(m_TimCnt));
 	save_item(NAME(m_eg_counter));
+	save_item(NAME(m_sample_counter));
+	save_item(NAME(m_reset_ready));
 	save_item(NAME(m_lfsr));
 
 	save_item(NAME(m_dma.dmea));
@@ -270,6 +274,10 @@ void scsp_device::device_start()
 	save_item(NAME(m_dma.dtlg));
 	save_item(NAME(m_dma.dgate));
 	save_item(NAME(m_dma.ddir));
+	save_item(NAME(m_dma.remaining));
+	save_item(NAME(m_dma.data));
+	save_item(NAME(m_dma.active));
+	save_item(NAME(m_dma.write_phase));
 
 	save_item(NAME(m_mcieb));
 	save_item(NAME(m_mcipd));
@@ -284,6 +292,7 @@ void scsp_device::device_start()
 	save_item(NAME(m_DSP.DEC));
 	save_item(NAME(m_DSP.MIXS));
 	save_item(NAME(m_DSP.MIXSPrev));
+	save_item(NAME(m_DSP.MixWritten));
 	save_item(NAME(m_DSP.EXTS));
 	save_item(NAME(m_DSP.EFREG));
 	save_item(NAME(m_DSP.Stopped));
@@ -317,10 +326,12 @@ void scsp_device::device_reset()
 	if (m_stream == nullptr)
 		return; // first reset happens before the stream exists, init() has cleared everything
 
+	m_reset_ready = machine().time() + attotime::from_usec(30);
 	m_timerA->adjust(attotime::never);
 	m_timerB->adjust(attotime::never);
 	m_timerC->adjust(attotime::never);
 	m_timerS->adjust(attotime::never);
+	m_timerDMA->adjust(attotime::never);
 
 	if (m_cur_irq_level)
 		m_irq_cb((offs_t)m_cur_irq_level, CLEAR_LINE);
@@ -332,6 +343,7 @@ void scsp_device::device_reset()
 	m_BUFPTR = 0;
 	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
 	m_eg_counter = 0;
+	m_sample_counter = 0;
 	m_lfsr = 1;
 	memset(&m_dma, 0, sizeof(m_dma));
 	m_mcieb = 0;
@@ -339,6 +351,7 @@ void scsp_device::device_reset()
 	m_main_irq_cb(0);
 
 	init_state();
+	UpdateSampleTimer();
 	set_output_gain(0, master_gain());
 	set_output_gain(1, master_gain());
 }
@@ -380,6 +393,12 @@ void scsp_device::device_post_load()
 void scsp_device::device_clock_changed()
 {
 	m_stream->set_sample_rate(clock() / 512);
+	if (m_timerS) {
+		m_timerS->adjust(attotime::never);
+		UpdateSampleTimer();
+		if (m_dma.active)
+			m_timerDMA->adjust(attotime::from_ticks(4, clock()));
+	}
 }
 
 void scsp_device::rom_bank_pre_change()
@@ -447,6 +466,8 @@ void scsp_device::CheckPendingIRQ()
 
 	if (level != m_cur_irq_level)
 	{
+		if ((VERBOSE & LOG_RULE) && m_saturn_mode && level == 7)
+			logerror("SCSP: Saturn interrupt level 7 is reserved for development tools (Rel.2.5 chapter 1)\n");
 		// lower the line that was asserted by its own level: not every driver tracks the last one
 		if (VERBOSE & LOG_IRQ)
 			logerror("SCSP %.6f sound CPU interrupt level %d -> %d (SCIPD %04x SCIEB %04x)\n", machine().time().as_double(), m_cur_irq_level, level, pend, en);
@@ -488,7 +509,7 @@ void scsp_device::ResetInterrupts()
 	CheckPendingIRQ();
 }
 
-// The timers are free running 8 bit up counters: the first overflow comes (255 - TIM) count
+// The timers are free running 8 bit up counters: the first overflow comes (256 - TIM) count
 // cycles after the write (ST-77 Timer Register), then every 256 cycles. A count cycle is
 // 1, 2, 4 ... 128 samples (TxCTL). MiSTer SCSP.sv and Ymir scsp_timer.hpp do the same.
 void scsp_device::StartTimer(int n)
@@ -499,8 +520,9 @@ void scsp_device::StartTimer(int n)
 	m_TimCnt[n] = (reg & 0xff) << 8;
 
 	emu_timer *const timer = n == 0 ? m_timerA : n == 1 ? m_timerB : m_timerC;
-	attotime const cycle = attotime::from_ticks(512 * u64(m_TimPris[n]), clock());
-	timer->adjust(cycle * std::max(1, 255 - int(reg & 0xff)));
+	attotime const sample = attotime::from_ticks(512, clock());
+	u64 const ticks = u64(256 - int(reg & 0xff)) * m_TimPris[n] - (m_sample_counter & (m_TimPris[n] - 1));
+	timer->adjust(m_timerS->remaining() + sample * (ticks - 1));
 }
 
 void scsp_device::TimerExpired(int n)
@@ -531,21 +553,21 @@ TIMER_CALLBACK_MEMBER(scsp_device::timerC_cb)
 	TimerExpired(2);
 }
 
-// 1 Fs interrupt, once per sample. Only generated while one of the CPUs has it enabled
-// (running it all the time would cost a timer event per sample for everything using the chip).
+// 1 Fs pending status runs independently of CPU interrupt enables. Programs may
+// poll SCIPD with SCIEB=0 (the supplied scsptest initialization does exactly this).
+// Enable writes must not restart the free-running sample phase.
 void scsp_device::UpdateSampleTimer()
 {
-	if ((m_udata.data[0x1e/2] | m_mcieb) & 0x400)
+	if (m_timerS->remaining() == attotime::never)
 	{
 		attotime const sample = attotime::from_ticks(512, clock());
 		m_timerS->adjust(sample, 0, sample);
 	}
-	else
-		m_timerS->adjust(attotime::never);
 }
 
 TIMER_CALLBACK_MEMBER(scsp_device::timerS_cb)
 {
+	++m_sample_counter;
 	SetPending(0x400);
 }
 
@@ -641,7 +663,9 @@ int scsp_device::EG_Update(SCSP_SLOT *slot)
 u32 scsp_device::Step(SCSP_SLOT *slot)
 {
 	int octave = (OCT(slot) ^ 8) - 8 + SHIFT - 10;
-	u32 Fn = FNS(slot) + (1 << 10);
+	// Bit 10 replaces the implicit unit bit: 0x400 holds the phase stationary
+	// (used by scsptest's single-slot FM and DSP-generated waveforms).
+	u32 Fn = FNS(slot) ^ (1 << 10);
 	if (octave >= 0)
 	{
 		Fn <<= octave;
@@ -733,6 +757,8 @@ void scsp_device::init()
 	m_timerB = timer_alloc(FUNC(scsp_device::timerB_cb), this);
 	m_timerC = timer_alloc(FUNC(scsp_device::timerC_cb), this);
 	m_timerS = timer_alloc(FUNC(scsp_device::timerS_cb), this);
+	m_timerDMA = timer_alloc(FUNC(scsp_device::dma_tick_cb), this);
+	UpdateSampleTimer();
 
 	for (i = 0; i < 0x400; ++i)
 	{
@@ -798,6 +824,11 @@ void scsp_device::init()
 // register and processing state that goes back to its power-on value on a reset
 void scsp_device::init_state()
 {
+#if SCSP_FM_DELAY
+	std::fill(std::begin(m_DELAYBUF), std::end(m_DELAYBUF), 0);
+	std::fill(std::begin(m_DELAYVALID), std::end(m_DELAYVALID), false);
+	m_DELAYPTR = 0;
+#endif
 	m_DSP.Init();
 	m_DSP.space = &this->space();
 
@@ -865,6 +896,8 @@ void scsp_device::UpdateReg(int reg)
 	switch (reg & 0x3f)
 	{
 		case 0x0:
+			if ((VERBOSE & LOG_RULE) && m_saturn_mode && !MEM4B())
+				logerror("SCSP: Rel.2.5 requires MEM4MB=1 on Saturn (control=%04x)\n", m_udata.data[0]);
 			set_output_gain(0, master_gain());
 			set_output_gain(1, master_gain());
 			break;
@@ -920,18 +953,15 @@ void scsp_device::UpdateReg(int reg)
 			break;
 		case 0x18:
 		case 0x19:
-			if (!m_irq_cb.isunset())
-				StartTimer(0);
+			StartTimer(0);
 			break;
 		case 0x1a:
 		case 0x1b:
-			if (!m_irq_cb.isunset())
-				StartTimer(1);
+			StartTimer(1);
 			break;
 		case 0x1c:
 		case 0x1d:
-			if (!m_irq_cb.isunset())
-				StartTimer(2);
+			StartTimer(2);
 			break;
 		case 0x1e: // SCIEB
 		case 0x1f:
@@ -955,16 +985,9 @@ void scsp_device::UpdateReg(int reg)
 			break;
 		case 0x22:  //SCIRE
 		case 0x23:
-			if (!m_irq_cb.isunset())
-			{
-				m_udata.data[0x20/2] &= ~m_udata.data[0x22/2];
-				ResetInterrupts();
-
-				// NOTE: the timers used to be one-shot and an expired one was put back into
-				// SCIPD here to imitate saturn:sakurat (while saturn:crocj kept getting
-				// spurious interrupts from it). They run freely now, so the next overflow
-				// sets the flag again by itself.
-			}
+			// Pending flags are pollable and clearable even without a sound IRQ callback.
+			m_udata.data[0x20/2] &= ~m_udata.data[0x22/2];
+			ResetInterrupts();
 			break;
 		case 0x24:
 		case 0x25:
@@ -1051,14 +1074,20 @@ void scsp_device::UpdateRegR(int reg)
 
 		case 0x18:
 		case 0x19:
-			break;
-
 		case 0x1a:
 		case 0x1b:
-			break;
-
 		case 0x1c:
 		case 0x1d:
+			{
+				unsigned const n = (reg - 0x18) / 2;
+				emu_timer *const timer = n == 0 ? m_timerA : n == 1 ? m_timerB : m_timerC;
+				if (timer->remaining() != attotime::never) {
+					u64 const period = 512 * u64(m_TimPris[n]);
+					u64 const left = timer->remaining().as_ticks(clock());
+					u8 const count = 256 - (left + period - 1) / period;
+					m_udata.data[(reg & ~1) / 2] = (m_udata.data[(reg & ~1) / 2] & 0xff00) | count;
+				}
+			}
 			break;
 
 		//case 0x20:
@@ -1084,6 +1113,10 @@ void scsp_device::w16(u32 addr, u16 val)
 	{
 		int slot = addr / 0x20;
 		addr &= 0x1f;
+		if (addr == 0) val &= 0x1fff; // KYONEX is a write strobe; bits 13-15 are unused
+		else if (addr == 0x0c) val &= 0x0fff;
+		else if (addr == 0x14) val &= 0x00ff;
+		else if (addr >= 0x18) val = 0;
 		*((u16 *) (m_Slots[slot].udata.datab + (addr))) = val;
 		UpdateSlotReg(slot, addr & 0x1f);
 	}
@@ -1112,7 +1145,7 @@ void scsp_device::w16(u32 addr, u16 val)
 	{
 		//DSP
 		if (addr < 0x780)  //COEF
-			*((u16 *) (m_DSP.COEF + (addr - 0x700) / 2)) = val;
+			*((u16 *) (m_DSP.COEF + (addr - 0x700) / 2)) = val & 0xfff8;
 		else if (addr < 0x7c0)
 			*((u16 *) (m_DSP.MADRS + (addr - 0x780) / 2)) = val;
 		else if (addr < 0x800) // MADRS is mirrored twice
@@ -1220,12 +1253,6 @@ u16 scsp_device::r16(u32 addr)
 
 inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 {
-	if (SSCTL(slot) == 3) // manual says cannot be used
-	{
-		logerror("SCSP: Invaild SSCTL setting at slot %02x\n", slot->slot);
-		return 0;
-	}
-
 	s32 sample = 0; // NB: Shouldn't be necessary, but GCC 8.2.1 claims otherwise.
 	int step = slot->step;
 	u32 addr1, addr2, addr_select;                                   // current and next sample addresses
@@ -1251,13 +1278,13 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 
 	// FM: ST-77 Table 4.15 gives no modulation for MDL 0-4. The averaged X/Y inputs are scaled with
 	// six fractional bits: the integer part moves the sample index and the fraction adds to the
-	// interpolation phase (MiSTer MDCalc/MOD_PHASE, Ymir SlotProcessStep3_2). The ring buffer holds
-	// twice the slot output, so the sum of the two inputs is ((X + Y) / 2) of its entries.
+	// interpolation phase. The CPU-visible ring stores raw 16-bit samples; the
+	// two modulation inputs are summed before applying the depth shift.
 	int mod_int = 0;
 	int mod_frac = 0;
 	if (MDL(slot) >= 5)
 	{
-		s32 const zd = ((m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] + m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) >> 1) & 0x3ffffe;
+		s32 const zd = (m_RINGBUF[(m_BUFPTR + MDXSL(slot)) & 63] + m_RINGBUF[(m_BUFPTR + MDYSL(slot)) & 63]) & 0x3fffff;
 		s32 const md = util::sext((zd << 5) >> (16 - MDL(slot)), 16);
 		mod_int = util::sext(md >> 5, 11);
 		mod_frac = (md & 0x1f) << 1;
@@ -1314,13 +1341,13 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 			slot->EG.state = SCSP_DECAY1;
 	}
 
-	for (addr_select = 0; addr_select < 2; addr_select++)
+	for (addr_select = 0; SSCTL(slot) == 0 && addr_select < 2; addr_select++)
 	{
 		s32 rem_addr;
 		switch (LPCTL(slot))
 		{
 		case 0: //no loop
-			if (*addr[addr_select] >= LSA(slot) && *addr[addr_select] >= LEA(slot))
+			if (addr_select == 0 && *addr[addr_select] >= LSA(slot) && *addr[addr_select] >= LEA(slot))
 			{
 				//slot->active=0;
 				StopSlot(slot, 0);
@@ -1379,12 +1406,12 @@ inline s32 scsp_device::UpdateSlot(SCSP_SLOT *slot)
 		if (!SDIR(slot))
 		{
 			u16 Enc = ((TL(slot)) << 0x0) | (0x7 << 0xd);
-			*m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 1);
+			*m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 2);
 		}
 		else
 		{
 			u16 Enc = (0 << 0x0) | (0x7 << 0xd);
-			*m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 1);
+			*m_RBUFDST = (sample * m_LPANTABLE[Enc]) >> (SHIFT + 2);
 		}
 	}
 
@@ -1403,12 +1430,13 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			m_lfsr = (m_lfsr >> 1) | ((((m_lfsr >> 5) ^ m_lfsr) & 1) << 16);
 #if SCSP_FM_DELAY
 			m_RBUFDST = m_DELAYBUF + m_DELAYPTR;
+			m_DELAYVALID[m_DELAYPTR] = !STWINH((m_Slots + sl));
 #else
 			m_RBUFDST = m_RINGBUF + m_BUFPTR;
 #endif
-			if (m_Slots[sl].active)
+			SCSP_SLOT *slot = m_Slots + sl;
+			if (slot->active)
 			{
-				SCSP_SLOT *slot = m_Slots + sl;
 				u16 Enc;
 
 				s32 sample = UpdateSlot(slot);
@@ -1437,9 +1465,16 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 						slot->log_peak = std::max({ slot->log_peak, std::abs(l) >> 2, std::abs(r) >> 2 });
 				}
 			}
+			else if (!STWINH(slot)) {
+				u16 const invert[4] = { 0, 0x7fff, 0x8000, 0xffff };
+				*m_RBUFDST = SDIR(slot) ? invert[SBCTL(slot)] : 0;
+			}
+			if (!slot->active)
+				m_DSP.SetSample(0, ISEL(slot), IMXL(slot));
 
 #if SCSP_FM_DELAY
-			m_RINGBUF[(m_BUFPTR + 64 - (SCSP_FM_DELAY - 1)) & 63] = m_DELAYBUF[(m_DELAYPTR + SCSP_FM_DELAY - (SCSP_FM_DELAY - 1)) % SCSP_FM_DELAY];
+			if (m_DELAYVALID[(m_DELAYPTR + 1) % SCSP_FM_DELAY])
+				m_RINGBUF[(m_BUFPTR + 64 - (SCSP_FM_DELAY - 1)) & 63] = m_DELAYBUF[(m_DELAYPTR + 1) % SCSP_FM_DELAY];
 #endif
 			++m_BUFPTR;
 			m_BUFPTR &= 63;
@@ -1524,95 +1559,118 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 	}
 }
 
-// TODO: this needs to be timer-ized
-// Very likely this is burst too.
-// - darius2j uses this at startup with DGATE enabled
-void scsp_device::exec_dma()
+// SCSP has 128 memory cycles per sample (ST-77 3.2), each four chip clocks.
+// Transfers alternate a register and a sound-memory phase. The latter yields to
+// PCM/DSP and refresh; CPUs have lower priority. PCM/DSP phases follow MiSTer's
+// SCSP.sv. The two refresh slots are evenly spaced in this model; original-chip
+// grant/refresh edges have not been measured.
+unsigned scsp_device::memory_cycle() const
 {
-	static u16 tmp_dma[3];
-	int i;
-
-	logerror("SCSP: DMA transfer START\n"
-				"DMEA: %04x DRGA: %04x DTLG: %04x\n"
-				"DGATE: %d  DDIR: %d\n", m_dma.dmea, m_dma.drga, m_dma.dtlg, m_dma.dgate ? 1 : 0, m_dma.ddir ? 1 : 0);
-
-	/* Copy the dma values in a temp storage for resuming later */
-	/* (DMA *can't* overwrite its parameters).                  */
-	if (!(m_dma.ddir))
-	{
-		for (i = 0; i < 3; i++)
-			tmp_dma[i] = m_udata.data[(0x12 + (i * 2)) / 2];
-	}
-
-	/* note: we don't use space.read_word / write_word because it can happen that SH-2 enables the DMA instead of m68k. */
-	/* TODO: don't know if params auto-updates, I guess not ... */
-	if (m_dma.ddir)
-	{
-		if (m_dma.dgate)
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				this->space().write_word(m_dma.dmea, 0);
-				m_dma.dmea += 2;
-			}
-		}
-		else
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				u16 tmp;
-				tmp = r16(m_dma.drga);
-				this->space().write_word(m_dma.dmea, tmp);
-				m_dma.dmea += 2;
-				m_dma.drga += 2;
-			}
-		}
-	}
-	else
-	{
-		if (m_dma.dgate)
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				w16(m_dma.drga, 0);
-				m_dma.drga += 2;
-			}
-		}
-		else
-		{
-			for (i = 0; i < m_dma.dtlg; i += 2)
-			{
-				u16 tmp = read_word(m_dma.dmea);
-				w16(m_dma.drga, tmp);
-				m_dma.dmea += 2;
-				m_dma.drga += 2;
-			}
-		}
-	}
-
-	/*Resume the values*/
-	if (!(m_dma.ddir))
-	{
-		for (i = 0; i < 3; i++)
-			m_udata.data[(0x12 + (i * 2)) / 2] = tmp_dma[i];
-	}
-
-	/* Job done */
-	m_udata.data[0x16/2] &= ~0x1000;
-	/* DMA transfer end interrupt: pending for both CPUs, SCIEB / MCIEB decide who is told */
-	SetPending(0x10);
+	u64 const remaining = m_timerS->remaining().as_ticks(clock());
+	return ((512 - std::min<u64>(remaining, 512)) / 4) & 127;
 }
 
+bool scsp_device::dma_memory_reserved(unsigned cycle) const
+{
+	// Two refresh cycles per sample. PCM and DSP use alternate memory cycles.
+	if (cycle == 0 || cycle == 64)
+		return true;
+	if (cycle & 1)
+	{
+		auto const &slot = m_Slots[cycle / 4];
+		return slot.active && (SDIR((&slot)) || slot.EG.att != 0x3ff) && SSCTL((&slot)) == 0;
+	}
+	if (!m_DSP.Stopped)
+	{
+		auto const &step = m_DSP.MPRO_decoded[(cycle + 127) & 127];
+		return step.MRD || step.MWT;
+	}
+	return false;
+}
+
+attotime scsp_device::dma_access_wait(bool registers) const
+{
+	if (!m_dma.active)
+		return attotime::zero;
+	// The register bus can be used while DMA is waiting for sound memory, and vice versa.
+	bool const memory = m_dma.write_phase == bool(m_dma.ddir);
+	if (registers == memory)
+		return attotime::zero;
+	attotime const remaining = m_timerDMA->remaining();
+	// At a scheduler tie the DMA grant wins over the CPU request; its callback
+	// may not have run yet, so zero remaining time still consumes one bus cycle.
+	return remaining > attotime::zero ? remaining : attotime::from_ticks(4, clock());
+}
+
+void scsp_device::exec_dma()
+{
+	if (m_dma.active)
+		return;
+	m_dma.dmea = ((m_udata.data[0x14/2] & 0xf000) << 4) | (m_udata.data[0x12/2] & 0xfffe);
+	m_dma.drga = m_udata.data[0x14/2] & 0x0ffe;
+	m_dma.dtlg = m_udata.data[0x16/2] & 0x0ffe;
+	m_dma.ddir = BIT(m_udata.data[0x16/2], 13);
+	m_dma.dgate = BIT(m_udata.data[0x16/2], 14);
+	m_dma.active = true;
+	m_dma.write_phase = false;
+	// MiSTer's 11-bit word counter wraps on zero. Legal software must keep the
+	// transfer within the register area (ST-77's maximum is 3812 bytes).
+	m_dma.remaining = m_dma.dtlg ? m_dma.dtlg : 0x1000;
+	u64 const remaining = m_timerS->remaining().as_ticks(clock());
+	unsigned const delay = unsigned(remaining % 4);
+	m_timerDMA->adjust(attotime::from_ticks(delay ? delay : 4, clock()));
+}
+
+void scsp_device::dma_step()
+{
+	bool const memory = m_dma.write_phase == bool(m_dma.ddir);
+	if (!m_dma.write_phase)
+	{
+		// DGATE clears the destination without reading or disturbing the source.
+		m_dma.data = m_dma.dgate ? 0 : memory ? read_word(m_dma.dmea) : r16(m_dma.drga);
+		m_dma.write_phase = true;
+		return;
+	}
+	if (memory)
+		space().write_word(m_dma.dmea, m_dma.data);
+	else if (m_dma.drga < 0x412 || m_dma.drga > 0x416)
+		w16(m_dma.drga, m_dma.data); // DMA cannot change its own control registers
+	m_dma.dmea = (m_dma.dmea + 2) & 0xffffe;
+	m_dma.drga = (m_dma.drga + 2) & 0xffe;
+	m_dma.remaining -= 2;
+	m_dma.write_phase = false;
+	if (!m_dma.remaining)
+	{
+		m_dma.active = false;
+		m_udata.data[0x16/2] &= ~0x1000;
+		SetPending(0x10);
+	}
+}
+
+TIMER_CALLBACK_MEMBER(scsp_device::dma_tick_cb)
+{
+	m_stream->update();
+	bool const memory = m_dma.write_phase == bool(m_dma.ddir);
+	if (!memory || !dma_memory_reserved(memory_cycle()))
+		dma_step();
+	m_timerDMA->adjust(m_dma.active ? attotime::from_ticks(4, clock()) : attotime::never);
+}
 
 u16 scsp_device::read(offs_t offset)
 {
+	if ((VERBOSE & LOG_RULE) && m_saturn_mode && machine().time() < m_reset_ready && !machine().side_effects_disabled())
+		logerror("SCSP: prohibited read during the 30us reset initialization interval\n");
 	m_stream->update();
 	return r16(offset * 2);
 }
 
 void scsp_device::write(offs_t offset, u16 data, u16 mem_mask)
 {
+	if ((VERBOSE & LOG_RULE) && m_saturn_mode && machine().time() < m_reset_ready)
+		logerror("SCSP: prohibited write during the 30us reset initialization interval\n");
 	m_stream->update();
+	if (m_dma.active && offset * 2 >= 0x412 && offset * 2 <= 0x416)
+		return;
 
 	u16 tmp = r16(offset * 2);
 	COMBINE_DATA(&tmp);

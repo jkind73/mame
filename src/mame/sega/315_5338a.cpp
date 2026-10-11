@@ -35,7 +35,7 @@ sega_315_5338a_device::sega_315_5338a_device(const machine_config &mconfig, cons
 	m_read_cb(*this, 0xff), m_write_cb(*this),
 	m_in_port_cb(*this, 0xff),
 	m_out_port_cb(*this),
-	m_port_config(0), m_serial_output(0), m_address(0)
+	m_port_config(0), m_serial_output(0), m_address(0), m_cmd(0)
 {
 	std::fill(std::begin(m_port_value), std::end(m_port_value), 0xff);
 }

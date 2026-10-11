@@ -15,7 +15,7 @@ sh7604_dma_test_subscription = emu.add_machine_frame_notifier(function()
         space:write_u16(0x00210000, 0xaffe) -- BRA to itself
         space:write_u16(0x00210002, 0x0009) -- NOP delay slot
         cpu.state["SR"].value = 0xf0
-        cpu.state["PC"].value = 0x00210000
+        cpu.state["CURPC"].value = 0x00210000
         for i = 0, 7 do
             space:write_u32(src + i*4, 0x12345600+i)
             space:write_u32(dst + i*4, 0)

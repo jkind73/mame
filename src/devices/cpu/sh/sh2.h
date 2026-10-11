@@ -29,6 +29,9 @@ public:
 	void func_cache_access();       // DRC cache helper (m_cache_op on m_cache_addr/m_cache_data)
 
 	// Switches the external bus timing callback on or off (a driver option); the DRC recompiles its blocks.
+	template <typename... T> void set_bus_observer_callback(T &&... args) { m_bus_observer.set(std::forward<T>(args)...); }
+	template <typename... T> void set_bus_ready_callback(T &&... args) { m_bus_ready.set(std::forward<T>(args)...); }
+	void set_bus_wait_active(bool on) { m_bus_wait_monitor = on; }
 	void set_bus_timing_enabled(bool on) { m_bus_timed = on && !m_bus_timing.isnull(); m_cache_dirty = true; }
 
 protected:
@@ -49,6 +52,12 @@ protected:
 	virtual uint32_t execute_default_irq_vector(int inputnum) const noexcept override { return 0; }
 	virtual bool execute_input_edge_triggered(int inputnum) const noexcept override { return inputnum == INPUT_LINE_NMI; }
 	virtual void execute_run() override;
+	virtual bool instruction_before(uint32_t pc, uint16_t opcode);
+	bool instruction_bus_ready(uint32_t pc, uint16_t opcode);
+	virtual bool instruction_access_valid(uint32_t address, unsigned size) { return true; }
+	bool m_onchip_width_checks = false;
+	virtual void generate_invalid_access_branch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, int target) override;
+	virtual void instruction_after(uint32_t pc, uint16_t opcode) { }
 	virtual void execute_set_input(int inputnum, int state) override;
 
 	// device_memory_interface overrides
@@ -76,7 +85,10 @@ protected:
 	sh7604_cache m_cache;
 	bool m_cache_model = false;
 	uint32_t m_cache_op = 0, m_cache_size = 0, m_cache_addr = 0, m_cache_data = 0; // DRC helper arguments
-	uint32_t m_fetch_pc = ~0U;      // interpreter: PC of the previous instruction fetch
+	uint32_t m_fetch_pc = ~0U;      // PC of the previous instruction fetch
+	uint32_t m_fetch_data = 0;     // prefetched instruction longword
+	uint32_t m_fetch_cached = 0; // accessed by 32-bit UML operations
+	uint32_t m_fetch_reuse = 0;    // DRC already fetched the interpreter fallback instruction
 
 	bool cache_area(offs_t address) const { return m_cache_model && address < 0x20000000 && m_cache.enabled(); }
 
@@ -87,6 +99,11 @@ protected:
 	// the access (machine time, so it stays monotonic across CPU resets);
 	// dma marks an access of the on-chip DMAC, a requester of its own.
 	using bus_timing_delegate = device_delegate<int (offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma)>;
+	using bus_observer_delegate = device_delegate<void (offs_t address, unsigned size, bool write, bool fill)>;
+	using bus_ready_delegate = device_delegate<bool (offs_t address, unsigned size, bool write)>;
+	bus_ready_delegate m_bus_ready;
+	bus_observer_delegate m_bus_observer;
+	bool m_bus_observed = false;
 	bus_timing_delegate m_bus_timing;
 	bool m_bus_timed = false;
 	uint32_t m_bus_write = 0;       // DRC helper argument
@@ -101,13 +118,14 @@ protected:
 	bool m_track_pending = false;
 	void bus_charge(offs_t address, unsigned size, bool write, bool fill = false)
 	{
+		if (m_bus_observed)
+			m_bus_observer(address, size, write, fill);
 		if (m_bus_timed)
 			m_sh2_state->icount -= m_bus_timing(address, size, write, fill, local_time() + cycles_to_attotime(m_bus_pending), false);
 	}
 	uint32_t cache_read(offs_t address, unsigned size, bool instruction);
 	void cache_write(offs_t address, unsigned size, uint32_t data);
 
-private:
 	virtual uint8_t read_byte(offs_t A) override;
 	virtual uint16_t read_word(offs_t A) override;
 	virtual uint32_t read_long(offs_t A) override;
@@ -116,6 +134,7 @@ private:
 	virtual void write_word(offs_t A, uint16_t V) override;
 	virtual void write_long(offs_t A, uint32_t V) override;
 
+private:
 	virtual void LDCMSR(const uint16_t opcode) override;
 	virtual void LDCSR(const uint16_t opcode) override;
 	virtual void TRAPA(uint32_t i) override;
@@ -128,7 +147,7 @@ private:
 	virtual const opcode_desc* get_desclist(offs_t pc) override;
 
 	virtual void generate_update_cycles(drcuml_block &block, compiler_state &compiler, uml::parameter param, bool allow_exception) override;
-	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start) override;
+	virtual void generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start, uint32_t ovrpc) override;
 	virtual void static_generate_entry_point() override;
 	virtual void static_generate_memory_accessor(int size, int iswrite, const char *name, uml::code_handle *&handleptr) override;
 

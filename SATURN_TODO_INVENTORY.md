@@ -12,8 +12,8 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 ## src/devices/cpu/sh/sh2.cpp (2)
 
-- 470: /* TODO: timing is a guess */
-- 656: /* avoid spurious irqs with this (TODO: needs a better fix) */
+- 473: /* TODO: timing is a guess */
+- 824: /* avoid spurious irqs with this (TODO: needs a better fix) */
 
 ## src/devices/cpu/sh/sh7014.cpp (4)
 
@@ -66,50 +66,26 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 403: // Pin clocks and framing replace the former byte-completion HACK.
 
-## src/devices/cpu/sh/sh7604.cpp (21)
+## src/devices/cpu/sh/sh7604.cpp (12)
 
-- 15: TODO: Test and use sh7604_wdt_device, sh7604_sci_device, and sh7604_bus_device as appropriate
-- 50: , m_dma_kludge_cb(*this)
-- 115: m_dma_kludge_cb.resolve();
-- 603: //  TODO: cps3boot breaks with this enabled. Needs callback
-- 607: // TODO: internal map takes way too much resources if mirrored with 0x1ffffe00
-- 899: // The legacy external-clock HACK mistook divider zero for a stopped clock.
-- 923: // The legacy flagged-match HACK skipped recurring output and clear events.
-- 1112: if (!m_dma_kludge_cb.isnull())
-- 1113: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 1163: if (!m_dma_kludge_cb.isnull())
-- 1164: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 1213: if (!m_dma_kludge_cb.isnull())
-- 1214: dmadata = m_dma_kludge_cb(tempsrc, tempdst, dmadata, m_active_dma_size[dmach]);
-- 1271: if (!m_dma_kludge_cb.isnull())
-- 1272: value = m_dma_kludge_cb(tempsrc, tempdst, value, m_active_dma_size[dmach]);
-- 1409: // TODO: gate external RS=0 transfers on DREQ rather than auto-request.
-- 1527: // Pin clocks and framing replace the former byte-completion HACK.
-- 1942: // The legacy status-observer HACK sees synchronized flags and counter.
-- 2037: // The legacy output-level HACK stored OLVL without driving the compare pins.
-- 2171: // TODO: unemulated, level is seemingly not documented/settable?
-- 2342: // The former buffer-storage HACK is replaced by chapter 6 bus comparisons.
+- 51: , m_dma_kludge_cb(*this)
+- 132: m_dma_kludge_cb.resolve();
+- 735: //  TODO: cps3boot breaks with this enabled. Needs callback
+- 739: // TODO: internal map takes way too much resources if mirrored with 0x1ffffe00
+- 1030: // The legacy external-clock HACK mistook divider zero for a stopped clock.
+- 1054: // The legacy flagged-match HACK skipped recurring output and clear events.
+- 1266: if (!m_dma_kludge_cb.isnull() && step.shift + bytes * 8 == (m_active_dma_size[ch] == 3 ? 32U : (8U << m_active_dma_size[ch])))
+- 1267: m_dma_data[step.word] = m_dma_kludge_cb(m_dma_unit_src, m_dma_unit_dst, m_dma_data[step.word], m_active_dma_size[ch]);
+- 1626: // Pin clocks and framing replace the former byte-completion HACK.
+- 2047: // The legacy status-observer HACK sees synchronized flags and counter.
+- 2142: // The legacy output-level HACK stored OLVL without driving the compare pins.
+- 2465: // The former buffer-storage HACK is replaced by chapter 6 bus comparisons.
 
 ## src/devices/cpu/sh/sh7604.h (3)
 
 - 21: typedef device_delegate<int (uint32_t src, uint32_t dst, uint32_t data, int size)> dma_kludge_delegate;
 - 34: template <typename... T> void set_dma_kludge_callback(T &&... args) { m_dma_kludge_cb.set(std::forward<T>(args)...); }
-- 364: dma_kludge_delegate              m_dma_kludge_cb;
-
-## src/devices/cpu/sh/sh7604_bus.cpp (3)
-
-- 10: TODO:
-- 165: // 16 bit access only, TODO
-- 171: // TODO: 8 bit access is invalid
-
-## src/devices/cpu/sh/sh7604_sci.cpp (2)
-
-- 9: TODO:
-- 71: // TODO: verify this
-
-## src/devices/cpu/sh/sh7604_wdt.cpp (1)
-
-- 7: TODO:
+- 412: dma_kludge_delegate              m_dma_kludge_cb;
 
 ## src/devices/machine/nvram.cpp (2)
 
@@ -120,12 +96,11 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 53: , m_output(*this, tag) // TODO: change to "tag:status"
 
-## src/lib/util/cdrom.cpp (4)
+## src/lib/util/cdrom.cpp (3)
 
-- 426: // FIXME: if (!result && (actual < length)) report error
-- 1058: /* TODO: I don't know why sometimes the data is one endian and sometimes another */
-- 1541: osd_file::open(std::string(filename), OPEN_FLAG_READ, file, filesize); // FIXME: allow osd_file to accept std::string_view
-- 3143: /* guesstimate the track length? */
+- 1059: /* TODO: I don't know why sometimes the data is one endian and sometimes another */
+- 1542: osd_file::open(std::string(filename), OPEN_FLAG_READ, file, filesize); // FIXME: allow osd_file to accept std::string_view
+- 3144: /* guesstimate the track length? */
 
 ## src/mame/sega/315-5881_crypt.cpp (3)
 
@@ -146,9 +121,9 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 - 16: TODO:
 - 407: TODO:
 - 418: test1f diagnostic hacks:
-- 542: /* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be an actual bug with the CD block. */
-- 629: /* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
-- 776: /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
+- 541: /* TODO: Bug! accesses this one, if returning 0 the SH-2 hard-crashes. Might be an actual bug with the CD block. */
+- 628: /* TODO: if you change the driver configuration then NVRAM contents gets screwed, needs mods in MAME framework */
+- 775: /* TODO: 3D Lemmings bogusly enables TH Control mode, wants this to return the ID, needs HW tests.  */
 
 ## src/mame/sega/saturn.cpp (4)
 
@@ -215,14 +190,14 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 ## src/mame/sega/saturn_scu.cpp (9)
 
 - 7: TODO:
-- 506: // FIXME: should be /4 but saturn BIOS already disagrees
-- 555: // TODO: A-Bus penalties comes from $b0-$b7 registers and are fairly complex
-- 611: // TODO: overhead due of SDRAM refresh?
-- 658: // CD transfers are special even without the hack below
-- 706: // TODO: check if other buses can be used
-- 886: // HACK: bus durations retain the calibrated cost model; ownership ends at the last acknowledgement.
-- 990: //TODO: why guardherj sets up a 0x23000 transfer for the FMV?
-- 1000: // TODO: other rules still applies
+- 515: // FIXME: should be /4 but saturn BIOS already disagrees
+- 564: // TODO: A-Bus penalties comes from $b0-$b7 registers and are fairly complex
+- 620: // TODO: overhead due of SDRAM refresh?
+- 667: // CD transfers are special even without the hack below
+- 716: // TODO: check if other buses can be used
+- 897: // HACK: bus durations retain the calibrated cost model; ownership ends at the last acknowledgement.
+- 1002: //TODO: why guardherj sets up a 0x23000 transfer for the FMV?
+- 1012: // TODO: other rules still applies
 
 ## src/mame/sega/saturn_vdp2.cpp (15)
 
@@ -250,27 +225,26 @@ What each one means and what is done about it is in `SATURN_REWRITE_CHECKLIST.md
 
 - 8: TODO: Timing, vs298 needs a higher interrupt frequency, but then
 
-## src/mame/sega/smpc.cpp (15)
+## src/mame/sega/smpc.cpp (14)
 
 - 10: TODO:
-- 54: // TODO: undefined odd addresses really latches whatever was last written
-- 111: // TODO: custom RTC subdevice
-- 269: m_intback_timer->adjust(attotime::from_usec(700));  // TODO: is timing correct?
-- 271: // TODO: following looks wrong here
-- 457: // TODO: not allowed outside vblank
-- 489: // TODO: check against ireg2, must be 0xf0
-- 539: // TODO: diagnostic also wants this to have bit 3 high
-- 544: // TODO: understand where NetLink actually lies and implement delegation accordingly
-- 636: // TODO: undocumented commands SEC_GETSEED (0x1e) and SEC_VERIFY (0x1f)
-- 670: m_oreg[9] = m_region_code; // TODO: system region on Saturn
-- 710: m_oreg[31] = 0x10; // TODO: doc says 0?
-- 732: // The collection time of the peripherals (a guess: the SMPC reads the ports with its own timing,
-- 941: TODO: how does the multitap check if a controller is connected? does it ask for the
-- 1019: // TODO: generated during the 3VINT period according to manual
+- 84: // TODO: undefined odd addresses really latches whatever was last written
+- 291: m_intback_timer->adjust(attotime::from_usec(700));  // TODO: is timing correct?
+- 293: // TODO: following looks wrong here
+- 481: // TODO: not allowed outside vblank
+- 513: // TODO: check against ireg2, must be 0xf0
+- 563: // TODO: diagnostic also wants this to have bit 3 high
+- 568: // TODO: understand where NetLink actually lies and implement delegation accordingly
+- 659: // TODO: undocumented commands SEC_GETSEED (0x1e) and SEC_VERIFY (0x1f)
+- 693: m_oreg[9] = m_region_code; // TODO: system region on Saturn
+- 733: m_oreg[31] = 0x10; // TODO: doc says 0?
+- 755: // The collection time of the peripherals (a guess: the SMPC reads the ports with its own timing,
+- 958: TODO: how does the multitap check if a controller is connected? does it ask for the
+- 1036: // TODO: generated during the 3VINT period according to manual
 
 ## src/mame/sega/smpc.h (1)
 
-- 80: // TODO: checking against nullptr still returns a device!?
+- 99: // TODO: checking against nullptr still returns a device!?
 
 ## src/mame/sega/stv.cpp (27)
 

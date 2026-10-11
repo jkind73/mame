@@ -26,6 +26,7 @@
 #include "emupal.h"
 #include "screen.h"
 
+
 #include <deque>
 
 class saturn_state : public driver_device
@@ -87,6 +88,10 @@ protected:
 	bool m_stv_ioga = false;          // ST-V I/O gate array at 00400000H
 	static unsigned cpu_bus_waits(uint32_t address, bool write, unsigned bits);
 	int sh2_bus_cycles(unsigned cpu, offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma);
+	void sh2_bus_observe(unsigned cpu, offs_t address, unsigned size, bool write, bool fill);
+	void master_bus_observe(offs_t address, unsigned size, bool write, bool fill) { sh2_bus_observe(0, address, size, write, fill); }
+	void slave_bus_observe(offs_t address, unsigned size, bool write, bool fill) { sh2_bus_observe(1, address, size, write, fill); }
+	void scu_cbus_cycle(offs_t address, uint32_t write) { m_maincpu->ubc_external_cycle(address, write != 0); m_slave->ubc_external_cycle(address, write != 0); }
 	int master_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma) { return sh2_bus_cycles(0, address, size, write, fill, now, dma); }
 	int slave_bus_cycles(offs_t address, unsigned size, bool write, bool fill, attotime now, bool dma) { return sh2_bus_cycles(1, address, size, write, fill, now, dma); }
 	uint64_t sh2_bus_arbitrate(unsigned requester, const attotime &now, uint64_t cycles, offs_t address, bool write);
@@ -116,6 +121,10 @@ protected:
 	void sound_68k_reset_w(int state);
 	void system_reset_w(int state);
 	void system_halt_w(int state);
+	void scu_halt_w(int state);
+	void update_cpu_halt();
+	bool m_scu_halt = false;
+	bool m_system_halt = false;
 	void dot_select_w(int state);
 
 	void m68k_reset_callback(int state);
@@ -127,6 +136,7 @@ protected:
 	void hint_callback(int state);
 	int m_prev_hint, m_prev_vint;
 
+	unsigned sound_dma_wait(bool registers);
 	void soundram_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 	uint16_t soundram_r(offs_t offset);
 	uint8_t backupram_r(offs_t offset);
@@ -145,9 +155,6 @@ protected:
 	/* VDP2 */
 	int vdp2_start();
 
-//  void scudsp_end_w(int state);
-//  uint16_t scudsp_dma_r(offs_t offset);
-//  void scudsp_dma_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 };
 
 

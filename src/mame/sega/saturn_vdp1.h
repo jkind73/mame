@@ -47,6 +47,7 @@ public:
 	bool bpp8() const { return m_tvmr & saturn_vdp1::TVMR_8BPP; }
 	bool rotate() const { return m_tvmr & saturn_vdp1::TVMR_ROTATE; }
 	bool hdtv() const { return m_tvmr & saturn_vdp1::TVMR_HDTV; }
+	bool display_interlace() const { return m_disp_die; }
 	// pixel x of line y of the displayed frame buffer (16 bit word, or 0xff00 | byte in 8bpp)
 	uint16_t display_pixel(unsigned x, unsigned y) const;
 	uint16_t display_pixel_field(unsigned x, unsigned line) const;

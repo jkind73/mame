@@ -411,11 +411,9 @@ TODO:
 - The Cart-Dev mode hangs even with the -dev bios,I would like to see what it does on the real HW.
 - IC13 games on the dev bios doesn't even load the cartridge / crashes the emulation at start-up,
   rom rearrange needed?
-- SCU DSP still has its fair share of issues, it also needs to be converted to CPU structure;
 - Add the RS232c interface (serial port), needed by fhboxers (accesses some ports in the a-bus dummy range).
 - Video emulation is nowhere near perfection.
 - Reimplement the idle skip if possible.
-- Move SCU device into its respective file;
 
 test1f diagnostic hacks:
 "chash parge error" test 0x6035d04 <- 0x0009 (nop the button check)
@@ -429,11 +427,9 @@ test1f diagnostic hacks:
 #include <cstdlib>
 #include "saturn.h"
 
-#include "saturn_cdb.h"
 #include "saturn_cd_hle.h"
 
 #include "cpu/m68000/m68000.h"
-#include "cpu/scudsp/scudsp.h"
 #include "machine/nvram.h"
 
 #include "bus/saturn/bram.h"
@@ -593,13 +589,14 @@ void sat_console_state::saturn_mem(address_map &map)
 // NOTE: waitstate weights should be +2/+1, going +2 for both r/w kills BIOS startup sound already.
 void sat_console_state::sound_mem(address_map &map)
 {
-	map(0x000000, 0x0fffff).before_delay(NAME([](offs_t) { return 1; })).ram().share("sound_ram");
-	map(0x100000, 0x100fff).before_delay(NAME([](offs_t) { return 1; })).rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write));
+	map(0x000000, 0x07ffff).before_delay(NAME([this] (offs_t) { return sound_dma_wait(false); })).ram().share("sound_ram");
+	map(0x100000, 0x100fff).before_delay(NAME([this] (offs_t) { return sound_dma_wait(true); })).rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write));
 }
 
 void sat_console_state::scsp_mem(address_map &map)
 {
-	map(0x000000, 0x0fffff).ram().share("sound_ram");
+	// Rel.2.5 chapter 1: the board contains one 4Mbit (512KiB) DRAM, not two.
+	map(0x000000, 0x07ffff).ram().share("sound_ram");
 }
 
 
@@ -823,6 +820,7 @@ void sat_console_state::saturn(machine_config &config)
 	// Model the SH7604 cache (section 8)
 	m_maincpu->set_cache_emulation(true);
 	m_maincpu->set_bus_timing_callback(FUNC(sat_console_state::master_bus_cycles));
+	m_maincpu->set_bus_observer_callback(FUNC(sat_console_state::master_bus_observe));
 	m_maincpu->set_irq_acknowledge_callback(m_scu, FUNC(saturn_scu_device::irq_ack_cb));
 	TIMER(config, "scantimer").configure_scanline(FUNC(sat_console_state::saturn_scanline), "screen", 0, 1);
 
@@ -831,6 +829,7 @@ void sat_console_state::saturn(machine_config &config)
 	m_slave->set_is_slave(1);
 	m_slave->set_cache_emulation(true);
 	m_slave->set_bus_timing_callback(FUNC(sat_console_state::slave_bus_cycles));
+	m_slave->set_bus_observer_callback(FUNC(sat_console_state::slave_bus_observe));
 	m_slave->set_irq_acknowledge_callback(m_dcc, FUNC(saturn_dcc_device::irq_ack_cb));
 
 	SATURN_DCC(config, m_dcc, MASTER_CLOCK_352);
@@ -843,8 +842,9 @@ void sat_console_state::saturn(machine_config &config)
 
 	SATURN_SCU(config, m_scu, MASTER_CLOCK_352);
 	m_scu->set_hostcpu(m_maincpu);
-	m_scu->main_dtack_cb().set_inputline(m_maincpu, INPUT_LINE_HALT);
-	m_scu->main_dtack_cb().append_inputline(m_slave, INPUT_LINE_HALT);
+	m_scu->set_scsp_wait_callback([this] (bool registers) { return m_scsp->dma_access_wait(registers); });
+	m_scu->cbus_cycle_cb().set(FUNC(sat_console_state::scu_cbus_cycle));
+	m_scu->main_dtack_cb().set(FUNC(sat_console_state::scu_halt_w));
 	m_scu->vdp2_penalty_cb().set(FUNC(sat_console_state::vdp2_vram_write_penalty));
 
 
@@ -888,6 +888,7 @@ void sat_console_state::saturn(machine_config &config)
 	SPEAKER(config, "speaker", 2).front();
 
 	SCSP(config, m_scsp, 8467200*8/3); // 8.4672 MHz EXTCLK * 8 / 3 = 22.5792 MHz
+	m_scsp->set_saturn_mode(true);
 	m_scsp->set_addrmap(0, &sat_console_state::scsp_mem);
 	m_scsp->irq_cb().set(FUNC(sat_console_state::scsp_irq));
 	m_scsp->main_irq_cb().set(m_scu, FUNC(saturn_scu_device::sound_req_w));
@@ -917,7 +918,6 @@ static void saturn_cart(device_slot_interface &device)
 void sat_console_state::saturnus(machine_config &config)
 {
 	saturn(config);
-	SATURN_CDB(config, "saturn_cdb", 16000000);
 
 	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-U");
 	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
@@ -941,7 +941,6 @@ void sat_console_state::saturneu(machine_config &config)
 	m_vdp1->set_clock(MASTER_CLOCK_320_PAL / 2);
 	m_vdp2->set_clock(MASTER_CLOCK_320_PAL);
 
-	SATURN_CDB(config, "saturn_cdb", 16000000);
 
 	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("PAL");
 	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
@@ -955,7 +954,6 @@ void sat_console_state::saturneu(machine_config &config)
 void sat_console_state::saturnjp(machine_config &config)
 {
 	saturn(config);
-	SATURN_CDB(config, "saturn_cdb", 16000000);
 
 	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-J");
 	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
@@ -969,7 +967,6 @@ void sat_console_state::saturnjp(machine_config &config)
 void sat_console_state::saturnkr(machine_config &config)
 {
 	saturn(config);
-	SATURN_CDB(config, "saturn_cdb", 16000000);
 
 	SOFTWARE_LIST(config, "cd_list").set_original("saturn").set_filter("NTSC-K");
 

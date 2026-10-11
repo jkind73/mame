@@ -213,6 +213,7 @@ private:
 	// 0x40
 	void cmd_set_filter_range();
 	void cmd_get_filter_range();
+	void cmd_get_filter_connection();
 	void cmd_set_filter_subheader_conditions();
 	void cmd_get_filter_subheader_conditions();
 	void cmd_set_filter_mode();

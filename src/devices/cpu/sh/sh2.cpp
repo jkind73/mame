@@ -32,6 +32,8 @@ constexpr int SH2_INT_15 = 15;
 
 sh2_device::sh2_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines, uint32_t address_mask)
 	: sh_common_execution(mconfig, type, tag, owner, clock, ENDIANNESS_BIG, internal_map)
+	, m_bus_ready(*this)
+	, m_bus_observer(*this)
 	, m_bus_timing(*this)
 	, m_program_config("program", ENDIANNESS_BIG, 32, addrlines, 0, internal_map)
 	, m_decrypted_program_config("decrypted_opcodes", ENDIANNESS_BIG, 32, addrlines, 0)
@@ -48,6 +50,10 @@ sh2_device::~sh2_device()
 
 void sh2_device::device_start()
 {
+	m_bus_ready.resolve();
+	save_item(NAME(m_bus_wait_monitor));
+	m_bus_observer.resolve();
+	m_bus_observed = !m_bus_observer.isnull();
 	m_bus_timing.resolve();
 	m_bus_timed = !m_bus_timing.isnull();
 
@@ -130,6 +136,7 @@ std::unique_ptr<util::disasm_interface> sh2_device::create_disassembler()
 }
 
 static void cfunc_cache_access(void *param) { ((sh2_device *)param)->func_cache_access(); }
+static void cfunc_cached_instruction(void *param) { ((sh2_device *)param)->execute_monitored(); }
 
 // SH7604 cache (section 8), when the driver enables the model. A read of
 // the cache area with CE set is served from the cache; a miss replaces the
@@ -189,7 +196,8 @@ void sh2_device::func_cache_access()
 		bus_charge(m_cache_addr, m_cache_size, true);
 		break;
 	case 2:
-		cache_read(m_cache_addr, 4, true);
+		m_fetch_data = cache_read(m_cache_addr, 4, true);
+		m_fetch_cached = 1;
 		break;
 	case 3: // an access that goes straight to the bus
 		if (m_tas_read && !m_bus_write)
@@ -197,8 +205,9 @@ void sh2_device::func_cache_access()
 		bus_charge(m_cache_addr, m_cache_size, m_bus_write);
 		break;
 	default: // an instruction fetch from the bus: CE clear or cache-through
-		if (cache_area(m_cache_addr))
-			cache_read(m_cache_addr, 4, true);
+		m_fetch_cached = cache_area(m_cache_addr);
+		if (m_fetch_cached)
+			m_fetch_data = cache_read(m_cache_addr, 4, true);
 		else
 			bus_charge(m_cache_addr, 4, false);
 		break;
@@ -211,25 +220,37 @@ void sh2_device::func_cache_access()
 // (after a jump, an exception or a block entry). m_fetch_pc holds the PC of
 // the previous instruction at run time; only the second-half instructions
 // that can be reached out of sequence (sequence starts and branch targets)
-// test it. The opcode is not taken from the cache.
-void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start)
+// test it. Cached opcodes that differ from the compiled RAM sequence are
+// executed by the shared interpreter for the remainder of the slice.
+void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start, uint32_t ovrpc)
 {
-	bool const timed = m_bus_timed && desc->pc < 0x40000000;
+	bool const timed = (m_bus_timed || m_bus_observed) && desc->pc < 0x40000000;
 	bool const cached = m_cache_model && desc->pc < 0x20000000;
-	if (m_bus_timed || m_track_pending)
+	if (m_bus_timed || m_bus_observed || m_track_pending)
 		UML_MOV(block, mem(&m_bus_pending), compiler.cycles - desc->cycles);
 	if (!timed && !cached)
 		return;
 	uml::code_label const skip = compiler.labelnum++;
 	if (desc->pc & 2)
 	{
-		if (!sequence_start && !desc->is_branch_target())
+		uml::code_label const fetch = compiler.labelnum++;
+		if (cached)
 		{
-			UML_MOV(block, mem(&m_fetch_pc), desc->pc);
-			return;
+			uml::code_label const ordinary = compiler.labelnum++;
+			UML_TEST(block, mem(&m_cache.ccr), sh7604_cache::CCR_CE);
+			UML_JMPc(block, COND_Z, ordinary);
+			UML_TEST(block, mem(&m_fetch_cached), 1);
+			UML_JMPc(block, COND_Z, fetch);
+			UML_LABEL(block, ordinary);
 		}
-		UML_CMP(block, mem(&m_fetch_pc), desc->pc - 2);
-		UML_JMPc(block, COND_E, skip);
+		if (!sequence_start && !desc->is_branch_target())
+			UML_JMP(block, skip);
+		else
+		{
+			UML_CMP(block, mem(&m_fetch_pc), desc->pc - 2);
+			UML_JMPc(block, COND_E, skip);
+		}
+		UML_LABEL(block, fetch);
 	}
 	if (!timed)
 	{
@@ -242,6 +263,32 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 	UML_CALLC(block, cfunc_cache_access, this);
 	UML_LABEL(block, skip);
 	UML_MOV(block, mem(&m_fetch_pc), desc->pc);
+	if (cached)
+	{
+		uml::code_label const uncached = compiler.labelnum++;
+		uml::code_label const matches = compiler.labelnum++;
+		UML_TEST(block, mem(&m_cache.ccr), sh7604_cache::CCR_CE);
+		UML_JMPc(block, COND_Z, uncached);
+		UML_SHR(block, I0, mem(&m_fetch_data), (desc->pc & 2) ? 0 : 16);
+		UML_AND(block, I0, I0, 0xffff);
+		UML_CMP(block, I0, desc->opptr);
+		UML_JMPc(block, COND_E, matches);
+		save_fast_iregs(block);
+		UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);
+		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), compiler.cycles - desc->cycles);
+		// A native branch may already have executed before its cached delay slot
+		// differs. Preserve that branch's target when handing the slot to the interpreter.
+		if (ovrpc == SH_OVRPC_DYNAMIC)
+			UML_MOV(block, mem(&m_sh2_state->m_delay), mem(&m_sh2_state->target));
+		else if (ovrpc != SH_OVRPC_NONE)
+			UML_MOV(block, mem(&m_sh2_state->m_delay), ovrpc + 2);
+		UML_MOV(block, mem(&m_fetch_reuse), 1);
+		UML_CALLC(block, cfunc_cached_instruction, this);
+		UML_EXIT(block, EXECUTE_OUT_OF_CYCLES);
+		UML_LABEL(block, uncached);
+		UML_MOV(block, mem(&m_fetch_cached), 0);
+		UML_LABEL(block, matches);
+	}
 }
 
 uint8_t sh2_device::read_byte(offs_t offset)
@@ -451,21 +498,30 @@ void sh2_device::execute_run()
 	{
 		debugger_instruction_hook(m_sh2_state->pc);
 
-		// Instructions are fetched as longwords through the cache (8.4.1):
-		// one fetch per longword of straight-line code, and one after every
-		// jump. The fetch updates the cache; the opcode itself is taken
-		// from memory, so stale cached code is not executed (the DRC could
-		// not do that, and both cores must agree).
-		if (m_sh2_state->pc < 0x40000000 && (!(m_sh2_state->pc & 2) || m_fetch_pc != m_sh2_state->pc - 2))
+		// Fetch actual cached instructions, including private cache-array patches.
+		// A DRC mismatch has already fetched this instruction; do not charge it twice.
+		bool const cached = cache_area(m_sh2_state->pc);
+		bool const reuse = m_fetch_reuse && m_fetch_pc == m_sh2_state->pc;
+		m_fetch_reuse = false;
+		if (!reuse && m_sh2_state->pc < 0x40000000
+				&& (!(m_sh2_state->pc & 2) || m_fetch_pc != m_sh2_state->pc - 2 || (cached && !m_fetch_cached)))
 		{
-			if (cache_area(m_sh2_state->pc))
-				cache_read(m_sh2_state->pc & ~3, 4, true);
+			m_fetch_cached = cached;
+			if (cached)
+				m_fetch_data = cache_read(m_sh2_state->pc & ~3, 4, true);
 			else
 				bus_charge(m_sh2_state->pc & ~3, 4, false);
 		}
 		m_fetch_pc = m_sh2_state->pc;
+		const uint16_t opcode = cached
+				? uint16_t(m_fetch_data >> ((m_sh2_state->pc & 2) ? 0 : 16))
+				: m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
+		if (!cached)
+			m_fetch_cached = false;
 
-		const uint16_t opcode = m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
+		uint32_t const instruction_pc = m_sh2_state->pc;
+		if (!instruction_before(instruction_pc, opcode))
+			continue;
 
 		if (m_sh2_state->m_delay)
 		{
@@ -476,6 +532,7 @@ void sh2_device::execute_run()
 			m_sh2_state->pc += 2;
 
 		execute_one(opcode);
+		instruction_after(instruction_pc, opcode);
 
 		if (m_test_irq && !m_sh2_state->m_delay)
 		{
@@ -486,23 +543,188 @@ void sh2_device::execute_run()
 	} while (m_sh2_state->icount > 0);
 }
 
+// Check before register updates or memory side effects. AWAIT repeats the same
+// instruction after one clock; other devices and their timers can run meanwhile.
+// The DRC uses this interpreter boundary only during an active waited transfer.
+bool sh2_device::instruction_before(uint32_t pc, uint16_t opcode)
+{
+	if (instruction_bus_ready(pc, opcode))
+		return true;
+	if (m_sh2_state->pc != pc)
+		return false; // The access check took a CPU address-error exception.
+	spin_until_time(cycles_to_attotime(1));
+	return false;
+}
+
+bool sh2_device::instruction_bus_ready(uint32_t pc, uint16_t op)
+{
+	if (m_bus_ready.isnull() && !m_onchip_width_checks)
+		return true;
+	auto const &r = m_sh2_state->r;
+	u32 const relative_pc = m_sh2_state->m_delay ? m_sh2_state->m_delay + 2 : pc + 4;
+	unsigned const n = (op >> 8) & 15, m = (op >> 4) & 15, lo = op & 15, group = op >> 12;
+	auto ready = [this](u32 a, unsigned size, bool write)
+	{ return instruction_access_valid(a, size) && (a >= 0x40000000 || m_bus_ready.isnull() || m_bus_ready(a & m_am, size, write)); };
+	switch (group)
+	{
+	case 0:
+		if (lo >= 4 && lo <= 6)
+			return ready(r[n] + r[0], 1U << (lo - 4), true);
+		if (lo >= 12 && lo <= 14)
+			return ready(r[m] + r[0], 1U << (lo - 12), false);
+		if (lo == 15)
+			return ready(r[m], 4, false) && ready(r[n], 4, false);
+		break;
+	case 1:
+		return ready(r[n] + 4 * lo, 4, true);
+	case 2:
+		if (lo <= 2)
+			return ready(r[n], 1U << lo, true);
+		if (lo >= 4 && lo <= 6)
+			return ready(r[n] - (1U << (lo - 4)), 1U << (lo - 4), true);
+		break;
+	case 4:
+		if (lo == 15)
+			return ready(r[m], 2, false) && ready(r[n], 2, false);
+		if ((op & 0xff) == 0x1b)
+			return ready(r[n], 1, false) && ready(r[n], 1, true);
+		if ((op & 0xcf) == 2 || (op & 0xcf) == 3)
+			return ready(r[n] - 4, 4, true);
+		if ((op & 0xcf) == 6 || (op & 0xcf) == 7)
+			return ready(r[n], 4, false);
+		break;
+	case 5:
+		return ready(r[m] + 4 * lo, 4, false);
+	case 6:
+		if (lo <= 2)
+			return ready(r[m], 1U << lo, false);
+		if (lo >= 4 && lo <= 6)
+			return ready(r[m], 1U << (lo - 4), false);
+		break;
+	case 8:
+		switch ((op >> 8) & 15)
+		{
+		case 0:
+		case 1:
+			return ready(r[m] + lo * (1U << n), 1U << n, true);
+		case 4:
+		case 5:
+			return ready(r[m] + lo * (1U << (n - 4)), 1U << (n - 4), false);
+		}
+		break;
+	case 9:
+		return ready(relative_pc + 2 * (op & 255), 2, false);
+	case 12:
+		switch (n)
+		{
+		case 0:
+		case 1:
+		case 2:
+			return ready(m_sh2_state->gbr + (op & 255) * (1U << n), 1U << n, true);
+		case 4:
+		case 5:
+		case 6:
+			return ready(m_sh2_state->gbr + (op & 255) * (1U << (n - 4)), 1U << (n - 4), false);
+		case 12:
+			return ready(m_sh2_state->gbr + r[0], 1, false);
+		case 13:
+		case 14:
+		case 15:
+			return ready(m_sh2_state->gbr + r[0], 1, false) && ready(m_sh2_state->gbr + r[0], 1, true);
+		}
+		break;
+	case 13:
+		return ready((relative_pc & ~3U) + 4 * (op & 255), 4, false);
+	}
+	return true;
+}
+
+// Rare illegal on-chip widths use the shared interpreter boundary before any
+// instruction side effect. Ordinary RAM/peripheral accesses stay compiled.
+void sh2_device::generate_invalid_access_branch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, int target)
+{
+	if (!m_onchip_width_checks)
+		return;
+	// A fault in a branch delay slot must enter at the branch boundary so
+	// the interpreter retains the branch PC/target when building the frame.
+	if (desc->delay.first())
+		generate_invalid_access_branch(block, compiler, desc->delay.first(), target);
+	uint16_t const op = desc->opptr;
+	unsigned const n = (op >> 8) & 15, m = (op >> 4) & 15, lo = op & 15;
+	auto const check = [&] (uml::parameter base, unsigned bytes, int displacement = 0, bool indexed = false)
+	{
+		if (bytes == 2)
+			return;
+		if (indexed)
+			UML_ADD(block, I0, base, R32(0));
+		else if (displacement)
+			UML_ADD(block, I0, base, displacement);
+		else
+			UML_MOV(block, I0, base);
+		if (bytes == 1)
+		{
+			UML_CMP(block, I0, 0xffffff00);
+			UML_JMPc(block, COND_AE, target);
+		}
+		else
+		{
+			int const valid = compiler.labelnum++;
+			UML_CMP(block, I0, 0xfffffe00);
+			UML_JMPc(block, COND_B, valid);
+			UML_CMP(block, I0, 0xffffff00);
+			UML_JMPc(block, COND_B, target);
+			UML_LABEL(block, valid);
+		}
+	};
+	switch (op >> 12)
+	{
+	case 0:
+		if (lo >= 4 && lo <= 6) check(R32(n), 1U << (lo - 4), 0, true);
+		else if (lo >= 12 && lo <= 14) check(R32(m), 1U << (lo - 12), 0, true);
+		else if (lo == 15) { check(R32(m), 4); check(R32(n), 4); }
+		break;
+	case 1: check(R32(n), 4, 4 * lo); break;
+	case 2:
+		if (lo <= 2) check(R32(n), 1U << lo);
+		else if (lo >= 4 && lo <= 6) check(R32(n), 1U << (lo - 4), -(1 << (lo - 4)));
+		break;
+	case 4:
+		if ((op & 255) == 0x1b) check(R32(n), 1);
+		else if ((op & 0xcf) == 2 || (op & 0xcf) == 3) check(R32(n), 4, -4);
+		else if ((op & 0xcf) == 6 || (op & 0xcf) == 7) check(R32(n), 4);
+		break;
+	case 5: check(R32(m), 4, 4 * lo); break;
+	case 6:
+		if (lo <= 2) check(R32(m), 1U << lo);
+		else if (lo >= 4 && lo <= 6) check(R32(m), 1U << (lo - 4));
+		break;
+	case 8:
+		if (n <= 1) check(R32(m), 1U << n, lo * (1U << n));
+		else if (n == 4 || n == 5) check(R32(m), 1U << (n - 4), lo * (1U << (n - 4)));
+		break;
+	case 12:
+		if (n <= 2) check(uml::mem(&m_sh2_state->gbr), 1U << n, (op & 255) * (1U << n));
+		else if (n >= 4 && n <= 6) check(uml::mem(&m_sh2_state->gbr), 1U << (n - 4), (op & 255) * (1U << (n - 4)));
+		else if (n >= 12) check(uml::mem(&m_sh2_state->gbr), 1, 0, true);
+		break;
+	}
+}
+
 void sh2_device::init_drc_frontend()
 {
-	m_drcfe = std::make_unique<sh2_frontend>(this, COMPILE_BACKWARDS_BYTES, COMPILE_FORWARDS_BYTES, SINGLE_INSTRUCTION_MODE ? 1 : COMPILE_MAX_SEQUENCE);
+	m_drcfe = std::make_unique<sh2_frontend>(this, COMPILE_BACKWARDS_BYTES, COMPILE_FORWARDS_BYTES,
+											 SINGLE_INSTRUCTION_MODE ? 1 : COMPILE_MAX_SEQUENCE);
 }
 
 void sh2_device::state_string_export(const device_state_entry &entry, std::string &str) const
 {
 	switch (entry.index())
 	{
-		case STATE_GENFLAGS:
-			str = string_format("%c%c%d%c%c",
-					m_sh2_state->sr & SH_M ? 'M':'.',
-					m_sh2_state->sr & SH_Q ? 'Q':'.',
-					(m_sh2_state->sr & SH_I) >> 4,
-					m_sh2_state->sr & SH_S ? 'S':'.',
-					m_sh2_state->sr & SH_T ? 'T':'.');
-			break;
+	case STATE_GENFLAGS:
+		str = string_format("%c%c%d%c%c", m_sh2_state->sr & SH_M ? 'M' : '.', m_sh2_state->sr & SH_Q ? 'Q' : '.',
+							(m_sh2_state->sr & SH_I) >> 4, m_sh2_state->sr & SH_S ? 'S' : '.',
+							m_sh2_state->sr & SH_T ? 'T' : '.');
+		break;
 	}
 }
 
@@ -819,6 +1041,14 @@ void sh2_device::generate_update_cycles(drcuml_block &block, compiler_state &com
 		UML_MOV(block, I1, param);              // mov r1, nextpc
 		UML_CALLH(block, *m_write32);                    // call write32
 
+		// An accepted interrupt bypasses the ordinary cycle update below.
+		// Account for this sequence and yield before entering the handler when
+		// exhausted, including a persistent request accepted after every RTE.
+		// Use the constant here: changing MAPVAR_CYCLES would also change the
+		// mapping used by the non-interrupt path at the following label.
+		UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), compiler.cycles);
+		if (allow_exception)
+			UML_EXHc(block, COND_S, *m_out_of_cycles, mem(&m_sh2_state->evec));
 		UML_HASHJMP(block, 0, mem(&m_sh2_state->evec), *m_nocode);       // hashjmp m_sh2_state->evec
 
 		UML_LABEL(block, skip);                         // skip:
@@ -894,7 +1124,7 @@ void sh2_device::static_generate_memory_accessor(int size, int iswrite, const ch
 	}
 
 	// external bus timing for an access that goes straight to the bus
-	if (m_bus_timed)
+	if (m_bus_timed || m_bus_observed)
 	{
 		UML_CMP(block, I0, 0x40000000);
 		UML_JMPc(block, COND_AE, timed);

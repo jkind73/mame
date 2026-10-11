@@ -101,6 +101,13 @@ const char *const scudsp_disassembler::DestMemory[] =
 	"CT3",          /* 1111 */
 };
 
+// MVI has its own destination encoding: 0xc is PC, not the D1 bus CT0.
+const char *const scudsp_disassembler::DestMVIMemory[] =
+{
+	"MC0", "MC1", "MC2", "MC3", "RX", "PL", "RA0", "WA0",
+	"???", "???", "LOP", "???", "PC", "???", "???", "???"
+};
+
 const char *const scudsp_disassembler::DestDMAMemory[] =
 {
 	"M0",           /* 000 */
@@ -115,8 +122,8 @@ const char *const scudsp_disassembler::DestDMAMemory[] =
 
 const char *const scudsp_disassembler::MVI_Command[] =
 {
-	"MVI %I,%d",    /* 0 */
-	"MVI %I,%d,%f", /* 1 */
+	"MVI %I,%D",    /* 0 */
+	"MVI %I,%D,%f", /* 1 */
 };
 
 const char *const scudsp_disassembler::JMP_Command[] =
@@ -155,6 +162,9 @@ std::string scudsp_disassembler::scudsp_dasm_prefix( const char* format, uint32_
 					break;
 				case 's':
 					result += SourceMemory[ *data & 0x7 ];
+					break;
+				case 'D':
+					result += DestMVIMemory[ *data & 0xf ];
 					break;
 				case 'd':
 					result += DestMemory[ *data & 0xf ];
@@ -220,7 +230,7 @@ u32 scudsp_disassembler::opcode_alignment() const
 offs_t scudsp_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	uint32_t op = opcodes.r32(pc);
-	unsigned size = 1;
+	unsigned size = 1 | SUPPORTED;
 	uint32_t data[4];
 
 	switch( op >> 30 )
@@ -269,13 +279,13 @@ offs_t scudsp_disassembler::disassemble(std::ostream &stream, offs_t pc, const d
 				data[0] = op & 0x7FFFF;
 				data[1] = (op & 0x3C000000) >> 26;
 				data[2] = (op & 0x3F80000 ) >> 19;
-				stream << scudsp_dasm_prefix( MVI_Command[1], data); /* TODO: bad mem*/
+				stream << scudsp_dasm_prefix( MVI_Command[1], data);
 			}
 			else
 			{
 				data[0] = op & 0x1FFFFFF;
 				data[1] = (op & 0x3C000000) >> 26;
-				stream << scudsp_dasm_prefix( MVI_Command[0], data ); /* TODO: bad mem*/
+				stream << scudsp_dasm_prefix( MVI_Command[0], data );
 			}
 			break;
 		case 3:
@@ -294,6 +304,7 @@ offs_t scudsp_disassembler::disassemble(std::ostream &stream, offs_t pc, const d
 						data[0] = (op & 0x3F80000) >> 19;
 						data[1] = op & 0xff;
 						stream << scudsp_dasm_prefix( JMP_Command[1], data );
+						size |= STEP_COND | step_over_extra(1);
 					}
 					else
 					{
