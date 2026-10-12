@@ -2396,12 +2396,10 @@ TIMER_CALLBACK_MEMBER( saturn_cd_hle_device::cd_sector_cb )
 	// (daytonau definitely wants it to be on).
 	//if(m_cdrom_image->exists())
 	//if(((cd_stat & 0x0f00) != CD_STAT_NODISC) && ((cd_stat & 0x0f00) != CD_STAT_OPEN))
-	{
-		if (!buffull)
-			hirqreg |= SCDQ;
-		else
-			hirqreg &= ~SCDQ;
-	}
+	// Buffer exhaustion pauses sector storage, not subcode/status updates.
+	// Suppressing SCDQ here deadlocks clients that use it to service their
+	// transfers: VF2 stops draining a full buffer and times out its movie.
+	hirqreg |= SCDQ;
 
 	if(cd_stat & CD_STAT_PERI)
 	{
