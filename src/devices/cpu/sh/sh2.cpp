@@ -218,6 +218,19 @@ void sh2_device::func_cache_access()
 // instruction site bloats the translated working set. Share the identical exit.
 void sh2_device::static_generate_cpu_helpers()
 {
+	// Keep the uncommon instruction-boundary exit out of every translated
+	// instruction. I1 supplies its uncharged cycles without changing the bus clock
+	// bookkeeping on a path that never starts the instruction.
+	alloc_handle(m_slice_exhausted, "slice_exhausted");
+	drcuml_block &slice(m_drcuml->begin_block(16));
+	UML_HANDLE(slice, *m_slice_exhausted);
+	UML_GETEXP(slice, I0);
+	UML_MOV(slice, mem(&m_sh2_state->pc), I0);
+	save_fast_iregs(slice);
+	UML_SUB(slice, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), I1);
+	UML_EXIT(slice, EXECUTE_OUT_OF_CYCLES);
+	slice.end();
+
 	alloc_handle(m_cached_instruction, "cached_instruction");
 	drcuml_block &block(m_drcuml->begin_block(32));
 	UML_HANDLE(block, *m_cached_instruction);
@@ -301,9 +314,8 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 		int const pending = compiler.cycles - desc->cycles;
 		UML_CMP(block, mem(&m_sh2_state->icount), pending);
 		UML_JMPc(block, COND_G, running);
-		if (pending)
-			UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), pending);
-		UML_EXH(block, *m_out_of_cycles, desc->pc);
+		UML_MOV(block, I1, pending);
+		UML_EXH(block, *m_slice_exhausted, desc->pc);
 		UML_LABEL(block, running);
 	}
 	bool const timed = (m_bus_timed || m_bus_observed) && desc->pc < 0x40000000;

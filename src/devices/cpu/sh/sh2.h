@@ -90,6 +90,7 @@ protected:
 	uint32_t m_fetch_cached = 0; // accessed by 32-bit UML operations
 	uml::code_handle *m_cached_instruction = nullptr; // shared rare cache-mismatch exit
 	uml::code_handle *m_instruction_fetch = nullptr; // native cache-hit fetch, C++ miss handling
+	uml::code_handle *m_slice_exhausted = nullptr; // shared timed instruction-boundary exit
 	uint64_t m_cache_scratch[3] = {}; // transient UML registers preserved by read accessors
 	uint32_t m_fetch_reuse = 0;    // DRC already fetched the interpreter fallback instruction
 
