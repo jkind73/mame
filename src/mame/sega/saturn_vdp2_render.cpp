@@ -696,11 +696,7 @@ void renderer::draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s)
 		unsigned const cell_bits = (n < 2 && colour_depth < 2 && reduction.half) ? 1 :
 			(n < 2 && colour_depth == 0 && reduction.quarter) ? 2 : 0;
 		unsigned const cell_mask = (1U << cell_bits) - 1;
-		for (unsigned x = 0; x < m_cfg.width; x += mosaic_h) {
-			unsigned const sample_x = x;
-			int const cycle = sample_x >> 3;
-			int64_t const cycle_x = start_x + int64_t(cycle) * 8 * inc_x;
-			uint32_t const offset = uint32_t(((cycle_x & 0x7ffff) + int64_t(sample_x & 7) * inc_x) >> 16);
+		auto const sample = [&](int cycle, uint32_t offset) {
 			f::dot_ref const ref{ (offset >> (3 + cell_bits)) & 1, (offset >> 3) & cell_mask, offset & 7 };
 			layer_dot dot;
 			if (cycle + int(ref.buffer) < cycles) {
@@ -708,6 +704,26 @@ void renderer::draw_nbg_fetched(decoded const &d, unsigned n, nbg_state &s)
 				f::pattern_name const &attr = dots.attr[ref.cell];
 				dot = make_dot_depth<colour_depth>(d, p, dots.dot[ref.cell][ref.dot], attr.palette, attr.priority, attr.colour_calc);
 			}
+			return dot;
+		};
+		if (mosaic_h == 1) {
+			// The source accumulator restarts every eight screen dots. Compute
+			// its cycle origin once, then advance it with additions rather than
+			// multiplying the cycle and dot coordinates for every output dot.
+			int64_t cycle_x = start_x;
+			for (unsigned x = 0; x < m_cfg.width; x += 8, cycle_x += int64_t(8) * inc_x) {
+				int64_t offset = cycle_x & 0x7ffff;
+				unsigned const end = std::min(x + 8, m_cfg.width);
+				for (unsigned dot_x = x; dot_x < end; ++dot_x, offset += inc_x)
+					s.line[dot_x] = sample(x >> 3, uint32_t(offset >> 16));
+			}
+			return;
+		}
+		for (unsigned x = 0; x < m_cfg.width; x += mosaic_h) {
+			int const cycle = x >> 3;
+			int64_t const cycle_x = start_x + int64_t(cycle) * 8 * inc_x;
+			uint32_t const offset = uint32_t(((cycle_x & 0x7ffff) + int64_t(x & 7) * inc_x) >> 16);
+			layer_dot const dot = sample(cycle, offset);
 			// Mosaic repeats an already sampled dot. Sampling once per group also
 			// avoids a variable-width division at every dot when mosaic is off.
 			std::fill_n(&s.line[x], std::min(mosaic_h, m_cfg.width - x), dot);

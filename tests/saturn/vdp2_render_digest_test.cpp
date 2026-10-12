@@ -20,6 +20,14 @@ int main(){
   regs[0x22/2]=(t&1)?((t%16)<<8)|(((t/16)%16)<<12)|0x1f:0;
   regs[0x28/2]=((t%5)<<4)|(((t/5)%4)<<12)|((t&4)?2:0);
   regs[0x2a/2]=((t&2)?2:0)|((t&1)?0x20:0);
+  // Exercise source-accumulator carries and cycle restarts, including
+  // stationary, fractional, unity and maximum horizontal increments.
+  static constexpr unsigned increments[]={0,1,0xff,0x100,0x101,0x180,0x1ff,0x7ff};
+  for(unsigned n=0;n<2;++n){
+   unsigned b=0x70+n*0x10,inc=increments[(t+n*3)%8];
+   regs[b/2]=mix(t+n)&0x7ff;regs[(b+2)/2]=(mix(t+n+1)&0xff)<<8;
+   regs[(b+8)/2]=inc>>8;regs[(b+10)/2]=(inc&0xff)<<8;
+  }
   for(unsigned i=0x10;i<=0x1e;i+=4){regs[i/2]=0x0123;regs[(i+2)/2]=0x4567;}
   for(unsigned i=0;i<4;++i)regs[(0x30+2*i)/2]=0x8000|(mix(t+i)&0x3ff);
   regs[0xe0/2]=(t&15)|((t&16)?0x20:0);regs[0xe2/2]=(t&32)?0xff:0;
