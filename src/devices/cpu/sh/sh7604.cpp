@@ -1272,13 +1272,15 @@ void sh7604_device::dma_run_step(unsigned ch, unsigned index)
 		if (bytes == 1) m_program->write_byte(step.address, value);
 		else if (bytes == 2) m_program->write_word(step.address, value);
 		else m_program->write_dword(step.address, value);
-		ubc_compare(step.address, value, bytes, true, false, true);
+		if (m_instruction_monitor)
+			ubc_compare(step.address, value, bytes, true, false, true);
 	}
 	else
 	{
 		uint32_t const value = bytes == 1 ? m_program->read_byte(step.address) : bytes == 2 ? m_program->read_word(step.address) : m_program->read_dword(step.address);
 		m_dma_data[step.word] |= (value & mask) << step.shift;
-		ubc_compare(step.address, value, bytes, false, false, true);
+		if (m_instruction_monitor)
+			ubc_compare(step.address, value, bytes, false, false, true);
 		if (single)
 		{
 			m_dma_io_data[ch] = value & mask;
@@ -2501,6 +2503,11 @@ void sh7604_device::ubc_commit()
 
 bool sh7604_device::ubc_compare(uint32_t address, uint32_t data, unsigned size, bool write, bool fetch, bool peripheral, bool external, bool after)
 {
+	// This gate includes live and prefetched comparisons, pending exceptions,
+	// and unsynchronized register writes. With all of them inactive there is
+	// no comparator work to perform on a CPU or peripheral bus access.
+	if (!m_instruction_monitor)
+		return false;
 	if (m_standby)
 		return false;
 	if (m_ubc_dirty && local_time() >= m_ubc_ready)
@@ -2661,46 +2668,53 @@ void sh7604_device::execute_monitored()
 
 void sh7604_device::ubc_external_cycle(uint32_t address, bool write)
 {
-	ubc_compare(address & 0x07ffffff, 0, 1, write, false, true, true);
+	if (m_instruction_monitor)
+		ubc_compare(address & 0x07ffffff, 0, 1, write, false, true, true);
 }
 
 uint8_t sh7604_device::read_byte(offs_t offset)
 {
 	uint8_t const data = sh2_device::read_byte(offset);
-	ubc_compare(offset, data, 1, false, false, false);
+	if (m_instruction_monitor)
+		ubc_compare(offset, data, 1, false, false, false);
 	return data;
 }
 
 uint16_t sh7604_device::read_word(offs_t offset)
 {
 	uint16_t const data = sh2_device::read_word(offset);
-	ubc_compare(offset, data, 2, false, false, false);
+	if (m_instruction_monitor)
+		ubc_compare(offset, data, 2, false, false, false);
 	return data;
 }
 
 uint32_t sh7604_device::read_long(offs_t offset)
 {
 	uint32_t const data = sh2_device::read_long(offset);
-	ubc_compare(offset, data, 4, false, false, false);
+	if (m_instruction_monitor)
+		ubc_compare(offset, data, 4, false, false, false);
 	return data;
 }
 
 void sh7604_device::write_byte(offs_t offset, uint8_t data)
 {
 	sh2_device::write_byte(offset, data);
-	ubc_compare(offset, data, 1, true, false, false);
+	if (m_instruction_monitor)
+		ubc_compare(offset, data, 1, true, false, false);
 }
 
 void sh7604_device::write_word(offs_t offset, uint16_t data)
 {
 	sh2_device::write_word(offset, data);
-	ubc_compare(offset, data, 2, true, false, false);
+	if (m_instruction_monitor)
+		ubc_compare(offset, data, 2, true, false, false);
 }
 
 void sh7604_device::write_long(offs_t offset, uint32_t data)
 {
 	sh2_device::write_long(offset, data);
-	ubc_compare(offset, data, 4, true, false, false);
+	if (m_instruction_monitor)
+		ubc_compare(offset, data, 4, true, false, false);
 }
 
 /*
