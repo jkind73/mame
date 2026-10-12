@@ -291,6 +291,21 @@ void sh2_device::static_generate_cpu_helpers()
 // executed by the shared interpreter for the remainder of the slice.
 void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state &compiler, const opcode_desc *desc, bool sequence_start, uint32_t ovrpc)
 {
+	// Bus waits can exhaust the slice before the end of a compiled sequence.
+	// Stop before starting another instruction, as the interpreter does, rather
+	// than performing its memory side effects before the next cycle update.
+	// Native delayed branches finish their slot before returning to the scheduler.
+	if (m_bus_timed && !desc->in_delay_slot())
+	{
+		uml::code_label const running = compiler.labelnum++;
+		int const pending = compiler.cycles - desc->cycles;
+		UML_CMP(block, mem(&m_sh2_state->icount), pending);
+		UML_JMPc(block, COND_G, running);
+		if (pending)
+			UML_SUB(block, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), pending);
+		UML_EXH(block, *m_out_of_cycles, desc->pc);
+		UML_LABEL(block, running);
+	}
 	bool const timed = (m_bus_timed || m_bus_observed) && desc->pc < 0x40000000;
 	bool const cached = m_cache_model && desc->pc < 0x20000000;
 	if (m_bus_timed || m_bus_observed || m_track_pending)
