@@ -188,3 +188,42 @@ substantially reduced, and rendered output is preserved. This is not a claim
 of steady 100% in every scene: the late combat still needs roughly 11% more
 headroom. No emulated clock or bus wait was reduced, and video, audio, cache
 semantics, effects and interrupt monitoring remain enabled.
+
+## Additional combat fixes (2026-10-11)
+
+Three further changes are committed separately:
+
+- `72584573f0d`: fetched NBG output computes each eight-dot cycle origin once
+  and advances the source accumulator by addition. Mosaic keeps its original
+  sampling path. The renderer comparison now also covers fractional scroll,
+  accumulator carries and stationary through maximum horizontal increments.
+- `4a6b217296b`: CPU, DMA and external bus accesses bypass inactive UBC
+  comparisons using the existing monitor gate. Live/prefetched comparisons,
+  pending exceptions and unsynchronized writes keep the gate enabled.
+- `b734c4dd96d`: arbitration selects nonempty peer histories once per access,
+  rather than revisiting empty histories during both passes. All four requester
+  slots remain supported; interval ownership and debt calculations are unchanged.
+
+Validation: 4096 varied real-renderer lines match the saved pre-change renderer
+under ASan/UBSan (expanded digest `5ff1d20ea938dd4e`); all 13 screenshots in paired
+130-second renderer runs match. The UBC actual-method sanitizer fixture and
+real-device DRC/interpreter tests pass. All interval histories, timing debts,
+BSC state and returned cycle costs match the unchanged four-requester reference
+over 20000 randomized arbitration accesses under ASan/UBSan.
+
+The rebuilt executable completed an unsampled 230-emulated-second VF2J run with
+normal video and live CoreAudio output: **98.98% average speed, 257 underflows,
+17 overflows, zero render errors**. All 23 screenshots match the preceding
+two-fix live-audio run. That preceding run measured 98.31%, 408 underflows and
+30 overflows, and included a five-second combat profile. The earlier reported
+build measured 97.33% and 634 underflows; its screenshots have a different scene
+phase, so these older totals are indicative measurements rather than a strictly
+identical-state benchmark. The paired renderer-only runs measured 167.46% and
+170.18% average speed, with a small combat gain (103.41% to 103.82%).
+
+Late-combat five-second intervals mostly reach approximately 100% in the final
+run; the 220-second interval measures 96.12%, and initial combat compilation
+still causes dips. These changes reduce overhead and playback starvation; they
+do not establish uninterrupted 100% speed or zero audio underflows. Normal
+Saturn still uses CD HLE. Checklist contents and completion markers are unchanged.
+Logs, frozen sources/binaries and captures: `/private/tmp/vf2-output-20261011/`.
