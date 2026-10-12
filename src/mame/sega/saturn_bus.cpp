@@ -266,6 +266,14 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 	};
 	uint64_t extra = bsc_extra(start);
 	attotime length = exec.cycles_to_attotime(cycles + extra);
+	// A peer with no intervals cannot delay or be delayed by this access.
+	// Select peers once: CPU and DMAC now share each chip's timeline, so
+	// normally only one of the other histories contains any bus work.
+	unsigned peers[BUS_REQUESTERS - 1];
+	unsigned peer_count = 0;
+	for (unsigned o = 0; o < BUS_REQUESTERS; ++o)
+		if (o != requester && !m_sh2_bus_log[o].empty())
+			peers[peer_count++] = o;
 
 	// an interval of requester o, with the delay o owes applied
 	auto const shifted = [this] (unsigned o, const bus_interval &i)
@@ -280,7 +288,7 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 		// The CPUs run successive slices. Most searches therefore fall wholly
 		// before or after the peer's history; avoid walking the deque in these
 		// cases, using exactly the binary search's end-time comparison.
-		if (other.empty() || other.back().end <= threshold)
+		if (other.back().end <= threshold)
 			return other.end();
 		if (other.front().end > threshold)
 			return other.begin();
@@ -295,10 +303,9 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 	for (bool moved = true; moved; )
 	{
 		moved = false;
-		for (unsigned o = 0; o < BUS_REQUESTERS; o++)
+		for (unsigned p = 0; p < peer_count; ++p)
 		{
-			if (o == requester)
-				continue;
+			unsigned const o = peers[p];
 			meetings[o] = first_meeting(o);
 			for (auto it = meetings[o]; it != m_sh2_bus_log[o].end(); ++it)
 			{
@@ -318,10 +325,9 @@ uint64_t saturn_state::sh2_bus_arbitrate(unsigned requester, const attotime &now
 	}
 
 	// then the access keeps the bus against every requester that ran past it
-	for (unsigned o = 0; o < BUS_REQUESTERS; o++)
+	for (unsigned p = 0; p < peer_count; ++p)
 	{
-		if (o == requester)
-			continue;
+		unsigned const o = peers[p];
 		// The final wait pass did not move start, so its search result is
 		// still exact. No peer history changes between these two passes.
 		for (auto it = meetings[o]; it != m_sh2_bus_log[o].end(); ++it)
