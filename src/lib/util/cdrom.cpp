@@ -25,6 +25,7 @@
 #include "strformat.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <tuple>
@@ -3041,6 +3042,16 @@ std::error_condition cdrom_file::parse_toc(std::string_view tocfname, toc &outto
 
 		TOKENIZE
 
+		// Track-local directives must not index tracks[-1] before TRACK.
+		if (trknum < 0 && (!strcmp(token, "NO") || !strcmp(token, "COPY") ||
+			!strcmp(token, "PRE_EMPHASIS") || !strcmp(token, "TWO_CHANNEL_AUDIO") ||
+			!strcmp(token, "FOUR_CHANNEL_AUDIO") || !strcmp(token, "DATAFILE") ||
+			!strcmp(token, "AUDIOFILE") || !strcmp(token, "FILE") || !strcmp(token, "START")))
+		{
+			fclose(infile);
+			return chd_file::error::INVALID_DATA;
+		}
+
 		/*
 		Samples: https://github.com/cdrdao/cdrdao/tree/master/testtocs
 
@@ -3080,6 +3091,7 @@ std::error_condition cdrom_file::parse_toc(std::string_view tocfname, toc &outto
 		else if ((!strcmp(token, "DATAFILE")) || (!strcmp(token, "AUDIOFILE")) || (!strcmp(token, "FILE")))
 		{
 			int f;
+			bool const datafile = !strcmp(token, "DATAFILE");
 
 			/* found the data file for a track */
 			TOKENIZE
@@ -3101,7 +3113,8 @@ std::error_condition cdrom_file::parse_toc(std::string_view tocfname, toc &outto
 				outinfo.track[trknum].swap = false;
 			}
 
-			if (token[0] == '#')
+			bool const byte_offset = token[0] == '#';
+			if (byte_offset)
 			{
 				/* it's a decimal offset, use it */
 				f = strtoul(&token[1], nullptr, 10);
@@ -3140,22 +3153,41 @@ std::error_condition cdrom_file::parse_toc(std::string_view tocfname, toc &outto
 					f = msf_to_frames(token);
 				}
 			}
-			else if (trknum == 0 && outinfo.track[trknum].offset != 0)
+			else if (datafile && !byte_offset && outinfo.track[trknum].offset != 0)
 			{
-				/* the 1st track might have a length with no offset */
+				/* DATAFILE has an optional length, not FILE's start position. */
 				f = outinfo.track[trknum].offset / (outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize);
 				outinfo.track[trknum].offset = 0;
 			}
 			else
 			{
-				/* guesstimate the track length? */
 				f = 0;
+			}
+
+			if (!f)
+			{
+				// Omitted/zero length uses the rest of the file, not an empty track.
+				uint64_t const size = get_file_size(outinfo.track[trknum].fname);
+				uint64_t const offset = outinfo.track[trknum].offset;
+				uint32_t const sectorbytes = outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize;
+				if (offset >= size || (size - offset) / sectorbytes == 0 ||
+					(size - offset) % sectorbytes || (size - offset) / sectorbytes > uint64_t(INT_MAX))
+				{
+					fclose(infile);
+					return chd_file::error::INVALID_DATA;
+				}
+				f = (size - offset) / sectorbytes;
 			}
 
 			outtoc.tracks[trknum].frames = f;
 		}
 		else if (!strcmp(token, "TRACK"))
 		{
+			if (trknum + 1 >= MAX_TRACKS)
+			{
+				fclose(infile);
+				return chd_file::error::INVALID_DATA;
+			}
 			trknum++;
 
 			/* next token on the line is the track type */

@@ -222,3 +222,26 @@ calibration. All other controller regressions also pass. Artifacts:
 `/private/tmp/controller-multicontroller-state2-native-20261013`. The broader
 SMPC errata/controller items still include unfinished keyboard and protocol
 work and remain open.
+
+## CDRDAO TOC bounds and omitted lengths
+
+The real `.toc` parser rejected neither track-local directives before TRACK
+nor a hundredth track, risking array access outside track/input storage.
+Those cases now return INVALID_DATA before access. FILE/AUDIOFILE starts with
+omitted or zero length consume the remaining complete sectors; a DATAFILE
+length no longer depends on being the first track. Explicit lengths, SWAP,
+byte offsets and subchannel sector strides remain covered by the fixture.
+Missing files, exhausted offsets and incomplete-sector remainders return an
+error instead of silently generating empty/truncated tracks.
+
+The fixture compiles the production parser/helpers against the actual CD TOC
+types, with filesystem-size and unused-format adapters. ASan/UBSan passes
+all nine pre-TRACK directives, 99/100 tracks, missing/zero/explicit lengths,
+starts, legacy byte offsets, subcode strides, SWAP and invalid file extents.
+The parent parser fails; `/private/tmp/cdrom-toc-parent-20261013.log` retains
+that result. The full subtarget build and legacy-metadata tests also pass.
+
+Source: https://raw.githubusercontent.com/cdrdao/cdrdao/master/dao/cdrdao.man .
+This does not claim full CDRDAO grammar: scalar sample/byte units, WAVE input,
+multiple concatenated segments and partial-sector padding remain separate
+parser limitations. The original combined nvram/ticket/cdrom item stays open.
