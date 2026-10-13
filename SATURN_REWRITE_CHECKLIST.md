@@ -129,7 +129,7 @@ Desc :
 - [x] The magzun hacks and the legacy `ioga` fallback are gone, all machines use the 315-5649 device (`12dadeadf3d`, `232e40f000c`)
 - [ ] magzun microphone / RS-422, 315-5649 "buffers always ready" hack
 - [ ] 315-5838 `HACK_MODE_NO_KEY`, mic, coin, EEPROM defaults
-- [ ] Re-run the ST-V attract survey after today's changes (blank games list in memory `stv-survey-2026-09-25`); Batman was fixed in `e3ba4fdb5a9`
+- [x] Re-run the ST-V attract survey after today's changes (blank games list in memory `stv-survey-2026-09-25`); Batman was fixed in `e3ba4fdb5a9`
 
 ## 10. The six uploaded files (scspdsp, VDP1 draw, VDP2 compose and render) - DONE
 - [x] The user's optimizations were applied with their required fixes in `452e1374fc6` (DSP decode cache, DSP bug and savestate rebuild), `72e23aa6cbb` (VDP1), `e334d7a9aca` (VDP2); the GNU `case ...` range, the `EXPECTED()` macro and the unused `win_test` overload are not in the source

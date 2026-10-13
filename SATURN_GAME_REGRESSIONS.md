@@ -101,3 +101,34 @@ VF Kids with the existing SH-2 bus-timing setting Off reaches a visible attract 
 To run the acknowledgment fixture, start vfkids with isolated cfg/NVRAM, `-autoboot_delay 0 -autoboot_script scripts/saturn_scu_irq_test.lua -seconds_to_run 3 -video none -sound none`; repeat with `-nodrc`. Require the explicit `SATURN_SCU_IRQ_PASS` marker, not merely process exit 0. The fixture's first ISR instruction lowers SR, which is essential to reproduce the original DRC failure.
 
 Die Hard Arcade also reaches its visible attract fight at frame 3600 after the acknowledgment fix. The next VF Kids timing investigation is narrowed further: some master RAM accesses cost about 330 clocks against a 2–7 clock base; the arbitration trace reports zero waits on another requester and about 330 clocks behind its own logged bus frontier. During a sustained slow interval at 24.048 seconds, the preceding transaction is its own DMAC writing SCSP sound RAM (05A0000C onward), booked ahead of the CPU's access time. This observation does not establish that the DMA cost is wrong; cycle-steal ownership, scheduling and interrupt latency need a separate regression before changing the bus model. All temporary bus diagnostics were reverted.
+
+## Full ST-V survey — 2026-10-13
+
+All 119 games registered by `sega/stv.cpp` were attempted on a fixed copy of
+commit `061f86e7163`. 106 launched; 13 could not launch because required ROMs
+were unavailable: aclub, pclub2bb, pclub2bu, pclub2ev, pclub2lc, pclub2mb,
+pclub2sr, pclub2ts, pclubnbc, pclubsc5, pclubsc6, sandr and slotbatt.
+Each launched set was extended to 67 emulated seconds with isolated cfg/NVRAM,
+fixed RTC, video/audio output disabled and serial low-priority execution.
+All four final contact sheets were visually reviewed, not just process exits.
+The initial 22-second pass often remained in BIOS startup and was insufficient
+for attract conclusions.
+
+Three extended runs crashed: astrass, decathlt and supgoal. Their failures are
+being investigated; the survey completion does not claim these games work.
+No Lua errors occurred. Persistent black final captures include cottonbm,
+elandore, gaxeduel, magzun, skychal, techbowl, tsuribor, twcup98 and twsoc98.
+Sfish2/sfish2j remain at BIOS system checking. Service/attendant/error screens
+include chalgolf, fanzonem, sackids, stress, yattrmnp and many Print Club sets;
+these are not counted as successful gameplay. Visible titles/attract scenes
+include Batman Forever, Die Hard, VF Kids, VF Remix, Radiant Silvergun,
+Cotton 2, Final Fight Revenge, Final Arch/SM League, My Fair Lady, Wildlife
+Safari and Winter Heat. Visual appearance at one frame does not resolve
+sound, long-run hangs, all window scenes or peripheral correctness.
+
+Artifacts: `/private/tmp/checklist-stv-complete-20261013`. Its manifest records
+the binary commit/hash and complete game list; `first`, `long` and `attract`
+contain per-game commands, captures, logs and exit status. `review-results.json`
+combines the extended runs, and `contact-attract-0.png` through `-3.png` retain
+the final review sheets. The original **re-run survey** item is completed;
+separate game-fix and combined regression items remain open.

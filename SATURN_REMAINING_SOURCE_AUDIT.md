@@ -79,8 +79,9 @@ reset, per [VDP2 manual 3.1](https://www.infochunk.com/saturn/segahtml_en/hard/v
 The documented initial silicon version remains read-only zero.
 `scripts/saturn_vdp2_reset_unit_test.py` executes the actual reset method under
 ASan/UBSan with dirty register state; it passes, and the parent fails VRSIZE.
-The full subtarget builds. Native reset and scan-state fixtures now include
-VRSIZE but their new checks are pending completion of the serial game survey.
+The full subtarget builds. Native reset and scan-state fixtures include VRSIZE and pass under both DRC
+and interpreter (`/private/tmp/vrsz-reset-native-20261013` and
+`/private/tmp/vrsz-state-native-20261013`).
 The larger VDP2 timing/source item is still open.
 
 ## Sparse multitap and mixed payload routing
