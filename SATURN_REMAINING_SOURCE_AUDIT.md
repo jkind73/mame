@@ -18,3 +18,22 @@ and track structure. ASan/UBSan pass all 2,380 truncated lengths, invalid counts
 and valid 1/99-track metadata in both byte orders. The parent decoder crashes on
 empty metadata under the same fixture. The full Saturn/ST-V subtarget builds.
 The combined nvram/ticket/cdrom checklist item remains open.
+
+## Mission Stick direction bits
+
+The existing `analog` controller, ID `0x15`, is the Mission Stick rather than
+the ID `0x16` 3D pad. Its displayed name now identifies it correctly, keeping its
+existing slot/device identifiers. Digital directions now come from analog X/Y
+instead of independent joystick switches. Active-low right/down assert at 170,
+release at 149; left/up assert at 86, release at 107. The hysteresis state is
+initialized, reset and saved. Analog bytes and button assignments are retained.
+The device samples the axes when the host reads its digital report; this is
+functional peripheral emulation, not an emulated controller MCU sampling clock.
+
+Source: [Sega SMPC manual, Table 3.19](https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_30.htm).
+`scripts/saturn_mission_stick_test.py` extracts the production read/reset methods:
+ASan/UBSan pass both directions of every X/Y ADC code, inclusive thresholds,
+history-dependent deadbands, restored hysteresis, button bits and analog bytes.
+The parent fails the axis sweep. The full Saturn/ST-V subtarget builds.
+This fixes part of the peripheral-format audit; it does not close the entire
+SMPC errata or controller collection.

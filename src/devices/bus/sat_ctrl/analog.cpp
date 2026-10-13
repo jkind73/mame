@@ -2,7 +2,7 @@
 // copyright-holders:Fabio Priuli
 /**********************************************************************
 
-    Sega Saturn Analog Controller emulation
+    Sega Saturn Mission Stick emulation
 
 **********************************************************************/
 
@@ -13,15 +13,13 @@
 //  DEVICE DEFINITIONS
 //**************************************************************************
 
-DEFINE_DEVICE_TYPE(SATURN_ANALOG, saturn_analog_device, "saturn_analog", "Sega Saturn Analog Controller")
+DEFINE_DEVICE_TYPE(SATURN_ANALOG, saturn_analog_device, "saturn_analog", "Sega Saturn Mission Stick")
 
 
 static INPUT_PORTS_START( saturn_analog )
 	PORT_START("JOY")
-	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT)
-	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT)
-	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN)
-	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP)
+	// Direction bits are generated from the analog axes, not separate switches.
+	PORT_BIT(0xf000, IP_ACTIVE_LOW, IPT_UNUSED)
 	PORT_BIT(0x0800, IP_ACTIVE_LOW, IPT_START)
 	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON1) PORT_NAME("A")
 	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_BUTTON3) PORT_NAME("C")
@@ -81,6 +79,7 @@ saturn_analog_device::saturn_analog_device(const machine_config &mconfig, const 
 
 void saturn_analog_device::device_start()
 {
+	save_item(NAME(m_directions));
 }
 
 
@@ -90,6 +89,7 @@ void saturn_analog_device::device_start()
 
 void saturn_analog_device::device_reset()
 {
+	m_directions = 0xf0;
 }
 
 
@@ -104,8 +104,23 @@ uint8_t saturn_analog_device::read_ctrl(uint8_t offset)
 	{
 		case 0:
 		default:
-			res = m_joy->read() >> 8;
+		{
+			// SMPC manual Table 3.19: retain each digital direction within its
+			// hysteresis band. Right/down assert at 170 and release at 149;
+			// left/up assert at 86 and release at 107.
+			uint8_t const x = m_anx->read();
+			uint8_t const y = m_any->read();
+			if (x >= 170) m_directions &= ~0x80;
+			else if (x <= 149) m_directions |= 0x80;
+			if (x <= 86) m_directions &= ~0x40;
+			else if (x >= 107) m_directions |= 0x40;
+			if (y >= 170) m_directions &= ~0x20;
+			else if (y <= 149) m_directions |= 0x20;
+			if (y <= 86) m_directions &= ~0x10;
+			else if (y >= 107) m_directions |= 0x10;
+			res = ((m_joy->read() >> 8) & 0x0f) | m_directions;
 			break;
+		}
 		case 1:
 			res = m_joy->read() & 0xff;
 			break;

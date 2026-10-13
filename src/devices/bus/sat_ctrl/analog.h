@@ -2,7 +2,7 @@
 // copyright-holders:Fabio Priuli
 /**********************************************************************
 
-    Sega Saturn Analog Controller emulation
+    Sega Saturn Mission Stick emulation
 
 **********************************************************************/
 
@@ -45,6 +45,7 @@ private:
 	required_ioport m_anx;
 	required_ioport m_any;
 	required_ioport m_anz;
+	uint8_t m_directions = 0xf0;
 };
 
 
