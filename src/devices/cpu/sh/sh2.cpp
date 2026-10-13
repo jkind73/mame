@@ -937,6 +937,7 @@ void sh2_device::state_import(const device_state_entry &entry)
 {
 	switch (entry.index())
 	{
+		case SH4_PC: // shared register entry named "PC"
 		case STATE_GENPC:
 		case STATE_GENPCBASE:
 			m_sh2_state->m_delay = 0;

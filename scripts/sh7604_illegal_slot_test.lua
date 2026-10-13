@@ -29,6 +29,19 @@ local function run()
    assert(cpu.state.PR.value==((outer==0x440b or outer==0xb07e)and pc+4 or 0x12345678),'illegal slot changed PR')
   end
  end
+ -- Both named PC and CURPC debugger edits cancel the old pending slot.
+ for _,alias in ipairs({'PC','CURPC'})do
+  for name,id in pairs(cpu.items)do
+   if name:match('m_delay$')then emu.item(id):write(0,target)end
+   if name:match('m_zero_delay_pending$')then emu.item(id):write(0,1)end
+  end
+  cpu.state[alias].value=pc
+  for name,id in pairs(cpu.items)do
+   if name:match('m_delay$')or name:match('m_zero_delay_pending$')then
+    assert(emu.item(id):read(0)==0,'PC alias retained a pending slot: '..alias)
+   end
+  end
+ end
  -- Zero is a valid delayed destination, not an absent-delay marker.
  for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b,0x0403,0x0423})do
   clear_delay();h:write_u16(pc,outer);h:write_u16(pc+2,0xffff)

@@ -460,3 +460,13 @@ DMAOR checks on both engines. All seven native DMAC burst counts and normal
 NMI/address-error cases pass on both engines after the correction. Artifacts:
 `/private/tmp/sh7604-standby-nmif-pll-20261013` and
 `/private/tmp/sh7604-standby-nmif-dma-20261013`.
+
+### SH2 named PC import
+
+The shared state entry named PC uses SH4_PC for both CPU families. SH2's
+import callback omitted that entry and cleared pending delay state only
+through the generic PC/CURPC aliases. A named PC edit could therefore execute
+a new address as the old branch's slot. SH2 now handles the named entry too.
+The actual-method ASan/UBSan fixture checks all three aliases and preservation
+of pending state on SR edits; the parent fails the named-PC check. Full build
+passes. The native slot fixture includes matching alias assertions.
