@@ -197,3 +197,23 @@ captures show fighting attract scenes at 100 seconds; both internal audio
 files contain 110 seconds at 48kHz. Artifacts:
 `/private/tmp/scu-ack-mask-stv-retail-20261013`. This does not certify full
 gameplay, final stages or audio hardware parity.
+
+### Golden Axe second regression fixed
+
+The later checkpoint 30d92e6700a still loses backgrounds with the verified
+SCU mask and sound-RAM bounds corrections. Removing its IRQ redispatch
+timer does not fix it and that experiment was discarded. Live on-chip DMA
+traces identify DMAOR.NMIF left set after the clock-change standby wake,
+inhibiting valid aligned ROM-to-CRAM requests.
+
+With the full-standby wake correction, the latest build restores the full-color
+intro and reaches two visible attract fights (including frame9000). Its
+155-second serial run finishes without crashes or Lua errors and produces
+a complete 48kHz internal audio recording. Artifacts:
+`/private/tmp/gaxeduel-standby-nmif-fixed-20261013`. The exact older
+SCSP-DMA/master-write race remains a separate verification within the original
+combined three-game checklist item; attract success alone does not close it.
+
+The historical worktree has been archived after retaining its committed
+backports and immutable test binaries. Test branches are
+`codex/gaxeduel-ack-mask-baseline` and `codex/gaxeduel-checkpoint-candidate`.

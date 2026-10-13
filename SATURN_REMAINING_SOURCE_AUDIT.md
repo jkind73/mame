@@ -454,3 +454,9 @@ physical hardware verification. Artifacts:
 On the latest build, Golden Axe now restores its full-color intro and reaches
 visible fighting attract rather than the previous black backgrounds. Its
 155-second regression capture is `/private/tmp/gaxeduel-standby-nmif-fixed-20261013`.
+
+The extended native PLL regression also passes 320/352 clock-change wake
+DMAOR checks on both engines. All seven native DMAC burst counts and normal
+NMI/address-error cases pass on both engines after the correction. Artifacts:
+`/private/tmp/sh7604-standby-nmif-pll-20261013` and
+`/private/tmp/sh7604-standby-nmif-dma-20261013`.
