@@ -217,3 +217,13 @@ combined three-game checklist item; attract success alone does not close it.
 The historical worktree has been archived after retaining its committed
 backports and immutable test binaries. Test branches are
 `codex/gaxeduel-ack-mask-baseline` and `codex/gaxeduel-checkpoint-candidate`.
+
+### Standby DMA regression retests
+
+After 7dac092797b, nine serial 110-second ST-V runs complete without crashes
+or Lua errors and produce full 48kHz internal recordings. Inspected final
+captures now show visible Decathlete and Super Goal attract scenes, Cotton
+Boomerang's title, and Tecmo World Cup/Soccer '98 titles. These were previously
+black. Astra SuperStars, Elan-Doree, Sky Challenger and Tsuribori remain
+black; none is marked fixed by exit status alone. Artifacts:
+`/private/tmp/standby-nmif-black-game-retests-20261013`.

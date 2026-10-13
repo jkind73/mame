@@ -470,3 +470,26 @@ a new address as the old branch's slot. SH2 now handles the named entry too.
 The actual-method ASan/UBSan fixture checks all three aliases and preservation
 of pending state on SR edits; the parent fails the named-PC check. Full build
 passes. The native slot fixture includes matching alias assertions.
+
+### ST-V protected-port access widths and saved latches
+
+The 315-5881 stream hook consumed two decrypted words for every call, even
+when the memory access requested only one halfword. The hook now receives
+mem_mask and advances once per requested halfword, preserving full-longword
+ordering and the existing byte conversion. Lower-half key-port writes no
+longer invoke the upper-half subkey setter and reset its stream. The driver's
+enable/key latches are now saved alongside the cipher device and m_a_bus.
+
+Actual-handler ASan/UBSan tests check halfword/longword/byte-lane stream
+consumption and key/address write lanes; the parent fails its first halfword
+check. Native Astra SuperStars device graphs on both CPU engines pass
+enable/key mutation followed by actual save/load restoration. The parent
+lacks those saved latches. Full build passes. Artifacts:
+`/private/tmp/stv-crypt-state-native-20261013`,
+`/private/tmp/stv-crypt-state-parent-20261013`, and
+`/private/tmp/stv-crypt-access-parent-20261013.log`. No new hardware
+verification or closure of the broad ST-V/NAOMI interface item is claimed.
+
+The named-PC import assertions also pass the full native slot and SCU ISR
+fixtures on both engines: `/private/tmp/sh2-pc-import-native-20261013` and
+`/private/tmp/sh2-pc-import-scu-native-20261013`.

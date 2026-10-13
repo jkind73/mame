@@ -139,7 +139,7 @@ private:
 
 	uint32_t m_a_bus[4]{};
 
-	uint32_t common_prot_r(offs_t offset);
+	uint32_t common_prot_r(offs_t offset, uint32_t mem_mask = ~0U);
 	void common_prot_w(offs_t offset, uint32_t data, uint32_t mem_mask = ~0);
 
 	void install_common_protection();

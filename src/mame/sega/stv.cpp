@@ -234,7 +234,7 @@ uint8_t stv_state::mahjong_r(unsigned port)
 *************************************/
 
 // TODO: handle this as A-Bus slot option
-uint32_t stv_state::common_prot_r(offs_t offset)
+uint32_t stv_state::common_prot_r(offs_t offset, uint32_t mem_mask)
 {
 	uint32_t *ROM = (uint32_t *)memregion("abus")->base();
 
@@ -242,13 +242,15 @@ uint32_t stv_state::common_prot_r(offs_t offset)
 	{
 		if(offset == 3)
 		{
-			uint8_t* base;
-			uint16_t res = m_cryptdevice->do_decrypt(base);
-			uint16_t res2 = m_cryptdevice->do_decrypt(base);
-			res = ((res & 0xff00) >> 8) | ((res & 0x00ff) << 8);
-			res2 = ((res2 & 0xff00) >> 8) | ((res2 & 0x00ff) << 8);
-
-			return res2 | (res << 16);
+			uint32_t result = 0;
+			uint8_t *base;
+			// The stream advances once per requested 16-bit bus beat. A
+			// halfword access must not consume the other half of a longword.
+			if (ACCESSING_BITS_16_31)
+				result |= uint32_t(swapendian_int16(m_cryptdevice->do_decrypt(base))) << 16;
+			if (ACCESSING_BITS_0_15)
+				result |= swapendian_int16(m_cryptdevice->do_decrypt(base));
+			return result;
 		}
 		return m_a_bus[offset];
 	}
@@ -284,19 +286,22 @@ void stv_state::common_prot_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	{
 		COMBINE_DATA(&m_abus_protkey);
 
-		m_cryptdevice->set_subkey(m_abus_protkey>>16);
+		if (ACCESSING_BITS_16_31)
+			m_cryptdevice->set_subkey(m_abus_protkey >> 16);
 	}
 }
 
 void stv_state::install_common_protection()
 {
-	m_maincpu->space(AS_PROGRAM).install_read_handler(0x4fffff0, 0x4ffffff, read32sm_delegate(*this, FUNC(stv_state::common_prot_r)));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x4fffff0, 0x4ffffff, read32s_delegate(*this, FUNC(stv_state::common_prot_r)));
 	m_maincpu->space(AS_PROGRAM).install_write_handler(0x4fffff0, 0x4ffffff, write32s_delegate(*this, FUNC(stv_state::common_prot_w)));
 }
 
 void stv_state::stv_register_protection_savestates()
 {
 	save_item(NAME(m_a_bus));
+	save_item(NAME(m_abus_protenable));
+	save_item(NAME(m_abus_protkey));
 }
 
 
