@@ -13,6 +13,8 @@ import tempfile
 PREAMBLE = r'''
 #include <cassert>
 #include <cstdint>
+static uint16_t swapendian_int16(uint16_t x){return __builtin_bswap16(x);}
+static uint32_t swapendian_int32(uint32_t x){return __builtin_bswap32(x);}
 #include <vector>
 #include <functional>
 #include <algorithm>
@@ -93,7 +95,7 @@ struct sh7604_device:sh2_device {
     bool m_bus_observed=false,m_bus_timed=false;
     void m_bus_observer(uint32_t,unsigned,bool,bool){}
     int m_bus_timing(uint32_t,unsigned,bool,bool,attotime,bool){return 0;}
-    uint32_t m_bcr1=0,m_bcr2=0xfc,m_mcr=0;
+    bool m_instruction_monitor=false; uint32_t m_bus_endian_width=0, m_bcr1=0,m_bcr2=0xfc,m_mcr=0;
     struct dma_cb {
         bool isunset()const{return true;}
         void operator()(int){} void operator()(unsigned,uint32_t,uint32_t){}
@@ -351,10 +353,12 @@ def extract(source, name):
 
 def main():
     source=Path('src/devices/cpu/sh/sh7604.cpp').read_text()
-    names=['sci_dma_requested','sci_reset','sci_bit_clocks','sci_drive_txd','sci_drive_sck','sci_reclock','sci_update','sci_load_tsr','sci_start','sci_tx_step','sci_tx_complete','sci_transmit_complete','sci_rx_start','sci_sample_rx','sci_sync_edge','sci_rx_tick','sci_clock_tick','sci_rxd_w','sci_sck_w',
+    names=['bsc_endian_update','sci_dma_requested','sci_reset','sci_bit_clocks','sci_drive_txd','sci_drive_sck','sci_reclock','sci_update','sci_load_tsr','sci_start','sci_tx_step','sci_tx_complete','sci_transmit_complete','sci_rx_start','sci_sample_rx','sci_sync_edge','sci_rx_tick','sci_clock_tick','sci_rxd_w','sci_sck_w',
            'sci_receive_byte','scr_w','tdr_w','ssr_r','ssr_w','rdr_r',
            'sh2_notify_dma_data_available','sh2_dmac_check','sh2_do_dma','dma_unit_time','dma_dack_drive','dma_dack_level','dma_dack_tick','dma_run_step','dma_commit_unit','dma_update_halt','sh2_dma_current_active_callback','sh2_recalc_irq','module_standby','frt_reset','standby_init','intc_icr_r','set_frt_input','frt_capture','frt_capture_callback','device_clock_changed','power_postload','sleep_enter','ckpreq_w','execute_set_input','standby_wake']
     methods=[extract(source,n) for n in names]
+    core=Path("src/devices/cpu/sh/sh2.cpp").read_text().replace("sh2_device::", "sh7604_device::")
+    methods += [extract(core,n) for n in ("external_data_read", "external_data_write")]
     declarations='\n'.join(m.split('{',1)[0].replace('sh7604_device::','').strip()+';' for m in methods)
     declarations=declarations.replace('uint8_t errors, bool mpb)', 'uint8_t errors = 0, bool mpb = false)')
     with tempfile.TemporaryDirectory(prefix='sh7604-sci-standby-') as tmp:

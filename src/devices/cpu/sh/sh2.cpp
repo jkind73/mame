@@ -155,13 +155,13 @@ uint32_t sh2_device::cache_read(offs_t address, unsigned size, bool instruction)
 			bus_charge(address, size, false);
 			switch (size)
 			{
-			case 1: return m_program->read_byte(address & m_am);
-			case 2: return m_program->read_word(address & m_am);
-			default: return m_program->read_dword(address & m_am);
+			case 1: return external_data_read(address & m_am, 1);
+			case 2: return external_data_read(address & m_am, 2);
+			default: return external_data_read(address & m_am, 4);
 			}
 		}
 		bus_charge(address, 16, false, true);
-		m_cache.fill(address, w, [this] (uint32_t a) { return m_program->read_dword(a & m_am); });
+		m_cache.fill(address, w, [this] (uint32_t a) { return external_data_read(a & m_am, 4); });
 	}
 	m_cache.touch(e, w);
 	return m_cache.read_line(e, w, address, size);
@@ -199,6 +199,16 @@ void sh2_device::func_cache_access()
 		m_fetch_data = cache_read(m_cache_addr, 4, true);
 		m_fetch_cached = 1;
 		break;
+	case 5: // CS2 endian conversion uses the same path as the interpreter
+		if (m_bus_write)
+		{
+			if (m_cache_size == 1) write_byte(m_cache_addr, m_cache_data);
+			else if (m_cache_size == 2) write_word(m_cache_addr, m_cache_data);
+			else write_long(m_cache_addr, m_cache_data);
+		}
+		else
+			m_cache_data = m_cache_size == 1 ? read_byte(m_cache_addr) : m_cache_size == 2 ? read_word(m_cache_addr) : read_long(m_cache_addr);
+		break;
 	case 3: // an access that goes straight to the bus
 		if (m_tas_read && !m_bus_write)
 			m_tas_read = 0;
@@ -230,6 +240,18 @@ void sh2_device::static_generate_cpu_helpers()
 	UML_SUB(slice, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), I1);
 	UML_EXIT(slice, EXECUTE_OUT_OF_CYCLES);
 	slice.end();
+
+	alloc_handle(m_bus_instruction, "bus_instruction");
+	drcuml_block &bus(m_drcuml->begin_block(32));
+	UML_HANDLE(bus, *m_bus_instruction);
+	UML_GETEXP(bus, I0);
+	save_fast_iregs(bus);
+	UML_MOV(bus, mem(&m_sh2_state->pc), I0);
+	UML_SUB(bus, mem(&m_sh2_state->icount), mem(&m_sh2_state->icount), mem(&m_bus_pending));
+	UML_MOV(bus, mem(&m_fetch_reuse), 0);
+	UML_CALLC(bus, cfunc_cached_instruction, this);
+	UML_EXIT(bus, EXECUTE_OUT_OF_CYCLES);
+	bus.end();
 
 	alloc_handle(m_cached_instruction, "cached_instruction");
 	drcuml_block &block(m_drcuml->begin_block(32));
@@ -322,6 +344,21 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 	bool const cached = m_cache_model && desc->pc < 0x20000000;
 	if (m_bus_timed || m_bus_observed || m_track_pending)
 		UML_MOV(block, mem(&m_bus_pending), compiler.cycles - desc->cycles);
+	// CS2 opcode storage may be lane-converted. Its raw front-end decode
+	// cannot be used as a native instruction; fetch it through the bus model.
+	if (desc->pc < 0x40000000 && (desc->pc & 0x06000000) == 0x04000000)
+	{
+		int const ordinary = compiler.labelnum++;
+		UML_CMP(block, mem(&m_bus_endian_width), 0);
+		UML_JMPc(block, COND_E, ordinary);
+		UML_MOV(block, mem(&m_bus_pending), compiler.cycles - desc->cycles);
+		if (ovrpc == SH_OVRPC_DYNAMIC)
+			UML_MOV(block, mem(&m_sh2_state->m_delay), mem(&m_sh2_state->target));
+		else if (ovrpc != SH_OVRPC_NONE)
+			UML_MOV(block, mem(&m_sh2_state->m_delay), ovrpc + 2);
+		UML_EXH(block, *m_bus_instruction, desc->pc);
+		UML_LABEL(block, ordinary);
+	}
 	if (!timed && !cached)
 		return;
 	uml::code_label const skip = compiler.labelnum++;
@@ -381,6 +418,45 @@ void sh2_device::generate_instruction_fetch(drcuml_block &block, compiler_state 
 	}
 }
 
+// BCR1.ENDIAN changes data lanes within each external bus beat, not the
+// address. Bytes keep their lane; words reverse two lanes; a 16-bit bus
+// transfers the high longword half first and reverses each half separately.
+uint32_t sh2_device::external_data_read(uint32_t address, unsigned size)
+{
+	bool const little = m_bus_endian_width && address < 0x40000000 && (address & 0x06000000) == 0x04000000;
+	if (size == 1)
+		return m_program->read_byte(address);
+	if (size == 2)
+	{
+		uint16_t const data = m_program->read_word(address);
+		return little ? swapendian_int16(data) : data;
+	}
+	if (little && m_bus_endian_width == 2)
+	{
+		uint16_t const high = m_program->read_word(address);
+		uint16_t const low = m_program->read_word(address + 2);
+		return (uint32_t(swapendian_int16(high)) << 16) | swapendian_int16(low);
+	}
+	uint32_t const data = m_program->read_dword(address);
+	return little ? swapendian_int32(data) : data;
+}
+
+void sh2_device::external_data_write(uint32_t address, unsigned size, uint32_t data)
+{
+	bool const little = m_bus_endian_width && address < 0x40000000 && (address & 0x06000000) == 0x04000000;
+	if (size == 1)
+		m_program->write_byte(address, data);
+	else if (size == 2)
+		m_program->write_word(address, little ? swapendian_int16(uint16_t(data)) : data);
+	else if (little && m_bus_endian_width == 2)
+	{
+		m_program->write_word(address, swapendian_int16(uint16_t(data >> 16)));
+		m_program->write_word(address + 2, swapendian_int16(uint16_t(data)));
+	}
+	else
+		m_program->write_dword(address, little ? swapendian_int32(data) : data);
+}
+
 uint8_t sh2_device::read_byte(offs_t offset)
 {
 	// TAS.B reads memory directly, even in the cache area (8.4.4)
@@ -391,7 +467,7 @@ uint8_t sh2_device::read_byte(offs_t offset)
 	if (offset < 0x40000000)
 	{
 		bus_charge(offset, 1, false);
-		return m_program->read_byte(offset & m_am);
+		return external_data_read(offset & m_am, 1);
 	}
 
 	return m_program->read_byte(offset);
@@ -404,7 +480,7 @@ uint16_t sh2_device::read_word(offs_t offset)
 	if (offset < 0x40000000)
 	{
 		bus_charge(offset, 2, false);
-		return m_program->read_word(offset & m_am);
+		return external_data_read(offset & m_am, 2);
 	}
 
 	return m_program->read_word(offset);
@@ -419,13 +495,15 @@ uint32_t sh2_device::read_long(offs_t offset)
 	if (offset < 0x40000000)
 	{
 		bus_charge(offset, 4, false);
-		return m_program->read_dword(offset & m_am);
+		return external_data_read(offset & m_am, 4);
 	}
 	return m_program->read_dword(offset);
 }
 
 uint16_t sh2_device::decrypted_read_word(offs_t offset)
 {
+	if (m_bus_endian_width && offset < 0x40000000 && (offset & 0x06000000) == 0x04000000)
+		return swapendian_int16(m_decrypted_program->read_word(offset));
 	return m_decrypted_program->read_word(offset);
 }
 
@@ -436,7 +514,7 @@ void sh2_device::write_byte(offs_t offset, uint8_t data)
 	if (offset < 0x40000000)
 	{
 		bus_charge(offset, 1, true);
-		m_program->write_byte(offset & m_am, data);
+		external_data_write(offset & m_am, 1, data);
 		return;
 	}
 
@@ -450,7 +528,7 @@ void sh2_device::write_word(offs_t offset, uint16_t data)
 	if (offset < 0x40000000)
 	{
 		bus_charge(offset, 2, true);
-		m_program->write_word(offset & m_am, data);
+		external_data_write(offset & m_am, 2, data);
 		return;
 	}
 
@@ -464,7 +542,7 @@ void sh2_device::write_long(offs_t offset, uint32_t data)
 	if (offset < 0x40000000)
 	{
 		bus_charge(offset, 4, true);
-		m_program->write_dword(offset & m_am, data);
+		external_data_write(offset & m_am, 4, data);
 		return;
 	}
 
@@ -605,7 +683,7 @@ void sh2_device::execute_run()
 		m_fetch_pc = m_sh2_state->pc;
 		const uint16_t opcode = cached
 				? uint16_t(m_fetch_data >> ((m_sh2_state->pc & 2) ? 0 : 16))
-				: m_decrypted_program->read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
+				: decrypted_read_word(m_sh2_state->pc >= 0x40000000 ? m_sh2_state->pc : m_sh2_state->pc & m_am);
 		if (!cached)
 			m_fetch_cached = false;
 
@@ -1173,6 +1251,27 @@ void sh2_device::static_generate_memory_accessor(int size, int iswrite, const ch
 	/* add a global entry for this */
 	alloc_handle(handleptr, name);
 	UML_HANDLE(block, *handleptr);                         // handle  *handleptr
+
+	// Converted CS2 data cannot use a raw address-space or fast-RAM access.
+	int const ordinary = label++;
+	UML_CMP(block, mem(&m_bus_endian_width), 0);
+	UML_JMPc(block, COND_E, ordinary);
+	UML_CMP(block, I0, 0x40000000);
+	UML_JMPc(block, COND_AE, ordinary);
+	UML_AND(block, I2, I0, 0x06000000);
+	UML_CMP(block, I2, 0x04000000);
+	UML_JMPc(block, COND_NE, ordinary);
+	UML_MOV(block, mem(&m_cache_addr), I0);
+	if (iswrite)
+		UML_MOV(block, mem(&m_cache_data), I1);
+	UML_MOV(block, mem(&m_cache_size), size);
+	UML_MOV(block, mem(&m_bus_write), iswrite ? 1 : 0);
+	UML_MOV(block, mem(&m_cache_op), 5);
+	UML_CALLC(block, cfunc_cache_access, this);
+	if (!iswrite)
+		UML_MOV(block, I0, mem(&m_cache_data));
+	UML_RET(block);
+	UML_LABEL(block, ordinary);
 
 	// SH7604 cache (8.4): a read of the cache area with CE set is served by
 	// the cache helper; a write updates the cache on a hit, then goes to the

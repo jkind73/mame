@@ -448,6 +448,7 @@ void sh7604_device::device_reset()
 		std::fill(std::begin(m_ubc_fetch), std::end(m_ubc_fetch), 0);
 		m_ubc_previous_pc = 0xffffffff;
 	}
+	bsc_endian_update();
 }
 
 // on-chip modules initialized in standby mode (SH7604 hardware manual table 14.3), the
@@ -484,6 +485,7 @@ void sh7604_device::device_clock_changed()
 
 void sh7604_device::power_postload()
 {
+	bsc_endian_update();
 	m_ftoa(m_frt_output[0]);
 	m_ftob(m_frt_output[1]);
 	if (m_standby)
@@ -1269,15 +1271,13 @@ void sh7604_device::dma_run_step(unsigned ch, unsigned index)
 				m_dma_data[step.word] = m_dma_kludge_cb(m_dma_unit_src, m_dma_unit_dst, m_dma_data[step.word], m_active_dma_size[ch]);
 			value = (m_dma_data[step.word] >> step.shift) & mask;
 		}
-		if (bytes == 1) m_program->write_byte(step.address, value);
-		else if (bytes == 2) m_program->write_word(step.address, value);
-		else m_program->write_dword(step.address, value);
+		external_data_write(step.address, bytes, value);
 		if (m_instruction_monitor)
 			ubc_compare(step.address, value, bytes, true, false, true);
 	}
 	else
 	{
-		uint32_t const value = bytes == 1 ? m_program->read_byte(step.address) : bytes == 2 ? m_program->read_word(step.address) : m_program->read_dword(step.address);
+		uint32_t const value = external_data_read(step.address, bytes);
 		m_dma_data[step.word] |= (value & mask) << step.shift;
 		if (m_instruction_monitor)
 			ubc_compare(step.address, value, bytes, false, false, true);
@@ -2843,6 +2843,15 @@ void sh7604_device::ccr_w(uint8_t data)
 
 // BCR1/BCR2 are really 16-bit wide, when accessed as dword the upper part is used as unlock
 // method (0xa55axxxx) and reads back 0.
+void sh7604_device::bsc_endian_update()
+{
+	unsigned const mode = m_bcr1 & 7;
+	unsigned const width = (mode == 4 || mode == 5) ? (BIT(m_mcr, 6) ? 4 : 2) :
+		((m_bcr2 >> 4) & 3) ? 1U << (((m_bcr2 >> 4) & 3) - 1) : 0;
+	// Section 7.3.2 explicitly excludes eight-bit devices from endian mode.
+	m_bus_endian_width = BIT(m_bcr1, 12) && width > 1 ? width : 0;
+}
+
 uint32_t sh7604_device::bcr1_r()
 {
 	return (m_bcr1 & 0x1ff7) | (m_is_slave ? 0x8000 : 0);
@@ -2852,7 +2861,10 @@ void sh7604_device::bcr1_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+	{
 		m_bcr1 = data & 0x1ff7;
+		bsc_endian_update();
+	}
 }
 
 uint32_t sh7604_device::bcr2_r()
@@ -2864,7 +2876,10 @@ void sh7604_device::bcr2_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+	{
 		m_bcr2 = data & 0xfc;
+		bsc_endian_update();
+	}
 }
 
 uint32_t sh7604_device::wcr_r()
@@ -2888,7 +2903,10 @@ void sh7604_device::mcr_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	// BSC registers accept only keyed longword writes (Hardware Manual 7.1.4).
 	if (mem_mask == 0xffffffff && (data >> 16) == 0xa55a)
+	{
 		m_mcr = data & 0xfefc;
+		bsc_endian_update();
+	}
 }
 
 uint32_t sh7604_device::rtcsr_r()

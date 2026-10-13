@@ -26,7 +26,7 @@ increment-by-increment traces still pass.
 
 | Control | Documented effect | Active implementation |
 |---|---|---|
-| BCR1.ENDIAN | CS2 little-endian alignment/conversion, section 7.3.2 | Stored; not applied by CPU or DMAC data paths. |
+| BCR1.ENDIAN | CS2 little-endian alignment/conversion, section 7.3.2 | Implemented for CPU data, instruction fetch, cache fills/write-through and DMAC. Conversion is per physical beat: 32-bit beats reverse four bytes; 16-bit beats reverse each half separately; byte accesses retain their lane. Eight-bit devices do not support this mode. Both CPU engines and save/load pass the native regression. |
 | BCR1.BSTROM | CS0 burst ROM cycles | Stored; no generic burst-ROM controller. |
 | BCR1.PSHR | Only CS2 requests shared bus ownership in partial-share master mode | Stored; Saturn arbitration does not select its behavior from PSHR. |
 | BCR1 long waits | Three to six programmed waits when WCR selects long wait | Stored; CPU cost callback uses board constants. |
@@ -64,3 +64,40 @@ for the generic-interface scope and no hardware-verification claim.
 
 Native BSC results: `/private/tmp/sh7604-bsc-remainder-fixed-20261011`.
 Build log: `/private/tmp/sh7604-bsc-remainder-build-20261011.log`.
+
+## CS2 conversion implementation — 2026-10-13
+
+The previous BCR1 handler stored ENDIAN without applying it. The implementation
+now derives the CS2 physical width from BCR2 for ordinary memory and MCR.SZ for
+synchronous DRAM. Keyed writes and postload/reset rebuild this derived state.
+Raw DMA transfers and CPU memory/cache transactions use the same physical data
+conversion. A 16-bit longword read is explicitly sequenced high half first; it
+does not depend on C++ operand evaluation order.
+
+Native DRC memory helpers use the shared CPU path for converted CS2 accesses,
+so raw fast RAM and address-space loads cannot bypass conversion. Converted
+CS2 instructions run through the shared interpreter rather than the raw DRC
+front-end decode. Cache-through instruction fetching reverses word lanes. The
+manual recommends the through area for little-endian sharing and matching
+access sizes; the conversion does not make mismatched sizes interchangeable.
+
+`scripts/sh7604_bsc_endian_test.py` runs the real CPU/device graph with generated
+parked ROMs. It verifies CPU byte/word/longword reads and writes, ordinary and
+SDRAM width selection, CS3 exclusion, DMAC reads/writes, cache fill/write-through,
+save/load restoration, and converted instruction execution on both engines.
+The preserved pre-change executable fails its word-lane check. Instruction-cache,
+slice-boundary, BSC refresh and DMA regressions also pass on both engines.
+The register, refresh and SCI/standby actual-method sanitizer fixtures pass.
+
+Evidence: Hitachi SH7604 manual ADE-602-085C Rev.4.0 section 7.3.2,
+Figures 7.5 and 7.6 (printed pages 150–151), and BCR2/MCR width definitions.
+There is no new physical hardware verification. Logs are under
+`/private/tmp/sh7604-bsc-endian-final-20261013` and related `sh7604-bsc-*` runs.
+The broad checklist item remains incomplete: this implementation does not
+claim programmed waits, external WAIT/grant handshakes, memory-interface
+row/page state or physical refresh/self-refresh operations are finished.
+
+Normal VF2J video/live-audio validation completed 130 emulated seconds without
+a crash or render error: 95.91% average, 538 underflows and 11 overflows.
+Combat dips remain; this is a functional validation, not a controlled speed
+comparison. Output is under `/private/tmp/sh7604-bsc-vf2-final-20261013`.

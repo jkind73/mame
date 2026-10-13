@@ -197,13 +197,14 @@ VCRDMA0/1 are counted in INTC above.
 | MCR | FFFFFFEC | 32 R/W; 16 R at EE | FEFC / 0000 | FIXED key/width and reserved/upper read-back. |
 | RTCSR | FFFFFFF0 | 32 R/W; 16 R at F2 | 00F8; CMF qualified clear / 0000 | FIXED key/width and read-qualified CMF clears (software cannot set CMF); refresh clock, CMF and CMI implemented. |
 | RTCNT | FFFFFFF4 | 32 R/W; 16 R at F6 | 00FF / 0000 | FIXED key/width; seven clock divisors, eight-bit count/wrap, compare/clear, standby and saved phase implemented. |
-| RTCOR | FFFFFFF8 | 32 R/W; 16 R at FA | 00FF / 0000 | FIXED key/width; constant stored but no refresh compare. |
+| RTCOR | FFFFFFF8 | 32 R/W; 16 R at FA | 00FF / 0000 | FIXED key/width; refresh compare/reset implemented and tested. |
 
 All seven registers accept writes only as a single 32-bit transaction with
 upper word A55A; the key is never readable. Manual reset retains these registers.
 The Saturn driver supplies external bus costs; BCR/WCR/MCR storage is not a
 complete implementation of the programmable generic SH7604 memory interfaces,
-endian conversion, bus-size selection or DRAM/SDRAM refresh/arbitration.
+bus-size selection or DRAM/SDRAM refresh/arbitration. CS2 endian conversion is
+implemented and tested as documented in SH7604_BSC_REMAINDER_AUDIT.md (2026-10-13).
 
 ## Reserved regions, extra mappings and documentation conflicts
 

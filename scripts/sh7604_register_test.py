@@ -35,7 +35,7 @@ using offs_t = unsigned;
 #define ACCESSING_BITS_0_15 ((mem_mask & 0xffffU) != 0)
 constexpr uint8_t ICF=0x80, OCFA=8, OCFB=4, OVF=2, CCLRA=1;
 struct sh7604_device {
-    uint32_t m_bcr1=0, m_bcr2=0, m_wcr=0, m_mcr=0, m_rtcsr=0, m_rtcnt=0, m_rtcor=0;
+    uint32_t m_bus_endian_width=0, m_bcr1=0, m_bcr2=0, m_wcr=0, m_mcr=0, m_rtcsr=0, m_rtcnt=0, m_rtcor=0;
     bool m_is_slave=false, m_rtcsr_cmf_read=false;
     uint8_t m_frt_temp=0, m_tocr=0;
     uint16_t m_frc=0, m_frc_icr=0, m_ocra=0, m_ocrb=0;
@@ -163,7 +163,7 @@ def main():
     args = parser.parse_args()
     source = args.source.read_text()
     names = [n+s for n in ("bcr1", "bcr2", "wcr", "mcr", "rtcsr", "rtcnt", "rtcor", "tier") for s in ("_r", "_w")]
-    names += ["ftcsr_w", "fmr_sbycr_w", "wtcnt_w", "rstcsr_w", "frc_r", "frc_w", "ocra_b_w", "frc_icr_r", "chcr_r", "chcr_w", "dmaor_r", "dmaor_w"]
+    names += ["bsc_endian_update", "ftcsr_w", "fmr_sbycr_w", "wtcnt_w", "rstcsr_w", "frc_r", "frc_w", "ocra_b_w", "frc_icr_r", "chcr_r", "chcr_w", "dmaor_r", "dmaor_w"]
     methods = [("template<int Channel>\n" if name.startswith("chcr_") else "") + method(source, name) for name in names]
     declarations = "\n".join(m.split("{", 1)[0].replace("sh7604_device::", "").strip()+";" for m in methods)
     with tempfile.TemporaryDirectory(prefix="sh7604-register-") as tmp:

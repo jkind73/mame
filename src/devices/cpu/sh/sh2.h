@@ -93,6 +93,10 @@ protected:
 	uml::code_handle *m_slice_exhausted = nullptr; // shared timed instruction-boundary exit
 	uint64_t m_cache_scratch[3] = {}; // transient UML registers preserved by read accessors
 	uint32_t m_fetch_reuse = 0;    // DRC already fetched the interpreter fallback instruction
+	uint32_t m_bus_endian_width = 0; // CS2 little-endian bus width, zero when disabled
+	uml::code_handle *m_bus_instruction = nullptr; // converted CS2 instructions
+	uint32_t external_data_read(uint32_t address, unsigned size);
+	void external_data_write(uint32_t address, unsigned size, uint32_t data);
 
 	bool cache_area(offs_t address) const { return m_cache_model && address < 0x20000000 && m_cache.enabled(); }
 

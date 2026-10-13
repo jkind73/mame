@@ -58,6 +58,7 @@ public:
 	void ubc_external_cycle(uint32_t address, bool write);
 
 protected:
+	void bsc_endian_update();
 	sh7604_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int cpu_type, address_map_constructor internal_map, int addrlines);
 
 	virtual void device_start() override ATTR_COLD;
