@@ -110,3 +110,19 @@ historical measurement of the previous implementation. Program-loop and SCU
 results are unchanged. The measured CPU-DMA rates still differ from Sega's
 reference; these measurements do not establish cycle-exact bus timing.
 Artifacts: `/private/tmp/sh7604-dmac-rate-final-20261011`.
+
+## SMPC saved status regression, 2026-10-13
+
+The reset-button NMI enable, current clock-selection status and CD handshake
+latches were absent from the SMPC save registration. They are now serialized.
+The RTC diagnostic enables reset NMI with RESENAB, saves, disables it with
+RESDISA, and loads the original state. It also changes the clock and CD status
+latches between save and load, then checks SF and INTBACK's public status bytes.
+Both DRC and interpreter pass, including calendar rollover and oscillator phase.
+The previous binary fails because reset NMI state is absent from its saved items.
+Artifacts: `/private/tmp/smpc-save-positive-20261013` and
+`/private/tmp/smpc-save-negative-20261013`.
+
+This repairs save/load behavior; it does not complete the broad Rel.2.5 SMPC
+errata item. The additional peripheral formats and remaining reset behavior
+still require review. No checklist text or marker changes accompany this fix.

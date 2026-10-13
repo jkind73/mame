@@ -153,6 +153,9 @@ void smpc_hle_device::device_start()
 	m_mini_nvram->set_base(&m_smem, 5);
 
 	save_item(NAME(m_sf));
+	save_item(NAME(m_cd_sf));
+	save_item(NAME(m_NMI_reset));
+	save_item(NAME(m_cur_dotsel));
 	save_item(NAME(m_in_vblank));
 	save_item(NAME(m_collect_wait));
 	save_item(NAME(m_collect_measured));

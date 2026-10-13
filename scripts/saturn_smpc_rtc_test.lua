@@ -15,6 +15,12 @@ local function data()
  error('calendar data missing')
 end
 local phase=0;local saved_time=0;local next_tick=0;local path=assert(os.getenv("SMPC_RTC_STATE_PATH"))
+local function smpc_item(field)
+ for name,id in pairs(m.devices[':smpc'].items)do
+  if name:match('/'..field..'$')then return emu.item(id)end
+ end
+ error('SMPC state missing: '..field)
+end
 local function run()
  emu.wait(0.001)
  for _,test in ipairs({
@@ -33,6 +39,7 @@ local function run()
  h:write_u8(0x00100001,1);h:write_u8(0x00100003,0);command(0x10)
  for i,v in ipairs(settings)do assert(h:read_u8(0x00100039+2*(i-1))==v,'saved mono/language setting '..i)end
  for i=0,6 do assert(h:read_u8(0x00100023+2*i)==data():read(i),'INTBACK clock byte '..i)end
+ command(0x19) -- RESENAB must survive a state restored after RESDISA.
  print('SMPC_RTC_CALENDAR_PASS');phase=1
 end
 postload_subscription=emu.add_machine_post_load_notifier(function()if phase==4 then phase=5 end end)
@@ -42,13 +49,31 @@ emu.register_frame_done(function()
    for i,v in ipairs({0x19,0x99,0x5c,0x31,0x23,0x59,0x59})do h:write_u8(0x00100001+2*(i-1),v)end
    h:write_u8(0x00100063,1);h:write_u8(0x0010001f,0x16);phase=2
   elseif phase==2 then
-   assert(data():read(6)==0x59,'save setup did not complete');saved_time=m.time:as_double();m:save(path);phase=3
+   assert(data():read(6)==0x59,'save setup did not complete')
+   assert(smpc_item('m_NMI_reset'):read(0)==1,'RESENAB not effective')
+   -- Seed the clock-selection and CD handshake latches without stopping the
+   -- diagnostic CPUs or requiring a disc. Their public status is checked below.
+   smpc_item('m_cur_dotsel'):write(0,1);smpc_item('m_cd_sf'):write(0,1)
+   saved_time=m.time:as_double();m:save(path);phase=3
   elseif phase==3 and data():read(6)~=0x59 then
    assert(data():read(0)==0x20 and data():read(1)==0 and data():read(6)==0,'pre-load century carry')
+   smpc_item('m_cur_dotsel'):write(0,0)
+   h:write_u8(0x00100063,1);h:write_u8(0x0010001f,0x1a);phase=8
+  elseif phase==8 then
+   assert(smpc_item('m_NMI_reset'):read(0)==0,'RESDISA not effective')
+   assert((h:read_u8(0x00100063)&8)==0,'SF write did not clear CD handshake')
    phase=4;m:load(path)
   elseif phase==5 then
    assert(m.time:as_double()>=saved_time and m.time:as_double()<math.floor(saved_time)+1,'load did not restore timer epoch')
-   assert(data():read(6)==0x59,'calendar bytes not restored');phase=6
+   assert(data():read(6)==0x59,'calendar bytes not restored')
+   assert(smpc_item('m_NMI_reset'):read(0)==1,'reset NMI enable not restored')
+   assert((h:read_u8(0x00100063)&8)~=0,'CD handshake not restored')
+   h:write_u8(0x00100001,1);h:write_u8(0x00100003,0)
+   h:write_u8(0x00100063,1);h:write_u8(0x0010001f,0x10);phase=9
+  elseif phase==9 then
+   assert((h:read_u8(0x00100021)&0x40)==0,'INTBACK reset NMI status not restored')
+   assert((h:read_u8(0x00100035)&0x40)~=0,'INTBACK clock selection not restored')
+   print('SMPC_STATE_PASS reset NMI, DOTSEL and CD handshake');phase=6
   elseif phase==6 and data():read(6)~=0x59 then
    assert(data():read(0)==0x20 and data():read(6)==0,'saved calendar carry')
    assert(math.abs(m.time:as_double()-(math.floor(saved_time)+1))<0.04,'RTC oscillator phase not restored')
