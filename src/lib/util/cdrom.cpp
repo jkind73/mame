@@ -2356,6 +2356,13 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 
 		TOKENIZE
 
+		if (trknum < 0 && (!strcmp(token, "INDEX") || !strcmp(token, "PREGAP") ||
+			!strcmp(token, "POSTGAP") || !strcmp(token, "FLAGS")))
+		{
+			fclose(infile);
+			return chd_file::error::INVALID_DATA;
+		}
+
 		if (!strcmp(token, "REM"))
 		{
 			/* skip to actual data of REM command */
@@ -2402,6 +2409,11 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 				/* get lead-out time */
 				TOKENIZE
 				int leadout_offset = msf_to_frames(token);
+				if (trknum < 0)
+				{
+					fclose(infile);
+					return chd_file::error::INVALID_DATA;
+				}
 				outinfo.track[trknum].leadout = leadout_offset;
 			}
 			else if (!strncmp(linebuffer+i, "LEAD-IN", 7))
@@ -2429,6 +2441,11 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 		}
 		else if (!strcmp(token, "FILE"))
 		{
+			if (trknum + 1 >= MAX_TRACKS)
+			{
+				fclose(infile);
+				return chd_file::error::INVALID_DATA;
+			}
 			/* found the data file for a track */
 			TOKENIZE
 
@@ -2476,7 +2493,15 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 		{
 			/* get the track number */
 			TOKENIZE
-			trknum = strtoul(token, nullptr, 10) - 1;
+			unsigned number = 0;
+			auto const parsed = std::from_chars(token, token + strlen(token), number);
+			if (parsed.ec != std::errc() || *parsed.ptr || !number || number > MAX_TRACKS ||
+				number != unsigned(trknum + 2) || lastfname.empty())
+			{
+				fclose(infile);
+				return chd_file::error::INVALID_DATA;
+			}
+			trknum = number - 1;
 
 			/* next token on the line is the track type */
 			TOKENIZE
@@ -2559,7 +2584,12 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 
 			/* get index number */
 			TOKENIZE
-			idx = strtoul(token, nullptr, 10);
+			auto const parsed = std::from_chars(token, token + strlen(token), idx);
+			if (parsed.ec != std::errc() || *parsed.ptr || idx < 0 || idx > MAX_INDEX)
+			{
+				fclose(infile);
+				return chd_file::error::INVALID_DATA;
+			}
 
 			/* get index */
 			TOKENIZE
@@ -2567,6 +2597,7 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 
 			if (idx < 0 || idx > MAX_INDEX)
 			{
+				fclose(infile);
 				osd_printf_error("ERROR: encountered invalid index %d\n", idx);
 				return chd_file::error::INVALID_DATA;
 			}
@@ -2633,6 +2664,9 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 
 	/* close the input CUE */
 	fclose(infile);
+
+	if (trknum < 0)
+		return chd_file::error::INVALID_DATA;
 
 	/* store the number of tracks found */
 	outtoc.numtrks = trknum + 1;

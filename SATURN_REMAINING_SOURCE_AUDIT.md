@@ -348,3 +348,19 @@ build and existing TOC parser tests pass. This is a source-file parser fix,
 not CD hardware validation or closure of the combined unrelated global notes.
 RIFF padding/extent reference:
 https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-
+
+### CUE track/index storage bounds (2026-10-13)
+
+CUE track numbers are now checked before indexing fixed storage: they must
+be sequential, within 1–99, and follow a FILE declaration. FILE after the
+99th track cannot index a nonexistent next entry. INDEX, PREGAP, POSTGAP,
+FLAGS and REM LEAD-OUT before the first TRACK fail. Index numbers use checked
+conversion and invalid-index exits close the input stream. Empty CUE files
+are rejected.
+
+The actual-parser ASan/UBSan fixture covers all these failures, overflowing
+numeric fields, duplicate/nonsequential tracks and a valid 99-track image.
+The parent produces a stack-buffer-overflow on the malformed track input:
+`/private/tmp/cdrom-cue-parent-20261013.log`. WAVE/TOC fixtures and full build
+also pass. This closes concrete parser defects without claiming the broad
+combined nvram/ticket/cdrom checklist scope is complete.
