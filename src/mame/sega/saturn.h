@@ -132,7 +132,7 @@ protected:
 	TIMER_DEVICE_CALLBACK_MEMBER(saturn_scanline);
 	void vint_callback(int state);
 	void hint_callback(int state);
-	int m_prev_hint, m_prev_vint;
+	int m_prev_hint = 0, m_prev_vint = 0;
 
 	unsigned sound_dma_wait(bool registers);
 	void soundram_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);

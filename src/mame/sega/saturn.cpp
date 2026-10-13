@@ -31,6 +31,8 @@ void saturn_state::machine_start()
 {
 	save_item(NAME(m_scu_halt));
 	save_item(NAME(m_system_halt));
+	save_item(NAME(m_prev_hint));
+	save_item(NAME(m_prev_vint));
 	// a loaded state starts with a free SH-2 bus
 	machine().save().register_postload(save_prepost_delegate(FUNC(saturn_state::sh2_bus_reset), this));
 }

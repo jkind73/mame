@@ -23,6 +23,23 @@ The public `exlat_w(int)` input accepts a physical active-low pin transition at 
 
 Sources: Sega VDP2 2.5 counter layouts; VDP1 4.4 raster totals; https://github.com/MiSTer-devel/Saturn_MiSTer/blob/main/rtl/Saturn/VDP2/VDP2.sv . MAME implementation was written independently using observed numeric timing behavior, without copying GPL source.
 
+## Board scan-edge save/load continuity, 2026-10-13
+
+The shared board's previous HBLANK/VBLANK levels were uninitialized and omitted
+from save registration. They now start low and are saved with the device signal
+and timer state, preventing a restored state from using the abandoned timeline's
+edge detector. The native `saturn_scan_state_test.lua` saves mid-frame away from
+signal transitions, changes both detectors, loads, checks their restored levels
+in the post-load notifier, then verifies subsequent HBLANK-IN and VBLANK-IN/OUT
+events reach the SCU. Both DRC and interpreter pass; the previous binary fails
+because its edge-detector state is missing. Artifacts:
+`/private/tmp/scan-state-positive2-20261013` and
+`/private/tmp/scan-state-negative-20261013`.
+
+This fixes state restoration and startup initialization. It does not establish
+hardware behavior with DISP disabled or complete the broader connected-device
+reset checklist item.
+
 ## Megamix remains incomplete
 
 Inspected current MiSTer and Mednafen sources for the remembered NBG2 B0-T1 PN / A0-T0 character fetch divergence. MiSTer's active NBG2/3 path still uses its early PN update, with the alternative bank-dependent update commented out. Mednafen's `T_DrawNBG23` explicitly applies a layer-offset workaround matching several Fighters Megamix register patterns; it does not provide an independent cycle-accurate fetch-port measurement.
