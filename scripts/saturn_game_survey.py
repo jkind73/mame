@@ -2,6 +2,7 @@
 # license:BSD-3-Clause
 """Capture games sequentially with isolated settings; screenshots require human review."""
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -27,13 +28,26 @@ def main():
     root = Path(__file__).resolve().parent.parent
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    # A build during a long survey must not switch later games to another binary.
+    binary = output/"survey-binary"
+    if binary.exists():
+        parser.error("output already contains a survey binary; use a new output directory")
+    shutil.copy2(args.binary.resolve(), binary)
+    with binary.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True)
+    changes = subprocess.run(["git", "diff", "--name-only"], cwd=root, text=True, capture_output=True)
+    manifest = {"binary_sha256":digest, "binary_source":str(args.binary.resolve()),
+                "checkout_head":head.stdout.strip(), "checkout_modified_files":changes.stdout.splitlines(),
+                "machine":args.machine, "games":args.games, "seconds":args.seconds, "audio":args.audio}
+    (output/"manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
     results = []
     for game in args.games:
         run = output/game
         run.mkdir(exist_ok=False)
         if args.nvram_source:
             shutil.copytree(args.nvram_source.resolve(), run/"nvram")
-        command = ["nice", "-n", "10", str(args.binary.resolve())]
+        command = ["nice", "-n", "10", str(binary)]
         if args.machine:
             command.append(args.machine)
         command += [game,
