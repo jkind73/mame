@@ -60,6 +60,42 @@ A normal corrected DRC VF Kids run lasts 122 emulated seconds without a host com
 
 The final normal build passes the fixture in both cores. VF Remix's normal input replay still selects Sarah and reaches Sarah versus Jacky at frame 3600. Elan-Doree remains black in a fresh 62-second corrected run; the master waits on byte 060FFC13, and its VBlank handler repeatedly writes 1 then 0. The slave polls the FRT input-capture flag at FFFFFE11 (not SCI SSR). The shared slave-work flag read by the master is at cache-through 260FFCA8.
 
+## Checklist sweep retest, 2026-10-13
+
+Fresh serial runs use the current DRC, fixed RTC and isolated configuration,
+EEPROM and backup RAM. Captures were visually inspected, not inferred from
+exit status. This is a targeted 15-game retest, not a repeat of all 119 original
+survey entries or a gameplay/audio certification.
+
+| Game | Current observed result |
+|---|---|
+| vfkids | Visible Akira-versus-Akira fight at 60 seconds; valid CPU PCs. The earlier invalid-vector startup failure no longer reproduces in this run. |
+| elandore | Still black at 60 seconds. Open. |
+| rsgun | Visible story/attract scene at 60 seconds. |
+| vfremix | Visible title at 60 seconds. |
+| gaxeduel | Black at 60 seconds; an extended 102-second run shows some intro graphics around 40 seconds and long black intervals thereafter. The preserved pre-batch binary has the same 60-second result and CPU PCs. This is not a completed game fix. |
+| diehard | Visible attract fight at 60 seconds. |
+| fhboxers | Visible animated attract graphics at 60 seconds. |
+| batmanfr | Visible attract background at 60 seconds. |
+| cotton2 | Visible title at 60 seconds. |
+| ffreveng | Visible attract fight at 60 seconds. |
+| skychal | Still black at 65 seconds. Open. |
+| techbowl | Still black at 65 seconds. Open; required external equipment is not validated by this run. |
+| znpwfvt | Visible title at 65 seconds; original blank-screen report does not reproduce. |
+| pcpooh2 | Visible Japanese attendant/error-1 screen at 65 seconds; still not a working game. |
+| dfeverg | Visible attract graphics at 65 seconds; original blank-screen report does not reproduce. |
+
+Artifacts: `/private/tmp/checklist-stv-retest-20261013`,
+`/private/tmp/checklist-stv-survey-20261013`,
+`/private/tmp/checklist-stv-blanks-20261013`,
+`/private/tmp/checklist-gaxe-before-20261013` and
+`/private/tmp/checklist-gaxe-extended-20261013`.
+The old 2026-10-09 Golden Axe captures do show attract graphics at 50 seconds,
+so the new black intervals must not be dismissed solely because execution
+continues. Conversely the matching pre-batch result rules out attributing this
+behavior to the SMPC or scan-edge save-state fixes. The exact historical
+DMA/master-write trigger remains unverified and its checklist item stays open.
+
 VF Kids with the existing SH-2 bus-timing setting Off reaches a visible attract scene at frame 3600, with valid game PCs. The isolated setup applies CONFIG.user_value=0 and performs exactly one reset; logged CONFIG is 0 before and after reset. Thus the remaining failure is in the timing-enabled path. Timing remains On by default; no per-game timing-disable workaround was committed. The earlier set_value/config-reset-loop attempt was invalid and its outputs are not game evidence.
 
 To run the acknowledgment fixture, start vfkids with isolated cfg/NVRAM, `-autoboot_delay 0 -autoboot_script scripts/saturn_scu_irq_test.lua -seconds_to_run 3 -video none -sound none`; repeat with `-nodrc`. Require the explicit `SATURN_SCU_IRQ_PASS` marker, not merely process exit 0. The fixture's first ISR instruction lowers SR, which is essential to reproduce the original DRC failure.
