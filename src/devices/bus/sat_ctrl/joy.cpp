@@ -14,6 +14,7 @@
 //**************************************************************************
 
 DEFINE_DEVICE_TYPE(SATURN_JOY, saturn_joy_device, "saturn_joy", "Sega Saturn Joypad")
+DEFINE_DEVICE_TYPE(SATURN_TWIN_STICK, saturn_twin_stick_device, "saturn_twin_stick", "Sega Saturn Twin Stick")
 
 
 static INPUT_PORTS_START( saturn_joy )
@@ -35,6 +36,34 @@ static INPUT_PORTS_START( saturn_joy )
 	PORT_BIT(0x0007, IP_ACTIVE_LOW, IPT_UNUSED)
 INPUT_PORTS_END
 
+// SMPC 3.2 / STN-50: identical ID and packet to the pad, with two sticks.
+static INPUT_PORTS_START( saturn_twin_stick )
+	PORT_INCLUDE(saturn_joy)
+	PORT_MODIFY("JOY")
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_RIGHT) PORT_8WAY
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_LEFT) PORT_8WAY
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_DOWN) PORT_8WAY
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICKLEFT_UP) PORT_8WAY
+	PORT_BIT(0x0400, IP_ACTIVE_LOW, IPT_BUTTON1) PORT_NAME("Right Stick Trigger")
+	PORT_BIT(0x0200, IP_ACTIVE_LOW, IPT_BUTTON2) PORT_NAME("Right Stick Button")
+	PORT_BIT(0x0100, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_DOWN) PORT_8WAY
+	PORT_BIT(0x0080, IP_ACTIVE_LOW, IPT_BUTTON4) PORT_NAME("Left Stick Button")
+	PORT_BIT(0x0040, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_LEFT) PORT_8WAY
+	PORT_BIT(0x0020, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_UP) PORT_8WAY
+	PORT_BIT(0x0010, IP_ACTIVE_LOW, IPT_JOYSTICKRIGHT_RIGHT) PORT_8WAY
+	PORT_BIT(0x0008, IP_ACTIVE_LOW, IPT_BUTTON3) PORT_NAME("Left Stick Trigger")
+INPUT_PORTS_END
+
+ioport_constructor saturn_twin_stick_device::device_input_ports() const
+{
+	return INPUT_PORTS_NAME(saturn_twin_stick);
+}
+
+saturn_twin_stick_device::saturn_twin_stick_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
+	saturn_joy_device(mconfig, SATURN_TWIN_STICK, tag, owner, clock)
+{
+}
+
 
 //-------------------------------------------------
 //  input_ports - device-specific input ports
@@ -55,7 +84,12 @@ ioport_constructor saturn_joy_device::device_input_ports() const
 //-------------------------------------------------
 
 saturn_joy_device::saturn_joy_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
-	device_t(mconfig, SATURN_JOY, tag, owner, clock),
+	saturn_joy_device(mconfig, SATURN_JOY, tag, owner, clock)
+{
+}
+
+saturn_joy_device::saturn_joy_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock) :
+	device_t(mconfig, type, tag, owner, clock),
 	device_saturn_control_port_interface(mconfig, *this),
 	m_joy(*this, "JOY")
 {

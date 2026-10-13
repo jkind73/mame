@@ -139,4 +139,22 @@ cache, slice-boundary and UBC native regressions also pass both engines.
 Logs: `/private/tmp/sh7604-illegal-slot-final-20261013`,
 `/private/tmp/sh7604-illegal-slot-parent-20261013`, `sh7604-slot-cache-20261013`,
 `sh7604-slot-slice-20261013` and `sh7604-slot-ubc-20261013` under `/private/tmp`.
-Retail re-tests of the three survey crashes remain the next verification.
+Retail re-tests are recorded in `SATURN_GAME_REGRESSIONS.md`: Astrass and
+Decathlete no longer crash but remain black; Super Goal has a separate
+host-memory failure in both engines and is still being investigated.
+
+## Twin Stick controller
+
+Sega SMPC 3.2's Twin Stick table maps two digital sticks and their buttons to
+the standard-pad ID 02 and two-byte active-low report. A dedicated
+`twin_stick` slot now exposes both eight-way sticks, both triggers/buttons and
+Start, directly or through MultiTerminal 6. It reuses the pad's packet and
+direct-read implementation, retaining the three high unused bits.
+
+Source: https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_30.htm
+Native `saturn_controller_report_test.py` passes both CPU engines for all 13
+individual controls, release states and simultaneous diagonals on both sticks.
+Mission Stick, keyboard and sparse multitap regressions also pass. Logs:
+`/private/tmp/controller-twin-stick-native-20261013`. Hardware verification
+was not performed. The broad SMPC errata/controller items remain open because
+other listed features are not complete.

@@ -133,6 +133,7 @@ uint16_t saturn_control_port_device::read_direct()
 
 void saturn_multitap_controls(device_slot_interface &device)
 {
+	device.option_add("twin_stick", SATURN_TWIN_STICK);
 	device.option_add("joypad",    SATURN_JOY);
 	device.option_add("racing",    SATURN_WHEEL);
 	device.option_add("analog",    SATURN_ANALOG);
