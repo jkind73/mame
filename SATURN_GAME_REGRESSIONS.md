@@ -190,3 +190,10 @@ that current Golden Axe gameplay is repaired. Captures and immutable binaries:
 `/private/tmp/gaxeduel-first-irq-change-20261013`,
 `/private/tmp/gaxeduel-first-irq-mask-correction-20261013`, and
 `/private/tmp/gaxeduel-scu-ack-mask-fixed-20261013`.
+
+With the acknowledgment mask correction, serial Die Hard and VF Kids
+110-second runs both finish without host crashes or Lua errors. Inspected
+captures show fighting attract scenes at 100 seconds; both internal audio
+files contain 110 seconds at 48kHz. Artifacts:
+`/private/tmp/scu-ack-mask-stv-retail-20261013`. This does not certify full
+gameplay, final stages or audio hardware parity.
