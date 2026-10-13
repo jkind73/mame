@@ -56,3 +56,37 @@ PAL/NTSC and dedicated counter layouts, and EXLAT edge/enable behavior.
 The duplicate marker is now complete; its original text is unchanged. This
 does not add physical hardware verification beyond the earlier authorized
 emulator-derived implementation. Native logs: `/private/tmp/checklist-scan-20261013`.
+
+## Timer 1 against the replaced H-counter model, 2026-10-13
+
+The Timer 1 implementation is already connected to the scheduled HBLANK-IN
+signal. Rechecked that connection with the native `saturn_timer1_scan_test.lua`:
+12 settings in each of the eight horizontal modes, including zero's 512-count
+reload and settings crossing the H/V counter discontinuities. Each case checks
+that the real SCU status remains clear half a SCU clock before expiry and becomes
+pending half a clock after expiry. The diagnostic then latches the mapped H/V
+registers. DRC and interpreter produce identical 96-entry counter traces.
+
+The historical header table is obsolete: it assumes the old signal position and
+linear counter until the line ends. Selected current mode-0 latch values:
+
+| Timer setting | Old header HCNT | Current HCNT |
+|---|---|---|
+| 1 | 0x282 | 0x288 |
+| 0x10 | 0x2a0 | 0x2a4 |
+| 0x20 | 0x2c0 | 0x36c |
+| 0x40 | 0x300 | 0x3a8 |
+| 0x69 | 0x352 | 0x3f4 |
+| 0x6a | 0 | 0x3f6 |
+| 0x80 | 0x02c | 0x020 |
+| 0x100 | 0x12c | 0x110 |
+
+These are measurements of the current model, not replacement hardware timing
+constants. The parked diagnostic BIOS leaves SCU on its configured 352-mode
+oscillator and VDP2 on its configured 320-mode oscillator; a real BIOS clock
+change selects the clocks together, so these counters must not be treated as a
+universal table. No production timing change was necessary for this recheck.
+The stale verification TODO is removed, and the old observations remain labeled
+historical. The original recheck checklist marker alone changes to complete.
+No physical Saturn verification is claimed. Artifacts:
+`/private/tmp/timer1-scan-20261013`.

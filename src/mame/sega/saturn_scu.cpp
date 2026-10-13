@@ -11,7 +11,6 @@ TODO:
 \- indirect mode can actually access same bus with some quirks, specifics TBD;
 \- avoid cross country DMA-ing from one region to the other, i.e. gunblaze;
 \- Road Blaster shifted 1-byte quirk, cfr. currently unused function (intentionally broken);
-- Verify Timer 1 (seems unaffected even after rewriting it?)
 - A-Bus external interrupts;
 - A-Bus waitstates;
 - PAD irq signal from SMPC (lightgun and some mice);
@@ -32,6 +31,9 @@ C-Bus: $0600'0000 - $07ff'ffff (Work RAM-H, mirrored)
 /*
 Historical SCU observations moved from the shared driver. These are retained
 as investigation notes, not a description of the current interrupt/timer model.
+The old Timer 1 table below predates the H-counter discontinuities and signal
+edges. Current scheduling is checked by saturn_timer1_scan_test.lua; see
+VDP2_SCAN_TIMING_IMPLEMENTATION.md for the measured counters and clock context.
 
     - There's definitely an ack mechanism in SCU irqs. This is almost surely done via
       the ISM register (i.e. going 0->1 to the given bit acks it).
