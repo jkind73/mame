@@ -172,3 +172,8 @@ complete without host crashes. Gaxeduel remains black, so its failure is
 not resolved. Artifacts: `/private/tmp/checklist-stv-regressions-audio-20261013`.
 All ten recordings contain 110 seconds at 48kHz. These observations do not
 establish audio parity or close the whole original regression item.
+
+Golden Axe's denser 155-second attract capture still shows captions and
+project-logo transitions with most backgrounds absent; it is not simply one
+poorly timed black screenshot. No host crash occurs. It remains open;
+artifacts: `/private/tmp/gaxeduel-attract-sequence-20261013`.

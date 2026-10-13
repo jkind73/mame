@@ -76,6 +76,8 @@ protected:
 	address_space *m_decrypted_program;
 
 	uint32_t m_test_irq;
+	bool m_zero_delay_pending = false; // zero is a valid delayed branch destination
+	bool delay_pending() const { return m_sh2_state->m_delay || m_zero_delay_pending; }
 	bool m_in_delay_slot = false; // transient instruction context, never retained across slices
 	virtual bool is_slot_illegal(uint16_t opcode) const override;
 	int32_t m_internal_irq_vector;

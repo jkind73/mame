@@ -364,3 +364,22 @@ The parent produces a stack-buffer-overflow on the malformed track input:
 `/private/tmp/cdrom-cue-parent-20261013.log`. WAVE/TOC fixtures and full build
 also pass. This closes concrete parser defects without claiming the broad
 combined nvram/ticket/cdrom checklist scope is complete.
+
+### SH7604 delayed branches to address zero (2026-10-13)
+
+The interpreter used zero as the inactive delayed-branch sentinel, so JMP,
+JSR, RTS and RTE to zero mishandled their slot and slot exceptions. It now
+retains a saved pending bit for a zero destination. Interrupt/user-break
+deferral, operand validation, PC-relative addressing and return from DRC
+interpreter fallback use the same pending-state check. Reset, debugger PC
+changes and address-error exceptions clear the bit. Untaken conditional
+branches do not create a pending slot.
+
+The native regression confirms the preserved parent interpreter takes the
+wrong exception vector; the parent DRC passes. Both corrected engines pass
+80 existing illegal-slot cases, four illegal and four legal zero-target slots,
+and a pending-zero-slot save/load/resume check. Timer slice-boundary,
+instruction-cache and UBC native tests also pass on both engines. Full build
+passes. Artifacts: `/private/tmp/sh7604-zero-delay-save-20261013` and
+`/private/tmp/sh7604-zero-delay-parent-20261013`. This is a concrete CPU
+correctness fix, not a claim to resolve every outstanding game IRQ issue.

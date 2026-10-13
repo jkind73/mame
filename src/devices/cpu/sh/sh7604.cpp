@@ -840,7 +840,7 @@ void sh7604_device::sh2_exception(const char *message, int irqline)
 
 		if (irqline == 15 && m_ubc_pending)
 		{
-			if (m_ubc_inhibit || m_sh2_state->m_delay)
+			if (m_ubc_inhibit || delay_pending())
 				return;
 			m_ubc_pending = false;
 			sh2_exception_internal(message, 15, 12);
@@ -2576,7 +2576,7 @@ bool sh7604_device::ubc_compare(uint32_t address, uint32_t data, unsigned size, 
 
 void sh7604_device::ubc_accept()
 {
-	if (m_ubc_pending && !m_standby && !m_sh2_state->m_delay && !m_ubc_inhibit &&
+	if (m_ubc_pending && !m_standby && !delay_pending() && !m_ubc_inhibit &&
 		!m_sh2_state->pending_nmi && (m_sh2_state->sr & SH_I) < SH_I)
 	{
 		m_ubc_pending = false;
@@ -2593,8 +2593,9 @@ bool sh7604_device::instruction_access_valid(uint32_t address, unsigned size)
 		(size == 4 && address >= 0xfffffe00 && address < 0xffffff00)))
 		return true;
 	debugger_exception_hook(9);
-	uint32_t const pc = m_sh2_state->m_delay ? m_sh2_state->pc - 2 : m_sh2_state->pc;
+	uint32_t const pc = delay_pending() ? m_sh2_state->pc - 2 : m_sh2_state->pc;
 	m_sh2_state->m_delay = 0;
+	m_zero_delay_pending = false;
 	m_sh2_state->r[15] -= 4;
 	write_long(m_sh2_state->r[15], m_sh2_state->sr);
 	m_sh2_state->r[15] -= 4;
@@ -2619,7 +2620,7 @@ bool sh7604_device::instruction_before(uint32_t pc, uint16_t opcode)
 	if (!m_instruction_monitor)
 		return true;
 	m_ubc_fetch_sequence = m_ubc_sequence;
-	bool const delayed = m_sh2_state->m_delay != 0;
+	bool const delayed = delay_pending();
 	if (BIT(m_ubc_fetch[28], 12))
 		ubc_compare(pc, opcode, 2, false, true, false);
 	else if (new_fetch)
@@ -2651,7 +2652,7 @@ void sh7604_device::instruction_after(uint32_t pc, uint16_t opcode)
 void sh7604_device::execute_run()
 {
 	// Finish an interpreter delay slot before returning to compiled code.
-	if (m_instruction_monitor || (m_isdrc && m_sh2_state->m_delay))
+	if (m_instruction_monitor || (m_isdrc && delay_pending()))
 		execute_monitored();
 	else
 		sh2_device::execute_run();

@@ -4,9 +4,9 @@ local m=manager.machine;local cpu=m.devices[':maincpu'];local h=cpu.spaces.progr
 local pc=0x26008000;local target=pc+0x100;local vbr=pc+0x1000;local stack=pc+0x2000
 local function clear_delay()
  for name,id in pairs(cpu.items)do
-  if name:match('m_delay$')then emu.item(id):write(0,0);return end
+  if name:match('m_delay$') or name:match('m_zero_delay_pending$')then emu.item(id):write(0,0)end
  end
- error('missing delay state')
+
 end
 local function run()
  emu.wait(0.02);h:write_u8(0xfffffe92,0x10)
@@ -29,11 +29,51 @@ local function run()
    assert(cpu.state.PR.value==((outer==0x440b or outer==0xb07e)and pc+4 or 0x12345678),'illegal slot changed PR')
   end
  end
+ -- Zero is a valid delayed destination, not an absent-delay marker.
+ for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b})do
+  clear_delay();h:write_u16(pc,outer);h:write_u16(pc+2,0xffff)
+  h:write_u32(stack,0);h:write_u32(stack+4,0xf0)
+  cpu.state.VBR.value=vbr;cpu.state.SR.value=0xf0;cpu.state.R15.value=stack
+  cpu.state.R4.value=0;cpu.state.PR.value=0;cpu.state.CURPC.value=pc
+  emu.wait(0.0001)
+  local expected_stack=outer==0x002b and stack or stack-8
+  assert(cpu.state.CURPC.value==(vbr+0x260)&0x0fffffff or cpu.state.CURPC.value==(vbr+0x262)&0x0fffffff,'zero-target slot vector missing')
+  assert(cpu.state.R15.value==expected_stack and h:read_u32(expected_stack)==0,'zero-target slot saved wrong PC')
+ end
+ -- A legal slot must execute once before reaching address zero. The
+ -- diagnostic ROM has an illegal word there, which then takes vector 4.
+ for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b})do
+  clear_delay();h:write_u16(pc,outer);h:write_u16(pc+2,0xe72a)
+  h:write_u32(stack,0);h:write_u32(stack+4,0xf0)
+  cpu.state.VBR.value=vbr;cpu.state.SR.value=0xf0;cpu.state.R15.value=stack
+  cpu.state.R4.value=0;cpu.state.R7.value=0;cpu.state.PR.value=0;cpu.state.CURPC.value=pc
+  emu.wait(0.0001)
+  local expected_stack=outer==0x002b and stack or stack-8
+  assert(cpu.state.R7.value==42,'legal zero-target slot skipped')
+  assert(h:read_u32(expected_stack)==0,'legal zero-target branch failed')
+ end
+ -- Retain a pending zero-target slot through native save/load and a core
+ -- timeslice while the CPU is disabled; resume must still take vector 6.
+ local function field(suffix)
+  for name,id in pairs(cpu.items)do
+   if name:sub(-#suffix)==suffix then return emu.item(id)end
+  end
+  error('missing '..suffix)
+ end
+ clear_delay();h:write_u16(pc+2,0xffff)
+ cpu.state.VBR.value=vbr;cpu.state.SR.value=0xf0;cpu.state.R15.value=stack;cpu.state.CURPC.value=pc+2
+ field('m_cpu_off'):write(0,1);field('m_zero_delay_pending'):write(0,1)
+ m:save('zero-delay');emu.wait(0.1)
+ field('m_zero_delay_pending'):write(0,0);m:load('zero-delay');emu.wait(0.1)
+ assert(field('m_zero_delay_pending'):read(0)==1,'pending zero slot lost on load')
+ field('m_cpu_off'):write(0,0);emu.wait(0.0001)
+ assert(cpu.state.R15.value==stack-8 and h:read_u32(stack-8)==0,'restored zero-target slot wrong PC')
+ assert(cpu.state.CURPC.value==(vbr+0x260)&0x0fffffff or cpu.state.CURPC.value==(vbr+0x262)&0x0fffffff,'restored zero-target slot wrong vector')
  clear_delay();h:write_u16(pc,0xffff);cpu.state.VBR.value=vbr;cpu.state.SR.value=0xf0;cpu.state.R15.value=stack;cpu.state.CURPC.value=pc
  emu.wait(0.0001)
  assert(cpu.state.CURPC.value==(vbr+0x240)&0x0fffffff or cpu.state.CURPC.value==(vbr+0x242)&0x0fffffff,'general illegal vector')
  assert(cpu.state.R15.value==stack-8 and h:read_u32(stack-8)==pc,'general illegal saved PC')
- print('SH7604_ILLEGAL_SLOT_PASS 80 slots, self-loop decode, vector 6 jump PC/SR/PR and general vector 4');m:exit()
+ print('SH7604_ILLEGAL_SLOT_PASS 80 nonzero and 8 zero-target slots, self-loop decode, vector 6 jump PC/SR/PR and general vector 4');m:exit()
 end
 emu.register_frame_done(function()
  if ILLEGAL_SLOT_TEST_STARTED then return end;ILLEGAL_SLOT_TEST_STARTED=true

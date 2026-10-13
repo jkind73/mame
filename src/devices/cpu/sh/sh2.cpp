@@ -80,6 +80,7 @@ void sh2_device::device_start()
 	// internals
 	save_item(NAME(m_cpu_off));
 	save_item(NAME(m_test_irq));
+	save_item(NAME(m_zero_delay_pending));
 	save_item(NAME(m_irq_line_state));
 	save_item(NAME(m_nmi_line_state));
 	save_item(NAME(m_internal_irq_vector));
@@ -100,6 +101,7 @@ void sh2_device::device_reset()
 	m_sh2_state->pc = m_sh2_state->pr = m_sh2_state->sr = m_sh2_state->gbr = m_sh2_state->vbr = m_sh2_state->mach = m_sh2_state->macl = 0;
 	m_sh2_state->evec = m_sh2_state->irqsr = 0;
 	m_sh2_state->ea = m_sh2_state->m_delay = 0;
+	m_zero_delay_pending = false;
 	m_sh2_state->pending_irq = 0;
 	m_sh2_state->pending_nmi = 0;
 	m_sh2_state->sleep_mode = 0;
@@ -708,7 +710,7 @@ void sh2_device::execute_run()
 		if (!instruction_before(instruction_pc, opcode))
 			continue;
 
-		m_in_delay_slot = m_sh2_state->m_delay != 0;
+		m_in_delay_slot = delay_pending();
 		if (m_in_delay_slot)
 		{
 			m_sh2_state->pc = m_sh2_state->m_delay;
@@ -721,10 +723,20 @@ void sh2_device::execute_run()
 			ILLEGAL();
 		else
 			execute_one(opcode);
+		// Legacy branch helpers use m_delay == 0 as their inactive sentinel.
+		// Retain an explicit pending bit for a valid zero destination, including
+		// across timeslices, bus waits and saves. Untaken BT/S and BF/S have no slot.
+		m_zero_delay_pending = !m_in_delay_slot && !m_sh2_state->m_delay &&
+			((opcode >> 12) == 0xa || (opcode >> 12) == 0xb ||
+			 (opcode & 0xf03f) == 0x0003 || (opcode & 0xf03f) == 0x0023 ||
+			 (opcode & 0xf03f) == 0x400b || (opcode & 0xf03f) == 0x402b ||
+			 (opcode & 0xf03f) == 0x000b || (opcode & 0xf03f) == 0x002b ||
+			 ((opcode & 0xff00) == 0x8d00 && (m_sh2_state->sr & SH_T)) ||
+			 ((opcode & 0xff00) == 0x8f00 && !(m_sh2_state->sr & SH_T)));
 		m_in_delay_slot = false;
 		instruction_after(instruction_pc, opcode);
 
-		if (m_test_irq && !m_sh2_state->m_delay)
+		if (m_test_irq && !delay_pending())
 		{
 			check_pending_irq("mame_sh2_execute");
 			m_test_irq = 0;
@@ -739,7 +751,7 @@ void sh2_device::execute_run()
 bool sh2_device::instruction_before(uint32_t pc, uint16_t opcode)
 {
 	// Decode the illegal slot before checking its would-be operand accesses.
-	if (m_sh2_state->m_delay && is_slot_illegal(opcode))
+	if (delay_pending() && is_slot_illegal(opcode))
 		return true;
 	if (instruction_bus_ready(pc, opcode))
 		return true;
@@ -754,7 +766,7 @@ bool sh2_device::instruction_bus_ready(uint32_t pc, uint16_t op)
 	if (m_bus_ready.isnull() && !m_onchip_width_checks)
 		return true;
 	auto const &r = m_sh2_state->r;
-	u32 const relative_pc = m_sh2_state->m_delay ? m_sh2_state->m_delay + 2 : pc + 4;
+	u32 const relative_pc = delay_pending() ? m_sh2_state->m_delay + 2 : pc + 4;
 	unsigned const n = (op >> 8) & 15, m = (op >> 4) & 15, lo = op & 15, group = op >> 12;
 	auto ready = [this](u32 a, unsigned size, bool write)
 	{ return instruction_access_valid(a, size) && (a >= 0x40000000 || m_bus_ready.isnull() || m_bus_ready(a & m_am, size, write)); };
@@ -928,6 +940,7 @@ void sh2_device::state_import(const device_state_entry &entry)
 		case STATE_GENPC:
 		case STATE_GENPCBASE:
 			m_sh2_state->m_delay = 0;
+			m_zero_delay_pending = false;
 			break;
 
 		case SH_SR:
@@ -961,7 +974,7 @@ void sh2_device::execute_set_input(int irqline, int state)
 			}
 			else
 			{
-				if (m_sh2_state->m_delay)
+				if (delay_pending())
 					m_test_irq = 1;
 				else
 					check_pending_irq("sh2_set_nmi_line");
@@ -991,7 +1004,7 @@ void sh2_device::execute_set_input(int irqline, int state)
 			}
 			else
 			{
-				if (m_sh2_state->m_delay)
+				if (delay_pending())
 					m_test_irq = 1;
 				else
 					check_pending_irq("sh2_set_irq_line");
