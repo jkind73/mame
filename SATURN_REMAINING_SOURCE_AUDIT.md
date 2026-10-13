@@ -293,3 +293,14 @@ parser fails the new byte-length case; log:
 `/private/tmp/cdrom-toc-units-parent-20261013.log`. Full subtarget build and
 legacy metadata regressions pass. WAVE decoding, concatenated segments and
 partial-sector padding are not claimed complete by this change.
+
+### Live BIOS DSP instruction comparison (2026-10-13)
+
+The new BIOS capture scripts save thirteen real Japanese BIOS DSP states,
+including sound RAM, from frames 180 through 540. Replaying each captured
+program through the actual MAME and external Ymir DSP kernels matches every
+executed instruction (109 per capture), pipeline registers, effect outputs
+and RAM. The random-program comparison also passes. This checks the DSP
+kernel, not the complete mixer or the audible BIOS chime; that item remains
+open. Artifacts: `/private/tmp/bios-dsp-live-20261013` and
+`/private/tmp/bios-dsp-ymir-compare-20261013.log`. No real hardware validation.
