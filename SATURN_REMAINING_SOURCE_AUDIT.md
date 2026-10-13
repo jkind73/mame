@@ -104,3 +104,11 @@ and 16 four-port occupancy masks across all 16 port-mode combinations, mixed
 SMPC collector fails the same fixture. The full subtarget builds.
 This does not close MCU-level controller timing, unsupported devices or the
 full SMPC errata item.
+
+Native controller validation now passes all six runs (DRC/interpreter × Mission
+Stick, keyboard, mixed sparse six-port tap). `saturn_controller_report_test.py`
+uses real input fields, matrix keyboard scans, controller devices and timed
+INTBACK, checking the public OREG byte stream. The tap uses occupied connectors
+1/3/5/6 with empty 2/4 and distinct pad/analog/keyboard payloads. Keyboard tests
+exercise X/E/Q and physical Caps/Scroll make/break transitions. Mission Stick
+checks both hysteresis bands. Logs: `/private/tmp/controller-reports-native-20261013`.
