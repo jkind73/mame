@@ -144,3 +144,13 @@ No game-fix checklist marker was closed for these results.
 
 Artifacts: `/private/tmp/stv-illegal-slot-games-fixed-20261013` and
 `/private/tmp/supgoal-interpreter-20261013.log`.
+
+### Sound RAM boundary correction
+
+The ST-V SH-2 sound map still exposed 1MiB after the shared SCSP allocation
+was reduced to 512KiB. The native boundary fixture reproduces a heap overflow
+at the first expansion word under AddressSanitizer; the corrected map passes
+both engines, including ASan. Astrass, Decathlete and Super Goal now finish
+67-second serial runs without crashes. All three final pictures remain black,
+so these results do not close their game emulation failures.
+Artifacts: `/private/tmp/stv-sound-ram-boundary-fixed-20261013`.

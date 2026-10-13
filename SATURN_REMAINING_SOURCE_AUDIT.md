@@ -172,3 +172,26 @@ payload sizes and an empty fourth connector. All existing controller report
 tests pass too. Artifacts: `/private/tmp/controller-segatap-native-20261013`.
 This corrects device selection and SMPC reports; real adapter electrical
 handshakes have not been checked against hardware.
+
+## ST-V sound RAM map overflow
+
+The earlier 512KiB SCSP RAM correction updated the sound-CPU and SCSP maps but
+missed ST-V's SH-2 map, which still called shared RAM handlers over 1MiB.
+Offsets in 05A80000–05AFFFFF therefore indexed beyond the 512KiB allocation.
+Retail Super Goal failures appeared later in the Billboard Z80 or sound
+68000 memory dispatch, depending on which adjacent heap storage was damaged.
+The ST-V SH-2 map now ends at 05A7FFFF, matching the allocation and both sound
+views. No expansion RAM or guessed mirror is provided. Expansion electrical
+readback has not been verified on hardware.
+
+`saturn_sound_ram_boundary_test.py` passes both CPU engines through actual
+SH-2 master/slave and 68000 maps: first/last physical words are shared; every
+word of the formerly mapped expansion range is tested for unbacked reads and
+writes without altering installed RAM. Logs:
+`/private/tmp/sound-ram-boundary-native-20261013`. The same test passes under AddressSanitizer in both engines. The preserved
+pre-fix ASan executable fails at `soundram_w`, reading two bytes exactly after
+the 524288-byte allocation (the masked write first reads the old word).
+Artifacts: `/private/tmp/sound-ram-boundary-asan-fixed-20261013` and
+`/private/tmp/sound-ram-boundary-asan-parent-raw-20261013`. All three retail
+re-tests now finish without a host crash, but remain black at the final frame;
+those game failures remain open.

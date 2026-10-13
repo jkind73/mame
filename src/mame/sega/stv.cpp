@@ -923,7 +923,9 @@ void stv_state::stv_mem(address_map &map)
 	map(0x01800000, 0x01ffffff).w("dcc", FUNC(saturn_dcc_device::sinit_w));
 	map(0x02000000, 0x04ffffff).rom().mirror(0x20000000).region("abus", 0); // cartridge
 	/* Sound */
-	map(0x05a00000, 0x05afffff).rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w));
+	// The shared SCSP DRAM is 512KiB, matching the sound CPU and SCSP maps.
+	// The expansion area has no backing RAM on this board.
+	map(0x05a00000, 0x05a7ffff).rw(FUNC(stv_state::soundram_r), FUNC(stv_state::soundram_w));
 	map(0x05b00000, 0x05b00fff).rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
 	/* VDP1 */
 	map(0x05c00000, 0x05c7ffff).rw(m_vdp1, FUNC(saturn_vdp1_device::vram_r), FUNC(saturn_vdp1_device::vram_w));
