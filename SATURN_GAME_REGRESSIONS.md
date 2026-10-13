@@ -177,3 +177,16 @@ Golden Axe's denser 155-second attract capture still shows captions and
 project-logo transitions with most backgrounds absent; it is not simply one
 poorly timed black screenshot. No host crash occurs. It remains open;
 artifacts: `/private/tmp/gaxeduel-attract-sequence-20261013`.
+
+### Golden Axe acknowledgment regression isolation
+
+An isolated rebuild of 92373a1e6e6 restores the full-color intro at 40 seconds.
+Its next source change, a06db8543e1, loses that background. Adding the missing
+SCU acknowledgment IMS reset to that revision restores the same full-color
+scene. The current build still loses backgrounds with this correction, so a
+later independent regression remains under investigation. It is not a claim
+that current Golden Axe gameplay is repaired. Captures and immutable binaries:
+`/private/tmp/gaxeduel-known-baseline-20261013`,
+`/private/tmp/gaxeduel-first-irq-change-20261013`,
+`/private/tmp/gaxeduel-first-irq-mask-correction-20261013`, and
+`/private/tmp/gaxeduel-scu-ack-mask-fixed-20261013`.

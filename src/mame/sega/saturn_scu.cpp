@@ -1460,6 +1460,10 @@ IRQ_CALLBACK_MEMBER(saturn_scu_device::irq_ack_cb)
 	// HOLD_LINE is cleared synchronously by standard_irq_callback, before
 	// this vector callback. Queuing CLEAR_LINE here leaves the request pending
 	// while an SH-2 handler lowers SR, allowing the same request to nest again.
+	// Vector acknowledgment restores the hardware mask. The BIOS handler
+	// subsequently writes its saved mask; pending events must not nest in
+	// the gap before that write (MiSTer IVECF_RISE / Ymir acknowledgment).
+	m_ism = 0xbfff;
 	m_current_irq_level = 0;
 	// Re-arbitrate queued requests after the current vector fetch completes.
 	// Without this, pending IST bits depend on another unrelated register write.

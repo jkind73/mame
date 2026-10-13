@@ -402,3 +402,28 @@ state would apply attenuation twice after moving MVOL into the mixer. The
 actual postload method fixture starts with two stale gains and verifies both
 become unity while DSP/LFO restoration still runs. ASan/UBSan and the full
 build pass. User-configured gains are stored separately and are unaffected.
+
+### SCU vector acknowledgment mask reset (2026-10-13)
+
+Acknowledgment now restores IMS to 0xBFFF before releasing the selected
+request. MiSTer's IVECF_RISE path and Ymir's AcknowledgeExternalInterrupt
+both implement this operation. Pending sources stay queued until software
+restores its mask. HOLD_LINE still clears the CPU request synchronously,
+preserving exactly-once delivery. No change to the IST delivery-time clearing
+model or priority locking was guessed.
+
+The real SH7604 ISR records the acknowledgment mask and explicitly restores
+its software mask. Both CPU engines pass exactly-once delivery, repeat DMA,
+masked retention, payload and stack checks. The parent fails the mask check.
+Queued DSP/SMPC tests also verify that the second source waits for a software
+mask write and that the pending vectors survive save/load. Indirect DMA
+regressions pass on both engines. The fixture uses CURPC to clear an existing
+diagnostic delay slot before replacing guest execution. Full build passes.
+No new real hardware verification. Artifacts:
+`/private/tmp/saturn-scu-ack-mask-final-20261013`,
+`/private/tmp/saturn-scu-ack-mask-rearm-20261013`, and
+`/private/tmp/saturn-scu-ack-mask-parent-20261013`.
+
+Source references:
+https://github.com/MiSTer-devel/Saturn_MiSTer/blob/main/rtl/Saturn/SCU/SCU.sv
+https://github.com/StrikerX3/Ymir/blob/main/libs/ymir-core/src/ymir/hw/scu/scu.cpp
