@@ -36,7 +36,7 @@ void saturn_segatap_device::device_start()
 void saturn_segatap_device::device_add_mconfig(machine_config &config)
 {
 	for (auto &port : m_subctrl_port)
-		SATURN_CONTROL_PORT(config, port, saturn_joys, "joypad");
+		SATURN_CONTROL_PORT(config, port, saturn_segatap_controls, "joy_md3");
 }
 
 

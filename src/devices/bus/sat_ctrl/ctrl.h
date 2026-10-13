@@ -73,7 +73,7 @@ DECLARE_DEVICE_TYPE(SATURN_CONTROL_PORT, saturn_control_port_device)
 
 void saturn_controls(device_slot_interface &device);
 void saturn_multitap_controls(device_slot_interface &device);
-void saturn_joys(device_slot_interface &device);
+void saturn_segatap_controls(device_slot_interface &device);
 
 
 #endif // MAME_BUS_SAT_CTRL_CTRL_H

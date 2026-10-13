@@ -158,3 +158,17 @@ Mission Stick, keyboard and sparse multitap regressions also pass. Logs:
 `/private/tmp/controller-twin-stick-native-20261013`. Hardware verification
 was not performed. The broad SMPC errata/controller items remain open because
 other listed features are not complete.
+
+## Sega Tap supported peripherals
+
+SMPC 3.3 Table 3.17 specifies Mega Drive three/six-button pads and the mouse
+for Sega Tap; the previous configuration exposed Saturn pads only. Its four
+subports now offer those documented devices and default to a three-button
+Mega Drive pad. MultiTerminal 6 also accepts both Mega Drive pad variants, as
+Table 3.21 requires. The obsolete pad-only slot helper was removed.
+
+Native controller reports pass both engines with mixed E1/E2/E3 IDs, different
+payload sizes and an empty fourth connector. All existing controller report
+tests pass too. Artifacts: `/private/tmp/controller-segatap-native-20261013`.
+This corrects device selection and SMPC reports; real adapter electrical
+handshakes have not been checked against hardware.

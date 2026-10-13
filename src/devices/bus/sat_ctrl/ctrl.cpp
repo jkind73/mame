@@ -133,6 +133,8 @@ uint16_t saturn_control_port_device::read_direct()
 
 void saturn_multitap_controls(device_slot_interface &device)
 {
+	device.option_add("joy_md3",   SATURN_JOYMD3B);
+	device.option_add("joy_md6",   SATURN_JOYMD6B);
 	device.option_add("twin_stick", SATURN_TWIN_STICK);
 	device.option_add("joypad",    SATURN_JOY);
 	device.option_add("racing",    SATURN_WHEEL);
@@ -146,13 +148,13 @@ void saturn_multitap_controls(device_slot_interface &device)
 void saturn_controls(device_slot_interface &device)
 {
 	saturn_multitap_controls(device);
-	device.option_add("joy_md3",   SATURN_JOYMD3B);
-	device.option_add("joy_md6",   SATURN_JOYMD6B);
 	device.option_add("multitap",  SATURN_MULTITAP);
 	device.option_add("segatap",   SATURN_SEGATAP);
 }
 
-void saturn_joys(device_slot_interface &device)
+void saturn_segatap_controls(device_slot_interface &device)
 {
-	device.option_add("joypad",    SATURN_JOY);
+	device.option_add("joy_md3", SATURN_JOYMD3B);
+	device.option_add("joy_md6", SATURN_JOYMD6B);
+	device.option_add("mouse", SATURN_MOUSE);
 }
