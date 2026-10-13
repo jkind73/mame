@@ -132,3 +132,15 @@ contain per-game commands, captures, logs and exit status. `review-results.json`
 combines the extended runs, and `contact-attract-0.png` through `-3.png` retain
 the final review sheets. The original **re-run survey** item is completed;
 separate game-fix and combined regression items remain open.
+
+### Crash follow-up at `2e826823267`
+
+The SH7604 illegal-delay-slot fix passes 80 native exception cases in both
+engines. Astra SuperStars and Decathlete now exit normally after 67 emulated
+seconds, but their final captures remain black; this is crash removal, not
+successful game emulation. Super Goal still crashes, and a separate
+interpreter-only control also fails in interruptible sound-CPU memory access.
+No game-fix checklist marker was closed for these results.
+
+Artifacts: `/private/tmp/stv-illegal-slot-games-fixed-20261013` and
+`/private/tmp/supgoal-interpreter-20261013.log`.
