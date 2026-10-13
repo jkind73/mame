@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 
@@ -17,6 +18,9 @@ def main():
     parser.add_argument("--seconds", type=int, default=62)
     parser.add_argument("--inputs", type=Path, help="Frame/port/mask/value replay; one game only")
     parser.add_argument("--frames", default="")
+    parser.add_argument("--machine", help="Console driver for software-list games, e.g. saturnjp")
+    parser.add_argument("--nvram-source", type=Path, help="Copy initialized NVRAM into each isolated run")
+    parser.add_argument("--audio", action="store_true", help="Record internal audio at 48kHz")
     args = parser.parse_args()
     if args.inputs and len(args.games) != 1:
         parser.error("--inputs requires exactly one game")
@@ -27,7 +31,12 @@ def main():
     for game in args.games:
         run = output/game
         run.mkdir(exist_ok=False)
-        command = ["nice", "-n", "10", str(args.binary.resolve()), game,
+        if args.nvram_source:
+            shutil.copytree(args.nvram_source.resolve(), run/"nvram")
+        command = ["nice", "-n", "10", str(args.binary.resolve())]
+        if args.machine:
+            command.append(args.machine)
+        command += [game,
                    "-noreadconfig", "-rompath", args.rompath,
                    "-video", "none", "-sound", "none", "-nothrottle", "-frameskip", "0",
                    "-seconds_to_run", str(args.seconds), "-rtc", "20000101000000",
@@ -35,6 +44,8 @@ def main():
                    str(root/"scripts"/("saturn_game_inputs.lua" if args.inputs else "saturn_game_survey.lua")),
                    "-snapshot_directory", str(run), "-cfg_directory", str(run/"cfg"),
                    "-nvram_directory", str(run/"nvram"), "-diff_directory", str(run/"diff")]
+        if args.audio:
+            command += ["-samplerate", "48000", "-wavwrite", str(run/"audio.wav")]
         env = os.environ.copy()
         env.pop("SATURN_SURVEY_INPUTS", None)
         env["SATURN_SURVEY_CAPTURE_FRAMES"] = args.frames
