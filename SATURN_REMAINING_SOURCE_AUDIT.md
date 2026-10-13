@@ -112,3 +112,31 @@ INTBACK, checking the public OREG byte stream. The tap uses occupied connectors
 1/3/5/6 with empty 2/4 and distinct pad/analog/keyboard payloads. Keyboard tests
 exercise X/E/Q and physical Caps/Scroll make/break transitions. Mission Stick
 checks both hysteresis bands. Logs: `/private/tmp/controller-reports-native-20261013`.
+
+## SH-2 illegal delay slots — host stack overflow
+
+The full survey's Astrass crash reproduces on the current pre-fix build. The
+macOS crash report identifies stack exhaustion in recursive
+`drc_frontend_base::describe_one`, following a PC-writing instruction inside a
+delayed branch's slot. SH7604 manual 4.5.3 / Table 4.9 requires a slot-illegal
+exception, not another branch decode.
+
+SH-2 frontend decoding now rejects these slots before recursion, including
+reserved aliases accepted by the legacy group decoders. Both engines take
+vector 6 for PC-writing and undefined slot instructions, saving SR and the
+original delayed jump destination. A general undefined opcode uses vector 4
+and saves its own address. DRC invalid descriptors now take the exception
+instead of terminating MAME. Illegal-exception overhead follows the existing
+interpreter cost in both engines; its physical hardware cycle count remains
+unverified. SH-3/4 behavior is not changed by the SH-2 slot predicate.
+
+`scripts/sh7604_illegal_slot_test.py` passes both engines: 80 slots across BRA,
+BSR, JMP and JSR, self-referential slot branches, all documented PC-writing
+classes, undefined instructions and reserved branch aliases; checks vector,
+stack depth, saved jump PC/SR and PR preservation, plus general illegal vector
+4. The preserved pre-fix executable crashes under this fixture. Instruction
+cache, slice-boundary and UBC native regressions also pass both engines.
+Logs: `/private/tmp/sh7604-illegal-slot-final-20261013`,
+`/private/tmp/sh7604-illegal-slot-parent-20261013`, `sh7604-slot-cache-20261013`,
+`sh7604-slot-slice-20261013` and `sh7604-slot-ubc-20261013` under `/private/tmp`.
+Retail re-tests of the three survey crashes remain the next verification.

@@ -352,6 +352,7 @@ protected:
 	virtual void LDCMSR(const uint16_t opcode) = 0;
 	virtual void TRAPA(uint32_t i) = 0;
 	virtual void ILLEGAL() = 0;
+	virtual bool is_slot_illegal(uint16_t opcode) const { return false; }
 
 	drc_cache           m_cache;                  /* pointer to the DRC code cache */
 

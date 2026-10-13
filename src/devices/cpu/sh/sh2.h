@@ -76,6 +76,8 @@ protected:
 	address_space *m_decrypted_program;
 
 	uint32_t m_test_irq;
+	bool m_in_delay_slot = false; // transient instruction context, never retained across slices
+	virtual bool is_slot_illegal(uint16_t opcode) const override;
 	int32_t m_internal_irq_vector;
 	int8_t m_nmi_line_state;
 

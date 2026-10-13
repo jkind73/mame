@@ -628,18 +628,35 @@ inline void sh2_device::TRAPA(uint32_t i)
 inline void sh2_device::ILLEGAL()
 {
 	//logerror("Illegal opcode at %08x\n", m_sh2_state->pc - 2);
-	debugger_exception_hook(4);
+	unsigned const vector = m_in_delay_slot ? 6 : 4;
+	debugger_exception_hook(vector);
 
 	m_sh2_state->r[15] -= 4;
 	write_long(m_sh2_state->r[15], m_sh2_state->sr);     /* push SR onto stack */
 	m_sh2_state->r[15] -= 4;
-	write_long(m_sh2_state->r[15], m_sh2_state->pc - 2); /* push PC onto stack */
+	write_long(m_sh2_state->r[15], m_in_delay_slot ? m_sh2_state->pc : m_sh2_state->pc - 2); /* slot saves the delayed jump address (4.5.3) */
 
 	/* fetch PC */
-	m_sh2_state->pc = read_long(m_sh2_state->vbr + 4 * 4) & m_am;
+	m_sh2_state->pc = read_long(m_sh2_state->vbr + vector * 4) & m_am;
 
 	/* TODO: timing is a guess */
 	m_sh2_state->icount -= 5;
+}
+
+bool sh2_device::is_slot_illegal(uint16_t op) const
+{
+	if (m_cpu_type != CPU_TYPE_SH2)
+		return false;
+	// SH7604 Table 4.9: every PC-writing instruction, even an untaken BT/BF.
+	return (op >> 12) == 0xa || (op >> 12) == 0xb
+		|| (op & 0xff00) == 0x8900 || (op & 0xff00) == 0x8b00
+		|| (op & 0xff00) == 0x8d00 || (op & 0xff00) == 0x8f00
+		|| (op & 0xff00) == 0xc300
+		// Reserved aliases accepted by the legacy group decoders are also
+		// illegal in a slot; they must not reintroduce recursive branch decoding.
+		|| (op & 0xf03f) == 0x0003 || (op & 0xf03f) == 0x0023
+		|| (op & 0xf03f) == 0x400b || (op & 0xf03f) == 0x402b
+		|| (op & 0xf03f) == 0x000b || (op & 0xf03f) == 0x002b;
 }
 
 void sh2_device::execute_one_f000(uint16_t opcode)
@@ -691,7 +708,8 @@ void sh2_device::execute_run()
 		if (!instruction_before(instruction_pc, opcode))
 			continue;
 
-		if (m_sh2_state->m_delay)
+		m_in_delay_slot = m_sh2_state->m_delay != 0;
+		if (m_in_delay_slot)
 		{
 			m_sh2_state->pc = m_sh2_state->m_delay;
 			m_sh2_state->m_delay = 0;
@@ -699,7 +717,11 @@ void sh2_device::execute_run()
 		else
 			m_sh2_state->pc += 2;
 
-		execute_one(opcode);
+		if (m_in_delay_slot && is_slot_illegal(opcode))
+			ILLEGAL();
+		else
+			execute_one(opcode);
+		m_in_delay_slot = false;
 		instruction_after(instruction_pc, opcode);
 
 		if (m_test_irq && !m_sh2_state->m_delay)
@@ -716,6 +738,9 @@ void sh2_device::execute_run()
 // The DRC uses this interpreter boundary only during an active waited transfer.
 bool sh2_device::instruction_before(uint32_t pc, uint16_t opcode)
 {
+	// Decode the illegal slot before checking its would-be operand accesses.
+	if (m_sh2_state->m_delay && is_slot_illegal(opcode))
+		return true;
 	if (instruction_bus_ready(pc, opcode))
 		return true;
 	if (m_sh2_state->pc != pc)

@@ -2492,7 +2492,7 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 	}
 
 
-	if (desc->invalid_opcode())
+	if (desc->invalid_opcode() && m_cpu_type != CPU_TYPE_SH2)
 	{
 		// if this is an invalid opcode, die
 		fatalerror("SH2DRC: invalid opcode!\n");
@@ -2501,11 +2501,12 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 	{
 		// otherwise, unless this is a virtual no-op, it's a regular instruction
 		// compile the instruction
-		if (!generate_opcode(block, compiler, desc, ovrpc))
+		if (desc->invalid_opcode() || !generate_opcode(block, compiler, desc, ovrpc))
 		{
 			// take the illegal instruction exception immediately
 			UML_MOV(block, mem(&m_sh2_state->pc), desc->pc);                            // mov     [pc],desc->pc
 			UML_MOV(block, mem(&m_sh2_state->arg0), desc->opptr);                  // mov     [arg0],opcode
+			UML_MOV(block, mem(&m_sh2_state->arg1), m_cpu_type == CPU_TYPE_SH2 && desc->in_delay_slot() ? 6 : 4);
 			UML_CALLC(block, cfunc_unimplemented, this);                             // callc   cfunc_unimplemented
 
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
@@ -2515,9 +2516,23 @@ void sh_common_execution::generate_sequence_instruction(drcuml_block &block, com
 
 			UML_SUB(block, R32(15), R32(15), 4);                    // sub     R15, R15, #4
 			UML_MOV(block, I0, R32(15));                            // mov     r0, R15
-			UML_MOV(block, I1, desc->pc);                           // mov     r1, desc->pc
+			if (m_cpu_type == CPU_TYPE_SH2 && desc->in_delay_slot())
+			{
+				if (ovrpc == SH_OVRPC_DYNAMIC)
+					UML_MOV(block, I1, mem(&m_sh2_state->target));
+				else
+					UML_MOV(block, I1, ovrpc + 2);
+			}
+			else
+				UML_MOV(block, I1, desc->pc);                           // mov     r1, desc->pc
 			UML_CALLH(block, *m_write32);                           // call    write32
 
+			if (m_cpu_type == CPU_TYPE_SH2)
+			{
+				// Match the interpreter's existing illegal-exception overhead.
+				compiler.cycles += 5;
+				UML_MAPVAR(block, MAPVAR_CYCLES, compiler.cycles);
+			}
 			// evec is clobbered by the interrupt check inside generate_update_cycles
 			UML_MOV(block, mem(&m_sh2_state->target), mem(&m_sh2_state->evec));  // mov target, evec
 			generate_update_cycles(block, compiler, uml::mem(&m_sh2_state->target), true);
@@ -2547,7 +2562,7 @@ void sh_common_execution::generate_delay_slot(drcuml_block &block, compiler_stat
 void sh_common_execution::func_unimplemented()
 {
 	// set up an invalid opcode exception
-	m_sh2_state->evec = read_long(m_sh2_state->vbr + 4 * 4);
+	m_sh2_state->evec = read_long(m_sh2_state->vbr + m_sh2_state->arg1 * 4);
 	m_sh2_state->evec &= m_am;
 	m_sh2_state->irqsr = m_sh2_state->sr;
 }

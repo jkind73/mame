@@ -162,6 +162,10 @@ bool sh_common_execution::frontend::describe(opcode_desc &desc, const opcode_des
 	/* all instructions are 2 bytes and most are a single cycle */
 	desc.length = 2;
 	desc.cycles = 1;
+	// SH7604 4.5.3: PC-writing instructions in a delay slot trap. Do not
+	// recursively follow another branch from the slot (including a cycle).
+	if (desc.in_delay_slot() && m_sh->is_slot_illegal(opcode))
+		return false;
 
 	switch (opcode>>12)
 	{
