@@ -351,6 +351,8 @@ void scsp_device::device_reset()
 
 	init_state();
 	UpdateSampleTimer();
+	set_output_gain(0, 1.0f);
+	set_output_gain(1, 1.0f);
 }
 
 //-------------------------------------------------
@@ -378,6 +380,11 @@ void scsp_device::device_post_load()
 
 	for (int slot = 0; slot < 32; slot++)
 		Compute_LFO(&m_Slots[slot]);
+
+	// Older compatible states may retain the former post-clipping MVOL gain.
+	// Master attenuation is now computed in the mix, so this gain is unity.
+	set_output_gain(0, 1.0f);
+	set_output_gain(1, 1.0f);
 }
 
 //-------------------------------------------------

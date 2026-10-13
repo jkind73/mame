@@ -395,3 +395,10 @@ WAVE checks pass (`/private/tmp/cdrom-cue-extents-parent-20261013.log`).
 A 110-second VF2J retail run after the delay-slot correction completes with
 visible fighting attract graphics and a complete 48kHz recording:
 `/private/tmp/sh7604-zero-delay-vf2-20261013`.
+
+SCSP reset/postload explicitly restore unity output-channel gains. MAME saves
+those gains, so leaving the previous post-clipping MVOL value in a compatible
+state would apply attenuation twice after moving MVOL into the mixer. The
+actual postload method fixture starts with two stale gains and verifies both
+become unity while DSP/LFO restoration still runs. ASan/UBSan and the full
+build pass. User-configured gains are stored separately and are unaffected.

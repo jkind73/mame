@@ -8,7 +8,9 @@ root = Path(__file__).resolve().parent.parent
 source = (root / 'src/devices/sound/scsp.cpp').read_text()
 start = source.index('s32 scsp_device::apply_master_volume(')
 end = source.index('\nvoid scsp_device::device_post_load()', start)
-method = source[start:end]
+post_start = source.index('void scsp_device::device_post_load()')
+post_end = source.index('\n//-------------------------------------------------',post_start)
+method = source[start:end]+source[post_start:post_end]
 fixture = r'''
 #include <algorithm>
 #include <cassert>
@@ -18,11 +20,18 @@ struct scsp_device {
  unsigned volume=15;
  unsigned MVOL() const { return volume; }
  s32 apply_master_volume(s32 sample) const;
+ void device_post_load();
+ struct { void DecodeAll() { } } m_DSP;
+ int m_Slots[32],lfo_calls=0;
+ float gain[2]={0.25f,0.5f};
+ void Compute_LFO(int*) { ++lfo_calls; }
+ void set_output_gain(unsigned output,float value) { gain[output]=value; }
 };
 '''
 tests = r'''
 int main() {
  scsp_device d;
+ d.device_post_load();assert(d.gain[0]==1.0f&&d.gain[1]==1.0f&&d.lfo_calls==32);
  for(unsigned volume=0;volume<16;++volume) {
   d.volume=volume;
   for(s32 sample: {INT32_MIN, -262144, -65536, -32769, -1, 0, 1, 32767, 65536, 262144, INT32_MAX}) {
