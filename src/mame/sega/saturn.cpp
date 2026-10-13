@@ -33,6 +33,7 @@ void saturn_state::machine_start()
 	save_item(NAME(m_system_halt));
 	save_item(NAME(m_prev_hint));
 	save_item(NAME(m_prev_vint));
+	save_item(NAME(m_sysres_level));
 	// a loaded state starts with a free SH-2 bus
 	machine().save().register_postload(save_prepost_delegate(FUNC(saturn_state::sh2_bus_reset), this));
 }
@@ -44,6 +45,8 @@ void saturn_state::machine_reset()
 	m_system_halt = false;
 	update_cpu_halt();
 	m_scsp_last_line = 0;
+	m_prev_hint = m_prev_vint = 0;
+	m_sysres_level = false;
 
 	sh2_bus_reset();
 
@@ -60,6 +63,13 @@ void saturn_state::machine_reset()
 	XTAL const reset_clock = m_vdp2->is_pal() ? MASTER_CLOCK_320_PAL : MASTER_CLOCK_320;
 	m_maincpu->set_unscaled_clock(reset_clock / 2);
 	m_slave->set_unscaled_clock(reset_clock / 2);
+	// SMPC returns to its reset 320-mode selection. Every device sharing
+	// that oscillator must follow it, including a reset after CKCHG352.
+	m_dcc->set_unscaled_clock(reset_clock / 2);
+	m_scu->set_unscaled_clock(reset_clock);
+	m_vdp1->set_unscaled_clock(reset_clock / 2);
+	m_vdp2->set_unscaled_clock(reset_clock);
+	m_vdp2->set_dotsel(false);
 
 	m_en_68k = 0;
 
@@ -210,15 +220,15 @@ void saturn_state::sound_68k_reset_w(int state)
 	m_en_68k = state ^ 1;
 }
 
-// TODO: edge triggered?
 void saturn_state::system_reset_w(int state)
 {
-	if(!state)
+	bool const asserted = bool(state);
+	bool const rising = asserted && !m_sysres_level;
+	m_sysres_level = asserted;
+	if (!rising)
 		return;
 
-	// TODO: actually send a device reset signal to the connected devices
 	/*Only backup ram and SMPC ram are retained after that this command is issued.*/
-	m_scu->reset();
 	memset(m_sound_ram,0x00,0x080000);
 	memset(m_workram_h,0x00,0x100000);
 	memset(m_workram_l,0x00,0x100000);
@@ -226,7 +236,10 @@ void saturn_state::system_reset_w(int state)
 	memset(m_vdp2_vram.get(),0x00,0x100000);
 	memset(m_vdp2_cram.get(),0x00,0x080000);
 	m_vdp1->system_reset();
-	//A-Bus
+	// SYSRES resets every connected LSI and restarts the master at its power-on
+	// vector (SMPC 2.3). Defer the machine reset until the command callback
+	// returns, rather than resetting devices while their timers are executing.
+	machine().schedule_soft_reset();
 }
 
 void saturn_state::dot_select_w(int state)

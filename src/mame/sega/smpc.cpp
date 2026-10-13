@@ -156,6 +156,7 @@ void smpc_hle_device::device_start()
 	save_item(NAME(m_cd_sf));
 	save_item(NAME(m_NMI_reset));
 	save_item(NAME(m_cur_dotsel));
+	save_item(NAME(m_sysres_result_pending));
 	save_item(NAME(m_in_vblank));
 	save_item(NAME(m_collect_wait));
 	save_item(NAME(m_collect_measured));
@@ -206,6 +207,8 @@ void smpc_hle_device::device_start()
 
 void smpc_hle_device::device_reset()
 {
+	bool const sysres_result = m_sysres_result_pending;
+	m_sysres_result_pending = false;
 	m_sr = 0x40; // this bit is always on according to docs (?)
 	m_sf = false;
 	m_cd_sf = false;
@@ -235,6 +238,10 @@ void smpc_hle_device::device_reset()
 	m_ckchg_tick = 0;
 	m_prev_sndoff = m_prev_sshoff = 0xff;
 	m_prev_cdoff = 0;
+	// The command initiating the board reset still reports its documented
+	// result after that reset completes; ordinary resets start with zero.
+	if (sysres_result)
+		m_oreg[31] = 0x0d;
 
 	m_in_vblank = false;
 	m_collect_wait = false;
@@ -583,6 +590,7 @@ TIMER_CALLBACK_MEMBER(smpc_hle_device::handle_command)
 
 		case 0x0d: // SYSRES
 			LOGMASKED(LOG_COMMAND, "SMPC: %02x SYSRES\n", m_comreg);
+			m_sysres_result_pending = true;
 			// send a 1 -> 0 to device reset lines
 			m_sysres(1);
 			m_sysres(0);

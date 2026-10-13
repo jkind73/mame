@@ -179,7 +179,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 - [x] V counter roll-back and where it increments (end of line, dot 0x15A), H counter values, latch behaviour
 - [x] Timer 1 against the H counter table in the header: re-check with the new event dots
 - [ ] No vblank/hblank IRQs when DISP is off (Yabause claim)
-- [ ] `saturn.cpp`: edge triggered?; send a real reset to the connected devices
+- [x] `saturn.cpp`: edge triggered?; send a real reset to the connected devices
 - [ ] `saturn_vdp2.cpp`: PAL 256 only mode, HBLANK with DISP off, interlace eats one line (262.5), divider compensation, exclusive modes, guard a wrong DOTSEL from SMPC, reserved VRESO, `static constexpr` 263/313, an unused test case, privatize the header members
 
 ### 12.4 `saturn_scu.cpp`, `scudsp.cpp`, `scudspdasm.cpp`

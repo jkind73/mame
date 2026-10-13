@@ -81,7 +81,7 @@ linear counter until the line ends. Selected current mode-0 latch values:
 | 0x80 | 0x02c | 0x020 |
 | 0x100 | 0x12c | 0x110 |
 
-These are measurements of the current model, not replacement hardware timing
+These are measurements before the shared reset-clock correction below, not replacement hardware timing
 constants. The parked diagnostic BIOS leaves SCU on its configured 352-mode
 oscillator and VDP2 on its configured 320-mode oscillator; a real BIOS clock
 change selects the clocks together, so these counters must not be treated as a
@@ -110,3 +110,40 @@ because TVMD retains its previous value. Artifacts:
 No physical hardware verification is claimed. This is a documented register
 reset correction, not completion of the entire board-reset or broad VDP2-note
 checklist item. Their markers and original text remain unchanged.
+
+## Connected SYSRES and shared reset clock, 2026-10-13
+
+Completed the shared driver's system-reset path per [SMPC 2.3 SYSRES](https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p02_30.htm).
+It detects the assertion edge, clears volatile memories and schedules MAME's
+whole-machine reset after the command callback returns. This resets every
+connected device, including the previously omitted SCSP and CD block, and
+restarts the master at its power-on vector. Battery backup RAM, SMPC settings
+and RTC storage remain retained. SMPC preserves the initiating command's
+documented OREG31=0x0d result through that reset.
+
+The existing 320-mode reset selection now drives all devices sharing that
+oscillator, rather than resetting only the SH-2 clocks while leaving SCU/VDP2
+on their previous selection. DCC follows the same divider used by clock-change
+commands. Board scan-edge detectors also return to their initial levels.
+
+Native tests perform CKCHG352 followed by SYSRES twice and check the CPU vector,
+SCU/SCSP/VDP2/CD reset state, volatile memory clearing, battery data retention,
+reset pixel period and command result. Both engines pass; the preceding binary
+fails at the retained SCSP register. All 16 SCU/SMPC regression runs pass, as do
+the all-mode Timer 1 and saved scan-edge checks and video-mode ASan/UBSan fixture.
+The updated Timer 1 mode-0 trace now has HCNT 0x28a for setting 2, 0x2a6 for
+0x10, 0x370 for 0x20 and 0x002 for 0x69. These are software-model measurements,
+not hardware calibration values. Logs:
+`/private/tmp/systemreset-result-positive-20261013`,
+`/private/tmp/systemreset-negative-20261013`,
+`/private/tmp/systemreset-full-dma-audit-20261013`,
+`/private/tmp/systemreset-clock-timer1-20261013` and
+`/private/tmp/systemreset-clock-scanstate-20261013`.
+
+Retail HLE VF2J runs for 110 seconds with preserved initialized backup RAM,
+reaches the first attract movie, and records its full 50.73-second audio section
+(28.36–79.09 seconds). Fresh backup RAM instead stops at the expected BIOS
+date-setting prompt and is not a game regression verdict. Retail artifacts:
+`/private/tmp/systemreset-vf2-initialized-20261013`.
+No physical hardware verification is claimed. Only the original shared-driver
+reset checklist marker changes; the broader VDP2 item remains open.

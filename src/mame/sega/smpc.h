@@ -158,6 +158,7 @@ private:
 	bool m_command_in_progress;
 	bool m_NMI_reset;
 	bool m_cur_dotsel;
+	bool m_sysres_result_pending = false;
 
 	void master_sh2_nmi();
 	void irq_request();

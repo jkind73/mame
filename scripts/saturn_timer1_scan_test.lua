@@ -2,9 +2,8 @@
 -- Real VDP2 -> board -> SCU Timer 1 scheduling, including counter discontinuities.
 local m=manager.machine;local h=m.devices[':maincpu'].spaces.program
 local screen=m.screens[':screen'];local started=false
--- The parked diagnostic BIOS never issues CKCHG. SCU retains its configured
--- 352-mode oscillator, while the VDP2 starts on its configured 320 oscillator.
-local tick=1/(14318181*4)
+-- The board reset selects the shared 320-mode oscillator for SCU and VDP2.
+local tick=1/math.floor(14318181*1708/455)
 timer1_scan_subscription=emu.add_machine_frame_notifier(function()
  if started then return end
  started=true
