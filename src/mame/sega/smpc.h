@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <vector>
+#include <array>
 
 #include "bus/sat_ctrl/ctrl.h"
 #include "machine/nvram.h"
@@ -192,7 +192,9 @@ private:
 	attotime m_vin_time;       // the last VBLANK-IN
 	attotime m_frame_time;     // time between the last two VBLANK-INs
 	int m_pmode;
-	std::vector<uint8_t> m_periph_report;
+	// Two ports, up to 15 connectors each, ID + extended size + 255 bytes.
+	std::array<uint8_t, 2 * (1 + 15 * (2 + 255))> m_periph_report{};
+	uint32_t m_periph_size = 0;
 	uint32_t m_periph_offset;
 	bool m_resb;
 	bool m_reset_button = false;

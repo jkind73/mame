@@ -183,6 +183,7 @@ void smpc_hle_device::device_start()
 	save_item(NAME(m_intback_stage));
 	save_item(NAME(m_pmode));
 	save_item(NAME(m_periph_report));
+	save_item(NAME(m_periph_size));
 	save_item(NAME(m_periph_offset));
 	save_item(NAME(m_resb));
 	save_item(NAME(m_reset_button));
@@ -225,7 +226,8 @@ void smpc_hle_device::device_reset()
 	m_intback_timer->reset();
 	m_sndres_timer->reset();
 	m_comreg = 0xff;
-	m_periph_report.clear();
+	m_periph_report.fill(0);
+	m_periph_size = 0;
 	m_periph_offset = 0;
 	m_resb = false;
 	m_reset_vints = 0;
@@ -288,7 +290,8 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data)
 				LOGMASKED(LOG_PAD_CMD, "SMPC: BREAK request\n");
 				sr_ack();
 				m_intback_stage = 0;
-				m_periph_report.clear();
+				m_periph_report.fill(0);
+				m_periph_size = 0;
 				m_periph_offset = 0;
 				sf_ack(false);
 			}
@@ -296,7 +299,7 @@ void smpc_hle_device::ireg_w(offs_t offset, uint8_t data)
 			{
 				LOGMASKED(LOG_PAD_CMD, "SMPC: CONTINUE request\n");
 
-				if (m_periph_offset == 0 && m_periph_report.empty() && (m_collect_wait || !m_collect_done))
+				if (m_periph_offset == 0 && !m_periph_size && (m_collect_wait || !m_collect_done))
 				{
 					// the first report: it is available when the collection has ended
 					m_collect_requested = true;
@@ -993,7 +996,13 @@ TIMER_CALLBACK_MEMBER(smpc_rtc_device::increment)
 // is not accessed and left out.
 void smpc_hle_device::read_saturn_ports()
 {
-	m_periph_report.clear();
+	m_periph_report.fill(0);
+	m_periph_size = 0;
+	auto const append = [this] (uint8_t value)
+	{
+		assert(m_periph_size < m_periph_report.size());
+		m_periph_report[m_periph_size++] = value;
+	};
 
 	saturn_control_port_device *const ports[2] = { m_ctrl1, m_ctrl2 };
 	for (int port = 0; port < 2; port++)
@@ -1004,18 +1013,27 @@ void smpc_hle_device::read_saturn_ports()
 		saturn_control_port_device *const ctrl = ports[port];
 		const uint8_t status = ctrl ? ctrl->read_status() : 0xf0;
 
-		m_periph_report.push_back(status);
+		append(status);
 		for (int i = 0; i < (status & 0xf); i++)
 		{
 			const uint8_t id = ctrl->read_id(i);
 
-			m_periph_report.push_back(id);
-			// Figure 3.19: an empty tap slot reports FFH, with no payload.
+			append(id);
+			// Figures 3.19/3.20: FFH and UNKNOWN FxH have no payload.
 			// Select data by physical connector, not by preceding payload sizes.
-			if (id == 0xff)
+			if ((id & 0xf0) == 0xf0)
 				continue;
-			for (int j = 0; j < (id & 0xf); j++)
-				m_periph_report.push_back(ctrl->read_ctrl_at(i, j));
+			unsigned length = id & 0xf;
+			unsigned offset = 0;
+			if (!length)
+			{
+				// Figures 3.17/3.18: a zero size nibble precedes a byte size.
+				unsigned const limit = ((m_pmode >> (port * 2)) & 3) == 1 ? 255 : 15;
+				length = std::min<unsigned>(ctrl->read_ctrl_at(i, offset++), std::min<unsigned>(limit, ctrl->max_data_size()));
+				append(length);
+			}
+			for (unsigned j = 0; j < length; j++)
+				append(ctrl->read_ctrl_at(i, offset + j));
 		}
 	}
 }
@@ -1028,15 +1046,16 @@ void smpc_hle_device::write_periph_report()
 	if (first)
 		read_saturn_ports();
 
-	const size_t length = std::min<size_t>(32, m_periph_report.size() - m_periph_offset);
+	const size_t length = std::min<size_t>(32, m_periph_size - m_periph_offset);
 	std::copy_n(m_periph_report.begin() + m_periph_offset, length, m_oreg);
 	std::fill(m_oreg + length, m_oreg + 32, 0xff);
 	m_periph_offset += length;
 
-	const bool remaining = m_periph_offset < m_periph_report.size();
+	const bool remaining = m_periph_offset < m_periph_size;
 	if (!remaining)
 	{
-		m_periph_report.clear();
+		m_periph_report.fill(0);
+		m_periph_size = 0;
 		m_periph_offset = 0;
 		m_intback_stage = 0;
 	}

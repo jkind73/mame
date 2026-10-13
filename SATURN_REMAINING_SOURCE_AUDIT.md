@@ -245,3 +245,32 @@ Source: https://raw.githubusercontent.com/cdrdao/cdrdao/master/dao/cdrdao.man .
 This does not claim full CDRDAO grammar: scalar sample/byte units, WAVE input,
 multiple concatenated segments and partial-sector padding remain separate
 parser limitations. The original combined nvram/ticket/cdrom item stays open.
+
+## Extended SMPC reports and pending-report save states
+
+SMPC 3.1 Figures 3.17/3.18 define an extended size byte when the ID's low
+nibble is zero. The collector now includes that size, applies the selected
+15/255-byte limit and the adapter's maximum, then reads the payload from the
+correct physical connector. MultiTerminal 6 limits each connector to 15 bytes
+even in 255-byte mode. Figure 3.20 UNKNOWN IDs F0–FE, like FF empty slots,
+produce no payload reads. Existing short reports retain their layout.
+
+The previous report vector was empty when registered with MAME's save manager;
+that overload saves its current allocation/count, not future vector contents.
+The queued bytes were consequently absent from a mid-report save. Reports now
+use fixed, saved 7712-byte storage with a saved used count and cursor, large
+enough for two 15-connector ports with 255-byte extended payloads. Reset, BREAK
+and completed reports clear the storage deterministically.
+
+Actual-method ASan/UBSan tests pass all extended sizes 0–255, every port mode,
+sparse 4/6-port masks, physical tap limits, all UNKNOWN IDs, a 516-byte paged
+report and the maximum 7712-byte report. The pre-change collector fails.
+Native reports pass both engines for all existing peripherals and a pending
+43-byte MultiTerminal report: consume, load, change live input, CONTINUE, and
+verify that the original queued bytes and final padding are restored. Logs:
+`/private/tmp/controller-extended-save-native-20261013` and
+`/private/tmp/smpc-extended-parent-20261013.log`. Full subtarget build passes.
+Sources: https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_17.htm
+and https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_13.htm .
+No physical serial-protocol or collection-time verification is claimed.
+The broad SMPC inline/source items still contain unrelated unfinished work.

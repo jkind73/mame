@@ -118,6 +118,11 @@ uint8_t saturn_control_port_device::read_ctrl_at(int idx, uint8_t offset)
 	return m_device ? m_device->read_ctrl_at(idx, offset) : 0xff;
 }
 
+uint8_t saturn_control_port_device::max_data_size() const
+{
+	return m_device ? m_device->max_data_size() : 0;
+}
+
 uint16_t saturn_control_port_device::read_direct()
 {
 	uint16_t data = 0;

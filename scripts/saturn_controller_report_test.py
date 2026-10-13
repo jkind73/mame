@@ -12,14 +12,17 @@ parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--binary',type=Path,default=Path('saturn'))
 args=parser.parse_args();root=Path(__file__).resolve().parent.parent
 out=args.output.resolve();out.mkdir(exist_ok=False);diagnostic_roms(out/'roms')
-for kind in ('analog','keyboard','multitap','twin_stick','segatap','multicontroller'):
+for kind in ('analog','keyboard','multitap','twin_stick','segatap','multicontroller','multitap_saved'):
  for core in ('drc','interpreter'):
   run=out/(kind+'-'+core);run.mkdir()
-  command=['nice','-n','10',str(args.binary.resolve()),'saturnjp','-noreadconfig','-rompath',str(out/'roms'),'-video','none','-sound','none','-nothrottle','-seconds_to_run','3','-skip_gameinfo','-ctrl1',kind,'-ctrl2','','-autoboot_delay','0','-autoboot_script',str(root/'scripts/saturn_controller_report_test.lua')]
+  controller='multitap' if kind=='multitap_saved' else kind
+  command=['nice','-n','10',str(args.binary.resolve()),'saturnjp','-noreadconfig','-rompath',str(out/'roms'),'-video','none','-sound','none','-nothrottle','-seconds_to_run','3','-skip_gameinfo','-ctrl1',controller,'-ctrl2','','-autoboot_delay','0','-autoboot_script',str(root/'scripts/saturn_controller_report_test.lua')]
   if kind=='multitap':
    for i,value in enumerate(('joypad','','analog','','keyboard','joypad'),1):command+=['-ctrl1:multitap:ctrl'+str(i),value]
   if kind=='segatap':
    for i,value in enumerate(('joy_md3','joy_md6','mouse',''),1):command+=['-ctrl1:segatap:ctrl'+str(i),value]
+  if kind=='multitap_saved':
+   for i in range(1,7):command+=['-ctrl1:multitap:ctrl'+str(i),'multicontroller']
   if core=='interpreter':command.append('-nodrc')
   for option in ('cfg','nvram','diff','state'):command+=['-'+option+'_directory',str(run/option)]
   env=os.environ.copy();env['SATURN_CONTROLLER_TEST_KIND']=kind

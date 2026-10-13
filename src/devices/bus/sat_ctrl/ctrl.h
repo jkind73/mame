@@ -31,6 +31,7 @@ public:
 	virtual uint8_t read_ctrl_at(int idx, uint8_t offset) { return read_ctrl(offset); }
 	virtual uint8_t read_status() { return 0xf0; }
 	virtual uint8_t read_id(int idx) { return 0xff; }
+	virtual uint8_t max_data_size() const { return 255; }
 
 protected:
 	device_saturn_control_port_interface(const machine_config &mconfig, device_t &device);
@@ -60,6 +61,7 @@ public:
 	uint8_t read_ctrl_at(int idx, uint8_t offset);
 	uint8_t read_status();
 	uint8_t read_id(int idx);
+	uint8_t max_data_size() const;
 
 	// device_t implementation
 	virtual void device_start() override ATTR_COLD;

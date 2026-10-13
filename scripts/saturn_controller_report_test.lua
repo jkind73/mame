@@ -15,7 +15,7 @@ local function report()
   emu.wait(0.0001)
   if (h:read_u8(0x00100063)&1)==0 then
    assert((h:read_u8(0x00100061)&0x80)~=0,'missing peripheral status')
-   local r={};for j=0,30 do r[j+1]=h:read_u8(0x00100021+j*2)end;return r
+   local r={};for j=0,31 do r[j+1]=h:read_u8(0x00100021+j*2)end;return r
   end
  end
  error('INTBACK did not finish')
@@ -57,6 +57,23 @@ local function run()
   set(tag..'ctrl3:analog:ANALOG_Z',0xff,32)
   set(tag..'ctrl5:keyboard:KEY.4',4,1);emu.wait(0.02)
   expect({0x16,0x02,0xfb,0xff,0xff,0x15,0x7f,0xff,170,128,32,0xff,0x34,0xfe,0xf8,0x0e,0x22,0x02,0xfe,0xff})
+ elseif kind=='multitap_saved' then
+  local tag=':ctrl1:multitap:ctrl6:multicontroller:ANALOG_X'
+  set(tag,255,180);emu.wait(0.02)
+  report();assert((h:read_u8(0x00100061)&0x20)~=0,'long report lacks NPE')
+  m:save('pending_controller');emu.wait(0.05)
+  local function continuation()
+   h:write_u8(0x00100001,0x80);emu.wait(0.002)
+   local expected={128,128,0,0,0x16,0xff,0xff,180,128,0,0}
+   for i=1,32 do
+    local value=i<=#expected and expected[i]or(i==32 and 0x10 or 0xff)
+    assert(h:read_u8(0x0010001f+i*2)==value,'pending report/padding mismatch '..i)
+   end
+   assert((h:read_u8(0x00100061)&0x60)==0,'continued report PDL/NPE did not finish')
+  end
+  set(tag,255,200);emu.wait(0.02);continuation()
+  m:load('pending_controller');emu.wait(0.05)
+  set(tag,255,220);emu.wait(0.02);continuation()
  elseif kind=='multicontroller' then
   local tag=':ctrl1:multicontroller:'
   expect({0xf1,0x16,0xff,0xff,128,128,0,0})
