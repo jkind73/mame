@@ -154,3 +154,21 @@ both engines, including ASan. Astrass, Decathlete and Super Goal now finish
 67-second serial runs without crashes. All three final pictures remain black,
 so these results do not close their game emulation failures.
 Artifacts: `/private/tmp/stv-sound-ram-boundary-fixed-20261013`.
+
+### Controller/report and sound-RAM integration pass (2026-10-13)
+
+Serial 110-second runs with internal 48kHz audio complete without crashes
+or Lua errors for cotton2, rsgun, vfremixj, ffreveng and daytonaj. Final
+captures show title/intro, fighting attract, rankings and racing attract
+as appropriate; Daytona Japan boots with the Japanese BIOS. Artifacts:
+`/private/tmp/checklist-console-regressions-20261013`. A parser rebuild
+occurred during this console batch; it is not a controlled cross-build
+comparison.
+
+The ST-V batch uses a fixed binary recorded in its manifest. Die Hard, VF
+Kids, Funky Head Boxers and Batman Forever show visible
+attract/ranking scenes at 100 seconds; all five runs, including gaxeduel,
+complete without host crashes. Gaxeduel remains black, so its failure is
+not resolved. Artifacts: `/private/tmp/checklist-stv-regressions-audio-20261013`.
+All ten recordings contain 110 seconds at 48kHz. These observations do not
+establish audio parity or close the whole original regression item.

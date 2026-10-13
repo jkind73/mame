@@ -317,3 +317,16 @@ overflow. The actual-method ASan/UBSan fixture covers signed extremes,
 rounding, loud mixes and both DAC paths. Full subtarget build and native
 Japanese BIOS capture pass. No real hardware verification; this is not a
 claim that the remaining BIOS chime mismatch is resolved.
+
+### SCSP send and pan attenuation (2026-10-13)
+
+Send-level and pan lookup construction now uses exact halving steps and
+quarter subtraction, as in Ymir and MiSTer's SCSP arithmetic, instead of
+pow(10, rounded_dB/20). Send level 1 is 1/64; pan level 1 is 3/4. Pan 15
+retains the existing mute behavior corroborated by Ymir. Total-level and
+envelope attenuation are separate and unchanged. All 65,536 lookup entries
+pass the actual-construction ASan/UBSan fixture, including every send/pan
+combination and total-level bounds. The parent fails the new gain checks.
+The full build and a 110-second native VF2J run with 48kHz audio pass;
+artifacts: `/private/tmp/scsp-mix-level-vf2-20261013`. No real hardware
+verification or complete BIOS chime parity is claimed.

@@ -139,7 +139,6 @@
 #define USEDSP
 
 
-static const float SDLT[8] = {-1000000.0f,-36.0f,-30.0f,-24.0f,-18.0f,-12.0f,-6.0f,0.0f};
 
 DEFINE_DEVICE_TYPE(SCSP, scsp_device, "scsp", "Yamaha YMF292-F SCSP")
 
@@ -785,14 +784,13 @@ void scsp_device::init()
 
 		TL=powf(10.0f, SegaDB / 20.0f);
 
-		SegaDB=0;
-		if (iPAN & 0x1) SegaDB -= 3.0f;
-		if (iPAN & 0x2) SegaDB -= 6.0f;
-		if (iPAN & 0x4) SegaDB -= 12.0f;
-		if (iPAN & 0x8) SegaDB -= 24.0f;
-
-		if ((iPAN & 0xf) == 0xf) PAN = 0.0;
-		else PAN=powf(10.0f, SegaDB / 20.0f);
+		// Send/pan attenuation uses binary shifts and a quarter subtraction,
+		// rather than converting the rounded dB labels into logarithmic gains.
+		PAN = 1.0f / float(1 << ((iPAN & 0xf) >> 1));
+		if (iPAN & 1)
+			PAN *= 0.75f;
+		if ((iPAN & 0xf) == 0xf)
+			PAN = 0.0f;
 
 		if (iPAN < 0x10)
 		{
@@ -805,10 +803,7 @@ void scsp_device::init()
 			LPAN = 1.0;
 		}
 
-		if (iSDL)
-			fSDL = powf(10.0f, (SDLT[iSDL]) / 20.0f);
-		else
-			fSDL = 0.0;
+		fSDL = iSDL ? 1.0f / float(1 << (iSDL ^ 7)) : 0.0f;
 
 		m_LPANTABLE[i] = FIX((4.0f * LPAN * TL * fSDL));
 		m_RPANTABLE[i] = FIX((4.0f * RPAN * TL * fSDL));
