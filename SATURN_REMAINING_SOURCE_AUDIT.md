@@ -304,3 +304,16 @@ and RAM. The random-program comparison also passes. This checks the DSP
 kernel, not the complete mixer or the audible BIOS chime; that item remains
 open. Artifacts: `/private/tmp/bios-dsp-live-20261013` and
 `/private/tmp/bios-dsp-ymir-compare-20261013.log`. No real hardware validation.
+
+### SCSP master-volume clipping order (2026-10-13)
+
+Master volume previously attenuated the already saturated sound-stream output.
+It now attenuates the unsaturated stereo mix before either DAC path clips,
+matching the order in Ymir and MiSTer's SCSP mixer. For example, a +65536
+mix at half volume now reaches +32767 rather than being clipped first and
+reduced to +16383. Zero volume mutes; all sixteen settings retain the
+shift/quarter attenuation curve. Widened intermediate arithmetic prevents
+overflow. The actual-method ASan/UBSan fixture covers signed extremes,
+rounding, loud mixes and both DAC paths. Full subtarget build and native
+Japanese BIOS capture pass. No real hardware verification; this is not a
+claim that the remaining BIOS chime mismatch is resolved.

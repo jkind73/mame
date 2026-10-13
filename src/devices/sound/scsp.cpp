@@ -352,25 +352,24 @@ void scsp_device::device_reset()
 
 	init_state();
 	UpdateSampleTimer();
-	set_output_gain(0, master_gain());
-	set_output_gain(1, master_gain());
 }
 
 //-------------------------------------------------
 //  device_post_load - called after loading a saved state
 //-------------------------------------------------
 
-// MVOL attenuates in 3 dB steps (MiSTer MVolCalc / Ymir): shift right by (~MVOL >> 1),
-// minus a quarter when MVOL is even; 0 mutes, 15 is unity
-double scsp_device::master_gain() const
+// Master attenuation acts on the unsaturated mix, before the output DAC clips.
+// Keep fractional precision until the final conversion to mixer units.
+s32 scsp_device::apply_master_volume(s32 sample) const
 {
 	unsigned const mvol = MVOL();
 	if (!mvol)
-		return 0.0;
-	double gain = 1.0 / double(1 << ((mvol ^ 0xf) >> 1));
+		return 0;
+	s64 value = s64(sample) * 256;
+	value >>= (mvol ^ 0xf) >> 1;
 	if (!(mvol & 1))
-		gain *= 0.75;
-	return gain;
+		value -= value >> 2;
+	return s32(value >> 8);
 }
 
 void scsp_device::device_post_load()
@@ -380,9 +379,6 @@ void scsp_device::device_post_load()
 
 	for (int slot = 0; slot < 32; slot++)
 		Compute_LFO(&m_Slots[slot]);
-
-	set_output_gain(0, master_gain());
-	set_output_gain(1, master_gain());
 }
 
 //-------------------------------------------------
@@ -898,8 +894,6 @@ void scsp_device::UpdateReg(int reg)
 		case 0x0:
 			if ((VERBOSE & LOG_RULE) && m_saturn_mode && !MEM4B())
 				logerror("SCSP: Rel.2.5 requires MEM4MB=1 on Saturn (control=%04x)\n", m_udata.data[0]);
-			set_output_gain(0, master_gain());
-			set_output_gain(1, master_gain());
 			break;
 		case 0x2:
 		case 0x3:
@@ -1516,6 +1510,8 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 		// SCSP_pkg.sv MVolCalc, Ymir SCSP "expand to 18 bits"), so the output is four times louder than
 		// in the 16 bit mode, not the same level with two more bits. Virtua Fighter 2 sets DAC18B and
 		// its send levels (-30 to -18 dB) are meant for that gain.
+		smpl = apply_master_volume(smpl);
+		smpr = apply_master_volume(smpr);
 		if (DAC18B())
 		{
 			stream.put_int_clamp(0, s, smpl, 32768);
