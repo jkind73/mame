@@ -70,3 +70,15 @@ requests at instruction 127 are excluded from this synthetic fixture.
 This is independent behavior comparison; no GPL reference code is copied into
 MAME. It does not prove BIOS waveform parity: actual BIOS input traces and
 whole-chip mixer/slot timing remain necessary before closing the chime item.
+
+## VDP2 VRSIZE state and reset
+
+The VRAM-size control bit was initialized at construction but never saved or
+cleared by device reset. It is now registered for save states and cleared on
+reset, per [VDP2 manual 3.1](https://www.infochunk.com/saturn/segahtml_en/hard/vdp2/hon/p03_10.htm).
+The documented initial silicon version remains read-only zero.
+`scripts/saturn_vdp2_reset_unit_test.py` executes the actual reset method under
+ASan/UBSan with dirty register state; it passes, and the parent fails VRSIZE.
+The full subtarget builds. Native reset and scan-state fixtures now include
+VRSIZE but their new checks are pending completion of the serial game survey.
+The larger VDP2 timing/source item is still open.

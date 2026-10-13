@@ -50,6 +50,7 @@ void saturn_vdp2_device::device_start()
 	save_item(NAME(m_hdisplay));
 	save_item(NAME(m_vdisplay));
 	save_item(NAME(m_dotsel_352));
+	save_item(NAME(m_vramsz));
 	save_item(NAME(m_hblank_rising));
 	save_item(NAME(m_vblank_next_in));
 
@@ -77,6 +78,7 @@ void saturn_vdp2_device::device_reset()
 	// TVMD and EXTEN clear on reset (VDP2 manual 2.4/2.5). Reset the
 	// decoded fields as well so scan timing and access permissions agree.
 	m_tvmd = 0;
+	m_vramsz = false; // VDP2 manual 3.1: VRSIZE bit 15 clears on reset.
 	m_disp = m_bdclmd = m_lsmd = m_vreso = m_hreso = 0;
 	m_exlten = m_exltfg = m_exsyfg = false;
 	m_exsyen = m_dasel = m_exbgen = false;
@@ -207,11 +209,10 @@ void saturn_vdp2_device::regs_map(address_map &map)
 	// ---- ---- ---- xxxx VER silicon version (r/o)
 	map(0x006, 0x007).lrw16(
 		NAME([this] () {
-			// TODO: version
+			// VDP2 manual 3.1: the initial silicon version is zero.
 			return (m_vramsz << 15) | (0 & 0xf);
 		}),
 		NAME([this] (offs_t offset, u16 data, u16 mem_mask) {
-			// TODO: probably akin to YM7101 equivalent on stock Saturn
 			if (ACCESSING_BITS_8_15)
 				m_vramsz = BIT(data, 15);
 		})

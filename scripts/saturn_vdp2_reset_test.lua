@@ -16,12 +16,14 @@ emu.register_frame_done(function()
   if phase%2==0 then
    local mode=modes[phase//2+1]
    if not mode then print('SATURN_VDP2_RESET_PASS TVMD, EXTEN, decoded display/interlace/resolution and external controls');m:exit();return end
-   h:write_u16(0x05f80000,mode);h:write_u16(0x05f80002,0x0303)
+   h:write_u16(0x05f80000,mode);h:write_u16(0x05f80002,0x0303);h:write_u16(0x05f80006,0x800f)
+   assert(h:read_u16(0x05f80006)==0x8000,'VRSIZE write or read-only version')
    assert(h:read_u16(0x05f80000)==mode,'mode setup')
    phase=phase+1;m:soft_reset()
   else
    assert(h:read_u16(0x05f80000)==0,'TVMD retained across reset')
    assert(h:read_u16(0x05f80002)==0,'EXTEN retained across reset')
+   assert(h:read_u16(0x05f80006)==0 and value('m_vramsz')==0,'VRSIZE retained across reset')
    for _,field in ipairs({'m_disp','m_bdclmd','m_lsmd','m_vreso','m_hreso','m_exlten','m_exsyen','m_dasel','m_exbgen'})do
     assert(value(field)==0,'decoded reset mismatch '..field)
    end
