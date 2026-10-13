@@ -15,7 +15,7 @@ source=(root/'src/mame/sega/saturn_vdp2_fetch.h').read_text()
 candidate=source
 changes={
     'unsigned cell;\n    pattern_name value;':'unsigned cell;\n    unsigned bank;\n    pattern_name value;',
-    'history[i].slot + int(latency) <= slot':'history[i].slot + int(layer >= 2 && history[i].bank >= 2 ? 4 : latency) <= slot',
+    'history[index].slot + int(latency) <= slot':'history[index].slot + int(layer >= 2 && history[index].bank >= 2 ? 4 : latency) <= slot',
     'read{slot, cycle, cell, access.read_pn(address)}':'read{slot, cycle, cell, access.bank(address), access.read_pn(address)}',
 }
 for before,after in changes.items():
