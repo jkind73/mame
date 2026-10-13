@@ -28,3 +28,14 @@ Sources: Sega VDP2 2.5 counter layouts; VDP1 4.4 raster totals; https://github.c
 Inspected current MiSTer and Mednafen sources for the remembered NBG2 B0-T1 PN / A0-T0 character fetch divergence. MiSTer's active NBG2/3 path still uses its early PN update, with the alternative bank-dependent update commented out. Mednafen's `T_DrawNBG23` explicitly applies a layer-offset workaround matching several Fighters Megamix register patterns; it does not provide an independent cycle-accurate fetch-port measurement.
 
 Consequently the emulator disagreement is still unresolved. Changing the generic B-bank latency to four would choose the inactive RTL alternative on the basis of a reference-emulator workaround, potentially affecting other games. No minimized captured memory/slot trace demonstrating the correct returned pattern exists among the inspected local artifacts. This item remains `[ ]`; hardware-verification waiver alone does not supply the missing behavioral result or make a speculative change a verified fix.
+
+## Duplicate counter audit entry — 2026-10-13
+
+The section-12.3 H/V counter, rollback and latch item refers to the same
+implemented counter engine described above. Re-ran the real-method video-mode
+ASan/UBSan fixture and mapped-register scan diagnostic on both CPU engines.
+All pass. The fixture covers vertical skip/wrap, horizontal discontinuities,
+PAL/NTSC and dedicated counter layouts, and EXLAT edge/enable behavior.
+The duplicate marker is now complete; its original text is unchanged. This
+does not add physical hardware verification beyond the earlier authorized
+emulator-derived implementation. Native logs: `/private/tmp/checklist-scan-20261013`.

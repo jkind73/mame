@@ -176,7 +176,7 @@ The generated list is `SATURN_TODO_INVENTORY.md`; the table at the end gives the
 - [x] VBLANK-OUT on the last line, HBLANK-IN at the chip's dot (`e5faebbacad`); timer 0 and timer 1 (`edb7930781c`); VBLANK-IN line (`3674a79cc9f`)
 - [x] IST: cleared when the interrupt is delivered; check against the manual/MiSTer; the ISM 0-to-1 acknowledge
 - [ ] Delay between an event and the SCU IRQ (SCU at about 14 MHz)
-- [ ] V counter roll-back and where it increments (end of line, dot 0x15A), H counter values, latch behaviour
+- [x] V counter roll-back and where it increments (end of line, dot 0x15A), H counter values, latch behaviour
 - [ ] Timer 1 against the H counter table in the header: re-check with the new event dots
 - [ ] No vblank/hblank IRQs when DISP is off (Yabause claim)
 - [ ] `saturn.cpp`: edge triggered?; send a real reset to the connected devices
