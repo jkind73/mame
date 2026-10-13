@@ -90,3 +90,23 @@ The stale verification TODO is removed, and the old observations remain labeled
 historical. The original recheck checklist marker alone changes to complete.
 No physical Saturn verification is claimed. Artifacts:
 `/private/tmp/timer1-scan-20261013`.
+
+## VDP2 register reset defaults, 2026-10-13
+
+Corrected reset to clear TVMD and every decoded display, border, interlace and
+resolution field, as required by [VDP2 2.4](https://www.infochunk.com/saturn/segahtml_en/hard/vdp2/hon/p02_40.htm).
+EXTEN already read back zero after reset, but external synchronization, display
+area selection and external background controls retained their old decoded
+values; these now clear together with the register per [VDP2 2.5](https://www.infochunk.com/saturn/segahtml_en/hard/vdp2/hon/p02_50.htm).
+
+The native reset regression writes dense-interlace, dedicated-monitor and
+240-line configurations, enables all four EXTEN controls, and performs actual
+scheduled machine resets. It checks public read-back, each decoded control and
+the display-off VBLANK status. Both CPU engines pass; the previous binary fails
+because TVMD retains its previous value. Artifacts:
+`/private/tmp/vdp2-reset-positive-20261013` and
+`/private/tmp/vdp2-reset-negative-20261013`.
+
+No physical hardware verification is claimed. This is a documented register
+reset correction, not completion of the entire board-reset or broad VDP2-note
+checklist item. Their markers and original text remain unchanged.

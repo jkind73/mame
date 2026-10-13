@@ -74,15 +74,16 @@ void saturn_vdp2_device::device_start()
 
 void saturn_vdp2_device::device_reset()
 {
+	// TVMD and EXTEN clear on reset (VDP2 manual 2.4/2.5). Reset the
+	// decoded fields as well so scan timing and access permissions agree.
+	m_tvmd = 0;
+	m_disp = m_bdclmd = m_lsmd = m_vreso = m_hreso = 0;
 	m_exlten = m_exltfg = m_exsyfg = false;
+	m_exsyen = m_dasel = m_exbgen = false;
 	m_exten = 0;
 	m_hcounter_latch = m_vcounter_latch = 0;
 	m_odd_bit = 1;
-	// shouldn't really matter
 	m_old_tvmd = 0xffff;
-//	m_hreso = 0;
-//	m_vreso = 0;
-//	m_dotsel_352 = true;
 	reconfigure_crtc();
 }
 
