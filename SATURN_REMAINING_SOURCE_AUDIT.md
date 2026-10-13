@@ -54,3 +54,19 @@ and raw Shift make/break codes pass. The parent fails the mapping fixture.
 The full subtarget builds. Num lock's physical source, controller MCU,
 rollover/repeat timing and game-specific kana behavior are still open; no
 unsubstantiated repeat constants or Num-to-kana substitution were introduced.
+
+## Independent DSP instruction comparison
+
+`scripts/scsp_dsp_ymir_compare_test.py --ymir <checkout>` compiles the actual
+MAME DSP and the external Ymir DSP separately into a test executable. A
+callback inserted only in the generated test source compares each instruction's
+TEMP, MEMS, EFREG, accumulator, fraction, Y, address and memory-pipeline state.
+After each sample it compares the full 512 KiB sound RAM. 256 deterministic
+random programs, lengths 1–128, all four ring sizes, 17 ring base addresses and
+four successive samples pass under ASan/UBSan. Both floating and raw memory
+operations are exercised. Simultaneous read/write requests and terminal memory
+requests at instruction 127 are excluded from this synthetic fixture.
+
+This is independent behavior comparison; no GPL reference code is copied into
+MAME. It does not prove BIOS waveform parity: actual BIOS input traces and
+whole-chip mixer/slot timing remain necessary before closing the chime item.
