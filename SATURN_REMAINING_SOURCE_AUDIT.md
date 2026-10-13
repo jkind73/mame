@@ -377,7 +377,7 @@ branches do not create a pending slot.
 
 The native regression confirms the preserved parent interpreter takes the
 wrong exception vector; the parent DRC passes. Both corrected engines pass
-80 existing illegal-slot cases, four illegal and four legal zero-target slots,
+80 existing illegal-slot cases, six illegal and six legal zero-target slots (including BRAF/BSRF wraparound),
 and a pending-zero-slot save/load/resume check. Timer slice-boundary,
 instruction-cache and UBC native tests also pass on both engines. Full build
 passes. Artifacts: `/private/tmp/sh7604-zero-delay-save-20261013` and

@@ -30,11 +30,11 @@ local function run()
   end
  end
  -- Zero is a valid delayed destination, not an absent-delay marker.
- for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b})do
+ for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b,0x0403,0x0423})do
   clear_delay();h:write_u16(pc,outer);h:write_u16(pc+2,0xffff)
   h:write_u32(stack,0);h:write_u32(stack+4,0xf0)
   cpu.state.VBR.value=vbr;cpu.state.SR.value=0xf0;cpu.state.R15.value=stack
-  cpu.state.R4.value=0;cpu.state.PR.value=0;cpu.state.CURPC.value=pc
+  cpu.state.R4.value=(outer==0x0403 or outer==0x0423)and(-(pc+4)&0xffffffff)or 0;cpu.state.PR.value=0;cpu.state.CURPC.value=pc
   emu.wait(0.0001)
   local expected_stack=outer==0x002b and stack or stack-8
   assert(cpu.state.CURPC.value==(vbr+0x260)&0x0fffffff or cpu.state.CURPC.value==(vbr+0x262)&0x0fffffff,'zero-target slot vector missing')
@@ -42,11 +42,11 @@ local function run()
  end
  -- A legal slot must execute once before reaching address zero. The
  -- diagnostic ROM has an illegal word there, which then takes vector 4.
- for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b})do
+ for _,outer in ipairs({0x442b,0x440b,0x000b,0x002b,0x0403,0x0423})do
   clear_delay();h:write_u16(pc,outer);h:write_u16(pc+2,0xe72a)
   h:write_u32(stack,0);h:write_u32(stack+4,0xf0)
   cpu.state.VBR.value=vbr;cpu.state.SR.value=0xf0;cpu.state.R15.value=stack
-  cpu.state.R4.value=0;cpu.state.R7.value=0;cpu.state.PR.value=0;cpu.state.CURPC.value=pc
+  cpu.state.R4.value=(outer==0x0403 or outer==0x0423)and(-(pc+4)&0xffffffff)or 0;cpu.state.R7.value=0;cpu.state.PR.value=0;cpu.state.CURPC.value=pc
   emu.wait(0.0001)
   local expected_stack=outer==0x002b and stack or stack-8
   assert(cpu.state.R7.value==42,'legal zero-target slot skipped')
@@ -73,7 +73,7 @@ local function run()
  emu.wait(0.0001)
  assert(cpu.state.CURPC.value==(vbr+0x240)&0x0fffffff or cpu.state.CURPC.value==(vbr+0x242)&0x0fffffff,'general illegal vector')
  assert(cpu.state.R15.value==stack-8 and h:read_u32(stack-8)==pc,'general illegal saved PC')
- print('SH7604_ILLEGAL_SLOT_PASS 80 nonzero and 8 zero-target slots, self-loop decode, vector 6 jump PC/SR/PR and general vector 4');m:exit()
+ print('SH7604_ILLEGAL_SLOT_PASS 80 nonzero and 12 zero-target slots, self-loop decode, vector 6 jump PC/SR/PR and general vector 4');m:exit()
 end
 emu.register_frame_done(function()
  if ILLEGAL_SLOT_TEST_STARTED then return end;ILLEGAL_SLOT_TEST_STARTED=true
