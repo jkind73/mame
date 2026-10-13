@@ -9,8 +9,7 @@ References:
 - Technical Bulletin #45 "Saturn Keyboard Data Format Ver.1.00"
 
 TODO:
-- Caps/Num/Scroll locks
-  (regular keyboard is numpad-less, may have routed that to kana lock instead);
+- Num lock (the regular keyboard is numpad-less; identify its source);
 - Identify the actual MCU this employs;
 - key repeat (verify with games);
 - hookup EGWord in SW list and test it again;
@@ -164,7 +163,7 @@ static INPUT_PORTS_START( saturn_keybd )
 	PORT_BIT( 0xc0, IP_ACTIVE_HIGH, IPT_UNUSED )
 
 	PORT_START("KEY.11") // 0x58 - 0x5f
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("Caps Lock")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("Caps Lock") PORT_CODE(KEYCODE_CAPSLOCK)
 	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("Right Shift") PORT_CODE(KEYCODE_RSHIFT)
 	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("Enter") PORT_CODE(KEYCODE_ENTER) PORT_CHAR(0x0d) PORT_CHAR(UCHAR_MAMEKEY(ENTER))
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_CODE(KEYCODE_OPENBRACE)    PORT_CHAR('[')      PORT_CHAR('{')
@@ -190,7 +189,7 @@ static INPUT_PORTS_START( saturn_keybd )
 	PORT_START("KEY.15") // 0x78 - 0x7f
 	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("F11") PORT_CODE(KEYCODE_F11) PORT_CHAR(UCHAR_MAMEKEY(F11))
 	PORT_BIT( 0x3e, IP_ACTIVE_HIGH, IPT_UNUSED )
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("Scroll Lock")
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("Scroll Lock") PORT_CODE(KEYCODE_SCRLOCK)
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_UNUSED )
 
 	PORT_START("KEY.16") // 0x80 - 0x87
@@ -264,6 +263,11 @@ void saturn_keybd_device::key_make(uint8_t row, uint8_t column)
 void saturn_keybd_device::key_break(uint8_t row, uint8_t column)
 {
 	m_data = row * 8 + column;
+	// STN-45: lock flags toggle on the break, not the make, of each key.
+	if (m_data == 0x58)
+		m_status ^= 0x40;
+	else if (m_data == 0x7e)
+		m_status ^= 0x10;
 	m_status &= ~8;
 	m_status |= 1;
 }
@@ -289,12 +293,12 @@ uint16_t saturn_keybd_device::get_game_key()
 	game_key ^= (BIT(m_key_rows[14]->read(), 6) << 11); // ESC -> START
 	game_key ^= (BIT(m_key_rows[ 3]->read(), 2) << 10); // Z / A trigger
 	game_key ^= (BIT(m_key_rows[ 4]->read(), 1) <<  9); // C / C trigger
-	game_key ^= (BIT(m_key_rows[ 6]->read(), 2) <<  8); // X / B trigger
-	game_key ^= (BIT(m_key_rows[ 2]->read(), 5) <<  7); // Q / R trigger
+	game_key ^= (BIT(m_key_rows[ 4]->read(), 2) <<  8); // X / B trigger
+	game_key ^= (BIT(m_key_rows[ 4]->read(), 4) <<  7); // E / R trigger
 	game_key ^= (BIT(m_key_rows[ 3]->read(), 4) <<  6); // A / X trigger
 	game_key ^= (BIT(m_key_rows[ 3]->read(), 3) <<  5); // S / Y trigger
 	game_key ^= (BIT(m_key_rows[ 4]->read(), 3) <<  4); // D / Z trigger
-	game_key ^= (BIT(m_key_rows[ 4]->read(), 4) <<  3); // E / L trigger
+	game_key ^= (BIT(m_key_rows[ 2]->read(), 5) <<  3); // Q / L trigger
 
 	return game_key;
 }

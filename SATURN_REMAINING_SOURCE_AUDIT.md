@@ -37,3 +37,20 @@ history-dependent deadbands, restored hysteresis, button bits and analog bytes.
 The parent fails the axis sweep. The full Saturn/ST-V subtarget builds.
 This fixes part of the peripheral-format audit; it does not close the entire
 SMPC errata or controller collection.
+
+## Keyboard pad mappings and lock flags
+
+Sega STN-45 maps pad B to X, R to E and L to Q. The active keyboard incorrectly
+used B for pad B and exchanged the two shoulder buttons; all three are fixed.
+Caps and Scroll Lock now have host bindings and toggle their reported flags on
+**break**, matching the original STN-45 flag diagram. The existing saved status
+byte retains the flags; ordinary keys and left/right Shift preserve them.
+
+Sources: [original STN-45](https://docs.exodusemulator.com/Archives/SSDDV25/segahtml/info/hon/stn45_j.htm),
+[lock transition diagram](https://www.infochunk.com/saturn/segahtml_en/info/grp/stn45_1.gif).
+`scripts/saturn_keyboard_test.py` executes the production methods under
+ASan/UBSan. All 13 pad mappings, the non-trigger B key, four lock cycles each,
+and raw Shift make/break codes pass. The parent fails the mapping fixture.
+The full subtarget builds. Num lock's physical source, controller MCU,
+rollover/repeat timing and game-specific kana behavior are still open; no
+unsubstantiated repeat constants or Num-to-kana substitution were introduced.
