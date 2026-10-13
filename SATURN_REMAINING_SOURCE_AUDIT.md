@@ -330,3 +330,21 @@ combination and total-level bounds. The parent fails the new gain checks.
 The full build and a 110-second native VF2J run with 48kHz audio pass;
 artifacts: `/private/tmp/scsp-mix-level-vf2-20261013`. No real hardware
 verification or complete BIOS chime parity is claimed.
+
+### CD source WAVE chunk validation (2026-10-13)
+
+The CUE WAVE reader now checks read errors and exact byte counts, uses
+64-bit bounded RIFF extents, includes the eight-byte RIFF prefix in the
+container boundary and skips WORD padding after odd-sized chunks. Short
+format chunks, truncated payloads, oversized extents, empty data and
+incomplete stereo sample frames fail instead of returning unsafe lengths.
+Offsets are cleared on failure and checked before narrowing to the existing
+32-bit interface. Stereo 44.1kHz 16-bit PCM support is retained.
+
+The actual-parser ASan/UBSan fixture passes ordinary PCM, padded unknown
+chunks, every truncation of a complete file, injected short reads and invalid
+format/data lengths. The parent fails the padded-file assertion. Full Saturn
+build and existing TOC parser tests pass. This is a source-file parser fix,
+not CD hardware validation or closure of the combined unrelated global notes.
+RIFF padding/extent reference:
+https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-

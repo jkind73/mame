@@ -1666,157 +1666,70 @@ int cdrom_file::msf_to_frames(const char *token)
 
 uint32_t cdrom_file::parse_wav_sample(std::string_view filename, uint32_t *dataoffs)
 {
-	unsigned long offset = 0;
-	uint32_t length, rate, filesize;
-	uint16_t bits, temp16;
-	char buf[32];
+	*dataoffs = 0;
 	osd_file::ptr file;
 	uint64_t fsize = 0;
-	std::uint32_t actual;
-
-	std::string fname = std::string(filename);
-	std::error_condition const filerr = osd_file::open(fname, OPEN_FLAG_READ, file, fsize);
-	if (filerr)
-	{
-		osd_printf_error("ERROR: could not open (%s)\n", fname);
+	std::string const fname(filename);
+	if (osd_file::open(fname, OPEN_FLAG_READ, file, fsize))
 		return 0;
-	}
 
-	/* read the core header and make sure it's a WAVE file */
-	file->read(buf, 0, 4, actual);
-	offset += actual;
-	if (offset < 4)
+	auto const read = [&] (void *buffer, uint64_t offset, uint32_t size)
 	{
-		osd_printf_error("ERROR: unexpected RIFF offset %lu (%s)\n", offset, fname);
-		return 0;
-	}
-	if (memcmp(&buf[0], "RIFF", 4) != 0)
+		uint32_t actual = 0;
+		return offset <= fsize && size <= fsize - offset &&
+			!file->read(buffer, offset, size, actual) && actual == size;
+	};
+	auto const u32le = [] (char const *buffer)
 	{
-		osd_printf_error("ERROR: could not find RIFF header (%s)\n", fname);
-		return 0;
-	}
+		uint32_t value;
+		memcpy(&value, buffer, sizeof(value));
+		return little_endianize_int32(value);
+	};
+	auto const u16le = [] (char const *buffer)
+	{
+		uint16_t value;
+		memcpy(&value, buffer, sizeof(value));
+		return little_endianize_int16(value);
+	};
 
-	/* get the total size */
-	file->read(&filesize, offset, 4, actual);
-	offset += actual;
-	if (offset < 8)
-	{
-		osd_printf_error("ERROR: unexpected size offset %lu (%s)\n", offset, fname);
+	char header[16];
+	if (!read(header, 0, 12) || memcmp(header, "RIFF", 4) || memcmp(header + 8, "WAVE", 4))
 		return 0;
-	}
-	filesize = little_endianize_int32(filesize);
-
-	/* read the RIFF file type and make sure it's a WAVE file */
-	file->read(buf, offset, 4, actual);
-	offset += actual;
-	if (offset < 12)
-	{
-		osd_printf_error("ERROR: unexpected WAVE offset %lu (%s)\n", offset, fname);
+	uint64_t const end = uint64_t(u32le(header + 4)) + 8;
+	if (end < 12 || end > fsize)
 		return 0;
-	}
-	if (memcmp(&buf[0], "WAVE", 4) != 0)
-	{
-		osd_printf_error("ERROR: could not find WAVE header (%s)\n", fname);
-		return 0;
-	}
 
-	/* seek until we find a format tag */
-	while (true)
+	bool format = false;
+	for (uint64_t offset = 12; offset < end; )
 	{
-		file->read(buf, offset, 4, actual);
-		offset += actual;
-		file->read(&length, offset, 4, actual);
-		offset += actual;
-		length = little_endianize_int32(length);
-		if (memcmp(&buf[0], "fmt ", 4) == 0)
-			break;
-
-		/* seek to the next block */
-		offset += length;
-		if (offset >= filesize)
-		{
-			osd_printf_error("ERROR: could not find fmt tag (%s)\n", fname);
+		if (end - offset < 8 || !read(header, offset, 8))
 			return 0;
-		}
-	}
-
-	/* read the format -- make sure it is PCM */
-	file->read(&temp16, offset, 2, actual);
-	offset += actual;
-	temp16 = little_endianize_int16(temp16);
-	if (temp16 != 1)
-	{
-		osd_printf_error("ERROR: unsupported format %u - only PCM is supported (%s)\n", temp16, fname);
-		return 0;
-	}
-
-	/* number of channels -- only stereo is supported */
-	file->read(&temp16, offset, 2, actual);
-	offset += actual;
-	temp16 = little_endianize_int16(temp16);
-	if (temp16 != 2)
-	{
-		osd_printf_error("ERROR: unsupported number of channels %u - only stereo is supported (%s)\n", temp16, fname);
-		return 0;
-	}
-
-	/* sample rate */
-	file->read(&rate, offset, 4, actual);
-	offset += actual;
-	rate = little_endianize_int32(rate);
-	if (rate != 44100)
-	{
-		osd_printf_error("ERROR: unsupported samplerate %u - only 44100 is supported (%s)\n", rate, fname);
-		return 0;
-	}
-
-	/* bytes/second and block alignment are ignored */
-	file->read(buf, offset, 6, actual);
-	offset += actual;
-
-	/* bits/sample */
-	file->read(&bits, offset, 2, actual);
-	offset += actual;
-	bits = little_endianize_int16(bits);
-	if (bits != 16)
-	{
-		osd_printf_error("ERROR: unsupported bits/sample %u - only 16 is supported (%s)\n", bits, fname);
-		return 0;
-	}
-
-	/* seek past any extra data */
-	offset += length - 16;
-
-	/* seek until we find a data tag */
-	while (true)
-	{
-		file->read(buf, offset, 4, actual);
-		offset += actual;
-		file->read(&length, offset, 4, actual);
-		offset += actual;
-		length = little_endianize_int32(length);
-		if (memcmp(&buf[0], "data", 4) == 0)
-			break;
-
-		/* seek to the next block */
-		offset += length;
-		if (offset >= filesize)
-		{
-			osd_printf_error("ERROR: could not find data tag (%s)\n", fname);
+		uint32_t const length = u32le(header + 4);
+		bool const fmt = !memcmp(header, "fmt ", 4);
+		bool const data = !memcmp(header, "data", 4);
+		offset += 8;
+		uint64_t const padded = uint64_t(length) + (length & 1);
+		if (padded > end - offset)
 			return 0;
+		if (fmt)
+		{
+			if (length < 16 || !read(header, offset, 16) ||
+				u16le(header) != 1 || u16le(header + 2) != 2 ||
+				u32le(header + 4) != 44100 || u16le(header + 14) != 16)
+				return 0;
+			format = true;
 		}
+		else if (data)
+		{
+			// CD audio is stereo PCM: incomplete sample frames are not valid data.
+			if (!format || !length || (length & 3) || offset > UINT32_MAX)
+				return 0;
+			*dataoffs = uint32_t(offset);
+			return length;
+		}
+		offset += padded;
 	}
-
-	/* if there was a 0 length data block, we're done */
-	if (length == 0)
-	{
-		osd_printf_error("ERROR: empty data block (%s)\n", fname);
-		return 0;
-	}
-
-	*dataoffs = offset;
-
-	return length;
+	return 0;
 }
 
 /**
