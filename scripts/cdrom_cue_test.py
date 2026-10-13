@@ -56,6 +56,9 @@ int main(){
  assert(parse("TRACK 01 MODE1/2048\nINDEX 01 00:00:00\n"));
  for(const char *bad:{"100","4294967296","abc","1x","-1"})assert(parse(std::string("FILE data.bin BINARY\nTRACK 01 MODE1/2048\nINDEX ")+bad+" 00:00:00\n"));
  assert(parse("FILE data.bin BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\n"));
+ assert(!parse("FILE data.bin BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\nTRACK 02 MODE1/2048\nINDEX 01 00:00:04\n"));assert(toc.tracks[0].frames==4&&toc.tracks[1].frames==4&&info.track[1].offset==8192);
+ assert(parse("FILE data.bin BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:04\nTRACK 02 MODE1/2048\nINDEX 01 00:00:00\n"));
+ assert(parse("FILE data.bin BINARY\nTRACK 01 MODE1/2048\nINDEX 01 00:00:00\nTRACK 02 MODE1/2048\nINDEX 01 00:01:00\n"));
  std::string tracks;
  for(unsigned n=1;n<=99;++n){char num[16];std::snprintf(num,sizeof(num),"%02u",n);std::string name="data"+std::string(num)+".bin";std::filesystem::copy_file("data.bin",name);tracks+="FILE "+name+" BINARY\nTRACK "+std::string(num)+" MODE1/2048\nINDEX 01 00:00:00\n";}
  assert(!parse(tracks)&&toc.numtrks==99);

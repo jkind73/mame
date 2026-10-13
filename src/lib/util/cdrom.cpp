@@ -2704,12 +2704,19 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 				return std::errc::no_such_file_or_directory;
 			}
 
-			outinfo.track[trknum].offset = outinfo.track[trknum-1].offset + outtoc.tracks[trknum-1].frames * (outtoc.tracks[trknum-1].datasize + outtoc.tracks[trknum-1].subsize);
+			uint64_t const offset = uint64_t(outinfo.track[trknum-1].offset) +
+				uint64_t(outtoc.tracks[trknum-1].frames) * (outtoc.tracks[trknum-1].datasize + outtoc.tracks[trknum-1].subsize);
+			if (offset > tlen || offset > UINT32_MAX)
+				return chd_file::error::INVALID_DATA;
+			outinfo.track[trknum].offset = uint32_t(offset);
 			outtoc.tracks[trknum].frames = (tlen - outinfo.track[trknum].offset) / (outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize);
 		}
 		else if (trknum+1 < outtoc.numtrks && outinfo.track[trknum].fname.compare(outinfo.track[trknum+1].fname) == 0)
 		{
 			/* if the current filename is the same as the next track */
+			if (outinfo.track[trknum].idx[0] < 0 ||
+				outinfo.track[trknum+1].idx[0] <= outinfo.track[trknum].idx[0])
+				return chd_file::error::INVALID_DATA;
 			outtoc.tracks[trknum].frames = outinfo.track[trknum+1].idx[0] - outinfo.track[trknum].idx[0];
 
 			if (outtoc.tracks[trknum].frames == 0)
@@ -2720,8 +2727,11 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 
 			if (trknum > 0)
 			{
-				const uint32_t previous_track_raw_size = outtoc.tracks[trknum-1].frames * (outtoc.tracks[trknum-1].datasize + outtoc.tracks[trknum-1].subsize);
-				outinfo.track[trknum].offset = outinfo.track[trknum-1].offset + previous_track_raw_size;
+				uint64_t const offset = uint64_t(outinfo.track[trknum-1].offset) +
+					uint64_t(outtoc.tracks[trknum-1].frames) * (outtoc.tracks[trknum-1].datasize + outtoc.tracks[trknum-1].subsize);
+				if (offset > UINT32_MAX)
+					return chd_file::error::INVALID_DATA;
+				outinfo.track[trknum].offset = uint32_t(offset);
 			}
 		}
 		else if (outtoc.tracks[trknum].frames == 0)

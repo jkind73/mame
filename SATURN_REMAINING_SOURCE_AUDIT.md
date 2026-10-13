@@ -383,3 +383,15 @@ instruction-cache and UBC native tests also pass on both engines. Full build
 passes. Artifacts: `/private/tmp/sh7604-zero-delay-save-20261013` and
 `/private/tmp/sh7604-zero-delay-parent-20261013`. This is a concrete CPU
 correctness fix, not a claim to resolve every outstanding game IRQ issue.
+
+CUE shared-file extents are also validated before subtraction/narrowing.
+Descending/equal track indexes and a last-track offset beyond the source
+file now fail instead of unsigned underflow producing a huge track length.
+Previous-track byte extents use widened arithmetic. The native parser
+fixture passes a valid two-track shared file and rejects reversed/beyond-file
+indexes; the parent fails the reversed-index regression. Full build and
+WAVE checks pass (`/private/tmp/cdrom-cue-extents-parent-20261013.log`).
+
+A 110-second VF2J retail run after the delay-slot correction completes with
+visible fighting attract graphics and a complete 48kHz recording:
+`/private/tmp/sh7604-zero-delay-vf2-20261013`.
