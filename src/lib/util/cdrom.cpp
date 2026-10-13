@@ -1034,7 +1034,14 @@ std::error_condition cdrom_file::parse_metadata(chd_file *chd, toc &toc)
 		return err;
 
 	/* reconstruct the TOC from it */
-	auto *mrp = reinterpret_cast<uint32_t *>(&oldmetadata[0]);
+	if (oldmetadata.size() < METADATA_WORDS * sizeof(uint32_t))
+		return std::errc::invalid_argument;
+	uint32_t metadata_words[METADATA_WORDS];
+	memcpy(metadata_words, oldmetadata.data(), sizeof(metadata_words));
+	auto *mrp = metadata_words;
+	const uint32_t trackcount = metadata_words[0] > MAX_TRACKS ? swapendian_int32(metadata_words[0]) : metadata_words[0];
+	if (!trackcount || trackcount > MAX_TRACKS)
+		return std::errc::invalid_argument;
 	toc.numtrks = *mrp++;
 
 	toc.numsessions = 1;
