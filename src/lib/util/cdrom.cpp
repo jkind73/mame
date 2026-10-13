@@ -25,7 +25,8 @@
 #include "strformat.h"
 
 #include <cassert>
-#include <climits>
+#include <array>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <tuple>
@@ -3090,96 +3091,95 @@ std::error_condition cdrom_file::parse_toc(std::string_view tocfname, toc &outto
 		}
 		else if ((!strcmp(token, "DATAFILE")) || (!strcmp(token, "AUDIOFILE")) || (!strcmp(token, "FILE")))
 		{
-			int f;
 			bool const datafile = !strcmp(token, "DATAFILE");
+			uint32_t const sectorbytes = outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize;
+			bool const audio = outtoc.tracks[trknum].trktype == CD_TRACK_AUDIO;
+			auto const invalid = [&] ()
+			{
+				fclose(infile);
+				return make_error_condition(chd_file::error::INVALID_DATA);
+			};
+			auto const number = [] (std::string_view text, uint64_t &value)
+			{
+				auto const result = std::from_chars(text.data(), text.data() + text.size(), value);
+				return !text.empty() && result.ec == std::errc() && result.ptr == text.data() + text.size();
+			};
+			auto const extent = [&] (std::string_view text, uint64_t &bytes)
+			{
+				auto const colon = text.find(':');
+				uint64_t value;
+				if (colon == std::string_view::npos)
+				{
+					// CDRDAO: scalar audio positions are stereo samples; data positions are bytes.
+					uint32_t const unit = audio ? 4 : 1;
+					if (!number(text, value) || value > UINT32_MAX / unit)
+						return false;
+					bytes = value * unit;
+				}
+				else
+				{
+					auto const second = text.find(':', colon + 1);
+					uint64_t minute, sec, frame;
+					if (second == std::string_view::npos || !number(text.substr(0, colon), minute) ||
+						!number(text.substr(colon + 1, second - colon - 1), sec) || !number(text.substr(second + 1), frame) ||
+						sec >= 60 || frame >= 75 || minute > UINT32_MAX / (4500ULL * sectorbytes))
+						return false;
+					value = (minute * 4500 + sec * 75 + frame) * sectorbytes;
+					if (value > UINT32_MAX)
+						return false;
+					bytes = value;
+				}
+				return true;
+			};
 
-			/* found the data file for a track */
 			TOKENIZE
-
-			/* keep the filename */
+			if (!token[0])
+				return invalid();
 			outinfo.track[trknum].fname.assign(path).append(token);
-
-			/* get either the offset or the length */
 			TOKENIZE
-
-			if (!strcmp(token, "SWAP"))
+			outinfo.track[trknum].swap = !strcmp(token, "SWAP");
+			if (outinfo.track[trknum].swap)
 			{
 				TOKENIZE
-
-				outinfo.track[trknum].swap = true;
-			}
-			else
-			{
-				outinfo.track[trknum].swap = false;
 			}
 
-			bool const byte_offset = token[0] == '#';
-			if (byte_offset)
+			uint64_t offset = 0;
+			if (token[0] == '#')
 			{
-				/* it's a decimal offset, use it */
-				f = strtoul(&token[1], nullptr, 10);
-			}
-			else if (isdigit((uint8_t)token[0]))
-			{
-				/* convert the time to an offset */
-				f = msf_to_frames(token);
-
-				f *= (outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize);
-			}
-			else
-			{
-				f = 0;
-			}
-
-			outinfo.track[trknum].offset = f;
-
-			TOKENIZE
-
-			if (isdigit((uint8_t)token[0]))
-			{
-				// this could be the length or an offset from the previous field.
-				f = msf_to_frames(token);
-
+				// Preserve the existing byte-offset extension used by MAME TOCs.
+				if (!number(std::string_view(token).substr(1), offset) || offset > UINT32_MAX)
+					return invalid();
 				TOKENIZE
-
-				if (isdigit((uint8_t)token[0]))
-				{
-					// it was an offset.
-					f *= (outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize);
-
-					outinfo.track[trknum].offset += f;
-
-					// this is the length.
-					f = msf_to_frames(token);
-				}
 			}
-			else if (datafile && !byte_offset && outinfo.track[trknum].offset != 0)
+			std::array<uint64_t, 2> positions{};
+			unsigned count = 0;
+			while (token[0] && strncmp(token, "//", 2))
 			{
-				/* DATAFILE has an optional length, not FILE's start position. */
-				f = outinfo.track[trknum].offset / (outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize);
-				outinfo.track[trknum].offset = 0;
-			}
-			else
-			{
-				f = 0;
+				if (count == positions.size() || !extent(token, positions[count]))
+					return invalid();
+				++count;
+				TOKENIZE
 			}
 
-			if (!f)
+			uint64_t length = 0;
+			if (datafile && count == 1)
+				length = positions[0];
+			else if (count)
 			{
-				// Omitted/zero length uses the rest of the file, not an empty track.
-				uint64_t const size = get_file_size(outinfo.track[trknum].fname);
-				uint64_t const offset = outinfo.track[trknum].offset;
-				uint32_t const sectorbytes = outtoc.tracks[trknum].datasize + outtoc.tracks[trknum].subsize;
-				if (offset >= size || (size - offset) / sectorbytes == 0 ||
-					(size - offset) % sectorbytes || (size - offset) / sectorbytes > uint64_t(INT_MAX))
-				{
-					fclose(infile);
-					return chd_file::error::INVALID_DATA;
-				}
-				f = (size - offset) / sectorbytes;
+				offset += positions[0];
+				if (count == 2)
+					length = positions[1];
 			}
-
-			outtoc.tracks[trknum].frames = f;
+			uint64_t const size = get_file_size(outinfo.track[trknum].fname);
+			if (offset >= size || offset > UINT32_MAX)
+				return invalid();
+			if (!length)
+				length = size - offset;
+			// Partial-sector padding is not supported by the raw-file reader.
+			if (length > size - offset || length % sectorbytes || length / sectorbytes > UINT32_MAX)
+				return invalid();
+			outinfo.track[trknum].offset = offset;
+			outtoc.tracks[trknum].frames = length / sectorbytes;
 		}
 		else if (!strcmp(token, "TRACK"))
 		{

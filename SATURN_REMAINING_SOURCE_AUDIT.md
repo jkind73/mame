@@ -274,3 +274,22 @@ Sources: https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_17.htm
 and https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_13.htm .
 No physical serial-protocol or collection-time verification is claimed.
 The broad SMPC inline/source items still contain unrelated unfinished work.
+
+### CDRDAO scalar units and checked extents
+
+The follow-up decoder uses CDRDAO's documented units: scalar data positions
+are bytes; scalar audio positions are stereo samples (four bytes), while MSF
+positions are sectors including any subcode stride. DATAFILE's single value
+is a length; FILE/AUDIOFILE's first value is a start. The legacy #byte-offset
+plus start/length extension remains supported. Checked unsigned conversion
+rejects malformed numbers, invalid MSF fields, overflowing extents, excessive
+arguments and selections beyond the file instead of integer overflow or
+later short reads. Non-sector-aligned audio starts are allowed when the
+selected length contains complete sectors.
+
+The actual-parser ASan/UBSan fixture passes scalar byte/sample and MSF cases,
+all earlier bounds/length cases, and malformed/overflowing extents. The parent
+parser fails the new byte-length case; log:
+`/private/tmp/cdrom-toc-units-parent-20261013.log`. Full subtarget build and
+legacy metadata regressions pass. WAVE decoding, concatenated segments and
+partial-sector padding are not claimed complete by this change.

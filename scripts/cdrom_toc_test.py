@@ -22,6 +22,8 @@ methods='\n'.join(method(signature) for signature in (
 code=r'''
 #include "cdrom.h"
 #include <cassert>
+#include <array>
+#include <charconv>
 #include <cctype>
 #include <climits>
 #include <cstdio>
@@ -45,6 +47,10 @@ int main(){
  auto parse=[&](std::string text){std::ofstream("disc.toc")<<text;return cdrom_file::parse_toc("disc.toc",toc,info);};
  for(const char *command:{"NO COPY","COPY","PRE_EMPHASIS","TWO_CHANNEL_AUDIO","FOUR_CHANNEL_AUDIO","DATAFILE data.bin","AUDIOFILE audio.bin 0","FILE audio.bin 0","START 00:02:00"})assert(parse(command));
  assert(!parse("TRACK MODE1\nDATAFILE data.bin\n"));assert(toc.numtrks==1 && toc.tracks[0].frames==8 && info.track[0].offset==0);
+ assert(!parse("TRACK MODE1\nDATAFILE data.bin 8192\n"));assert(toc.tracks[0].frames==4 && info.track[0].offset==0);
+ assert(!parse("TRACK AUDIO\nFILE audio.bin 588 1176\n"));assert(toc.tracks[0].frames==2 && info.track[0].offset==2352);
+ assert(!parse("TRACK AUDIO\nAUDIOFILE audio.bin 588\n"));assert(toc.tracks[0].frames==7 && info.track[0].offset==2352);
+ assert(!parse("TRACK AUDIO\nFILE audio.bin 100 588\n"));assert(toc.tracks[0].frames==1 && info.track[0].offset==400);
  for(const char *command:{"FILE","AUDIOFILE"}){
   assert(!parse(std::string("TRACK AUDIO\n")+command+" audio.bin 00:00:02\n"));assert(toc.tracks[0].frames==6 && info.track[0].offset==2352*2);
   assert(!parse(std::string("TRACK AUDIO\n")+command+" audio.bin 00:00:02 00:00:00\n"));assert(toc.tracks[0].frames==6);
@@ -57,6 +63,10 @@ int main(){
  assert(parse("TRACK MODE1\nDATAFILE missing.bin\n"));
  assert(parse("TRACK MODE1\nDATAFILE partial.bin\n"));
  assert(parse("TRACK AUDIO\nFILE audio.bin 00:00:09\n"));
+ for(const char *bad:{"00:60:00","00:00:75","-1","+1","00:00","00:00:00:00","18446744073709551616","#4294967296","SWAP nonsense"})assert(parse(std::string("TRACK AUDIO\nFILE audio.bin ")+bad+"\n"));
+ assert(parse("TRACK AUDIO\nFILE audio.bin 0 1\n"));
+ assert(parse("TRACK MODE1\nDATAFILE data.bin 204800\n"));
+ assert(parse("TRACK MODE1\nDATAFILE data.bin 2048 2048 2048\n"));
  std::string tracks;for(unsigned i=0;i<99;++i)tracks+="TRACK MODE1\nDATAFILE data.bin\n";
  assert(!parse(tracks) && toc.numtrks==99);assert(parse(tracks+"TRACK MODE1\nDATAFILE data.bin\n"));
  std::puts("CDROM_TOC_PASS actual parser: track bounds, missing lengths, starts, subcode strides and explicit lengths");
