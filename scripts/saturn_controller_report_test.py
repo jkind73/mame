@@ -12,7 +12,7 @@ parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--binary',type=Path,default=Path('saturn'))
 args=parser.parse_args();root=Path(__file__).resolve().parent.parent
 out=args.output.resolve();out.mkdir(exist_ok=False);diagnostic_roms(out/'roms')
-for kind in ('analog','keyboard','multitap','twin_stick','segatap'):
+for kind in ('analog','keyboard','multitap','twin_stick','segatap','multicontroller'):
  for core in ('drc','interpreter'):
   run=out/(kind+'-'+core);run.mkdir()
   command=['nice','-n','10',str(args.binary.resolve()),'saturnjp','-noreadconfig','-rompath',str(out/'roms'),'-video','none','-sound','none','-nothrottle','-seconds_to_run','3','-skip_gameinfo','-ctrl1',kind,'-ctrl2','','-autoboot_delay','0','-autoboot_script',str(root/'scripts/saturn_controller_report_test.lua')]

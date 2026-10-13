@@ -139,6 +139,7 @@ void saturn_multitap_controls(device_slot_interface &device)
 	device.option_add("joypad",    SATURN_JOY);
 	device.option_add("racing",    SATURN_WHEEL);
 	device.option_add("analog",    SATURN_ANALOG);
+	device.option_add("multicontroller", SATURN_MULTICONTROLLER);
 //  device.option_add("lightgun",  SATURN_LIGHTGUN);
 	device.option_add("trackball", SATURN_TRACK);
 	device.option_add("keyboard",  SATURN_KEYBD);

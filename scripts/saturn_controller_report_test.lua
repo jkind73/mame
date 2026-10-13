@@ -57,6 +57,41 @@ local function run()
   set(tag..'ctrl3:analog:ANALOG_Z',0xff,32)
   set(tag..'ctrl5:keyboard:KEY.4',4,1);emu.wait(0.02)
   expect({0x16,0x02,0xfb,0xff,0xff,0x15,0x7f,0xff,170,128,32,0xff,0x34,0xfe,0xf8,0x0e,0x22,0x02,0xfe,0xff})
+ elseif kind=='multicontroller' then
+  local tag=':ctrl1:multicontroller:'
+  expect({0xf1,0x16,0xff,0xff,128,128,0,0})
+  for _,test in ipairs({{145,0x7f},{100,0x7f},{85,0xff},{100,0xff}})do
+   set(tag..'TRIGGER_R',255,test[1]);emu.wait(0.02)
+   expect({0xf1,0x16,0xff,test[2],128,128,test[1],0})
+  end
+  set(tag..'TRIGGER_R',255,0);set(tag..'TRIGGER_L',255,145)
+  set(tag..'ANALOG_X',255,0);emu.wait(0.02)
+  expect({0xf1,0x16,0xff,0xf7,1,128,0,145})
+  -- Stick positions do not generate the independent directional switches.
+  set(tag..'JOY',0x8000,1);emu.wait(0.02)
+  expect({0xf1,0x16,0x7f,0xf7,1,128,0,145})
+  set(tag..'JOY',0x8000,0)
+  set(tag..'ANALOG_X',255,255);set(tag..'ANALOG_Y',255,255)
+  set(tag..'TRIGGER_L',255,0);emu.wait(0.02)
+  local r=report();assert(r[5]>=218 and r[5]<=219 and r[6]==r[5],'stick gate is not circular')
+  -- Mode transitions calibrate the current positions to neutral, not power-on defaults.
+  set(tag..'ANALOG_X',255,170);set(tag..'ANALOG_Y',255,100)
+  set(tag..'TRIGGER_R',255,20);set(tag..'TRIGGER_L',255,30)
+  field(tag..'MODE',1).user_value=0;emu.wait(0.02)
+  expect({0xf1,0x02,0xff,0xff})
+  field(tag..'MODE',1).user_value=1;emu.wait(0.02)
+  expect({0xf1,0x16,0xff,0xff,128,128,0,0})
+  set(tag..'ANALOG_X',255,180);set(tag..'ANALOG_Y',255,110)
+  set(tag..'TRIGGER_R',255,165);set(tag..'TRIGGER_L',255,175);emu.wait(0.02)
+  expect({0xf1,0x16,0xff,0x77,138,138,145,145})
+  m:save('multicontroller');emu.wait(0.05)
+  field(tag..'MODE',1).user_value=0;emu.wait(0.02)
+  expect({0xf1,0x02,0xff,0xff})
+  field(tag..'MODE',1).user_value=1
+  m:load('multicontroller');emu.wait(0.05)
+  -- Configuration input is external to the controller's saved calibration.
+  field(tag..'MODE',1).user_value=1;emu.wait(0.02)
+  expect({0xf1,0x16,0xff,0x77,138,138,145,145})
  elseif kind=='segatap' then
   local tag=':ctrl1:segatap:'
   set(tag..'ctrl1:joy_md3:JOY',0x0400,1)

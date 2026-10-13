@@ -8,12 +8,14 @@
 
 #include "emu.h"
 #include "analog.h"
+#include <cmath>
 
 //**************************************************************************
 //  DEVICE DEFINITIONS
 //**************************************************************************
 
 DEFINE_DEVICE_TYPE(SATURN_ANALOG, saturn_analog_device, "saturn_analog", "Sega Saturn Mission Stick")
+DEFINE_DEVICE_TYPE(SATURN_MULTICONTROLLER, saturn_multicontroller_device, "saturn_multicontroller", "Sega Saturn Multi Controller")
 
 
 static INPUT_PORTS_START( saturn_analog )
@@ -41,6 +43,118 @@ static INPUT_PORTS_START( saturn_analog )
 	PORT_START("ANALOG_Z")
 	PORT_BIT( 0xff, 0x00, IPT_AD_STICK_Z ) PORT_MINMAX(0x00, 0xff) PORT_SENSITIVITY(25) PORT_KEYDELTA(200) PORT_NAME("AD Stick Z")
 INPUT_PORTS_END
+
+static INPUT_PORTS_START( saturn_multicontroller )
+	PORT_INCLUDE(saturn_analog)
+	PORT_MODIFY("JOY")
+	PORT_BIT(0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT)
+	PORT_BIT(0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT)
+	PORT_BIT(0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN)
+	PORT_BIT(0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP)
+	PORT_BIT(0x0088, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_MODIFY("ANALOG_Z")
+	PORT_BIT(0xff, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("TRIGGER_R")
+	PORT_BIT(0xff, 0, IPT_PEDAL) PORT_MINMAX(0, 255) PORT_SENSITIVITY(25) PORT_KEYDELTA(20) PORT_NAME("R Trigger")
+	PORT_START("TRIGGER_L")
+	PORT_BIT(0xff, 0, IPT_PEDAL2) PORT_MINMAX(0, 255) PORT_SENSITIVITY(25) PORT_KEYDELTA(20) PORT_NAME("L Trigger")
+	PORT_START("MODE")
+	PORT_CONFNAME(1, 1, "Controller Mode")
+	PORT_CONFSETTING(0, "Digital")
+	PORT_CONFSETTING(1, "Analog")
+INPUT_PORTS_END
+
+saturn_multicontroller_device::saturn_multicontroller_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
+	device_t(mconfig, SATURN_MULTICONTROLLER, tag, owner, clock),
+	device_saturn_control_port_interface(mconfig, *this),
+	m_joy(*this, "JOY"), m_anx(*this, "ANALOG_X"), m_any(*this, "ANALOG_Y"),
+	m_right(*this, "TRIGGER_R"), m_left(*this, "TRIGGER_L"), m_mode(*this, "MODE")
+{
+}
+
+ioport_constructor saturn_multicontroller_device::device_input_ports() const
+{
+	return INPUT_PORTS_NAME(saturn_multicontroller);
+}
+
+void saturn_multicontroller_device::device_start()
+{
+	save_item(NAME(m_center_x)); save_item(NAME(m_center_y));
+	save_item(NAME(m_zero_right)); save_item(NAME(m_zero_left));
+	save_item(NAME(m_analog_mode)); save_item(NAME(m_triggers));
+}
+
+void saturn_multicontroller_device::calibrate()
+{
+	m_center_x = m_anx->read(); m_center_y = m_any->read();
+	m_zero_right = m_right->read(); m_zero_left = m_left->read();
+	m_triggers = 0x88;
+}
+
+void saturn_multicontroller_device::device_reset()
+{
+	m_analog_mode = BIT(m_mode->read(), 0);
+	calibrate();
+}
+
+uint16_t saturn_multicontroller_device::sample(uint8_t &x, uint8_t &y, uint8_t &right, uint8_t &left)
+{
+	bool const analog = BIT(m_mode->read(), 0);
+	if (analog != m_analog_mode)
+	{
+		m_analog_mode = analog;
+		calibrate(); // STN-43: switching mode also recalibrates all four axes.
+	}
+	double dx = int(m_anx->read()) - m_center_x;
+	double dy = int(m_any->read()) - m_center_y;
+	double const radius = std::hypot(dx, dy);
+	if (radius > 128)
+	{
+		dx *= 128 / radius;
+		dy *= 128 / radius;
+	}
+	// STN-43: circular stick range about (128,128); zero is never output.
+	x = std::clamp(int(std::lround(dx)) + 128, 1, 255);
+	y = std::clamp(int(std::lround(dy)) + 128, 1, 255);
+	right = std::clamp(int(m_right->read()) - m_zero_right, 0, 255);
+	left = std::clamp(int(m_left->read()) - m_zero_left, 0, 255);
+	// STN-43 trigger diagram: assert at 145, release at 85.
+	if (right >= 145) m_triggers &= ~0x80;
+	else if (right <= 85) m_triggers |= 0x80;
+	if (left >= 145) m_triggers &= ~0x08;
+	else if (left <= 85) m_triggers |= 0x08;
+	return (m_joy->read() & ~0x0088) | m_triggers;
+}
+
+uint8_t saturn_multicontroller_device::read_id(int idx)
+{
+	uint8_t x, y, right, left;
+	sample(x, y, right, left);
+	return m_analog_mode ? 0x16 : 0x02;
+}
+
+uint16_t saturn_multicontroller_device::read_direct()
+{
+	uint8_t x, y, right, left;
+	return sample(x, y, right, left);
+}
+
+uint8_t saturn_multicontroller_device::read_ctrl(uint8_t offset)
+{
+	uint8_t x, y, right, left;
+	uint16_t const buttons = sample(x, y, right, left);
+	if (offset == 0) return buttons >> 8;
+	if (offset == 1) return buttons;
+	if (!m_analog_mode) return 0xff;
+	switch (offset)
+	{
+	case 2: return x;
+	case 3: return y;
+	case 4: return right;
+	case 5: return left;
+	default: return 0xff;
+	}
+}
 
 
 //-------------------------------------------------

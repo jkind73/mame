@@ -195,3 +195,30 @@ Artifacts: `/private/tmp/sound-ram-boundary-asan-fixed-20261013` and
 `/private/tmp/sound-ram-boundary-asan-parent-raw-20261013`. All three retail
 re-tests now finish without a host crash, but remain black at the final frame;
 those game failures remain open.
+
+## Multi-controller / 3D pad
+
+The dedicated `multicontroller` option implements STN-43 and SMPC 3.3: digital
+ID 02 with two button bytes; analog ID 16 with button bytes followed by X/Y/R/L
+ADC values. The D-pad stays independent of the stick. Analog triggers use the
+published hysteresis (assert at 145, release at 85). Power-on and mode changes
+calibrate current stick positions to 128/128 and current triggers to zero.
+Calibration, selected mode and trigger latch states are saved. The option is
+available directly and on MultiTerminal 6.
+
+Host-axis conversion uses translated calibration offsets, clamps negative
+trigger travel to zero and projects stick inputs outside the documented
+128-radius circle onto its boundary; stick output never reaches zero. Sega
+does not publish the MCU's full ADC calibration/rounding algorithm, so this
+conversion is a documented emulation model, not a hardware-validated curve.
+Sources: https://www.infochunk.com/saturn/segahtml_en/info/hon/stn43.htm and
+https://www.infochunk.com/saturn/segahtml_en/info/grp/stn43_2.gif .
+
+The native controller report fixture passes both CPU engines for the two
+modes, independent D-pad, trigger thresholds/deadband, circular limiting,
+mode-switch calibration and actual save/load restoration. The test reapplies
+the external configuration switch after load before reading the saved
+calibration. All other controller regressions also pass. Artifacts:
+`/private/tmp/controller-multicontroller-state2-native-20261013`. The broader
+SMPC errata/controller items still include unfinished keyboard and protocol
+work and remain open.
