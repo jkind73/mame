@@ -984,13 +984,8 @@ TIMER_CALLBACK_MEMBER(smpc_rtc_device::increment)
  - ID first controller, followed by the number of reads needed by the plugged controller
  - ID second controller, followed by the number of reads needed by the plugged controller
  - and so on... until the 4th (for SegaTap) or 6th (for Multitap) controller is read
- TODO: how does the multitap check if a controller is connected? does it ask for the
- controller status of each subport? how does this work exactly?
- currently, there is a small problem in some specific controller config which seems to
- lose track of one controller. E.g. if I put multitap in port2 with inserted joy1, joy2 and joy4
- it does not see joy4 controller, but if I put joy1, joy2, joy4 and joy5 it sees
- all four of them. The same happens if I skip controllers with id = 0xff...
- how did a real unit behave in this case?
+ An empty connector is represented by FFH (ST-169 Figure 3.19), without data.
+ Connector identity is independent of preceding peripheral data lengths.
 */
 
 // Collects the data of the enabled ports: for each port the port status followed by the
@@ -1008,7 +1003,6 @@ void smpc_hle_device::read_saturn_ports()
 
 		saturn_control_port_device *const ctrl = ports[port];
 		const uint8_t status = ctrl ? ctrl->read_status() : 0xf0;
-		uint8_t ctrl_offset = 0;     // this is used when there is segatap or multitap connected
 
 		m_periph_report.push_back(status);
 		for (int i = 0; i < (status & 0xf); i++)
@@ -1016,10 +1010,12 @@ void smpc_hle_device::read_saturn_ports()
 			const uint8_t id = ctrl->read_id(i);
 
 			m_periph_report.push_back(id);
+			// Figure 3.19: an empty tap slot reports FFH, with no payload.
+			// Select data by physical connector, not by preceding payload sizes.
+			if (id == 0xff)
+				continue;
 			for (int j = 0; j < (id & 0xf); j++)
-				m_periph_report.push_back(ctrl->read_ctrl(j + ctrl_offset));
-
-			ctrl_offset += (id & 0xf);
+				m_periph_report.push_back(ctrl->read_ctrl_at(i, j));
 		}
 	}
 }

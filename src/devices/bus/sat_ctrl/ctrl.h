@@ -28,6 +28,7 @@ public:
 
 	virtual uint16_t read_direct() { return 0; }
 	virtual uint8_t read_ctrl(uint8_t offset) { return 0; }
+	virtual uint8_t read_ctrl_at(int idx, uint8_t offset) { return read_ctrl(offset); }
 	virtual uint8_t read_status() { return 0xf0; }
 	virtual uint8_t read_id(int idx) { return 0xff; }
 
@@ -56,6 +57,7 @@ public:
 
 	uint16_t read_direct();
 	uint8_t read_ctrl(uint8_t offset);
+	uint8_t read_ctrl_at(int idx, uint8_t offset);
 	uint8_t read_status();
 	uint8_t read_id(int idx);
 
@@ -70,6 +72,7 @@ protected:
 DECLARE_DEVICE_TYPE(SATURN_CONTROL_PORT, saturn_control_port_device)
 
 void saturn_controls(device_slot_interface &device);
+void saturn_multitap_controls(device_slot_interface &device);
 void saturn_joys(device_slot_interface &device);
 
 

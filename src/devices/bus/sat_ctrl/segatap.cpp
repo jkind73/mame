@@ -49,3 +49,8 @@ uint8_t saturn_segatap_device::read_id(int idx)
 {
 	return m_subctrl_port[idx < 4 ? idx : 0]->read_id(0);
 }
+
+uint8_t saturn_segatap_device::read_ctrl_at(int idx, uint8_t offset)
+{
+	return idx >= 0 && idx < 4 ? m_subctrl_port[idx]->read_ctrl(offset) : 0xff;
+}

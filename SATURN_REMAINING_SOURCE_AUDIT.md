@@ -82,3 +82,24 @@ ASan/UBSan with dirty register state; it passes, and the parent fails VRSIZE.
 The full subtarget builds. Native reset and scan-state fixtures now include
 VRSIZE but their new checks are pending completion of the serial game survey.
 The larger VDP2 timing/source item is still open.
+
+## Sparse multitap and mixed payload routing
+
+A disconnected controller port now reports status `F0` and ID `FF`, rather than
+zero. SMPC emits only the `FF` ID for an empty tap connector and selects payload
+bytes using the physical connector index. Previously a hole shifted later data
+because offsets were accumulated from earlier payload sizes; the adapters
+then decoded that offset as a fixed two-byte joypad index. The new indexed
+interface keeps single-controller behavior and legacy flat reads intact.
+The six-port Saturn tap now offers the existing Saturn analog, racing,
+trackball, keyboard and mouse devices as well as joypads, so supported mixed
+packet lengths are actually configurable. Nested taps are excluded.
+
+Source: [SMPC 3.1, Figures 3.16–3.20](https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p03_17.htm).
+`scripts/saturn_multitap_test.py` runs the actual port accessors, both adapters'
+indexed routing, and SMPC collection under ASan/UBSan. It passes all 64 six-port
+and 16 four-port occupancy masks across all 16 port-mode combinations, mixed
+1/2/3-byte payloads, empty main ports and invalid adapter indices. The parent
+SMPC collector fails the same fixture. The full subtarget builds.
+This does not close MCU-level controller timing, unsupported devices or the
+full SMPC errata item.

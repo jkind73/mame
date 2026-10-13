@@ -37,7 +37,7 @@ void saturn_multitap_device::device_start()
 void saturn_multitap_device::device_add_mconfig(machine_config &config)
 {
 	for (auto &port : m_subctrl_port)
-		SATURN_CONTROL_PORT(config, port, saturn_joys, "joypad");
+		SATURN_CONTROL_PORT(config, port, saturn_multitap_controls, "joypad");
 }
 
 
@@ -49,4 +49,9 @@ uint8_t saturn_multitap_device::read_ctrl(uint8_t offset)
 uint8_t saturn_multitap_device::read_id(int idx)
 {
 	return m_subctrl_port[idx < 6 ? idx : 0]->read_id(0);
+}
+
+uint8_t saturn_multitap_device::read_ctrl_at(int idx, uint8_t offset)
+{
+	return idx >= 0 && idx < 6 ? m_subctrl_port[idx]->read_ctrl(offset) : 0xff;
 }

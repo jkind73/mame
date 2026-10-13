@@ -89,9 +89,9 @@ void saturn_control_port_device::device_start()
 
 uint8_t saturn_control_port_device::read_status()
 {
-	uint8_t data = 0;
+	uint8_t data = 0xf0;
 	if (m_device)
-		data |= m_device->read_status();
+		data = m_device->read_status();
 	return data;
 }
 
@@ -99,9 +99,9 @@ uint8_t saturn_control_port_device::read_status()
 // Otherwise, any value is ignored and the unique controller ID is returned
 uint8_t saturn_control_port_device::read_id(int idx)
 {
-	uint8_t data = 0;
+	uint8_t data = 0xff;
 	if (m_device)
-		data |= m_device->read_id(idx);
+		data = m_device->read_id(idx);
 	return data;
 }
 
@@ -111,6 +111,11 @@ uint8_t saturn_control_port_device::read_ctrl(uint8_t offset)
 	if (m_device)
 		data |= m_device->read_ctrl(offset);
 	return data;
+}
+
+uint8_t saturn_control_port_device::read_ctrl_at(int idx, uint8_t offset)
+{
+	return m_device ? m_device->read_ctrl_at(idx, offset) : 0xff;
 }
 
 uint16_t saturn_control_port_device::read_direct()
@@ -126,7 +131,7 @@ uint16_t saturn_control_port_device::read_direct()
 //  SLOT_INTERFACE( saturn_controls )
 //-------------------------------------------------
 
-void saturn_controls(device_slot_interface &device)
+void saturn_multitap_controls(device_slot_interface &device)
 {
 	device.option_add("joypad",    SATURN_JOY);
 	device.option_add("racing",    SATURN_WHEEL);
@@ -134,9 +139,14 @@ void saturn_controls(device_slot_interface &device)
 //  device.option_add("lightgun",  SATURN_LIGHTGUN);
 	device.option_add("trackball", SATURN_TRACK);
 	device.option_add("keyboard",  SATURN_KEYBD);
+	device.option_add("mouse",     SATURN_MOUSE);
+}
+
+void saturn_controls(device_slot_interface &device)
+{
+	saturn_multitap_controls(device);
 	device.option_add("joy_md3",   SATURN_JOYMD3B);
 	device.option_add("joy_md6",   SATURN_JOYMD6B);
-	device.option_add("mouse",     SATURN_MOUSE);
 	device.option_add("multitap",  SATURN_MULTITAP);
 	device.option_add("segatap",   SATURN_SEGATAP);
 }
