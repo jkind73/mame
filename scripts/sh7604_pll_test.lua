@@ -40,11 +40,13 @@ sh7604_pll_test_subscription=emu.add_machine_frame_notifier(function()
         elseif frame==18 then
             assert(space:read_u32(marker)==1,'CKCHG352 failed to wake after settling')
             assert(cpu.state.R15.value==stack,'352 wake stack')
+            assert(space:read_u32(0xffffffb0)==0,'352 clock wake inhibited DMAC')
             assert((space:read_u32(0xfffffff0)&0x80)~=0,'352 wake did not restart BSC refresh')
             enter(0x0f)
         elseif frame==35 then
             assert(space:read_u32(marker)==1,'CKCHG320 failed to wake after settling')
             assert(cpu.state.R15.value==stack,'320 wake stack')
+            assert(space:read_u32(0xffffffb0)==0,'320 clock wake inhibited DMAC')
             assert((space:read_u32(0xfffffff0)&0x80)~=0,'320 wake did not restart BSC refresh')
             print('SH7604_PLL_PASS CKCHG352/320, entry reset, peripheral clock halt, delayed NMI and stack')
             machine:exit()

@@ -313,11 +313,11 @@ int main() {
     d.ckpreq_w(0); assert(d.ack==0 && d.m_clock_pause);
     d.resume(SUSPEND_REASON_CLOCK); d.device_clock_changed(); assert(d.suspend_flags==SUSPEND_REASON_CLOCK);
     d.hiz=0; d.ack=1; d.power_postload(); assert(d.hiz==1 && d.ack==0);
-    d.now=105; d.execute_set_input(16,1); assert(!d.m_standby_waking); // entry inhibition
-    d.execute_set_input(16,0); d.now=106; d.execute_set_input(16,1);
+    d.now=105; d.execute_set_input(16,1); assert(!d.m_standby_waking && d.m_dmaor==0); // entry inhibition
+    d.execute_set_input(16,0); d.now=106; d.execute_set_input(16,1);assert(d.m_dmaor==0);
     assert(d.m_standby_waking && d.standby.expiry.v==((256-17)<<13) && d.assertions==0);
     d.standby_wake(0); assert(!d.m_standby && d.suspend_flags==0 && d.assertions==1 && d.m_wtcnt==0);
-    assert(d.hiz==0 && d.ack==1 && !d.m_clock_pause);
+    assert(d.hiz==0 && d.ack==1 && !d.m_clock_pause && d.m_dmaor==0);
     d.execute_set_input(16,0); assert(d.assertions==1);
     d.m_nmie=true; d.execute_set_input(16,1); assert(d.assertions==1);
     d.execute_set_input(16,0); assert(d.assertions==2); // rising pin edge

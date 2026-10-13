@@ -60,9 +60,11 @@ sh7604_power_test_subscription = emu.add_machine_frame_notifier(function()
         elseif frame == 5 or frame == 6 then
             assert(space:read_u32(marker)==0,'NMI skipped WDT settling delay')
             assert(space:read_u16(0xfffffe12)==0,'FRT advanced during settling')
+            assert(space:read_u32(0xffffffb0)==0,'wake edge changed initialized standby DMAOR')
         elseif frame == 10 then
             assert(space:read_u32(marker)==1,'NMI did not resume after SLEEP')
             assert(cpu.state.R15.value==stack,'wake exception stack not restored')
+            assert(space:read_u32(0xffffffb0)==0,'standby wake incorrectly set NMIF')
             space:write_u32(0x05fe00a0,0xffffffff)
             if statepath then machine:load(statepath)
             else
@@ -75,6 +77,7 @@ sh7604_power_test_subscription = emu.add_machine_frame_notifier(function()
         elseif frame == 17 and statepath then
             assert(space:read_u32(marker)==1,'standby save/load failed to wake')
             assert(cpu.state.R15.value==stack,'save/load wake stack')
+            assert(space:read_u32(0xffffffb0)==0,'restored standby wake incorrectly set NMIF')
             print('SH7604_POWER_PASS SCI TX DMA; standby entry/halt/NMI/settling; suspended save/load/wake')
             machine:exit()
         end

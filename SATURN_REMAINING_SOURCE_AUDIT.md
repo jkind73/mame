@@ -427,3 +427,30 @@ No new real hardware verification. Artifacts:
 Source references:
 https://github.com/MiSTer-devel/Saturn_MiSTer/blob/main/rtl/Saturn/SCU/SCU.sv
 https://github.com/StrikerX3/Ymir/blob/main/libs/ymir-core/src/ymir/hw/scu/scu.cpp
+
+### Full-standby wake and DMAC NMIF (2026-10-13)
+
+Golden Axe's live palette requests showed DMAOR=3 (DME plus NMIF) after the
+BIOS clock-change wake. None could run: valid aligned ROM-to-CRAM requests
+were inhibited by the wake flag. The NMI input handler had latched NMIF
+before checking whether the CPU was in full standby.
+
+The full-standby wake edge now stays in the INTC/WDT settling path. DMAC
+registers remain initialized while its clocks are stopped (SH7604 Table14.3
+and 14.4.2–14.4.4); ordinary NMI outside full standby still sets NMIF even
+when DMA is idle, as explicitly required by 9.2.7. This is not an
+unconditional flag clear or a game-specific workaround.
+
+Native tests on both engines verify initialized DMAOR during settling, after
+wake and after a saved standby state resumes. Normal idle/active DMA NMI and
+address-error tests still pass. The actual-method SCI/standby ASan/UBSan
+fixture also passes, including the ignored early wake edge. The preserved
+parent fails the initialized-DMAOR settling check. Full build passes. No new
+physical hardware verification. Artifacts:
+`/private/tmp/sh7604-standby-nmif-fixed-20261013`,
+`/private/tmp/sh7604-standby-nmif-normal-nmi-20261013`, and
+`/private/tmp/sh7604-standby-nmif-parent-20261013`.
+
+On the latest build, Golden Axe now restores its full-color intro and reaches
+visible fighting attract rather than the previous black backgrounds. Its
+155-second regression capture is `/private/tmp/gaxeduel-standby-nmif-fixed-20261013`.

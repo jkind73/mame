@@ -545,11 +545,6 @@ void sh7604_device::execute_set_input(int inputnum, int state)
 	if ((state == CLEAR_LINE) != m_nmie)
 		return;
 
-	// Chapter 9.2.7: NMI inhibits both DMAC channels, including an idle DMAC.
-	m_dmaor |= 2;
-	sh2_dmac_check(0);
-	sh2_dmac_check(1);
-
 	if (m_standby)
 	{
 		// NMI is not sampled during SLEEP or the following five clocks (14.4.1).
@@ -560,6 +555,13 @@ void sh7604_device::execute_set_input(int inputnum, int state)
 		}
 		return;
 	}
+
+	// Outside full standby, NMI inhibits both channels even when idle (9.2.7).
+	// In full standby the DMAC registers are initialized and its clock is
+	// stopped (Table 14.3); the wake edge belongs to the INTC/WDT path above.
+	m_dmaor |= 2;
+	sh2_dmac_check(0);
+	sh2_dmac_check(1);
 
 	// Base SH2 consumes an interrupt assertion rather than physical pin edges.
 	sh2_device::execute_set_input(INPUT_LINE_NMI, CLEAR_LINE);
