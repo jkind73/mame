@@ -8,10 +8,10 @@ from sh7604_device_test import diagnostic_roms
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--output',type=Path,required=True)
 p.add_argument('--binary',type=Path,default=Path('saturn'))
-p.add_argument('--only',choices=('indirect','rate','halt','dsp','irq','rtc'))
+p.add_argument('--only',choices=('indirect','rate','halt','dsp','irq','rtc','reset'))
 a=p.parse_args();root=Path(__file__).resolve().parent.parent;out=a.output.resolve()
 out.mkdir(parents=True,exist_ok=False);diagnostic_roms(out/'roms')
-for kind,script,token in [('indirect','saturn_scu_indirect_test.lua','SCU_INDIRECT_PASS'),('rate','saturn_transfer_rate_test.lua','TRANSFER_RATE_PASS'),('halt','saturn_scu_halt_test.lua','SCU_HALT_RELEASE_PASS'),('dsp','saturn_scudsp_concurrency_test.lua','DSP_CONCURRENCY_PASS'),('irq','saturn_irq_queue_test.lua','SCU_IRQ_QUEUE_PASS'),('rtc','saturn_smpc_rtc_test.lua','SMPC_RTC_PASS')]:
+for kind,script,token in [('indirect','saturn_scu_indirect_test.lua','SCU_INDIRECT_PASS'),('rate','saturn_transfer_rate_test.lua','TRANSFER_RATE_PASS'),('halt','saturn_scu_halt_test.lua','SCU_HALT_RELEASE_PASS'),('dsp','saturn_scudsp_concurrency_test.lua','DSP_CONCURRENCY_PASS'),('irq','saturn_irq_queue_test.lua','SCU_IRQ_QUEUE_PASS'),('rtc','saturn_smpc_rtc_test.lua','SMPC_RTC_PASS'),('reset','saturn_smpc_reset_test.lua','SMPC_RESET_PASS')]:
  if a.only and a.only!=kind:continue
  for core in ('drc','interpreter'):
   run=out/(kind+'-'+core);run.mkdir()

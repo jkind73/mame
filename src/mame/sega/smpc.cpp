@@ -184,6 +184,9 @@ void smpc_hle_device::device_start()
 	save_item(NAME(m_periph_report));
 	save_item(NAME(m_periph_offset));
 	save_item(NAME(m_resb));
+	save_item(NAME(m_reset_button));
+	save_item(NAME(m_reset_vints));
+	save_item(NAME(m_reset_nmi_sent));
 	save_item(NAME(m_smem));
 	save_item(NAME(m_ckchg_tick));
 	save_item(NAME(m_prev_sshoff));
@@ -222,6 +225,8 @@ void smpc_hle_device::device_reset()
 	m_periph_report.clear();
 	m_periph_offset = 0;
 	m_resb = false;
+	m_reset_vints = 0;
+	m_reset_nmi_sent = false;
 	m_intback_stage = 0;
 	m_pmode = 0;
 	m_command_in_progress = false;
@@ -766,6 +771,19 @@ void smpc_hle_device::vblank_in_w(int state)
 		return;
 
 	m_in_vblank = true;
+	// SMPC 2.3: RESB samples the switch at VBLANK-IN; reset-button NMI
+	// requires a press lasting three VINT periods to reject contact chatter.
+	m_resb = m_reset_button;
+	if (m_reset_button)
+	{
+		if (m_reset_vints < 3)
+			++m_reset_vints;
+		if (m_reset_vints == 3 && m_NMI_reset && !m_reset_nmi_sent)
+		{
+			m_reset_nmi_sent = true;
+			master_sh2_nmi();
+		}
+	}
 	attotime const now = machine().time();
 	if (m_vin_time != attotime::never)
 		m_frame_time = now - m_vin_time;
@@ -1029,16 +1047,12 @@ void smpc_hle_device::write_periph_report()
 
 INPUT_CHANGED_MEMBER(smpc_hle_device::trigger_nmi_r )
 {
-	// reset button status shown in SR.RESB (ST-169 Figure 3.13)
-	m_resb = bool(newval);
-
-	// punt if NMI trigger is disabled
-	if(!m_NMI_reset)
-		return;
-
-	// TODO: generated during the 3VINT period according to manual
-	if(newval)
-		master_sh2_nmi();
+	m_reset_button = bool(newval);
+	if (!m_reset_button)
+	{
+		m_reset_vints = 0;
+		m_reset_nmi_sent = false;
+	}
 }
 
 /* Official documentation says that the "RESET/TAS opcodes aren't supported", but Out Run definitely contradicts with it.

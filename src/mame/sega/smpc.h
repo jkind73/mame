@@ -194,6 +194,9 @@ private:
 	std::vector<uint8_t> m_periph_report;
 	uint32_t m_periph_offset;
 	bool m_resb;
+	bool m_reset_button = false;
+	uint8_t m_reset_vints;
+	bool m_reset_nmi_sent;
 	uint8_t m_region_code;
 
 	required_device<nvram_device> m_mini_nvram;

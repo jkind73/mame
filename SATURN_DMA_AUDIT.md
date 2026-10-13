@@ -126,3 +126,25 @@ Artifacts: `/private/tmp/smpc-save-positive-20261013` and
 This repairs save/load behavior; it does not complete the broad Rel.2.5 SMPC
 errata item. The additional peripheral formats and remaining reset behavior
 still require review. No checklist text or marker changes accompany this fix.
+
+## SMPC reset-button sampling, 2026-10-13
+
+Implemented the missing reset-button debounce from [SMPC 2.3, RESENAB/RESDISA](https://www.infochunk.com/saturn/segahtml_en/hard/smpc/hon/p02_30.htm):
+RESB samples the switch at VBLANK-IN, and a held switch requests NMI after
+three consecutive VINT samples. A release clears the debounce count and re-arms
+the next press. RESDISA suppresses switch-generated NMI, while NMIREQ retains
+its unconditional behavior. The raw switch level, sample count and sent-pulse
+latch are serialized; chip reset clears debounce state while retaining the
+external switch level until the next sample.
+
+The real-input diagnostic installs an executing SH-2 NMI counter handler and
+reads public SMPC SR status through INTBACK. It verifies the three-sample delay,
+a short press, no repeats while held, a second press, disabled button NMI and
+unconditional NMIREQ. Both DRC and interpreter pass. The preceding binary fails
+the delay check because it pulses immediately. Artifacts:
+`/private/tmp/smpc-debounce-positive2-20261013` and
+`/private/tmp/smpc-debounce-negative-20261013`.
+
+No physical Saturn verification is claimed. The broad odd-address/security/
+NetLink/reset checklist items remain open because their other behaviors are
+unfinished; no item is split and no checklist prose changes for this fix.
