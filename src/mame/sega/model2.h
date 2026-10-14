@@ -52,6 +52,7 @@ public:
 		m_textureram1(*this, "textureram1"),
 		m_workram(*this, "workram"),
 		m_bufferram(*this, "bufferram"),
+		m_cpu_control(*this, "cpu_control"),
 		m_soundram(*this, "soundram"),
 		m_maincpu(*this,"maincpu"),
 		m_dsbz80(*this, "dsbz80"),
@@ -110,9 +111,12 @@ protected:
 
 	required_shared_ptr<u32> m_workram;
 	required_shared_ptr<u32> m_bufferram;
+	optional_shared_ptr<u32> m_cpu_control;
 	std::unique_ptr<u16[]> m_fbvramA;
 	std::unique_ptr<u16[]> m_fbvramB;
 	optional_shared_ptr<u16> m_soundram;
+
+	int i960_wait_states(offs_t address, bool is_write);
 
 	required_device<i960_cpu_device> m_maincpu;
 	optional_device<dsbz80_device> m_dsbz80;        // Z80-based MPEG Digital Sound Board

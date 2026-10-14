@@ -26,6 +26,7 @@ i960_cpu_device::i960_cpu_device(const machine_config &mconfig, device_type type
 	, m_stalled(false), m_program_config("program", ENDIANNESS_LITTLE, 32, 32, 0)
 	, m_rcache_pos(0), m_SAT(0), m_PRCB(0), m_PC(0), m_AC(0), m_IP(0), m_PIP(0), m_ICR(0), m_immediate_irq(0)
 	, m_immediate_vector(0), m_immediate_pri(0), m_icount(0)
+	, m_wait_state_cb(*this)
 {
 	std::fill(std::begin(m_r), std::end(m_r), 0);
 	std::fill(std::begin(m_rcache_frame_addr), std::end(m_rcache_frame_addr), 0);
@@ -56,6 +57,9 @@ device_memory_interface::space_config_vector i960_cpu_device::memory_space_confi
 
 uint32_t i960_cpu_device::i960_read_dword_unaligned(uint32_t address)
 {
+	if (!m_wait_state_cb.isnull())
+		m_icount -= m_wait_state_cb(address, false);
+
 	if (!DWORD_ALIGNED(address))
 		return m_program.read_byte(address) | m_program.read_byte(address+1)<<8 | m_program.read_byte(address+2)<<16 | m_program.read_byte(address+3)<<24;
 	else
@@ -64,6 +68,9 @@ uint32_t i960_cpu_device::i960_read_dword_unaligned(uint32_t address)
 
 std::pair<uint32_t, uint16_t> i960_cpu_device::i960_read_dword_unaligned_flags(uint32_t address)
 {
+	if (!m_wait_state_cb.isnull())
+		m_icount -= m_wait_state_cb(address, false);
+
 	if (!DWORD_ALIGNED(address)) {
 		auto v = m_program.read_byte_flags(address);
 		return std::pair<uint32_t, uint16_t>(v.first | m_program.read_byte(address+1)<<8 | m_program.read_byte(address+2)<<16 | m_program.read_byte(address+3)<<24, v.second);
@@ -73,6 +80,9 @@ std::pair<uint32_t, uint16_t> i960_cpu_device::i960_read_dword_unaligned_flags(u
 
 uint16_t i960_cpu_device::i960_read_word_unaligned(uint32_t address)
 {
+	if (!m_wait_state_cb.isnull())
+		m_icount -= m_wait_state_cb(address, false);
+
 	if (!WORD_ALIGNED(address))
 		return m_program.read_byte(address) | m_program.read_byte(address+1)<<8;
 	else
@@ -81,6 +91,9 @@ uint16_t i960_cpu_device::i960_read_word_unaligned(uint32_t address)
 
 void i960_cpu_device::i960_write_dword_unaligned(uint32_t address, uint32_t data)
 {
+	if (!m_wait_state_cb.isnull())
+		m_icount -= m_wait_state_cb(address, true);
+
 	if (!DWORD_ALIGNED(address))
 	{
 		m_program.write_byte(address, data & 0xff);
@@ -96,6 +109,9 @@ void i960_cpu_device::i960_write_dword_unaligned(uint32_t address, uint32_t data
 
 uint16_t i960_cpu_device::i960_write_dword_unaligned_flags(uint32_t address, uint32_t data)
 {
+	if (!m_wait_state_cb.isnull())
+		m_icount -= m_wait_state_cb(address, true);
+
 	if (!DWORD_ALIGNED(address))
 	{
 		uint16_t flags = m_program.write_byte_flags(address, data & 0xff);
@@ -112,6 +128,9 @@ uint16_t i960_cpu_device::i960_write_dword_unaligned_flags(uint32_t address, uin
 
 void i960_cpu_device::i960_write_word_unaligned(uint32_t address, uint16_t data)
 {
+	if (!m_wait_state_cb.isnull())
+		m_icount -= m_wait_state_cb(address, true);
+
 	if (!WORD_ALIGNED(address))
 	{
 		m_program.write_byte(address, data & 0xff);
@@ -2077,16 +2096,23 @@ void i960_cpu_device::execute_op(uint32_t opcode)
 
 		case 0x80: { // ldob
 			m_icount -= 4;
-			u8 v = m_program.read_byte(get_ea(opcode));
+			uint32_t ea = get_ea(opcode);
+			if (!m_wait_state_cb.isnull())
+				m_icount -= m_wait_state_cb(ea, false);
+			u8 v = m_program.read_byte(ea);
 			if(!m_stalled)
 				m_r[(opcode>>19)&0x1f] = v;
 			break;
 		}
 
-		case 0x82: // stob
+		case 0x82: { // stob
 			m_icount -= 2;
-			m_program.write_byte(get_ea(opcode), m_r[(opcode>>19)&0x1f]);
+			uint32_t ea = get_ea(opcode);
+			if (!m_wait_state_cb.isnull())
+				m_icount -= m_wait_state_cb(ea, true);
+			m_program.write_byte(ea, m_r[(opcode>>19)&0x1f]);
 			break;
+		}
 
 		case 0x84: // bx
 			m_icount -= 3;
@@ -2291,6 +2317,9 @@ void i960_cpu_device::execute_run()
 		m_PIP = m_IP;
 		debugger_instruction_hook(m_IP);
 
+		if (!m_wait_state_cb.isnull())
+			m_icount -= m_wait_state_cb(m_IP, false);
+
 		opcode = m_cache.read_dword(m_IP);
 		m_IP += 4;
 
@@ -2456,6 +2485,7 @@ void i960_cpu_device::device_start()
 	m_PIP = 0;
 
 	set_icountptr(m_icount);
+	m_wait_state_cb.resolve();
 }
 
 void i960_cpu_device::state_string_export(const device_state_entry &entry, std::string &str) const

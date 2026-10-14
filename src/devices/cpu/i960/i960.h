@@ -68,6 +68,9 @@ class i960_cpu_device :  public cpu_device
 public:
 	static constexpr uint16_t BURST = 0x0001;
 
+	typedef device_delegate<int (offs_t address, bool is_write)> wait_state_delegate;
+	template <typename... Params> void set_wait_state_callback(Params &&... params) { m_wait_state_cb.set(std::forward<Params>(params)...); }
+
 	void i960_stall()
 	{
 		m_stalled = true;
@@ -181,6 +184,8 @@ private:
 	void do_call(uint32_t adr, int type, uint32_t stack);
 	void do_ret_0();
 	void do_ret();
+
+	wait_state_delegate m_wait_state_cb;
 };
 
 class i80960ka_device : public i960_cpu_device

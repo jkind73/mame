@@ -106,21 +106,46 @@ u32 model2_state::timers_r(offs_t offset)
 		u32 cur = (m_timers[offset]->elapsed() * 25000000).as_double();
 
 		// subtract units from starting value
-		m_timervals[offset] = m_timerorig[offset] - cur;
+		if (cur >= m_timerorig[offset])
+			m_timervals[offset] = 0;
+		else
+			m_timervals[offset] = m_timerorig[offset] - cur;
 	}
 
-	return m_timervals[offset];
+	return m_timervals[offset] & 0xfffff;
 }
 
 void model2_state::timers_w(offs_t offset, u32 data, u32 mem_mask)
 {
-	attotime period;
 	COMBINE_DATA(&m_timervals[offset]);
+	m_timervals[offset] &= 0xfffff;
 
 	m_timerorig[offset] = m_timervals[offset];
-	period = attotime::from_hz(25000000) * m_timerorig[offset];
-	m_timers[offset]->adjust(period);
-	m_timerrun[offset] = 1;
+	if (m_timerorig[offset] == 0)
+	{
+		m_timers[offset]->reset();
+		m_timerrun[offset] = 0;
+	}
+	else
+	{
+		attotime period = attotime::from_hz(25000000) * m_timerorig[offset];
+		m_timers[offset]->adjust(period);
+		m_timerrun[offset] = 1;
+	}
+}
+
+int model2_state::i960_wait_states(offs_t address, bool is_write)
+{
+	if (!m_cpu_control)
+		return 0;
+
+	u32 region = (address >> 21) & 0x0f;
+	if (region < 14)
+	{
+		u32 ctrl = m_cpu_control[region];
+		return is_write ? (ctrl & 0x0f) : ((ctrl >> 4) & 0x0f);
+	}
+	return 0;
 }
 
 template <int TNum>
@@ -160,6 +185,8 @@ void model2_state::machine_start()
 {
 	// initialize custom debugger pool, @see machine/model2.cpp
 	debug_init();
+
+	m_maincpu->set_wait_state_callback(*this, FUNC(model2_state::i960_wait_states));
 
 	save_item(NAME(m_intreq));
 	save_item(NAME(m_intena));
@@ -1078,7 +1105,7 @@ void model2_state::model2_base_mem(address_map &map)
 	map(0x0098000c, 0x0098000f).rw(FUNC(model2_state::videoctl_r), FUNC(model2_state::videoctl_w));
 	map(0x00980030, 0x0098003f).r(FUNC(model2_state::tgpid_r));
 
-	map(0x00e00000, 0x00e00037).ram(); // CPU control (wait-states)
+	map(0x00e00000, 0x00e00037).ram().share("cpu_control"); // CPU control (wait-states)
 	map(0x00e80000, 0x00e80003).rw(FUNC(model2_state::irq_request_r), FUNC(model2_state::irq_ack_w));
 	map(0x00e80004, 0x00e80007).rw(FUNC(model2_state::irq_enable_r), FUNC(model2_state::irq_enable_w));
 
