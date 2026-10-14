@@ -964,6 +964,9 @@ void stv_state::sound_mem(address_map &map)
 {
 	map(0x000000, 0x07ffff).before_delay(NAME([this] (offs_t) { return sound_dma_wait(false); })).ram().share("sound_ram");
 	map(0x100000, 0x100fff).before_delay(NAME([this] (offs_t) { return sound_dma_wait(true); })).rw("scsp", FUNC(scsp_device::read), FUNC(scsp_device::write));
+	// ST-V switch port on the sound CPU bus (MiSTer SCSP STV_SW).
+	// The eight unconnected active-low inputs idle high; the upper byte is zero.
+	map(0x600000, 0x600001).lr16(NAME([] () { return uint16_t(0x00ff); })).nopw();
 }
 
 void stv_state::scsp_mem(address_map &map)

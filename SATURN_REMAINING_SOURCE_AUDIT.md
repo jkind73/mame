@@ -508,3 +508,16 @@ read. Full build and encrypted-access ASan/UBSan checks pass. Native artifacts:
 This fixes an address-space omission without changing the cipher algorithm.
 No real-hardware verification or closure of the combined ST-V/NAOMI interface
 checklist item is claimed.
+
+### ST-V sound-CPU switch port regression
+
+The sound firmware reads its ST-V switch word at 68000 address 600000. An
+unmapped zero produces phantom active inputs and makes Astra enter its error
+callback before initialization. The board map now returns 00FF for its eight
+unconnected active-low inputs, matching MiSTer's STV_SW readback and tied-high
+top-level connection. The upper byte is zero and writes are ignored. This
+is restricted to the observed address; physical switch wiring and additional
+aliases have not been verified against hardware. Native port/startup tests
+pass under DRC and interpreter; the parent fails. See SATURN_GAME_REGRESSIONS.md
+for the execution trace, controls and full-game captures. No checklist item
+is marked complete by this narrow correction.

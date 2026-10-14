@@ -273,3 +273,52 @@ Artifacts: `/private/tmp/saturn-upstream-stv-baseline-20261014`,
 checkout_head identifies the runner checkout; the upstream binary's source
 commit is the exact hash above. No production behavior or checklist marker
 was changed for this comparison.
+
+### Astra startup: missing sound-CPU switch port
+
+Controlled tracing identifies the failing path: the sound firmware reads
+68000 address 600000 while servicing the BIOS request at sound RAM 4F0-4F3.
+The unmapped port returns zero, which becomes active input bits. The BIOS
+stores these in 06000728 and then generates release events before Astra's
+SDK initialization finishes. The resulting error calls the still-uninitialized
+callback at 060CF888 (the BIOS RAM-test pattern 53454741) and reaches the fatal
+0600205A loop. Both DRC and interpreter reproduce it. Disabling SH-2 bus
+timing and restoring the MIDI-empty flag in isolated probes do not fix it.
+
+The upstream sound firmware does not execute this port-polling path in the
+same startup window, hiding the missing mapping. The rewrite now maps the
+ST-V sound switch word at 600000 to 00FF: eight inactive active-low inputs
+and a zero upper byte. This agrees with the local MiSTer SCSP.sv STV_SW
+readback and Saturn.sv's unconnected STV_SW='1. Writes are acknowledged and
+ignored. No physical hardware measurement or connected-switch wiring is
+claimed; additional address aliases are not inferred from the RTL.
+
+The native regression checks both byte lanes, ignored writes, Astra's
+callback initialization, absence of the fatal loop, and the inactive BIOS
+input report on both engines. Both pass; the preserved pre-fix binary fails
+the input-port check. Full build passes. The production 110-second Astra
+capture reaches visible attract graphics. Elan-Doree remains black.
+
+Five serial production runs (Astra, Elan, Decathlete, Die Hard and Radiant
+Silvergun) all finish without crashes or Lua errors, with complete 110-second
+48kHz recordings. Inspected captures retain Die Hard's helicopter intro and
+Radiant Silvergun's attract sequence. Decathlete remains visibly imperfect
+and averages 129.68% versus upstream's 175.36%; Die Hard averages 126.91%
+versus upstream's 205.88%. These whole-run averages are not matched-scene
+profiles. Neither performance gap is claimed fixed by the switch-port change.
+
+A separate 110-second ordinary-input replay inserts a coin, starts player 1
+and selects a character. Frame4800 shows a Jetuge-versus-Maron fight with
+the timer at 55; the run completes without crashes or Lua errors. Visible
+rendering artifacts remain, so this validates startup and gameplay progression,
+not complete graphics parity. Artifacts:
+`/private/tmp/stv-sound-switch-astra-play-20261014`; replay inputs are
+`/private/tmp/astra-play-inputs-20261014.txt` (PORTC coin/start, PORTA button 1).
+
+Artifacts: `/private/tmp/stv-sound-switch-native-20261014`,
+`/private/tmp/stv-sound-switch-parent-20261014`,
+`/private/tmp/stv-sound-switch-retail-20261014`,
+`/private/tmp/astra-startup-instructions-current2-20261014`,
+`/private/tmp/astra-startup-instructions-upstream-20261014`, and
+`/private/tmp/astra-sound-all-writes-current-20261014`. The original checklist
+and inventory remain unchanged.
