@@ -368,3 +368,43 @@ Evidence: `/private/tmp/saturn-vf2-zero-sprite-profile-20261014`,
 `/private/tmp/saturn-cd-full-stream-compare-20261014`, and
 `/private/tmp/saturn-zero-sprite-renderer-tests-20261014.log`.
 The original checklist and inventory have not been edited.
+
+
+## Elan-Doree: VDP1 frame-change ordering — 2026-10-14
+
+The rewrite cleared the previous draw-completion flag (CEF) and started a new
+VDP1 draw immediately at VBlank-OUT. Elan-Doree's SGL VBlank-OUT handler reads
+CEF before advancing its frame state; it repeatedly saw the newly started draw
+instead of the completed one, leaving VDP2 display disabled (TVMD 0103).
+
+Frame change now waits for the first HBlank-IN after VBlank-OUT. ST-013 section
+4.2 explicitly permits FCM/FCT writes immediately after VBlank-OUT until that
+horizontal edge. MiSTer's VTIM_N/HTIM_N frame-change sequence corroborates the
+ordering. This preserves the software write window and previous CEF without
+adding guessed dot positions. The pending edge is reset and saved. Vblank erase
+still stops at the vertical edge, so postponing buffer change does not extend
+the erase interval. No cache disabling or game-specific workaround is used.
+This implementation has not been verified against real hardware.
+
+The extracted real edge methods pass ASan/UBSan tests for CEF visibility, FBCR
+sampling, duplicate signal levels and erase termination; the parent fails the
+CEF assertion. The native Elan-Doree startup fixture reaches game video mode
+81c3 and its animated intro with both DRC and interpreter; the parent fails with
+0103. Full renderer/window/rotation/erase fixtures and SCU interrupt diagnostics
+for both engines pass. The Saturn subtarget builds successfully.
+
+Fresh 110-second runs of Elan-Doree, Astra Superstars, Decathlete, Die Hard Arcade
+and Japanese VF2 complete without Lua errors, with visible attract sequences.
+The four ST-V recordings contain 110 seconds of 48 kHz audio. These checks do
+not establish full graphics or audio parity: visible rendering discrepancies
+and the performance gap against upstream remain under investigation. Existing
+save states from before the additional saved field are not used for validation.
+
+Reproduction: scripts/saturn_vdp1_frame_edge_test.py and
+scripts/stv_elandore_startup_test.py. Evidence is in
+/private/tmp/elan-frame-edge-native-fixture-20261014,
+/private/tmp/elan-frame-edge-parent-fixture-20261014,
+/private/tmp/vdp1-frame-edge-retail-20261014,
+/private/tmp/vdp1-frame-edge-vf2-20261014 and
+/private/tmp/vdp1-frame-edge-irq-final-20261014.
+The original checklist and inventory have not been edited.

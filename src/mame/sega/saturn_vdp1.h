@@ -105,6 +105,7 @@ private:
 
 	// frame handling
 	bool m_vblank = false, m_hblank = false;
+	bool m_frame_change_pending = false;
 	bool m_manual_pending = false;
 	bool m_vb_erase_pending = false;
 	bool m_vb_erase_active = false;

@@ -65,6 +65,7 @@ void saturn_vdp1_device::device_start()
 	save_item(NAME(m_last_time));
 	save_item(NAME(m_vblank));
 	save_item(NAME(m_hblank));
+	save_item(NAME(m_frame_change_pending));
 	save_item(NAME(m_manual_pending));
 	save_item(NAME(m_vb_erase_pending));
 	save_item(NAME(m_vb_erase_active));
@@ -98,6 +99,7 @@ void saturn_vdp1_device::device_reset()
 	m_budget = 0;
 	m_last_time = machine().time();
 	m_manual_pending = false;
+	m_frame_change_pending = false;
 	m_vb_erase_pending = false;
 	m_vb_erase_active = false;
 	m_erase_y = ~0U;
@@ -314,12 +316,6 @@ void saturn_vdp1_device::frame_change()
 	}
 	latch_erase_params();
 
-	if (m_vb_erase_active) {
-		// the erase runs from the start of vblank to its end
-		erase_limited((machine().time() - m_vblank_start).as_ticks(clock()));
-		m_vb_erase_active = false;
-	}
-
 	bool const swap = !(m_fbcr & FBCR_FCM) || (m_manual_pending && (m_fbcr & FBCR_FCT));
 	if (swap) {
 		if (m_drawing)
@@ -371,7 +367,16 @@ void saturn_vdp1_device::vblank_w(int state)
 		m_vbe_timer->adjust(attotime::from_usec(VBE_SAMPLE_DELAY_US));
 	} else {
 		m_vbe_timer->adjust(attotime::never);
-		frame_change();
+		// Vblank erase ends at the vertical edge, before the later buffer change.
+		if (m_vb_erase_active) {
+			erase_limited((machine().time() - m_vblank_start).as_ticks(clock()));
+			m_vb_erase_active = false;
+		}
+		// ST-013 4.2 permits FCM/FCT writes after VBLANK-OUT until the
+		// first HBLANK-IN. Sample that window at its closing edge, as in
+		// MiSTer's VTIM_N -> HTIM_N frame-change sequence. In particular,
+		// a VBLANK-OUT handler must still see the previous draw's CEF.
+		m_frame_change_pending = true;
 	}
 }
 
@@ -385,7 +390,12 @@ TIMER_CALLBACK_MEMBER(saturn_vdp1_device::vbe_sample)
 
 void saturn_vdp1_device::hblank_w(int state)
 {
+	bool const old = m_hblank;
 	m_hblank = state;
+	if (!old && m_hblank && !m_vblank && m_frame_change_pending) {
+		m_frame_change_pending = false;
+		frame_change();
+	}
 }
 
 // The VDP2 has read a line of the displayed frame buffer: erase moves on one row
