@@ -10,6 +10,9 @@
 
 static u16 PACK(s32 val) noexcept
 {
+	if (val == 0)
+		return 0;
+
 	const int sign = (val >> 23) & 0x1;
 	u32 temp = (val ^ (val << 1)) & 0xFFFFFF;
 	int exponent = 0;
@@ -34,6 +37,9 @@ static u16 PACK(s32 val) noexcept
 
 static s32 UNPACK(u16 val) noexcept
 {
+	if ((val & 0x7fff) == 0)
+		return 0;
+
 	const int sign = (val >> 15) & 0x1;
 	int exponent = (val >> 11) & 0xF;
 	const int mantissa = val & 0x7FF;

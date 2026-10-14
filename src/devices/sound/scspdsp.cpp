@@ -10,6 +10,9 @@ namespace {
 
 u16 PACK(s32 val)
 {
+	if (val == 0)
+		return 0;
+
 	int const sign = BIT(val, 23);
 	u32 temp = (val ^ (val << 1)) & 0xFFFFFF;
 	int exponent = 0;
@@ -34,6 +37,9 @@ u16 PACK(s32 val)
 
 static s32 UNPACK(u16 val)
 {
+	if ((val & 0x7fff) == 0)
+		return 0;
+
 	int const sign = BIT(val, 15);
 	int exponent = (val >> 11) & 0xF;
 	int const mantissa = val & 0x7FF;
