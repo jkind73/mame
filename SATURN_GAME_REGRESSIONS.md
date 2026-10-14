@@ -322,3 +322,49 @@ Artifacts: `/private/tmp/stv-sound-switch-native-20261014`,
 `/private/tmp/astra-startup-instructions-upstream-20261014`, and
 `/private/tmp/astra-sound-all-writes-current-20261014`. The original checklist
 and inventory remain unchanged.
+
+## Native upstream comparison: VF2 intro and sprite cost — 2026-10-14
+
+The native upstream baseline is `98e60b54d071`; the rewrite reference is
+`b11e8b66737`. Runs use the same `vf2j` disc/BIOS paths, initialized console
+NVRAM, fixed RTC, isolated configuration and no frame skipping. No cross-build
+save state is loaded.
+
+The differently shaded Lau portraits at frame 2400 are different movie frames.
+The rewrite's entire captured 512-by-224 RGB bitmap at frame 2400 is byte-identical
+to upstream frames 2313–2319. Across frames 2100–2700, 369 of 601 rewrite bitmaps
+match an upstream bitmap in that capture interval. The intro transitions from
+wireframe through flat shading to textures; comparing equal screen-frame numbers
+misidentified this transition as lost texturing. These matches establish source
+bitmap parity for those frames, not whole-game rendering parity. Unmatched
+captures and the remaining arcade graphics reports still require investigation.
+
+All 7,657,620 CD FIFO payload bytes consumed by the rewrite through the 46-second
+run match the corresponding prefix of upstream's 8,108,180-byte stream. The
+bitmap difference persists with the interpreter and the existing bus-timing
+switch off. Repeatedly disabling the cache disrupted movie progression and is
+not a valid rendering comparison or a proposed workaround. No peripheral or
+rasterizer behavior was changed on the basis of those experiments.
+
+The sprite decoder now returns the exact transparent-dot metadata immediately
+for a zero framebuffer word. This avoids format, shadow and RGB/palette decoding
+for empty sprite pixels. The extracted actual decoder matches the preserved
+reference for every 16-bit word, every sprite type and all eight combinations of
+RGB selection, sprite-window enable and transparent-shadow selection: 8,388,608
+comparisons under ASan/UBSan. The full real-renderer/erase fixtures also pass.
+
+One serial 90-second native VF2 profile pair measured 244.68% before and 247.31%
+after; all PNG captures at frames 2400, 3600 and 4800 are byte-identical. This is a
+small measured gain (about 1.1%), not evidence that the upstream performance gap
+is resolved. Two bus-history search/expiry candidates showed no useful gain and
+were removed before the final build.
+
+Reproduction tools: `scripts/saturn_sprite_decode_equivalence_test.py` and
+`scripts/saturn_bitmap_sequence_compare.py`. The latter compares every byte in
+each captured bitmap record (big-endian frame number plus a fixed-size bitmap),
+without assuming equal frame numbers represent equal movie progression.
+Evidence: `/private/tmp/saturn-vf2-zero-sprite-profile-20261014`,
+`/private/tmp/saturn-bitmap-sequence-compare-20261014/alignment.json`,
+`/private/tmp/saturn-cd-full-stream-compare-20261014`, and
+`/private/tmp/saturn-zero-sprite-renderer-tests-20261014.log`.
+The original checklist and inventory have not been edited.

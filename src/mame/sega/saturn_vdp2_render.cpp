@@ -839,6 +839,13 @@ void renderer::finish_nbg(decoded const &d, unsigned n)
 
 renderer::sprite_dot renderer::decode_sprite(decoded const &d, uint16_t data) const
 {
+	// Zero is transparent in every sprite type, independent of RGB/palette
+	// selection and the sprite-window/shadow settings.
+	if (!data) {
+		sprite_dot s;
+		s.palette = true;
+		return s;
+	}
 	unsigned const type = d.sp_type;
 	bool msb = false, nsd = false, tpen = false;
 	unsigned pr = 0, cc = 0, dc = 0;
