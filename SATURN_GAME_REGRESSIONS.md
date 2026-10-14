@@ -237,3 +237,39 @@ at 48kHz. Inspected frame6000 captures show Radiant Silvergun's visible attract
 sequence; Astra and Elan remain black as before the mapping change. This
 interface correction does not resolve those two game failures. Artifacts:
 `/private/tmp/stv-crypt-shared-bus-retail-20261014`.
+
+### Exact upstream baseline (2026-10-14)
+
+The user's upstream checkout is commit
+`98e60b54d0718171636f50e39794d861564aac08` (2026-10-13). Its Windows
+executable cannot run natively on this Mac. The exact commit was imported and
+built in the separate managed `saturn-upstream-regression-baseline` worktree
+with the same Saturn/ST-V subtarget and -j4. The source remains unchanged.
+The 315-5881 cipher implementation and Astra initialization match upstream;
+the rewrite also changes CPU/cache/bus and SCU behavior, so a renderer-only
+comparison would miss possible startup regressions.
+
+Three serial upstream 110-second runs used the existing survey runner, fresh
+cfg/NVRAM/diff directories, identical ROM paths, no throttle or frameskip,
+video/sound none, and internal 48kHz audio recording. All exited normally
+without Lua errors. Inspected Astra captures show its animated star/cloud
+intro; the rewrite's equivalent run remains black. Upstream reaches PC
+0605b9d8 while the rewrite stays at 0600205a. Diagnostic rewrite runs with both
+DRC and interpreter reproduce the same interrupt-masked loop (SR=000000f0),
+with stack words 5345528f/000000f0. This identifies a common startup failure;
+it does not yet identify which change corrupts the execution path.
+
+Upstream Decathlete's frame6000 shows its score/attract screen, with visible
+horizontal graphics artifacts; Die Hard's frame6000 shows the helicopter
+intro. Decathlete averages 175.36% unthrottled versus 130.13% in the recent
+rewrite run. Scene progression differs and these are whole-run averages,
+not a matched-scene benchmark or a Windows performance claim. VF2 and Batman
+have not yet been compared against this native upstream baseline.
+
+Artifacts: `/private/tmp/saturn-upstream-stv-baseline-20261014`,
+`/private/tmp/saturn-upstream-baseline-build-20261014.log`,
+`/private/tmp/astra-startup-stack-current-20261014`, and
+`/private/tmp/astra-startup-stack-interpreter-20261014`. Survey manifest
+checkout_head identifies the runner checkout; the upstream binary's source
+commit is the exact hash above. No production behavior or checklist marker
+was changed for this comparison.
