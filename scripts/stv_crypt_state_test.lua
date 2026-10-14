@@ -1,6 +1,7 @@
 -- license:BSD-3-Clause
 -- Protected-port driver latches must accompany the cipher's saved stream state.
 local m=manager.machine;local cpu=m.devices[':maincpu'];local h=cpu.spaces.program
+local slave=m.devices[':slave'].spaces.program
 local frame=0
 local function item(suffix)
  for name,id in pairs(m.devices[':'].items)do
@@ -18,6 +19,9 @@ STV_CRYPT_STATE_SUBSCRIPTION=emu.add_machine_frame_notifier(function()
    h:write_u32(0x04fffffc,0x12345678)
    assert(item('m_abus_protenable'):read(0)==0x10000,'enable latch write failed')
    assert(item('m_abus_protkey'):read(0)==0x12345678,'key latch write failed')
+   assert(slave:read_u32(0x04fffff0)==0x10000,'slave cannot read shared enable latch')
+   slave:write_u16(0x04fffffc,0x2345)
+   assert(item('m_abus_protkey'):read(0)==0x23455678,'slave cannot write shared key latch')
    m:save('crypt-latches')
   elseif frame==62 then
    h:write_u32(0x04fffff0,0);h:write_u32(0x04fffffc,0xabcd9876)
@@ -25,7 +29,7 @@ STV_CRYPT_STATE_SUBSCRIPTION=emu.add_machine_frame_notifier(function()
    m:load('crypt-latches')
   elseif frame==64 then
    assert(item('m_abus_protenable'):read(0)==0x10000,'enable latch not restored')
-   assert(item('m_abus_protkey'):read(0)==0x12345678,'key latch not restored')
+   assert(item('m_abus_protkey'):read(0)==0x23455678,'key latch not restored')
    print('STV_CRYPT_STATE_PASS enable/key latches and native save/load');m:exit()
   end
  end)

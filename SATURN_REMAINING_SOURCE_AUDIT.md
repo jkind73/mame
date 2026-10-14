@@ -493,3 +493,18 @@ verification or closure of the broad ST-V/NAOMI interface item is claimed.
 The named-PC import assertions also pass the full native slot and SCU ISR
 fixtures on both engines: `/private/tmp/sh2-pc-import-native-20261013` and
 `/private/tmp/sh2-pc-import-scu-native-20261013`.
+
+### ST-V shared encrypted-cartridge bus mapping
+
+The protected cartridge ports were installed only in the master SH-2 address
+space. Both SH-2s now access the same handlers and cipher/latches. The native
+fixture verifies a master-written enable latch through the slave, a slave
+halfword key write through the shared driver state, and save/load restoration.
+Both DRC and interpreter pass; the preserved parent fails the slave enable
+read. Full build and encrypted-access ASan/UBSan checks pass. Native artifacts:
+`/private/tmp/stv-crypt-shared-bus-fixed-20261013` and
+`/private/tmp/stv-crypt-shared-bus-parent-20261013`.
+
+This fixes an address-space omission without changing the cipher algorithm.
+No real-hardware verification or closure of the combined ST-V/NAOMI interface
+checklist item is claimed.

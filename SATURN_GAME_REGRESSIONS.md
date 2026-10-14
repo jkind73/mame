@@ -227,3 +227,13 @@ Boomerang's title, and Tecmo World Cup/Soccer '98 titles. These were previously
 black. Astra SuperStars, Elan-Doree, Sky Challenger and Tsuribori remain
 black; none is marked fixed by exit status alone. Artifacts:
 `/private/tmp/standby-nmif-black-game-retests-20261013`.
+
+### Shared encrypted-cartridge mapping regression checks
+
+After installing the protected ports in both SH-2 address spaces, serial
+110-second Astra SuperStars, Elan-Doree and Radiant Silvergun runs finish
+without crashes or Lua errors. Each internal recording contains 110 seconds
+at 48kHz. Inspected frame6000 captures show Radiant Silvergun's visible attract
+sequence; Astra and Elan remain black as before the mapping change. This
+interface correction does not resolve those two game failures. Artifacts:
+`/private/tmp/stv-crypt-shared-bus-retail-20261014`.

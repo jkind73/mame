@@ -293,8 +293,12 @@ void stv_state::common_prot_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 void stv_state::install_common_protection()
 {
-	m_maincpu->space(AS_PROGRAM).install_read_handler(0x4fffff0, 0x4ffffff, read32s_delegate(*this, FUNC(stv_state::common_prot_r)));
-	m_maincpu->space(AS_PROGRAM).install_write_handler(0x4fffff0, 0x4ffffff, write32s_delegate(*this, FUNC(stv_state::common_prot_w)));
+	// Both SH-2s share the cartridge bus and the same cipher stream/latches.
+	for (auto *cpu : { &*m_maincpu, &*m_slave })
+	{
+		cpu->space(AS_PROGRAM).install_read_handler(0x4fffff0, 0x4ffffff, read32s_delegate(*this, FUNC(stv_state::common_prot_r)));
+		cpu->space(AS_PROGRAM).install_write_handler(0x4fffff0, 0x4ffffff, write32s_delegate(*this, FUNC(stv_state::common_prot_w)));
+	}
 }
 
 void stv_state::stv_register_protection_savestates()
