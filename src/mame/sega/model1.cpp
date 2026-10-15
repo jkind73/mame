@@ -712,6 +712,13 @@ void netmerc_state::netmerc_outputs_w(uint8_t data)
 void model1_state::drive_board_w(uint8_t data)
 {
 	m_digits[0] = data;
+	if (data == 0x81 || data == 0x82)
+		m_drive_board_status = 0x00;
+}
+
+uint8_t model1_state::drive_board_r()
+{
+	return m_drive_board_status;
 }
 
 uint8_t model1_state::r360_r()
@@ -1237,7 +1244,7 @@ static INPUT_PORTS_START( swa )
 	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_X ) PORT_MINMAX(27,227) PORT_SENSITIVITY(100) PORT_KEYDELTA(4)  PORT_PLAYER(2) PORT_REVERSE
 
 	PORT_START("STICK2Y")
-	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_Y ) PORT_MINMAX(27,227) PORT_SENSITIVITY(100) PORT_KEYDELTA(4)  PORT_PLAYER(2)
+	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_Y ) PORT_MINMAX(27,227) PORT_SENSITIVITY(100) PORT_KEYDELTA(4)  PORT_PLAYER(2) PORT_REVERSE
 
 	PORT_INCLUDE(ioboard_dipswitches)
 INPUT_PORTS_END
@@ -1908,6 +1915,7 @@ void model1_state::model1(machine_config &config)
 	ioboard.write_callback().set(m_dpram, FUNC(mb8421_device::left_w));
 	ioboard.in_callback<0>().set_ioport("IN.0");
 	ioboard.in_callback<1>().set_ioport("IN.1");
+	ioboard.in_callback<2>().set_ioport("IN.2");
 
 	MB8421(config, m_dpram);
 
@@ -1942,6 +1950,7 @@ void model1_state::vr(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &model1_state::model1_comm_mem);
 
 	model1io_device &ioboard(*subdevice<model1io_device>("ioboard"));
+	ioboard.drive_read_callback().set(FUNC(model1_state::drive_board_r));
 	ioboard.drive_write_callback().set(FUNC(model1_state::drive_board_w));
 	ioboard.an_callback<0>().set_ioport("WHEEL");
 	ioboard.an_callback<1>().set_ioport("ACCEL");
@@ -1959,6 +1968,7 @@ void model1_state::vformula(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &model1_state::model1_comm_mem);
 
 	model1io_device &ioboard(*subdevice<model1io_device>("ioboard"));
+	ioboard.drive_read_callback().set(FUNC(model1_state::drive_board_r));
 	ioboard.drive_write_callback().set(FUNC(model1_state::drive_board_w));
 	ioboard.an_callback<0>().set_ioport("WHEEL");
 	ioboard.an_callback<1>().set_ioport("ACCEL");
@@ -2066,8 +2076,8 @@ void netmerc_state::netmerc(machine_config &config)
 GAME( 1993, vf,         0,       vf,         vf,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Fighter",           0 )
 GAMEL(1992, vr,         0,       vr,         vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Racing",            0, layout_vr )
 GAME( 1993, vformula,   vr,      vformula,   vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Formula",           MACHINE_IMPERFECT_GRAPHICS )
-GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     MACHINE_IMPERFECT_CONTROLS )
-GAME( 1994, swaj,       swa,     swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, Japan)",  MACHINE_IMPERFECT_CONTROLS )
+GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     0 )
+GAME( 1994, swaj,       swa,     swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, Japan)",  0 )
 GAME( 1994, wingwar,    0,       wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (World)",         0 )
 GAME( 1994, wingwaru,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (US)",            0 )
 GAME( 1994, wingwarj,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (Japan)",         0 )

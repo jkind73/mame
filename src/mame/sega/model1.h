@@ -382,6 +382,9 @@ protected:
 	void wingwar_outputs_w(uint8_t data);
 	void wingwar360_outputs_w(uint8_t data);
 	void drive_board_w(uint8_t data);
+	uint8_t drive_board_r();
+
+	uint8_t m_drive_board_status = 0xff;
 };
 
 class netmerc_state : public model1_state

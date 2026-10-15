@@ -20,6 +20,7 @@ void model1_state::machine_start()
 	save_pointer(NAME(m_copro_ram_data), 0x2000);
 	save_item(NAME(m_v60_copro_ram_adr));
 	save_item(NAME(m_v60_copro_ram_latch));
+	save_item(NAME(m_drive_board_status));
 
 	m_irq0_timer[0] = timer_alloc(FUNC(model1_state::irq0_timer_tick), this);
 	m_irq0_timer[1] = timer_alloc(FUNC(model1_state::irq0_timer_tick), this);
