@@ -188,6 +188,10 @@ void model2_state::machine_start()
 	save_item(NAME(m_timervals[1]));
 	save_item(NAME(m_timervals[2]));
 	save_item(NAME(m_timervals[3]));
+	save_item(NAME(m_timerorig[0]));
+	save_item(NAME(m_timerorig[1]));
+	save_item(NAME(m_timerorig[2]));
+	save_item(NAME(m_timerorig[3]));
 	save_item(NAME(m_timerrun[0]));
 	save_item(NAME(m_timerrun[1]));
 	save_item(NAME(m_timerrun[2]));
@@ -462,7 +466,7 @@ u32 model2_state::copro_ctl1_r()
 void model2_state::copro_ctl1_w(offs_t offset, u32 data, u32 mem_mask)
 {
 	// did hi bit change?
-	if ((data ^ m_coproctl) == 0x80000000)
+	if ((data ^ m_coproctl) & 0x80000000)
 	{
 		if (data & 0x80000000)
 		{
@@ -659,7 +663,7 @@ void model2_tgp_state::copro_fifo_w(u32 data)
 {
 	if (m_coproctl & 0x80000000)
 	{
-		m_copro_tgp_program[m_coprocnt] = data;
+		m_copro_tgp_program[m_coprocnt & 0xfff] = data;
 		m_coprocnt++;
 	}
 	else
@@ -748,13 +752,13 @@ void model2c_state::copro_fifo_w(u32 data)
 	{
 		if (m_coprocnt & 1)
 		{
-			m_copro_tgpx4_program[m_coprocnt / 2] &= 0xffffffffU;
-			m_copro_tgpx4_program[m_coprocnt / 2] |= u64(data) << 32;
+			m_copro_tgpx4_program[(m_coprocnt / 2) & 0xfff] &= 0xffffffffU;
+			m_copro_tgpx4_program[(m_coprocnt / 2) & 0xfff] |= u64(data) << 32;
 		}
 		else
 		{
-			m_copro_tgpx4_program[m_coprocnt / 2] &= 0xffffffff00000000U;
-			m_copro_tgpx4_program[m_coprocnt / 2] |= data;
+			m_copro_tgpx4_program[(m_coprocnt / 2) & 0xfff] &= 0xffffffff00000000U;
+			m_copro_tgpx4_program[(m_coprocnt / 2) & 0xfff] |= data;
 		}
 
 		m_coprocnt++;
@@ -793,7 +797,7 @@ void model2c_state::copro_tgpx4_data_map(address_map &map)
 void model2_state::geo_ctl1_w(u32 data)
 {
 	// did hi bit change?
-	if ((data ^ m_geoctl) == 0x80000000)
+	if ((data ^ m_geoctl) & 0x80000000)
 	{
 		if (data & 0x80000000)
 		{
@@ -812,7 +816,7 @@ void model2_state::geo_ctl1_w(u32 data)
 void model2_state::push_geo_data(u32 data)
 {
 	//osd_printf_debug("push_geo_data: %08X: %08X\n", 0x900000+m_geo_write_start_address, data);
-	m_bufferram[m_geo_write_start_address/4] = data;
+	m_bufferram[(m_geo_write_start_address / 4) & 0x7fff] = data;
 	m_geo_write_start_address += 4;
 }
 
@@ -2260,11 +2264,14 @@ INPUT_PORTS_END
 static INPUT_PORTS_START( sgt24h )
 	PORT_INCLUDE(indy500)
 
+	PORT_MODIFY("STEER")
+	PORT_BIT(0xff, 0x7f, IPT_PADDLE) PORT_MINMAX(0x10, 0xef) PORT_SENSITIVITY(50) PORT_KEYDELTA(10) PORT_NAME("Steering Wheel")
+
 	PORT_MODIFY("ACCEL")
-	PORT_BIT(0xff, 0x00, IPT_PEDAL)  PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_NAME("Gas Pedal")
+	PORT_BIT(0xff, 0x00, IPT_PEDAL) PORT_MINMAX(0x00, 0x7f) PORT_SENSITIVITY(30) PORT_KEYDELTA(15) PORT_NAME("Gas Pedal")
 
 	PORT_MODIFY("BRAKE")
-	PORT_BIT(0xff, 0x00, IPT_PEDAL2) PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_NAME("Brake Pedal")
+	PORT_BIT(0xff, 0x00, IPT_PEDAL2) PORT_MINMAX(0x00, 0x7f) PORT_SENSITIVITY(30) PORT_KEYDELTA(15) PORT_NAME("Brake Pedal")
 
 	PORT_MODIFY("IN1")
 	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_BUTTON3) PORT_NAME("View 1")

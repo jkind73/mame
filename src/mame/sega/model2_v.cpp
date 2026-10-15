@@ -2538,12 +2538,17 @@ u32 model2_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, con
 	bitmap.fill(m_palette->pen(0), cliprect);
 	m_sys24_bitmap.fill(0, cliprect);
 
-	// draw tilemap B as opaque
+	// Draw Tilemap B (layers 3-2) low-priority then high-priority, followed by
+	// Tilemap A (layers 1-0) low-priority underneath the 3D rasterizer layer.
+	// Only layer 3 pri 0 is drawn opaque so layer 2 does not clobber layer 3,
+	// and Tilemap B pri 1 (e.g. vcop2 stage select city map) stays beneath Tilemap A.
+	m_tiles->draw(screen, m_sys24_bitmap, cliprect, (3 << 1) | 0, 0, TILEMAP_DRAW_OPAQUE);
+	m_tiles->draw(screen, m_sys24_bitmap, cliprect, (2 << 1) | 0, 0, 0);
 	for (int layer = 3; layer >= 2; layer--)
-		m_tiles->draw(screen, m_sys24_bitmap, cliprect, layer << 1, 0, TILEMAP_DRAW_OPAQUE);
+		m_tiles->draw(screen, m_sys24_bitmap, cliprect, (layer << 1) | 1, 0, 0);
 
 	for (int layer = 1; layer >= 0; layer--)
-		m_tiles->draw(screen, m_sys24_bitmap, cliprect, layer << 1, 0, 0);
+		m_tiles->draw(screen, m_sys24_bitmap, cliprect, (layer << 1) | 0, 0, 0);
 
 	copybitmap_trans(bitmap, m_sys24_bitmap, 0, 0, 0, 0, cliprect, 0);
 
@@ -2555,8 +2560,9 @@ u32 model2_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, con
 
 	m_sys24_bitmap.fill(0, cliprect);
 
-	for (int layer = 3; layer >= 0; layer--)
-		m_tiles->draw(screen, m_sys24_bitmap, cliprect, (layer<<1) | 1, 0, 0);
+	// Draw Tilemap A (layers 1-0) high-priority HUD/text on top of 3D polygons
+	for (int layer = 1; layer >= 0; layer--)
+		m_tiles->draw(screen, m_sys24_bitmap, cliprect, (layer << 1) | 1, 0, 0);
 
 	copybitmap_trans(bitmap, m_sys24_bitmap, 0, 0, 0, 0, cliprect, 0);
 

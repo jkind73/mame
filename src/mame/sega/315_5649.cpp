@@ -67,6 +67,7 @@ void sega_315_5649_device::device_reset()
 	// set all ports to input on reset
 	m_port_config = 0xff;
 	m_mode = 0;
+	m_analog_channel = 0;
 }
 
 
@@ -165,6 +166,7 @@ void sega_315_5649_device::write(offs_t offset, uint8_t data)
 	// ---- 3210  RS-422 satellite N#
 	case 0x0e:
 		m_mode = data;
+		m_analog_channel = 0;
 		break;
 
 	// analog mux select

@@ -671,6 +671,8 @@ void i960_cpu_device::do_call(uint32_t adr, int type, uint32_t stack)
 	if (m_rcache_pos >= I960_RCACHE_SIZE) {
 		// flush the current register set to the current frame
 		FP = m_r[I960_FP] & ~0x3f;
+		if (!m_wait_state_cb.isnull())
+			m_icount -= m_wait_state_cb(FP, true) * 16;
 		for (i = 0; i < 16; i++) {
 			m_program.write_dword(FP + (i*4), m_r[i]);
 		}
@@ -710,6 +712,8 @@ void i960_cpu_device::do_ret_0()
 	if ((m_rcache_pos >= I960_RCACHE_SIZE) || (m_rcache_pos < 0))
 	{
 		int i;
+		if (!m_wait_state_cb.isnull())
+			m_icount -= m_wait_state_cb(m_r[I960_FP], false) * 16;
 		for(i=0; i<0x10; i++)
 			m_r[i] = m_program.read_dword(m_r[I960_FP]+4*i);
 
@@ -1627,6 +1631,8 @@ void i960_cpu_device::execute_op(uint32_t opcode)
 				for(t1=0; t1 < m_rcache_pos; t1++)
 				{
 					int i;
+					if (!m_wait_state_cb.isnull())
+						m_icount -= m_wait_state_cb(m_rcache_frame_addr[t1], true) * 16;
 
 					for (i = 0; i < 0x10; i++)
 					{
@@ -2275,16 +2281,23 @@ void i960_cpu_device::execute_op(uint32_t opcode)
 
 		case 0xc0: { // ldib
 			m_icount -= 4;
-			s8 v = m_program.read_byte(get_ea(opcode));
+			uint32_t ea = get_ea(opcode);
+			if (!m_wait_state_cb.isnull())
+				m_icount -= m_wait_state_cb(ea, false);
+			s8 v = m_program.read_byte(ea);
 			if(!m_stalled)
 				m_r[(opcode>>19)&0x1f] = v;
 			break;
 		}
 
-		case 0xc2: // stib
+		case 0xc2: { // stib
 			m_icount -= 2;
-			m_program.write_byte(get_ea(opcode), m_r[(opcode>>19)&0x1f]);
+			uint32_t ea = get_ea(opcode);
+			if (!m_wait_state_cb.isnull())
+				m_icount -= m_wait_state_cb(ea, true);
+			m_program.write_byte(ea, m_r[(opcode>>19)&0x1f]);
 			break;
+		}
 
 		case 0xc8: { // ldis
 			m_icount -= 4;
