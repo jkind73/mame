@@ -632,20 +632,6 @@ void model1_state::view_t::recompute_frustum()
 	a_top    = (-y2 + yc - viewy) / zoomy;
 }
 
-bool model1_state::fclip_isc_near(view_t *view, point_t *p)
-{
-	return p->z < 1.0f;
-}
-
-void model1_state::fclip_clip_near(view_t *view, point_t *pt, point_t *p1, point_t *p2)
-{
-	float t = (p2->z - 1.0f) / (p2->z - p1->z);
-	pt->x = p1->x * t + p2->x * (1.0f - t);
-	pt->y = p1->y * t + p2->y * (1.0f - t);
-	pt->z = 1.0f;
-	view->project_point(pt);
-}
-
 bool model1_state::fclip_isc_bottom(view_t *view, point_t *p)
 {
 	return p->y > (p->z * view->a_bottom);
@@ -712,7 +698,7 @@ void model1_state::fclip_push_quad(int level, quad_t& q)
 {
 	view_t *view = m_view.get();
 
-	if (level == 5)
+	if (level == 4)
 	{
 		LOGMASKED(LOG_TGP, "VIDEOCQ %d", level);
 		for (int i = 0; i < 4; i++)
@@ -858,14 +844,6 @@ float model1_state::compute_specular(glm::vec3& normal, glm::vec3& light, float 
 		s *= s;
 	if (lp.p >= 7)
 		s *= s;
-
-	if (m_lighting_table)
-	{
-		uint32_t idx = uint32_t(std::clamp(s, 0.0f, 1.0f) * 65535.0f);
-		float atten = float(m_lighting_table[idx]) / 65535.0f;
-		return std::min(s * lp.s * atten, 1.0f);
-	}
-
 	return std::min(s * lp.s, 1.0f);
 }
 
@@ -937,7 +915,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 	m_view->transform_point(old_p0);
 	m_view->transform_point(old_p1);
 
-	if (old_p0->z >= 1.0f)
+	if (old_p0->z > 0)
 	{
 		m_view->project_point(old_p0);
 	}
@@ -946,7 +924,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 		old_p0->s.x = old_p0->s.y = 0;
 	}
 
-	if (old_p1->z >= 1.0f)
+	if (old_p1->z > 0)
 	{
 		m_view->project_point(old_p1);
 	}
@@ -1005,7 +983,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 
 		m_view->transform_point(p0);
 		m_view->transform_point(p1);
-		if (p0->z >= 1.0f)
+		if (p0->z > 0)
 		{
 			m_view->project_point(p0);
 		}
@@ -1014,7 +992,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 			p0->s.x = p0->s.y = 0;
 		}
 
-		if (p1->z >= 1.0f)
+		if (p1->z > 0)
 		{
 			m_view->project_point(p1);
 		}
@@ -1797,16 +1775,14 @@ void model1_state::video_start()
 	m_quadpt = &m_quaddb[0];
 	m_listctl[0] = m_listctl[1] = 0;
 
-	m_clipfn[0].m_isclipped = &model1_state::fclip_isc_near;
-	m_clipfn[0].m_clip = &model1_state::fclip_clip_near;
-	m_clipfn[1].m_isclipped = &model1_state::fclip_isc_bottom;
-	m_clipfn[1].m_clip = &model1_state::fclip_clip_bottom;
-	m_clipfn[2].m_isclipped = &model1_state::fclip_isc_top;
-	m_clipfn[2].m_clip = &model1_state::fclip_clip_top;
-	m_clipfn[3].m_isclipped = &model1_state::fclip_isc_left;
-	m_clipfn[3].m_clip = &model1_state::fclip_clip_left;
-	m_clipfn[4].m_isclipped = &model1_state::fclip_isc_right;
-	m_clipfn[4].m_clip = &model1_state::fclip_clip_right;
+	m_clipfn[0].m_isclipped = &model1_state::fclip_isc_bottom;
+	m_clipfn[0].m_clip = &model1_state::fclip_clip_bottom;
+	m_clipfn[1].m_isclipped = &model1_state::fclip_isc_top;
+	m_clipfn[1].m_clip = &model1_state::fclip_clip_top;
+	m_clipfn[2].m_isclipped = &model1_state::fclip_isc_left;
+	m_clipfn[2].m_clip = &model1_state::fclip_clip_left;
+	m_clipfn[3].m_isclipped = &model1_state::fclip_isc_right;
+	m_clipfn[3].m_clip = &model1_state::fclip_clip_right;
 
 	m_list_written[0] = m_list_written[1] = ~0ULL;
 
