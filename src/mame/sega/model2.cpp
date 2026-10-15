@@ -15,10 +15,6 @@
 
     TODO (per-game issues)
     - lastbrnx: uses external DMA port 0 for uploading SHARC program, hook-up might not be 100% right;
-    - manxtt: no escape from "active motion slider" tutorial (needs analog inputs),
-              bypass it by entering then exiting service mode;
-    - sgt24h: has input analog issues, steering doesn't center when neutral,
-      gas and brake pedals pulses instead of being fixed;
     - vcop2: stage select has tilemap priority issue, tilemap B (city model) has priority bit set,
              yet it should appear underneath tilemap A ("shoot to select") which does not;
     - srallyc: initial enemy car placement seems to be slightly incorrect for a few cars,
@@ -211,6 +207,9 @@ void model2_state::machine_start()
 	save_item(NAME(m_geo_read_start_address));
 	save_item(NAME(m_geotype));
 
+	save_item(NAME(m_driveio_comm_data));
+	save_item(NAME(m_driveio_status_data));
+
 	m_irq_delay_timer = timer_alloc(FUNC(model2_state::irq_mask_delayed_update), this);
 	m_irq_delay_timer->adjust(attotime::never);
 }
@@ -336,6 +335,8 @@ void model2_state::machine_reset()
 	m_copro_fifo_out->clear();
 	m_geo_write_start_address = 0;
 	m_geo_read_start_address = 0;
+	m_driveio_comm_data = 0;
+	m_driveio_status_data = 0;
 
 	irq_update();
 }
@@ -364,10 +365,18 @@ void model2o_gtx_state::machine_reset()
 	m_gtx_state = 0;
 }
 
+void model2a_state::machine_start()
+{
+	model2_tgp_state::machine_start();
+
+	save_item(NAME(m_manxtt_drive_status));
+}
+
 void model2a_state::machine_reset()
 {
 	model2_tgp_state::machine_reset();
 	reset_model2_scsp();
+	m_manxtt_drive_status = 0xce;
 }
 
 void model2b_state::machine_reset()
@@ -1582,6 +1591,32 @@ void model2_state::drive_board_w(u8 data)
 		m_drivecpu->set_input_line(0, HOLD_LINE);
 }
 
+void model2a_state::manxtt_drive_board_w(u8 data)
+{
+	m_manxtt_motor = data;
+
+	if (data == 0x7f)
+	{
+		// Center / ready acknowledge command
+		m_manxtt_drive_status = 0xcd;
+	}
+	else if ((data & 0xf0) == 0xe0)
+	{
+		// Diagnostic network loopback test
+		m_manxtt_drive_status = ~(1 << (data & 7));
+	}
+	else if (data == 0xd2 || data == 0xd3)
+	{
+		// Diagnostic network query test
+		m_manxtt_drive_status = 0xff;
+	}
+}
+
+u8 model2a_state::manxtt_drive_board_r()
+{
+	return m_manxtt_drive_status;
+}
+
 
 //**************************************************************************
 //  INPUT HANDLING
@@ -2232,10 +2267,10 @@ static INPUT_PORTS_START( sgt24h )
 	PORT_INCLUDE(indy500)
 
 	PORT_MODIFY("ACCEL")
-	PORT_BIT(0xff, 0x00, IPT_PEDAL)  PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_NAME("Gas Pedal") PORT_REVERSE
+	PORT_BIT(0xff, 0x00, IPT_PEDAL)  PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_NAME("Gas Pedal")
 
 	PORT_MODIFY("BRAKE")
-	PORT_BIT(0xff, 0x00, IPT_PEDAL2) PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_NAME("Brake Pedal") PORT_REVERSE
+	PORT_BIT(0xff, 0x00, IPT_PEDAL2) PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_NAME("Brake Pedal")
 
 	PORT_MODIFY("IN1")
 	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_BUTTON3) PORT_NAME("View 1")
@@ -2628,7 +2663,7 @@ void model2o_state::model2o(machine_config &config)
 
 u8 model2_state::driveio_portg_r()
 {
-	return m_driveio_comm_data;
+	return 0xff; // DIP switches on drive board (all OFF, pulled up)
 }
 
 u8 model2_state::driveio_porth_r()
@@ -2636,10 +2671,21 @@ u8 model2_state::driveio_porth_r()
 	return m_driveio_comm_data;
 }
 
+u8 model2_state::driveio_port_r()
+{
+	return m_driveio_status_data;
+}
+
 void model2_state::driveio_port_w(u8 data)
 {
-//  TODO: hook up to the main CPU
-//  popmessage("%02x",data);
+	m_driveio_status_data = data;
+}
+
+void model2_state::driveio2_portg_w(u8 data)
+{
+	m_drive_motor_torque = (~data) & 0x3f;
+	m_drive_motor_right = !BIT(data, 6);
+	m_drive_motor_left = !BIT(data, 7);
 }
 
 void model2_state::drive_map(address_map &map)
@@ -2669,9 +2715,13 @@ void model2_state::sj25_0207_01(machine_config &config)
 	driveio1.in_pg_callback().set(FUNC(model2_state::driveio_portg_r));
 	driveio1.in_ph_callback().set(FUNC(model2_state::driveio_porth_r));
 
-	SEGA_315_5296(config, "driveio2"); // unknown clock
+	sega_315_5296_device &driveio2(SEGA_315_5296(config, "driveio2")); // unknown clock
+	driveio2.out_pc_callback().set([this](u8 data) { m_drive_digits[0] = data; });
+	driveio2.out_pd_callback().set([this](u8 data) { m_drive_digits[1] = data; });
+	driveio2.out_pg_callback().set(FUNC(model2_state::driveio2_portg_w));
 
-	MSM6253(config, "driveadc");
+	msm6253_device &driveadc(MSM6253(config, "driveadc"));
+	driveadc.set_input_tag<0>("STEER");
 }
 
 void model2o_state::daytona(machine_config &config)
@@ -2681,6 +2731,7 @@ void model2o_state::daytona(machine_config &config)
 
 	model1io_device &ioboard(*subdevice<model1io_device>("ioboard"));
 	ioboard.drive_write_callback().set(FUNC(model2o_state::drive_board_w));
+	ioboard.drive_read_callback().set(FUNC(model2o_state::driveio_port_r));
 	ioboard.an_callback<0>().set_ioport("STEER");
 	ioboard.an_callback<1>().set_ioport("ACCEL");
 	ioboard.an_callback<2>().set_ioport("BRAKE");
@@ -2787,6 +2838,8 @@ void model2a_state::manxtt(machine_config &config)
 	model2a(config);
 
 	sega_315_5649_device &io(*subdevice<sega_315_5649_device>("io"));
+	io.in_pd_callback().set(FUNC(model2a_state::manxtt_drive_board_r));
+	io.out_pe_callback().set(FUNC(model2a_state::manxtt_drive_board_w));
 	io.an_port_callback<0>().set_ioport("THROTTLE");
 	io.an_port_callback<1>().set_ioport("BRAKE");
 	io.an_port_callback<2>().set_ioport("BANK");
@@ -2939,6 +2992,12 @@ void model2b_state::indy500(machine_config &config)
 	io.an_port_callback<0>().set_ioport("STEER");
 	io.an_port_callback<1>().set_ioport("ACCEL");
 	io.an_port_callback<2>().set_ioport("BRAKE");
+}
+
+void model2b_state::sgt24h(machine_config &config)
+{
+	indy500(config);
+	subdevice<nvram_device>("backup1")->set_default_value(nvram_device::DEFAULT_ALL_0);
 }
 
 void model2b_state::powsled(machine_config &config)
@@ -7599,13 +7658,6 @@ void model2_state::init_zerogun()
 	ROM[0x700/4] = 0x08000004;
 }
 
-void model2_state::init_sgt24h()
-{
-	//u32 *ROM = &memregion("maincpu")->as_u32();
-	//ROM[0x56578/4] = 0x08000004;
-	//ROM[0x5b3e8/4] = 0x08000004;
-}
-
 void model2_state::init_powsledm()
 {
 	auto ROM = util::little_endian_cast<u8>(&memregion("maincpu")->as_u32());
@@ -7677,9 +7729,9 @@ GAME( 1994, vf2,        0,        model2a,      vf2,       model2a_state,       
 GAME( 1994, vf2b,       vf2,      model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2 (Revision B)", 0 )
 GAME( 1994, vf2a,       vf2,      model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2 (Revision A)", 0 )
 GAME( 1994, vf2o,       vf2,      model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2", 0 )
-GAME( 1995, manxtt,     0,        manxttdx,     manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX/Twin (Revision D)", MACHINE_NOT_WORKING ) // Defaults to DX mode
-GAME( 1995, manxttc,    manxtt,   manxtt,       manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX/Twin (Revision C)", MACHINE_NOT_WORKING ) // set to Twin mode - used to place hold Twin sound ROMs
-GAME( 1995, manxttdx,   manxtt,   manxttdx,     manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX", MACHINE_NOT_WORKING )
+GAME( 1995, manxtt,     0,        manxttdx,     manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX/Twin (Revision D)", 0 ) // Defaults to DX mode
+GAME( 1995, manxttc,    manxtt,   manxtt,       manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX/Twin (Revision C)", 0 ) // set to Twin mode - used to place hold Twin sound ROMs
+GAME( 1995, manxttdx,   manxtt,   manxttdx,     manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX", 0 )
 GAME( 1995, srallyc,    0,        srallyc,      srallyc,   model2a_state,          empty_init,    ROT0, "Sega",   "Sega Rally Championship - Twin/DX (Revision C)", MACHINE_NOT_WORKING )
 GAME( 1995, srallycb,   srallyc,  srallyc,      srallyc,   model2a_state,          empty_init,    ROT0, "Sega",   "Sega Rally Championship - Twin/DX (Revision B)", MACHINE_NOT_WORKING )
 GAME( 1995, srallycc,   srallyc,  srallyc,      srallyc,   model2a_state,          empty_init,    ROT0, "Sega",   "Sega Rally Championship - Twin/DX (Revision A)", MACHINE_NOT_WORKING )
@@ -7693,7 +7745,7 @@ GAME( 1996, doaae,      doa,      model2a_0229, doa,       model2a_state,       
 GAME( 1997, zeroguna,   zerogun,  zeroguna,     zerogun,   model2a_state,          init_zerogun,  ROT0, "Psikyo", "Zero Gunner (Export, Model 2A)", 0 )
 GAME( 1997, zerogunaj,  zerogun,  zeroguna,     zerogun,   model2a_state,          init_zerogun,  ROT0, "Psikyo", "Zero Gunner (Japan, Model 2A)", 0 )
 GAME( 1997, motoraid,   0,        manxtt,       motoraid,  model2a_state,          empty_init,    ROT0, "Sega",   "Motor Raid - Twin", MACHINE_IMPERFECT_SOUND )
-GAME( 1997, motoraiddx, motoraid, manxtt,       motoraid,  model2a_state,          empty_init,    ROT0, "Sega",   "Motor Raid - Twin/DX", MACHINE_NOT_WORKING )
+GAME( 1997, motoraiddx, motoraid, manxtt,       motoraid,  model2a_state,          empty_init,    ROT0, "Sega",   "Motor Raid - Twin/DX", MACHINE_IMPERFECT_SOUND )
 GAME( 1997, airwlkrs,   0,        airwlkrs,     airwlkrs,  model2a_airwlkrs_state, empty_init,    ROT0, "Data East Corporation", "Air Walkers", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND )
 GAME( 1998, dynamcop,   0,        model2a_5881, dynamcop,  model2a_state,          empty_init,    ROT0, "Sega",   "Dynamite Cop (Export, Model 2A)", MACHINE_NOT_WORKING )
 GAME( 1998, dyndeka2,   dynamcop, model2a_5881, dynamcop,  model2a_state,          empty_init,    ROT0, "Sega",   "Dynamite Deka 2 (Japan, Model 2A)", MACHINE_NOT_WORKING )
@@ -7723,7 +7775,7 @@ GAME( 1996, lastbrnxu,  lastbrnx, lastbrnx,     vf2,       model2b_state, empty_
 GAME( 1996, lastbrnxj,  lastbrnx, lastbrnx,     vf2,       model2b_state, empty_init,    ROT0, "Sega",   "Last Bronx: Tokyo Bangaichi (Japan, Revision A)", MACHINE_NOT_WORKING )
 GAME( 1996, doa,        0,        model2b_0229, doa,       model2b_state, empty_init,    ROT0, "Tecmo",  "Dead or Alive (Model 2B, Revision C)", 0 ) // Jan 10 1997
 GAME( 1996, doab,       doa,      model2b_0229, doa,       model2b_state, empty_init,    ROT0, "Tecmo",  "Dead or Alive (Model 2B, Revision B)", 0 ) // Dec 4 1996
-GAME( 1996, sgt24h,     0,        indy500,      sgt24h,    model2b_state, init_sgt24h,   ROT0, "Jaleco", "Super GT 24h", MACHINE_NOT_WORKING )
+GAME( 1996, sgt24h,     0,        sgt24h,       sgt24h,    model2b_state, empty_init,    ROT0, "Jaleco", "Super GT 24h", 0 )
 GAME( 1996, powsled,    0,        powsled,      powsled,   model2b_state, empty_init,    ROT0, "Sega",   "Power Sled (Slave, Revision A)", MACHINE_NOT_WORKING )
 GAME( 1996, powsledr,   powsled,  powsled,      powsled,   model2b_state, empty_init,    ROT0, "Sega",   "Power Sled (Relay, Revision A)", MACHINE_NOT_WORKING )
 GAME( 1996, powsledm,   powsled,  powsled,      powsled,   model2b_state, init_powsledm, ROT0, "Sega",   "Power Sled (Main, hack of Relay)", MACHINE_NOT_WORKING )

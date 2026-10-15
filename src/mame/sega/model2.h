@@ -77,7 +77,11 @@ public:
 		m_in0(*this, "IN0"),
 		m_gears(*this, "GEARS"),
 		m_lightgun_ports(*this, {"P1_Y", "P1_X", "P2_Y", "P2_X"}),
-		m_lamps(*this, "lamp%u", 0U)
+		m_lamps(*this, "lamp%u", 0U),
+		m_drive_digits(*this, "drive_digit%u", 0U),
+		m_drive_motor_torque(*this, "drive_motor_torque"),
+		m_drive_motor_right(*this, "drive_motor_right"),
+		m_drive_motor_left(*this, "drive_motor_left")
 	{ }
 
 	/* Public for access by the rendering functions */
@@ -97,9 +101,7 @@ public:
 	void init_overrev();
 	void init_pltkids();
 	void init_rchase2();
-	void init_manxttdx();
 	void init_zerogun();
-	void init_sgt24h();
 	void init_srallyc();
 	void init_powsledm();
 	void lamp_output_w(u8 data);
@@ -143,6 +145,10 @@ protected:
 	optional_ioport m_gears;
 	optional_ioport_array<4> m_lightgun_ports;
 	output_finder<6> m_lamps;
+	output_finder<2> m_drive_digits;
+	output_finder<> m_drive_motor_torque;
+	output_finder<> m_drive_motor_right;
+	output_finder<> m_drive_motor_left;
 
 	u32 m_timervals[4]{};
 	u32 m_timerorig[4]{};
@@ -150,6 +156,7 @@ protected:
 	int m_ctrlmode = 0;
 	u16 m_cmd_data = 0;
 	u8 m_driveio_comm_data = 0;
+	u8 m_driveio_status_data = 0;
 	emu_timer *m_irq_delay_timer;
 
 	u32 m_geo_read_start_address = 0;
@@ -227,9 +234,11 @@ protected:
 	u8 tgpid_r(offs_t offset);
 	u32 polygon_count_r();
 
+	u8 driveio_port_r();
 	u8 driveio_portg_r();
 	u8 driveio_porth_r();
 	void driveio_port_w(u8 data);
+	void driveio2_portg_w(u8 data);
 	void push_geo_data(u32 data);
 	void reset_model2_scsp();
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
@@ -495,7 +504,8 @@ public:
 
 	model2a_state(const machine_config &mconfig, device_type type, const char *tag) :
 		model2_tgp_state(mconfig, type, tag),
-		m_billboard(*this, "billboard")
+		m_billboard(*this, "billboard"),
+		m_manxtt_motor(*this, "manxtt_motor")
 	{}
 
 	void manxtt(machine_config &config) ATTR_COLD;
@@ -509,14 +519,20 @@ public:
 	void zeroguna(machine_config &config) ATTR_COLD;
 
 protected:
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	void model2a_crx_mem(address_map &map) ATTR_COLD;
 	void model2a_5881_mem(address_map &map) ATTR_COLD;
 	void model2a_0229_mem(address_map &map) ATTR_COLD;
 
+	void manxtt_drive_board_w(u8 data);
+	u8 manxtt_drive_board_r();
+
 private:
 	required_device<sega_billboard_device> m_billboard;
+	output_finder<> m_manxtt_motor;
+	u8 m_manxtt_drive_status = 0xce;
 };
 
 class model2a_airwlkrs_state : public model2a_state
@@ -568,6 +584,7 @@ public:
 	void dynabb(machine_config &config) ATTR_COLD;
 	void zerogun(machine_config &config) ATTR_COLD;
 	void lastbrnx(machine_config &config) ATTR_COLD;
+	void sgt24h(machine_config &config) ATTR_COLD;
 
 protected:
 	virtual void machine_start() override ATTR_COLD;
