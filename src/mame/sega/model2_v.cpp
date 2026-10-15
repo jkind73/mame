@@ -583,6 +583,20 @@ void model2_renderer::model2_3d_render(polygon *poly, const rectangle &cliprect)
 	extra.luma = poly->luma;
 	extra.texlod = poly->texlod;
 
+	// Pre-bake colormap lookup table for this polygon
+	u32 palcol = m_state.m_palram[(extra.colorbase + 0x1000)] & 0x7fff;
+	const u16 *colortable_r = &m_state.m_colorxlat[0x0000/2] + (((palcol >>  0) & 0x1f) << 8);
+	const u16 *colortable_g = &m_state.m_colorxlat[0x4000/2] + (((palcol >>  5) & 0x1f) << 8);
+	const u16 *colortable_b = &m_state.m_colorxlat[0x8000/2] + (((palcol >> 10) & 0x1f) << 8);
+	const u8  *gamma_value  = &m_state.m_gamma_table[0];
+	for (int l = 0; l < 64; l++)
+	{
+		u32 tr = gamma_value[colortable_r[l] & 0xff];
+		u32 tg = gamma_value[colortable_g[l] & 0xff];
+		u32 tb = gamma_value[colortable_b[l] & 0xff];
+		extra.colormap[l] = rgb_t(tr, tg, tb);
+	}
+
 	if (renderer & 2)
 	{
 		extra.texmirrorx = (poly->texheader[0] >> 8) & 1;

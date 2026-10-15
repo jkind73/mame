@@ -15,7 +15,7 @@
 #include <bit>
 
 
-inline u16 model2_renderer::get_texel(u32 base_x, u32 base_y, int x, int y, const u32 *sheet)
+inline u16 ATTR_FORCE_INLINE model2_renderer::get_texel(u32 base_x, u32 base_y, int x, int y, const u32 *sheet)
 {
 	int x2 = base_x + x;
 	int y2 = base_y + y;
@@ -25,19 +25,11 @@ inline u16 model2_renderer::get_texel(u32 base_x, u32 base_y, int x, int y, cons
 		x2 -= 1024;
 		y2 ^= 1024;
 	}
-	u32  offset = ((y2 / 2) * 512) + (x2 / 2);
-	u32  texel = sheet[offset>>1];
+	u32 offset = ((y2 / 2) * 512) + (x2 / 2);
+	u32 texel = sheet[offset >> 1];
 
-	if (offset & 1)
-		texel >>= 16;
-
-	if ((y & 1) == 0)
-		texel >>= 8;
-
-	if ((x & 1) == 0)
-		texel >>= 4;
-
-	return texel & 0x0f;
+	unsigned const shift = (((offset & 1) << 2) | ((~y & 1) << 1) | (~x & 1)) << 2;
+	return (texel >> shift) & 0x0f;
 }
 
 
@@ -45,44 +37,16 @@ inline u16 model2_renderer::get_texel(u32 base_x, u32 base_y, int x, int y, cons
 template <bool Translucent>
 void model2_renderer::draw_scanline_solid(int32_t scanline, const extent_t& extent, const m2_poly_extra_data& object, int threadid)
 {
-	model2_state *state = object.state;
-	u32 *const p = &m_destmap.pix(scanline);
-	u8 *const fill = &m_fillmap.pix(scanline);
-	u8  *gamma_value = &state->m_gamma_table[0];
-
-	// extract color information
-	const u16 *colortable_r = &state->m_colorxlat[0x0000/2];
-	const u16 *colortable_g = &state->m_colorxlat[0x4000/2];
-	const u16 *colortable_b = &state->m_colorxlat[0x8000/2];
-	u32  color = object.colorbase;
-	u8   checker = object.checker;
-	u8   luma;
-	u32  tr, tg, tb;
-
 	// if it's translucent, there's nothing to render
 	if (Translucent)
 		return;
 
-	luma = object.luma >> 2;
+	u32 *const p = &m_destmap.pix(scanline);
+	u8 *const fill = &m_fillmap.pix(scanline);
 
-	color = state->m_palram[(color + 0x1000)] & 0xffff;
-
-	colortable_r += ((color >>  0) & 0x1f) << 8;
-	colortable_g += ((color >>  5) & 0x1f) << 8;
-	colortable_b += ((color >> 10) & 0x1f) << 8;
-
-	/* we have the 6 bits of luma information along with 5 bits per color component */
-	/* now build and index into the master color lookup table and extract the raw RGB values */
-
-	tr = colortable_r[(luma)] & 0xff;
-	tg = colortable_g[(luma)] & 0xff;
-	tb = colortable_b[(luma)] & 0xff;
-	tr = gamma_value[tr];
-	tg = gamma_value[tg];
-	tb = gamma_value[tb];
-
-	// build the final color
-	color = rgb_t(tr, tg, tb);
+	u8 checker = object.checker;
+	u8 luma = (object.luma >> 2) & 0x3f;
+	u32 color = object.colormap[luma];
 
 	int x = extent.startx;
 	int dx = checker ? 2 : 1;
@@ -105,7 +69,7 @@ constexpr u32 LERP(u32 x, u32 y, unsigned a)
 }
 
 template <bool Translucent>
-u32 model2_renderer::fetch_bilinear_texel(const m2_poly_extra_data& object, s32 miplevel, s32 u, s32 v)
+inline u32 ATTR_FORCE_INLINE model2_renderer::fetch_bilinear_texel(const m2_poly_extra_data& object, s32 miplevel, s32 u, s32 v)
 {
 	u32 tex_wrap_x = object.texwrapx;
 	u32 tex_wrap_y = object.texwrapy;
@@ -248,15 +212,9 @@ void model2_renderer::draw_scanline_tex(int32_t scanline, const extent_t &extent
 	u32 *const p = &m_destmap.pix(scanline);
 	u8 *const fill = &m_fillmap.pix(scanline);
 
-	/* extract color information */
-	const u16 *colortable_r = &state->m_colorxlat[0x0000/2];
-	const u16 *colortable_g = &state->m_colorxlat[0x4000/2];
-	const u16 *colortable_b = &state->m_colorxlat[0x8000/2];
 	const u8 *lumaram = &state->m_lumaram[0];
-	u32  colorbase = object.colorbase;
 	u32  lumabase = object.lumabase;
 	u8   checker = object.checker;
-	u8  *gamma_value = &state->m_gamma_table[0];
 	float ooz = extent.param[0].start;
 	float uoz = extent.param[1].start;
 	float voz = extent.param[2].start;
@@ -266,12 +224,6 @@ void model2_renderer::draw_scanline_tex(int32_t scanline, const extent_t &extent
 
 	// calculate maximum mipmap level from texture dimensions; we go down to 2x2
 	s32 max_level = 30 - std::countl_zero(std::min(object.texwidth, object.texheight));
-
-	colorbase = state->m_palram[(colorbase + 0x1000)] & 0x7fff;
-
-	colortable_r += ((colorbase >>  0) & 0x1f) << 8;
-	colortable_g += ((colorbase >>  5) & 0x1f) << 8;
-	colortable_b += ((colorbase >> 10) & 0x1f) << 8;
 
 	int x = extent.startx;
 	int dx = 1;
@@ -339,16 +291,7 @@ void model2_renderer::draw_scanline_tex(int32_t scanline, const extent_t &extent
 		// Virtua Striker sets up a luma of 0x40 for national flags on bleachers, fix here.
 		luma = std::min(luma, u8(0x3f));
 
-		// we have the 6 bits of luma information along with 5 bits per color component
-		// now build and index into the master color lookup table and extract the raw RGB values
-		u32 tr = colortable_r[luma] & 0xff;
-		u32 tg = colortable_g[luma] & 0xff;
-		u32 tb = colortable_b[luma] & 0xff;
-		tr = gamma_value[tr];
-		tg = gamma_value[tg];
-		tb = gamma_value[tb];
-
-		p[x] = rgb_t(tr, tg, tb);
+		p[x] = object.colormap[luma];
 		fill[x] = 0xff;
 	}
 }

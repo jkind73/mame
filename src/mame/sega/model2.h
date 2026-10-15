@@ -690,6 +690,7 @@ struct m2_poly_extra_data
 	u32      utexy;
 	s32      texlod;
 	u8       luma;
+	u32      colormap[64];
 };
 
 // 0x10000 = size of the poly_sorted_list array
@@ -735,9 +736,9 @@ private:
 	int16_t m_xoffs, m_yoffs;
 
 	template <bool Translucent>
-	u32 fetch_bilinear_texel(const m2_poly_extra_data& object, s32 miplevel, s32 fu, s32 fv);
+	inline u32 ATTR_FORCE_INLINE fetch_bilinear_texel(const m2_poly_extra_data& object, s32 miplevel, s32 fu, s32 fv);
 
-	static u16 get_texel(u32 base_x, u32 base_y, int x, int y, const u32 *sheet);
+	static inline u16 ATTR_FORCE_INLINE get_texel(u32 base_x, u32 base_y, int x, int y, const u32 *sheet);
 };
 
 typedef model2_renderer::vertex_t poly_vertex;
