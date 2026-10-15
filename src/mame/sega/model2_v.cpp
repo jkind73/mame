@@ -27,10 +27,10 @@
 
 
 
-    Geometry Engine Notes and Known Bugs:
+    Geometry Engine Notes:
 
-    - Top Skater seem to use a slightly different geometry code that has a secondary transformation matrix. Once we implement
-    the real DSP code upload and emulation for 2B and 2C games, this should not be an issue.
+    - Top Skater uses a secondary transformation matrix (dual matrix palette mode) which is handled
+      via m_geotype == GEO_TOP_SKATER.
 
 
 
