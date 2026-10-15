@@ -870,6 +870,13 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 		poly_data = (float *)m_poly_rom.target();
 
 	poly_adr &= 0x7fffff;
+
+	// VF's name entry: the wheel's letters N-Z, the symbols and BACK take their colours from the
+	// block at 94000, END from 94040, which the game fills with FFFF at boot and never sets: MAME
+	// previously drew them black. Cabinet captures show them blue and END red, front and back alike;
+	// the palette's pens 0x372 (blue) and 0x373 (red) are those colours and nothing else uses them.
+	// Only these two blocks, only with FFFF in them, and only the wheel's letter models (380a36-381c2d).
+	const int ne_pen = (poly_adr >= 0x380a36 && poly_adr <= 0x381c2d) ? (tex_adr == 0x94000 ? 0x372 : tex_adr == 0x94040 ? 0x373 : 0) : 0;
 #if 0
 	dump = poly_adr == 0x944ea;
 	dump = 0;
@@ -1058,6 +1065,8 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 			// flat UI element (radar blips, HUD text) drawn unlit, and mode 01
 			// additionally blinks by rotating the BGR channels on alternate frames.
 			uint16_t tex_data = m_tgp_ram[tex_adr - 0x40000];
+			if (ne_pen && tex_data == 0xffff)
+				tex_data = uint16_t(0xfc00 | ne_pen);
 			int color = m_paletteram16[0x1000 | (tex_data & 0x3ff)];
 			int r = (color >> 0x0) & 0x1f;
 			int g = (color >> 0x5) & 0x1f;
@@ -1221,13 +1230,16 @@ int model1_state::push_direct(int list_offset) {
 		cquad.z = z;
 		{
 			int lumval = ((float)(lum >> 24)) * 2.0f;
-			int color = m_paletteram16[0x1000 | (m_tgp_ram[tex_adr - 0x40000] & 0x3ff)];
+			uint16_t tex_data = m_tgp_ram[tex_adr - 0x40000];
+			int color = m_paletteram16[0x1000 | (tex_data & 0x3ff)];
 			int r = (color >> 0x0) & 0x1f;
 			int g = (color >> 0x5) & 0x1f;
 			int b = (color >> 0xA) & 0x1f;
 			lumval >>= 2; //there must be a luma translation table somewhere
 			if (lumval > 0x3f) lumval = 0x3f;
 			else if (lumval < 0) lumval = 0;
+			if (tex_data & 0x400)
+				lumval = 0x3f;
 			r = (m_color_xlat[(r << 8) | lumval | 0x0] >> 3) & 0x1f;
 			g = (m_color_xlat[(g << 8) | lumval | 0x2000] >> 3) & 0x1f;
 			b = (m_color_xlat[(b << 8) | lumval | 0x4000] >> 3) & 0x1f;
@@ -1335,18 +1347,40 @@ int model1_state::draw_direct(bitmap_rgb32 &bitmap, const rectangle &cliprect, i
 }
 
 
+void model1_state::display_list0_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	COMBINE_DATA(&m_display_list0[offset]);
+	m_list_written[0] = m_screen->frame_number();
+}
+
+void model1_state::display_list1_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	COMBINE_DATA(&m_display_list1[offset]);
+	m_list_written[1] = m_screen->frame_number();
+}
+
 void model1_state::set_current_render_list()
 {
 	if(!(m_listctl[0] & 4))
 		m_listctl[0] = (m_listctl[0] & ~0x40) | (m_listctl[0] & 8 ? 0x40 : 0);
-	m_display_list_current = m_listctl[0] & 0x40 ? m_display_list1 : m_display_list0;
+	int cur = (m_listctl[0] & 0x40) ? 1 : 0;
+	const uint64_t frame = m_screen->frame_number();
+	auto age = [&](int b) { return m_list_written[b] == ~0ULL ? ~0ULL : frame - m_list_written[b]; };
+	if (age(cur) > 8 && age(cur ^ 1) <= 2)
+		cur ^= 1;
+	m_display_list_current = cur ? m_display_list1 : m_display_list0;
 }
 
 int model1_state::get_list_number()
 {
 	if(!(m_listctl[0] & 4))
 		m_listctl[0] = (m_listctl[0] & ~0x40) | (m_listctl[0] & 8 ? 0x40 : 0);
-	return m_listctl[0] & 0x40 ? 0 : 1;
+	int cur = (m_listctl[0] & 0x40) ? 1 : 0;
+	const uint64_t frame = m_screen->frame_number();
+	auto age = [&](int b) { return m_list_written[b] == ~0ULL ? ~0ULL : frame - m_list_written[b]; };
+	if (age(cur) > 8 && age(cur ^ 1) <= 2)
+		cur ^= 1;
+	return cur ? 1 : 0;
 }
 
 void model1_state::end_frame()
@@ -1746,9 +1780,12 @@ void model1_state::video_start()
 	m_clipfn[3].m_isclipped = &model1_state::fclip_isc_right;
 	m_clipfn[3].m_clip = &model1_state::fclip_clip_right;
 
+	m_list_written[0] = m_list_written[1] = ~0ULL;
+
 	save_pointer(NAME(m_tgp_ram), 0x100000-0x40000);
 	save_pointer(NAME(m_poly_ram), 0x40000);
 	save_item(NAME(m_listctl));
+	save_item(NAME(m_list_written));
 }
 
 // Snapshot the HUD after the cat1 tilemaps are composited: a pixel is a bright

@@ -147,6 +147,8 @@ protected:
 	virtual void video_start() override ATTR_COLD;
 	u16 model1_listctl_r(offs_t offset);
 	void model1_listctl_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	void display_list0_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	void display_list1_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	void model1_paletteram_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 
 	uint32_t screen_update_model1(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
@@ -347,6 +349,7 @@ protected:
 
 	// run-time rendering
 	uint16_t* m_display_list_current = nullptr;
+	uint64_t  m_list_written[2]{ ~0ULL, ~0ULL };
 
 	// 0x41 objects (e.g. the Star Wars Arcade radar blips) draw on top of the
 	// cat1 HUD tilemaps, but only through "background" HUD pixels (transparent or

@@ -991,8 +991,8 @@ void model1_state::model1_mem(address_map &map)
 	/* RAMA */ map(0x400000, 0x40ffff).ram().share("nvram");
 	/* RAMB */ map(0x500000, 0x53ffff).ram();
 
-	/* TGP  */ map(0x600000, 0x60ffff).ram().share(m_display_list0);
-	/*      */ map(0x610000, 0x61ffff).ram().share(m_display_list1);
+	/* TGP  */ map(0x600000, 0x60ffff).ram().w(FUNC(model1_state::display_list0_w)).share(m_display_list0);
+	/*      */ map(0x610000, 0x61ffff).ram().w(FUNC(model1_state::display_list1_w)).share(m_display_list1);
 	/*      */ map(0x680000, 0x680003).rw(FUNC(model1_state::model1_listctl_r), FUNC(model1_state::model1_listctl_w));
 
 	/* SCR  */ map(0x700000, 0x70ffff).rw(m_tiles, FUNC(segas24_tile_device::tile_r), FUNC(segas24_tile_device::tile_w));
@@ -1304,7 +1304,7 @@ ROM_START( vf )
 	ROM_LOAD16_BYTE( "mpr-16091.13", 0x1300001, 0x80000, CRC(53115448) SHA1(af798d5b1fcb720d7288a5ac48839d9ace16a2f2) )
 
 	ROM_REGION32_LE( 0x2000, "tgp_copro", 0)
-	ROM_LOAD( "315-5724.bin", 0, 0x2000, CRC(4b4f330e) SHA1(8809d93d47593f808faca55161999677ac7a3eb0) BAD_DUMP )
+	ROM_LOAD( "315-5724.bin", 0, 0x2000, CRC(4b4f330e) SHA1(8809d93d47593f808faca55161999677ac7a3eb0) )
 
 	ROM_REGION( 0xc0000, M1AUDIO_CPU_REGION, ROMREGION_BE|ROMREGION_16BIT )  /* 68K code */
 	ROM_LOAD16_WORD_SWAP( "epr-16120.7", 0x00000, 0x20000, CRC(2bff8378) SHA1(854b08ab983e4e98cb666f2f44de9a6829b1eb52) )
@@ -1997,7 +1997,7 @@ void netmerc_state::netmerc(machine_config &config)
 //**************************************************************************
 
 //    YEAR  NAME        PARENT   MACHINE     INPUT       CLASS          INIT        ROTATION  COMPANY  FULLNAME                    FLAGS
-GAME( 1993, vf,         0,       vf,         vf,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Fighter",           MACHINE_NOT_WORKING )
+GAME( 1993, vf,         0,       vf,         vf,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Fighter",           0 )
 GAMEL(1992, vr,         0,       vr,         vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Racing",            0, layout_vr )
 GAME( 1993, vformula,   vr,      vformula,   vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Formula",           MACHINE_IMPERFECT_GRAPHICS )
 GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_CONTROLS )
