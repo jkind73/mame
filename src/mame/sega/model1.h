@@ -47,6 +47,7 @@ public:
 		, m_display_list0(*this, "display_list0")
 		, m_display_list1(*this, "display_list1")
 		, m_color_xlat(*this, "color_xlat")
+		, m_lighting_table(*this, "other_other_data")
 		, m_paletteram16(*this, "paletteram")
 		, m_nvram(*this, "nvram")
 		, m_palette(*this, "palette")
@@ -249,6 +250,7 @@ protected:
 	required_shared_ptr<uint16_t> m_display_list0;
 	required_shared_ptr<uint16_t> m_display_list1;
 	required_shared_ptr<uint16_t> m_color_xlat;
+	optional_region_ptr<uint16_t> m_lighting_table;
 
 	// TGP FIFO
 	void    fifoout_push(uint32_t data);
@@ -304,10 +306,12 @@ protected:
 	void    cross_product(point_t* o, const point_t* p, const point_t* q) const;
 	float   view_determinant(const point_t *p1, const point_t *p2, const point_t *p3) const;
 
+	static bool fclip_isc_near(view_t*, point_t*);
 	static bool fclip_isc_bottom(view_t*, point_t*);
 	static bool fclip_isc_top(view_t*, point_t*);
 	static bool fclip_isc_left(view_t*, point_t*);
 	static bool fclip_isc_right(view_t*, point_t*);
+	static void fclip_clip_near(view_t*, point_t*, point_t*, point_t*);
 	static void fclip_clip_bottom(view_t*, point_t*, point_t*, point_t*);
 	static void fclip_clip_top(view_t*, point_t*, point_t*, point_t*);
 	static void fclip_clip_left(view_t*, point_t*, point_t*, point_t*);
@@ -345,7 +349,7 @@ protected:
 	int     get_list_number();
 	void    end_frame();
 
-	clipper_t m_clipfn[4];
+	clipper_t m_clipfn[5];
 
 	// run-time rendering
 	uint16_t* m_display_list_current = nullptr;

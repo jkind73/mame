@@ -156,8 +156,8 @@ flowchart LR
 - [x] `315-5724.bin` verified opcode-by-opcode; bit-flips patched or validated; `BAD_DUMP` removed
 - [x] Virtua Fighter name-entry palette, skybox, and camera-cut double buffering fixed
 - [x] Virtua Fighter promoted: `MACHINE_NOT_WORKING` removed from `vf`
-- [ ] Geometrizer microcode disassembled (`315-5571`/`5572`); lighting tables verified from `opr14748.bin`
-- [ ] Star Wars ship dropouts eliminated; `MACHINE_IMPERFECT_GRAPHICS` removed from `swa`
+- [x] Geometrizer microcode disassembled (`315-5571`/`5572`); lighting tables verified from `opr14748.bin`
+- [x] Star Wars ship dropouts eliminated; `MACHINE_IMPERFECT_GRAPHICS` removed from `swa`
 - [ ] Star Wars analog stick/throttle calibrated in Service Mode; `MACHINE_IMPERFECT_CONTROLS` removed
 - [ ] Polhemus 3SPACE 80386SX firmware reverse-engineered; 6-DOF look controls mapped
 - [ ] Sega NetMerc promoted: `MACHINE_NOT_WORKING` removed from `netmerc`
