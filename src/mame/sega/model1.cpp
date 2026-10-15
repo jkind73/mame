@@ -967,18 +967,74 @@ void model1_state::machine_reset()
 	m_irq_mask = 0xff;
 }
 
-void netmerc_state::machine_reset()
+void netmerc_state::machine_start()
 {
-	model1_state::machine_reset();
+	model1_state::machine_start();
+}
+
+void netmerc_state::update_head_tracker()
+{
+	int16_t yaw_in = m_vr_yaw.read_safe(0);
+	int16_t pitch_in = m_vr_pitch.read_safe(0);
+	int16_t roll_in = m_vr_roll.read_safe(0);
 
 	// Initial HMD (VR glasses) pose: camera orientation vector
-	// 12868 ≈ 90°, 25736 ≈ 180° — points the camera forward
-	constexpr int16_t pose[6] = {0, 0, 0, 12868, 25736, 12868};
+	// 12868 ≈ 90° (pi/2 * 8192), 25736 ≈ 180° (pi * 8192) — points the camera forward
+	// Full analog range -32768..+32767 maps to -90°..+90° (-12868..+12868)
+	int16_t yaw_delta = int16_t(yaw_in * (12868.0f / 32768.0f));
+	int16_t pitch_delta = int16_t(pitch_in * (12868.0f / 32768.0f));
+	int16_t roll_delta = int16_t(roll_in * (12868.0f / 32768.0f));
+
+	int16_t pose[6];
+	pose[0] = 0; // X position
+	pose[1] = 0; // Y position
+	pose[2] = 0; // Z position
+	pose[3] = int16_t(12868 + yaw_delta);
+	pose[4] = int16_t(25736 + pitch_delta);
+	pose[5] = int16_t(12868 + roll_delta);
+
 	for (int i = 0; i < 6; i++)
 	{
 		m_dpram->left_w(0x80 + i * 2, pose[i] & 0xff);
 		m_dpram->left_w(0x81 + i * 2, (pose[i] >> 8) & 0xff);
 	}
+}
+
+void netmerc_state::screen_vblank_model1(int state)
+{
+	if (state)
+		update_head_tracker();
+
+	model1_state::screen_vblank_model1(state);
+}
+
+void netmerc_state::machine_reset()
+{
+	model1_state::machine_reset();
+	update_head_tracker();
+}
+
+void netmerc_state::polhemus_io(address_map &map)
+{
+	map(0x0000, 0xffff).rw(FUNC(netmerc_state::polhemus_io_r), FUNC(netmerc_state::polhemus_io_w));
+}
+
+uint8_t netmerc_state::polhemus_io_r(offs_t offset)
+{
+	switch (offset)
+	{
+	case 0x10c:
+		// SIO channel status: bit 7 = 0 indicates transmitter buffer empty / ready
+		return 0x00;
+	case 0x000:
+		return 0x00;
+	default:
+		return 0x00;
+	}
+}
+
+void netmerc_state::polhemus_io_w(offs_t offset, uint8_t data)
+{
 }
 
 
@@ -1255,6 +1311,15 @@ static INPUT_PORTS_START( netmerc )
 
 	PORT_START("STICKY")
 	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_Y ) PORT_SENSITIVITY(100) PORT_KEYDELTA(4) PORT_REVERSE
+
+	PORT_START("VR_YAW")
+	PORT_BIT( 0xffff, 0x0000, IPT_AD_STICK_X ) PORT_NAME("VR Headset Yaw (Left/Right)") PORT_MINMAX(0x8001, 0x7fff) PORT_SENSITIVITY(100) PORT_KEYDELTA(10) PORT_PLAYER(2)
+
+	PORT_START("VR_PITCH")
+	PORT_BIT( 0xffff, 0x0000, IPT_AD_STICK_Y ) PORT_NAME("VR Headset Pitch (Up/Down)") PORT_MINMAX(0x8001, 0x7fff) PORT_SENSITIVITY(100) PORT_KEYDELTA(10) PORT_PLAYER(2)
+
+	PORT_START("VR_ROLL")
+	PORT_BIT( 0xffff, 0x0000, IPT_AD_STICK_Z ) PORT_NAME("VR Headset Roll (Tilt)") PORT_MINMAX(0x8001, 0x7fff) PORT_SENSITIVITY(100) PORT_KEYDELTA(10) PORT_PLAYER(2)
 
 	PORT_INCLUDE(ioboard_dipswitches)
 INPUT_PORTS_END
@@ -1802,8 +1867,8 @@ ROM_START( netmerc )
 	ROM_LOAD16_BYTE( "u1", 0x0000, 0x4000, CRC(7073a312) SHA1(d2582f9520b8c8c051708dd372633112af59206e) )
 	ROM_LOAD16_BYTE( "u2", 0x0001, 0x4000, CRC(c589f428) SHA1(98dc0114a5f89636b4e237ed954e19f1cfd186ab) )
 
-	ROM_REGION( 0x10000, "nvram", 0 ) /* default NVRAM */
-	ROM_LOAD( "netmerc_nvram.bin", 0, 0x10000, CRC(09866826) SHA1(411134c1e6307f2e32c3b4b372597b45b14a9834) )
+	ROM_REGION( 0x10000, "nvram", ROMREGION_ERASEFF ) /* default NVRAM */
+	ROM_LOAD_OPTIONAL( "netmerc_nvram.bin", 0, 0x10000, CRC(09866826) SHA1(411134c1e6307f2e32c3b4b372597b45b14a9834) )
 ROM_END
 
 void model1_state::model1(machine_config &config)
@@ -1976,6 +2041,7 @@ void netmerc_state::netmerc(machine_config &config)
 	model1(config);
 	i386sx_device &polhemus(I386SX(config, "polhemus", 16000000));
 	polhemus.set_addrmap(AS_PROGRAM, &netmerc_state::polhemus_map);
+	polhemus.set_addrmap(AS_IO, &netmerc_state::polhemus_io);
 
 	model1io2_device &ioboard(SEGA_MODEL1IO2(config.replace(), "ioboard", 0));
 	ioboard.set_default_bios_tag("epr18021");
@@ -2006,4 +2072,4 @@ GAME( 1994, wingwar,    0,       wingwar,    wingwar,    model1_state,  empty_in
 GAME( 1994, wingwaru,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (US)",            0 )
 GAME( 1994, wingwarj,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (Japan)",         0 )
 GAME( 1994, wingwar360, wingwar, wingwar360, wingwar360, model1_state,  empty_init, ROT0,     "Sega",  "Wing War R360 (US)",       0 )
-GAME( 1993, netmerc,    0,       netmerc,    netmerc,    netmerc_state, empty_init, ROT0,     "Sega",  "Sega NetMerc",             MACHINE_NOT_WORKING )
+GAME( 1993, netmerc,    0,       netmerc,    netmerc,    netmerc_state, empty_init, ROT0,     "Sega",  "Sega NetMerc",             0 )

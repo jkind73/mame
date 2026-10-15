@@ -153,7 +153,7 @@ protected:
 	void model1_paletteram_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 
 	uint32_t screen_update_model1(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	void screen_vblank_model1(int state);
+	virtual void screen_vblank_model1(int state);
 
 	struct lightparam_t
 	{
@@ -389,16 +389,29 @@ class netmerc_state : public model1_state
 public:
 	netmerc_state(const machine_config &mconfig, device_type type, const char *tag)
 		: model1_state(mconfig, type, tag)
+		, m_vr_yaw(*this, "VR_YAW")
+		, m_vr_pitch(*this, "VR_PITCH")
+		, m_vr_roll(*this, "VR_ROLL")
 	{
 	}
 
 	void netmerc(machine_config &config) ATTR_COLD;
 
 protected:
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
+	virtual void screen_vblank_model1(int state) override;
 
 private:
+	void update_head_tracker();
 	void netmerc_outputs_w(uint8_t data);
+	void polhemus_io(address_map &map) ATTR_COLD;
+	uint8_t polhemus_io_r(offs_t offset);
+	void polhemus_io_w(offs_t offset, uint8_t data);
+
+	optional_ioport m_vr_yaw;
+	optional_ioport m_vr_pitch;
+	optional_ioport m_vr_roll;
 };
 
 #endif // MAME_SEGA_MODEL1_H

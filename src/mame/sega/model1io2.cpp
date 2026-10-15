@@ -343,12 +343,12 @@ void model1io2_device::io_pf_w(uint8_t data)
 
 void model1io2_device::io_pg_w(uint8_t data)
 {
-	// 7-------  watchdog
+	// 7-------  watchdog (Wing War / 837-10859)
 	// -6------  control panel switch
 	// --5-----  comm_err led
-	// ---43210  test points (0 = interrupt, 1 = sio a)
+	// ---43210  test points (0 = interrupt/watchdog tick on NetMerc / 837-11659, 1 = sio a)
 
-	m_watchdog->write_line_ck(BIT(data, 7));
+	m_watchdog->write_line_ck(BIT(data, 7) || BIT(data, 0));
 	m_secondary_controls = BIT(data, 6);
 	m_led_comm_err = BIT(~data, 5);
 }

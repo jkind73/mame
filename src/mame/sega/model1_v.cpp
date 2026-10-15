@@ -1517,6 +1517,8 @@ void model1_state::tgp_render(bitmap_rgb32 &bitmap, const rectangle &cliprect, r
 
 		int list_offset = 0;
 		for (;;) {
+			if (list_offset >= 0x8000)
+				goto end;
 			int type = readi(list_offset + 0);
 
 			switch (type)
@@ -1687,6 +1689,8 @@ void model1_state::tgp_scan()
 		int list_offset = 0;
 		for (;;)
 		{
+			if (list_offset >= 0x8000)
+				goto end;
 			int type = readi(list_offset + 0);
 			switch (type) {
 				case 0:
