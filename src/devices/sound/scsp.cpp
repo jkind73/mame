@@ -334,20 +334,6 @@ void scsp_device::sound_stream_update(sound_stream &stream)
 {
 	DoMasterSamples(stream);
 
-	// MSLC     |  CA   |SGC|EG
-	// f e d c b a 9 8 7 6 5 4 3 2 1 0
-
-	// latch the new MSLC, updates every 44.1 kHz
-	// cfr. vstriker (GK reflecting ball with heavy shots) and srallyc (PowerGames BGM bleeps at end)
-	u8 MSLC = m_latched_MSLC;
-	SCSP_SLOT *slot = m_Slots + MSLC;
-	u32 SGC = (slot->EG.state) & 3;
-	u32 CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
-	u32 EG = (0x1f - (slot->EG.volume >> (EG_SHIFT + 5))) & 0x1f;
-	// NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
-	// saturn:toughtrk will hang on Human logo otherwise
-	m_latched_MSLC_data =  /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
-
 	// TODO: 1 sample (1Fs) 44.1 kHz irq here.
 }
 
@@ -595,8 +581,6 @@ void scsp_device::StartSlot(SCSP_SLOT *slot)
 	slot->Backwards = 0;
 
 	Compute_LFO(slot);
-
-//  printf("StartSlot[%p]: SA %x PCM8B %x LPCTL %x ALFOS %x STWINH %x TL %x EFSDL %x\n", slot, SA(slot), PCM8B(slot), LPCTL(slot), ALFOS(slot), STWINH(slot), TL(slot), EFSDL(slot));
 }
 
 void scsp_device::StopSlot(SCSP_SLOT *slot,int keyoff)
@@ -1402,6 +1386,20 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 			stream.put_int_clamp(0, s, smpl >> 2, 32768);
 			stream.put_int_clamp(1, s, smpr >> 2, 32768);
 		}
+
+		// MSLC     |  CA   |SGC|EG
+		// f e d c b a 9 8 7 6 5 4 3 2 1 0
+
+		// latch the new MSLC, updates every 44.1 kHz
+		// cfr. vstriker (GK reflecting ball with heavy shots) and srallyc (PowerGames BGM bleeps at end)
+		u8 MSLC = m_latched_MSLC;
+		SCSP_SLOT *slot = m_Slots + MSLC;
+		u32 SGC = (slot->EG.state) & 3;
+		u32 CA = (slot->cur_addr >> (SHIFT + 12)) & 0xf;
+		u32 EG = (0x1f - (slot->EG.volume >> (EG_SHIFT + 5))) & 0x1f;
+		// NOTE: according to the manual MSLC is write only, CA, SGC and EG read only.
+		// saturn:toughtrk will hang on Human logo otherwise
+		m_latched_MSLC_data = /*(MSLC << 11) |*/ (CA << 7) | (SGC << 5) | EG;
 	}
 }
 
