@@ -1811,9 +1811,10 @@ void model1_state::video_start()
 	m_list_written[0] = m_list_written[1] = ~0ULL;
 
 	save_pointer(NAME(m_tgp_ram), 0x100000-0x40000);
-	save_pointer(NAME(m_poly_ram), 0x40000);
+	save_pointer(NAME(m_poly_ram), 0x400000);
 	save_item(NAME(m_listctl));
 	save_item(NAME(m_list_written));
+	save_item(NAME(m_render_done));
 }
 
 // Snapshot the HUD after the cat1 tilemaps are composited: a pixel is a bright

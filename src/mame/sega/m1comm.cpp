@@ -171,6 +171,21 @@ m1comm_device::m1comm_device(const machine_config &mconfig, const char *tag, dev
 
 void m1comm_device::device_start()
 {
+	save_item(NAME(m_shared));
+	save_item(NAME(m_syn));
+	save_item(NAME(m_zfg));
+	save_item(NAME(m_cn));
+	save_item(NAME(m_fg));
+#ifdef M1COMM_SIMULATION
+	save_item(NAME(m_buffer0));
+	save_item(NAME(m_buffer1));
+	save_item(NAME(m_framesync));
+	save_item(NAME(m_linkenable));
+	save_item(NAME(m_linktimer));
+	save_item(NAME(m_linkalive));
+	save_item(NAME(m_linkid));
+	save_item(NAME(m_linkcount));
+#endif
 }
 
 //-------------------------------------------------

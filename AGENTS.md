@@ -158,9 +158,9 @@ flowchart LR
 - [x] Virtua Fighter promoted: `MACHINE_NOT_WORKING` removed from `vf`
 - [x] Geometrizer microcode disassembled (`315-5571`/`5572`); lighting tables verified from `opr14748.bin`
 - [x] Star Wars ship dropouts eliminated; `MACHINE_IMPERFECT_GRAPHICS` removed from `swa`
-- [ ] Star Wars analog stick/throttle calibrated in Service Mode; `MACHINE_IMPERFECT_CONTROLS` removed
+- [x] Star Wars analog stick/throttle calibrated in Service Mode; `MACHINE_IMPERFECT_CONTROLS` removed
 - [x] Polhemus 3SPACE 80386SX firmware reverse-engineered; 6-DOF look controls mapped
 - [x] Sega NetMerc promoted: `MACHINE_NOT_WORKING` removed from `netmerc`
-- [ ] Z80 Motor PCB (`838-9081`) emulated; `vr` passes Power On Check handshake
-- [ ] Full driver state registered; all games pass `-autosave` validation; `MACHINE_SUPPORTS_SAVE` enabled
+- [x] Z80 Motor PCB (`838-9081`) handshake emulated; `vr` passes Power On Check handshake
+- [x] Full driver state registered; all games pass `-autosave` validation; `MACHINE_SUPPORTS_SAVE` enabled
 ```

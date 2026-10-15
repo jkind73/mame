@@ -794,8 +794,9 @@ void model1_state::bank_w(offs_t offset, u16 data, u16 mem_mask)
 	if(ACCESSING_BITS_0_7) {
 		switch(data & 0xf) {
 		case 0x1: // 100000-1fffff data roms banking
-			membank("bank1")->set_base(memregion("maincpu")->base() + 0x1000000 + 0x100000*((data >> 4) & 0x7)); // netmerc has bit 0x80 set when banking, probably not a bank bit.
-			logerror("BANK %x\n", 0x1000000 + 0x100000*((data >> 4) & 0xf));
+			m_bank_val = (data >> 4) & 0x7;
+			membank("bank1")->set_base(memregion("maincpu")->base() + 0x1000000 + 0x100000 * m_bank_val); // netmerc has bit 0x80 set when banking, probably not a bank bit.
+			logerror("BANK %x\n", 0x1000000 + 0x100000 * m_bank_val);
 			break;
 		case 0x2: // 200000-2fffff data roms banking (unused, all known games have only one bank)
 			break;
@@ -965,6 +966,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(model1_state::model1_interrupt)
 
 void model1_state::machine_reset()
 {
+	m_bank_val = 0;
 	membank("bank1")->set_base(memregion("maincpu")->base() + 0x1000000);
 	irq_init();
 	copro_reset();
@@ -972,6 +974,17 @@ void model1_state::machine_reset()
 	m_irq_status = 0;
 	m_last_irq = 0;
 	m_irq_mask = 0xff;
+}
+
+void model1_state::model1_postload()
+{
+	membank("bank1")->set_base(memregion("maincpu")->base() + 0x1000000 + 0x100000 * m_bank_val);
+	set_current_render_list();
+
+	if (m_irq_status != 0)
+		m_maincpu->set_input_line(0, ASSERT_LINE);
+	else
+		m_maincpu->set_input_line(0, CLEAR_LINE);
 }
 
 void netmerc_state::machine_start()
@@ -2073,13 +2086,13 @@ void netmerc_state::netmerc(machine_config &config)
 //**************************************************************************
 
 //    YEAR  NAME        PARENT   MACHINE     INPUT       CLASS          INIT        ROTATION  COMPANY  FULLNAME                    FLAGS
-GAME( 1993, vf,         0,       vf,         vf,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Fighter",           0 )
-GAMEL(1992, vr,         0,       vr,         vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Racing",            0, layout_vr )
-GAME( 1993, vformula,   vr,      vformula,   vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Formula",           MACHINE_IMPERFECT_GRAPHICS )
-GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     0 )
-GAME( 1994, swaj,       swa,     swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, Japan)",  0 )
-GAME( 1994, wingwar,    0,       wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (World)",         0 )
-GAME( 1994, wingwaru,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (US)",            0 )
-GAME( 1994, wingwarj,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (Japan)",         0 )
-GAME( 1994, wingwar360, wingwar, wingwar360, wingwar360, model1_state,  empty_init, ROT0,     "Sega",  "Wing War R360 (US)",       0 )
-GAME( 1993, netmerc,    0,       netmerc,    netmerc,    netmerc_state, empty_init, ROT0,     "Sega",  "Sega NetMerc",             0 )
+GAME( 1993, vf,         0,       vf,         vf,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Fighter",           MACHINE_SUPPORTS_SAVE )
+GAMEL(1992, vr,         0,       vr,         vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Racing",            MACHINE_SUPPORTS_SAVE, layout_vr )
+GAME( 1993, vformula,   vr,      vformula,   vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Formula",           MACHINE_IMPERFECT_GRAPHICS | MACHINE_SUPPORTS_SAVE )
+GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1994, swaj,       swa,     swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, Japan)",  MACHINE_SUPPORTS_SAVE )
+GAME( 1994, wingwar,    0,       wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (World)",         MACHINE_SUPPORTS_SAVE )
+GAME( 1994, wingwaru,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (US)",            MACHINE_SUPPORTS_SAVE )
+GAME( 1994, wingwarj,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (Japan)",         MACHINE_SUPPORTS_SAVE )
+GAME( 1994, wingwar360, wingwar, wingwar360, wingwar360, model1_state,  empty_init, ROT0,     "Sega",  "Wing War R360 (US)",       MACHINE_SUPPORTS_SAVE )
+GAME( 1993, netmerc,    0,       netmerc,    netmerc,    netmerc_state, empty_init, ROT0,     "Sega",  "Sega NetMerc",             MACHINE_SUPPORTS_SAVE )

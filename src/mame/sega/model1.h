@@ -102,6 +102,7 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	void bank_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	void model1_postload();
 
 	TIMER_DEVICE_CALLBACK_MEMBER(model1_interrupt);
 	u8 irq_callback();
@@ -231,6 +232,7 @@ protected:
 	uint8_t m_irq_status = 0;
 	uint8_t m_irq_mask = 0xff;
 	int m_last_irq = 0;
+	uint8_t m_bank_val = 0;
 
 	// Devices
 	required_device<v60_device> m_maincpu;          // V60

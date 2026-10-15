@@ -19,6 +19,9 @@ public:
 	void write(offs_t offset, uint8_t data);
 	uint8_t read();
 
+protected:
+	virtual void device_start() override ATTR_COLD;
+
 private:
 	devcb_write8 m_dsp_cd_cb;
 

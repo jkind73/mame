@@ -115,6 +115,17 @@ void segam1audio_device::device_start()
 {
 	m_mpcmbank1->configure_entries(0, 4, m_multipcm1_region->base(), 0x100000);
 	m_mpcmbank2->configure_entries(0, 4, m_multipcm2_region->base(), 0x100000);
+
+	save_item(NAME(m_bank1));
+	save_item(NAME(m_bank2));
+
+	machine().save().register_postload(save_prepost_delegate(FUNC(segam1audio_device::postload), this));
+}
+
+void segam1audio_device::postload()
+{
+	m_mpcmbank1->set_entry(m_bank1);
+	m_mpcmbank2->set_entry(m_bank2);
 }
 
 //-------------------------------------------------
@@ -124,16 +135,22 @@ void segam1audio_device::device_start()
 void segam1audio_device::device_reset()
 {
 	m_uart->write_cts(0);
+	m_bank1 = 0;
+	m_bank2 = 0;
+	m_mpcmbank1->set_entry(0);
+	m_mpcmbank2->set_entry(0);
 }
 
 void segam1audio_device::m1_snd_mpcm_bnk1_w(uint16_t data)
 {
-	m_mpcmbank1->set_entry(data & 3);
+	m_bank1 = data & 3;
+	m_mpcmbank1->set_entry(m_bank1);
 }
 
 void segam1audio_device::m1_snd_mpcm_bnk2_w(uint16_t data)
 {
-	m_mpcmbank2->set_entry(data & 3);
+	m_bank2 = data & 3;
+	m_mpcmbank2->set_entry(m_bank2);
 }
 
 void segam1audio_device::write_txd(int state)

@@ -213,3 +213,11 @@ multipcm_device::multipcm_device(const machine_config &mconfig, const char *tag,
 	m_address(0)
 {
 }
+
+void multipcm_device::device_start()
+{
+	gew_pcm_device::device_start();
+
+	save_item(NAME(m_cur_slot));
+	save_item(NAME(m_address));
+}

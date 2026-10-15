@@ -59,7 +59,11 @@ private:
 
 	devcb_write_line   m_rxd_handler;
 
+	uint8_t m_bank1 = 0;
+	uint8_t m_bank2 = 0;
+
 	void output_txd(int state);
+	void postload();
 };
 
 
