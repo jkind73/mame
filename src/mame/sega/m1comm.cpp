@@ -326,6 +326,19 @@ void m1comm_device::comm_tick()
 		bool isSlave = (m_shared[1] == 0x02);
 		bool isRelay = (m_shared[1] == 0x00);
 
+		if (isRelay)
+		{
+			// single cabinet (NO LINK) mode
+			m_linkalive = 0x01;
+			m_linkid = 0x01;
+			m_linkcount = 0x01;
+			m_zfg = 0x01;
+			m_shared[0] = 0x01;
+			m_shared[2] = m_linkid;
+			m_shared[3] = m_linkcount;
+			return;
+		}
+
 		if (m_linkalive == 0x02)
 		{
 			// link failed...
@@ -351,6 +364,20 @@ void m1comm_device::comm_tick()
 				osd_printf_verbose("M1COMM: connect to %s\n", m_remotehost);
 				uint64_t filesize; // unused
 				osd_file::open(m_remotehost, 0, m_line_tx, filesize);
+			}
+
+			if (!m_line_rx || !m_line_tx)
+			{
+				if (m_linktimer > 0x01)
+				{
+					m_linktimer--;
+				}
+				else
+				{
+					osd_printf_verbose("M1COMM: link failed - network sockets unavailable\n");
+					m_linkalive = 0x02;
+					m_shared[0] = 0xff;
+				}
 			}
 
 			// if both sockets are there check ring
@@ -449,6 +476,20 @@ void m1comm_device::comm_tick()
 					{
 						// decrease delay timer
 						m_linktimer--;
+					}
+				}
+
+				if (isSlave && (m_linkalive == 0x00))
+				{
+					if (m_linktimer > 0x01)
+					{
+						m_linktimer--;
+					}
+					else
+					{
+						osd_printf_verbose("M1COMM: slave timeout - no master detected\n");
+						m_linkalive = 0x02;
+						m_shared[0] = 0xff;
 					}
 				}
 			}

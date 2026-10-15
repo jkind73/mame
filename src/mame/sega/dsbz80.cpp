@@ -205,6 +205,7 @@ void dsbz80_device::mpeg_start_w(offs_t offset, uint8_t data)
 		case 2:
 			m_start &= 0xffff00;
 			m_start |= data;
+			m_start &= (m_mpeg_rom.bytes() - 1);
 
 			if (m_mp_state == 0)
 			{
@@ -242,6 +243,7 @@ void dsbz80_device::mpeg_end_w(offs_t offset, uint8_t data)
 		case 2:
 			m_end &= 0xffff00;
 			m_end |= data;
+			m_end &= (m_mpeg_rom.bytes() - 1);
 
 			if (m_mp_state == 0)
 			{

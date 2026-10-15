@@ -1540,7 +1540,7 @@ ROM_START( swa )
 	ROM_REGION( 0x20000, "dsbz80:mpegcpu", 0 ) /* Z80 DSB code */
 	ROM_LOAD( "epr-16471.2", 0x000000, 0x020000, CRC(f4ee84a4) SHA1(f12b214e6f195b0e5f49ba9f41d8e54bfcea9acc) )
 
-	ROM_REGION( 0x800000, "dsbz80:mpeg", 0 ) /* DSB MPEG data */
+	ROM_REGION( 0x400000, "dsbz80:mpeg", 0 ) /* DSB MPEG data */
 	ROM_LOAD( "mpr-16514.57", 0x000000, 0x200000, CRC(3175b0be) SHA1(63649d053c8c17ce1746d16d0cc8202be20c302f) )
 	ROM_LOAD( "mpr-16515.58", 0x200000, 0x200000, CRC(3114d748) SHA1(9ef090623cdd2a1d06b5d1bc4b9a07ab4eff5b76) )
 
@@ -1998,8 +1998,8 @@ void model1_state::swa(machine_config &config)
 	m_dsbz80->add_route(0, "mpeg", 1.0, 0);
 	m_dsbz80->add_route(1, "mpeg", 1.0, 1);
 
-	// Apparently m1audio has to filter out commands the DSB shouldn't see
-	m_m1audio->rxd_handler().append(m_dsbz80, FUNC(dsbz80_device::write_txd));
+	// 68000 sound board filters incoming V60 commands: SFX/FM locally, John Williams MPEG to DSBZ80
+	m_m1audio->txd_handler().set(m_dsbz80, FUNC(dsbz80_device::write_txd));
 }
 
 void model1_state::wingwar(machine_config &config)

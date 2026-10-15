@@ -28,6 +28,7 @@ public:
 
 	// configuration
 	auto rxd_handler() { return m_rxd_handler.bind(); }
+	auto txd_handler() { return m_rxd_handler.bind(); }
 
 	void m1_snd_mpcm_bnk1_w(uint16_t data);
 	void m1_snd_mpcm_bnk2_w(uint16_t data);
