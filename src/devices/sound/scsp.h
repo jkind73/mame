@@ -42,6 +42,9 @@ public:
 	// MIDI I/O access (used for comms on Model 2/3)
 	void midi_in(int state) { rx_w(state); }
 
+	// Per-slot gain scaling (256 == 1.0x unity); used by drivers to calibrate voice/effects balance
+	void set_slot_gains(const u16 gains[32]);
+
 protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
@@ -172,6 +175,9 @@ private:
 	s32 m_log_peak[2];   // SCSP_LOG: output peak of the last second
 	u32 m_log_count;
 	s32 m_log_exts_peak; // SCSP_LOG: peak of the external (CD audio) input of the last second
+
+	u16 m_slot_gain[32];
+	bool m_slot_gain_active = false;
 
 	SCSPDSP m_DSP;
 

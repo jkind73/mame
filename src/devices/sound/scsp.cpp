@@ -173,6 +173,8 @@ scsp_device::scsp_device(const machine_config &mconfig, const char *tag, device_
 	std::fill(std::begin(m_LPANTABLE), std::end(m_LPANTABLE), 0);
 	std::fill(std::begin(m_RPANTABLE), std::end(m_RPANTABLE), 0);
 	std::fill(std::begin(m_TimPris), std::end(m_TimPris), 0);
+	std::fill(std::begin(m_slot_gain), std::end(m_slot_gain), 256);
+	m_slot_gain_active = false;
 	m_eg_counter = 0;
 	m_lfsr = 1;
 	m_log_peak[0] = m_log_peak[1] = 0;
@@ -280,6 +282,8 @@ void scsp_device::device_start()
 
 	save_item(NAME(m_mcieb));
 	save_item(NAME(m_mcipd));
+	save_item(NAME(m_slot_gain));
+	save_item(NAME(m_slot_gain_active));
 
 	save_item(NAME(m_DSP.RBP));
 	save_item(NAME(m_DSP.RBL));
@@ -849,6 +853,19 @@ void scsp_device::init_state()
 	m_TimCnt[0] = 0xffff;
 	m_TimCnt[1] = 0xffff;
 	m_TimCnt[2] = 0xffff;
+}
+
+void scsp_device::set_slot_gains(const u16 gains[32])
+{
+	m_stream->update();
+	bool any = false;
+	for (int i = 0; i < 32; ++i)
+	{
+		m_slot_gain[i] = gains[i];
+		if (gains[i] != 256)
+			any = true;
+	}
+	m_slot_gain_active = any;
 }
 
 void scsp_device::UpdateSlotReg(int s,int r)
@@ -1440,6 +1457,9 @@ void scsp_device::DoMasterSamples(sound_stream &stream)
 				u16 Enc;
 
 				s32 sample = UpdateSlot(slot);
+
+				if (m_slot_gain_active && m_slot_gain[sl] != 256)
+					sample = (sample * m_slot_gain[sl]) >> 8;
 
 				// SDIR ("sound direct") sends the raw sample straight to the output,
 				// bypassing the envelope generator AND the TL attenuator (the EG/ALFO

@@ -207,6 +207,7 @@ void model2_state::machine_start()
 
 	save_item(NAME(m_driveio_comm_data));
 	save_item(NAME(m_driveio_status_data));
+	save_item(NAME(m_vf2_balance_enabled));
 
 	m_irq_delay_timer = timer_alloc(FUNC(model2_state::irq_mask_delayed_update), this);
 	m_irq_delay_timer->adjust(attotime::never);
@@ -2487,6 +2488,9 @@ void model2_state::screen_vblank(int state)
 {
 	if (!state)
 		return;
+
+	if (m_vf2_balance_enabled)
+		update_vf2_balance();
 
 	m_framenum = m_screen->frame_number();
 
@@ -7667,6 +7671,67 @@ void model2_state::init_powsledm()
 	ROM[0x1585d] = 0xfd; // inverted node ID
 }
 
+void model2a_state::init_vf2()
+{
+	m_vf2_balance_enabled = true;
+}
+
+void model2_state::update_vf2_balance()
+{
+	if (!m_soundram || !m_scsp)
+		return;
+
+	// In Virtua Fighter 2, the sound CPU driver maintains a 32-entry voice allocation
+	// table in sound RAM at 0x2800 (16 bytes per entry). Each entry stores the SCSP slot
+	// register offset at byte +0 (slot * 0x20), allocation active flags at byte +2,
+	// and the sound command index at byte +6:
+	//   0x100..0x13f: Combat sound effects (punches, kicks, blocks, hit impacts)
+	//   0x140..0x161: Match announcer voice
+	//   0x200..0x26f: Character speech & kiai shouts
+	//   otherwise:    Multi-track MIDI background music
+	// Because the music driver layers up to 16-20 polyphonic voices simultaneously into
+	// the SCSP accumulator while sound effects and character voices are single-channel,
+	// balance gains are applied per slot to ensure effects and dialogue remain audible.
+	constexpr u32 TABLE_BASE = 0x2800 / 2;
+	constexpr u16 SFX_LO = 0x100, SFX_HI = 0x13f;
+	constexpr u16 ANN_LO = 0x140, ANN_HI = 0x161;
+	constexpr u16 VOICE_LO = 0x200, VOICE_HI = 0x26f;
+
+	constexpr u16 MUSIC_GAIN     = 42;   // 16.5% (-15.7 dB)
+	constexpr u16 SFX_GAIN       = 256;  // 100% (unity)
+	constexpr u16 ANNOUNCER_GAIN = 333;  // 130% (+2.3 dB)
+	constexpr u16 VOICE_GAIN     = 410;  // 160% (+4.1 dB)
+
+	u16 gains[32];
+	std::fill(std::begin(gains), std::end(gains), MUSIC_GAIN);
+
+	for (int e = 0; e < 32; ++e)
+	{
+		const u32 base = TABLE_BASE + e * 8;
+		if (base + 4 >= 0x80000 / 2)
+			break;
+
+		if (m_soundram[base + 1] == 0)
+			continue;
+
+		const u32 slot = m_soundram[base + 0] / 0x20;
+		if (slot >= 32)
+			continue;
+
+		const u16 snd = m_soundram[base + 3];
+		if (snd >= ANN_LO && snd <= ANN_HI)
+			gains[slot] = ANNOUNCER_GAIN;
+		else if (snd >= SFX_LO && snd <= SFX_HI)
+			gains[slot] = SFX_GAIN;
+		else if (snd >= VOICE_LO && snd <= VOICE_HI)
+			gains[slot] = VOICE_GAIN;
+		else
+			gains[slot] = MUSIC_GAIN;
+	}
+
+	m_scsp->set_slot_gains(gains);
+}
+
 u16 model2_state::doa_prot_r()
 {
 	// The first halfword is discarded by DOA; its hardware value is unknown.
@@ -7726,10 +7791,10 @@ GAME( 1994, vcop,       0,        vcop,         vcop,      model2o_state,      e
 GAME( 1994, vcopa,      vcop,     vcop,         vcop,      model2o_state,      empty_init, ROT0, "Sega", "Virtua Cop (Revision A)", 0 )
 
 // Model 2A-CRX (TGPs, SCSP sound board)
-GAME( 1994, vf2,        0,        model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2 (Version 2.1)", 0 )
-GAME( 1994, vf2b,       vf2,      model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2 (Revision B)", 0 )
-GAME( 1994, vf2a,       vf2,      model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2 (Revision A)", 0 )
-GAME( 1994, vf2o,       vf2,      model2a,      vf2,       model2a_state,          empty_init,    ROT0, "Sega",   "Virtua Fighter 2", 0 )
+GAME( 1994, vf2,        0,        model2a,      vf2,       model2a_state,          init_vf2,      ROT0, "Sega",   "Virtua Fighter 2 (Version 2.1)", 0 )
+GAME( 1994, vf2b,       vf2,      model2a,      vf2,       model2a_state,          init_vf2,      ROT0, "Sega",   "Virtua Fighter 2 (Revision B)", 0 )
+GAME( 1994, vf2a,       vf2,      model2a,      vf2,       model2a_state,          init_vf2,      ROT0, "Sega",   "Virtua Fighter 2 (Revision A)", 0 )
+GAME( 1994, vf2o,       vf2,      model2a,      vf2,       model2a_state,          init_vf2,      ROT0, "Sega",   "Virtua Fighter 2", 0 )
 GAME( 1995, manxtt,     0,        manxttdx,     manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX/Twin (Revision D)", 0 ) // Defaults to DX mode
 GAME( 1995, manxttc,    manxtt,   manxtt,       manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX/Twin (Revision C)", 0 ) // set to Twin mode - used to place hold Twin sound ROMs
 GAME( 1995, manxttdx,   manxtt,   manxttdx,     manxtt,    model2a_state,          empty_init,    ROT0, "Sega",   "Manx TT Superbike - DX", 0 )

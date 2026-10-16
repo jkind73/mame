@@ -244,6 +244,8 @@ protected:
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void screen_vblank(int state);
 	void sound_ready_w(int state);
+	void update_vf2_balance();
+	bool m_vf2_balance_enabled = false;
 	template <int TNum> TIMER_DEVICE_CALLBACK_MEMBER(model2_timer_cb);
 	void scsp_irq(offs_t offset, u8 data);
 	TIMER_CALLBACK_MEMBER(irq_mask_delayed_update);
@@ -517,6 +519,7 @@ public:
 	void vcop2(machine_config &config) ATTR_COLD;
 	void skytargt(machine_config &config) ATTR_COLD;
 	void zeroguna(machine_config &config) ATTR_COLD;
+	void init_vf2();
 
 protected:
 	virtual void machine_start() override ATTR_COLD;
