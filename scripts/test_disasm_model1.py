@@ -61,10 +61,11 @@ class ExtractionTests(unittest.TestCase):
             for region in game.regions:
                 for part in region.parts:
                     pattern = (r'ROM(?:X_LOAD|_LOAD\w*)\s*\(\s*"' + re.escape(part.filename)
-                               + r'"\s*,\s*(0x[\da-fA-F]+|\d+)\s*,\s*(0x[\da-fA-F]+|\d+)[^\n]*CRC\(' + part.crc32 + r'\)')
+                               + r'"\s*,\s*(0x[\da-fA-F]+|\d+)\s*,\s*(0x[\da-fA-F]+|\d+)[^\n]*CRC\(([a-fA-F0-9]+)\)')
                     matches = list(re.finditer(pattern, source))
                     self.assertTrue(matches, part.filename)
-                    self.assertTrue(any(int(x[1], 0) == part.offset and int(x[2], 0) == part.length for x in matches), part.filename)
+                    part_crcs = [c.strip().lower() for c in part.crc32.split(",") if c.strip()]
+                    self.assertTrue(any(int(x[1], 0) == part.offset and int(x[2], 0) == part.length and (not part_crcs or x[3].lower() in part_crcs) for x in matches), part.filename)
 
     def test_vformula_is_not_vr_program(self):
         specs = m.build_game_specs()

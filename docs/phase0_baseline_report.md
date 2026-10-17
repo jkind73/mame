@@ -61,22 +61,39 @@ Audit output recorded in `build/rom_audit_report.json`.
 
 ## 5. Firmware Disassembly Manifests
 
-Generated using `scripts/disasm_model1.py`:
-- `build/disasm_vformula/manifest.json`: Geo 1 (`315-5571`), Geo 2 (`315-5572`), TGP (`315-5573`), V60 boot, V60 code, 68K sound.
-- `build/disasm_vr/manifest.json`: Full Virtua Racing firmware windows.
-- `build/disasm_vf/manifest.json`: Full Virtua Fighter firmware windows including `315-5724`.
-- `build/disasm_subboards/manifest.json`: `model1io` (EPR-14869B), `model1io2` Wing War (EPR-16891), `model1io2` NetMerc (EPR-18021), `m1comm` (EPR-15112, EPR-15624).
+Generated using `scripts/disasm_model1.py --game all` with full verification in `build/model1_disasm_all/manifest.json`:
+- **11 Total Game / Subsystem Suites Verified**
+- **70 Disassembled Executable Windows** (MB86233 DSP, NEC V60, Motorola 68000, Z80, and Intel 80386SX)
+- **100% Region Hashing & Load Layout Accounting**
+
+| Game / System | Disassembled Executable Targets | Architectures |
+| :--- | :--- | :--- |
+| `vr` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `vr_tgp_315_5573`, `vr_v60_boot_fc0000`, `vr_v60_code_200000`, `vr_m68k_sound` | `mb86233`, `v60`, `m68000` |
+| `vformula` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `vformula_tgp_315_5573`, `vformula_v60_boot_fc0000`, `vformula_v60_code_200000`, `vformula_m68k_sound` | `mb86233`, `v60`, `m68000` |
+| `vf` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `vf_tgp_315_5724`, `vf_v60_boot_fc0000`, `vf_v60_code_200000`, `vf_m68k_sound` | `mb86233`, `v60`, `m68000` |
+| `swa` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `swa_tgp_315_5711`, `swa_v60_boot_f80000`, `swa_v60_code_200000`, `swa_m68k_sound`, `swa_dsbz80_mpeg` | `mb86233`, `v60`, `m68000`, `z80` |
+| `swaj` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `swaj_tgp_315_5711`, `swaj_v60_boot_f80000`, `swaj_v60_code_200000`, `swaj_m68k_sound`, `swaj_dsbz80_mpeg` | `mb86233`, `v60`, `m68000`, `z80` |
+| `wingwar` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `wingwar_tgp_315_5711`, `wingwar_v60_boot_fc0000`, `wingwar_v60_code_200000`, `wingwar_m68k_sound` | `mb86233`, `v60`, `m68000` |
+| `wingwaru` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `wingwaru_tgp_315_5711`, `wingwaru_v60_boot_fc0000`, `wingwaru_v60_code_200000`, `wingwaru_m68k_sound` | `mb86233`, `v60`, `m68000` |
+| `wingwarj` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `wingwarj_tgp_315_5711`, `wingwarj_v60_boot_fc0000`, `wingwarj_v60_code_200000`, `wingwarj_m68k_sound` | `mb86233`, `v60`, `m68000` |
+| `wingwar360`| `315_5571_geometrizer1`, `315_5572_geometrizer2`, `wingwar360_tgp_315_5711`, `wingwar360_v60_boot_fc0000`, `wingwar360_v60_code_200000`, `wingwar360_v60_extra_1000000`, `wingwar360_m68k_sound`, `wingwar360_r360_control_ic22`, `wingwar360_r360_control_ic67` | `mb86233`, `v60`, `m68000` |
+| `netmerc` | `315_5571_geometrizer1`, `315_5572_geometrizer2`, `netmerc_tgp_315_5711`, `netmerc_v60_boot_f80000`, `netmerc_polhemus_i386sx_f8000`, `netmerc_m68k_sound` | `mb86233`, `v60`, `m68000`, `x86_16` |
+| `subboards` | `model1io_epr14869b`, `model1io2_wingwar_epr16891`, `model1io2_netmerc_epr18021`, `m1comm_epr15112`, `m1comm_epr15624` | `z80` |
 
 ---
 
 ## 6. Baseline Attract & Execution Traces
 
-Generated using `scripts/trace_model1.py` with baseline `sega.exe`:
-- `vr`: Passed, 15 seconds emulated in 9.59s wallclock (236% speed). Log: `build/baseline_traces/vr_trace.log`
-- `vformula`: Passed, 15 seconds emulated in 8.82s wallclock (238% speed). Log: `build/baseline_traces/vformula_trace.log`
-- `vf`: Passed, 15 seconds emulated in 8.53s wallclock (220% speed). Log: `build/baseline_traces/vf_trace.log`
-- `swa`: Passed, 15 seconds emulated in 8.37s wallclock (247% speed). Log: `build/baseline_traces/swa_trace.log`
-- `wingwar`: Passed, 15 seconds emulated in 13.34s wallclock (138% speed). Log: `build/baseline_traces/wingwar_trace.log`
+Generated using `scripts/trace_model1.py` with baseline `sega.exe` (`build/baseline_traces/trace_summary.json`):
+- `vr`: Passed, 15 seconds emulated in 9.05s wallclock (236% speed). Log: `build/baseline_traces/vr_trace.log`
+- `vformula`: Passed, 15 seconds emulated in 8.77s wallclock (238% speed). Log: `build/baseline_traces/vformula_trace.log`
+- `vf`: Passed, 15 seconds emulated in 8.56s wallclock (220% speed). Log: `build/baseline_traces/vf_trace.log`
+- `swa`: Passed, 15 seconds emulated in 8.30s wallclock (247% speed). Log: `build/baseline_traces/swa_trace.log`
+- `swaj`: Passed, 15 seconds emulated in 8.36s wallclock (246% speed). Log: `build/baseline_traces/swaj_trace.log`
+- `wingwar`: Passed, 15 seconds emulated in 13.08s wallclock (138% speed). Log: `build/baseline_traces/wingwar_trace.log`
+- `wingwaru`: Passed, 15 seconds emulated in 12.44s wallclock (140% speed). Log: `build/baseline_traces/wingwaru_trace.log`
+- `wingwarj`: Passed, 15 seconds emulated in 11.86s wallclock (142% speed). Log: `build/baseline_traces/wingwarj_trace.log`
+- `wingwar360`: Passed, 15 seconds emulated in 12.41s wallclock (140% speed). Log: `build/baseline_traces/wingwar360_trace.log`
 - `netmerc`: Failed (Exit code 2) due to `netmerc_nvram.bin` missing. Log: `build/baseline_traces/netmerc_trace.log`
 - Lossless 30-second frame-by-frame attract mode video capture: `snap/build/vformula_baseline_30s.mng` (25,860,797 bytes).
 

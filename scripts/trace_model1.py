@@ -25,7 +25,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Sequence
 
-DEFAULT_GAMES = ["vr", "vformula", "vf", "swa", "wingwar", "netmerc"]
+DEFAULT_GAMES = ["vr", "vformula", "vf", "swa", "swaj", "wingwar", "wingwaru", "wingwarj", "wingwar360", "netmerc"]
 
 
 def run_headless_trace(

@@ -275,7 +275,7 @@ def build_game_specs() -> Dict[str, GameSpec]:
                 name="tgp_copro_315_5711",
                 size=0x2000,
                 fill_byte=0x00,
-                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "6a21f304", "plain")],
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
                 disasm_targets=[
                     DisasmTarget(
                         name="swa_tgp_315_5711",
@@ -328,7 +328,71 @@ def build_game_specs() -> Dict[str, GameSpec]:
         ],
     )
 
-    # 4. Wing War (wingwar)
+    # 4. Star Wars Japan (swaj)
+    specs["swaj"] = GameSpec(
+        shortname="swaj",
+        description="Star Wars (Sega Model 1, 1994 Japan)",
+        parent="swa",
+        zip_candidates=["swaj", "swa", "model1io"],
+        regions=get_shared_cpu_board_regions() + [
+            RegionSpec(
+                name="tgp_copro_315_5711",
+                size=0x2000,
+                fill_byte=0x00,
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
+                disasm_targets=[
+                    DisasmTarget(
+                        name="swaj_tgp_315_5711",
+                        arch="mb86233",
+                        region_offset=0x0000,
+                        length=0x2000,
+                        base_pc=0x0000,
+                        description="Star Wars Japan TGP Coprocessor (315-5711)",
+                    )
+                ],
+            ),
+            RegionSpec(
+                name="maincpu_v60",
+                size=0x1000000,
+                parts=[
+                    RomPart("epr-16468.14", 0x200000, 0x80000, "681d03c0", "load16_byte"),
+                    RomPart("epr-16469.15", 0x200001, 0x80000, "6f281f7c", "load16_byte"),
+                    RomPart("epr-16467.5", 0xF80000, 0x80000, "605068f5", "plain"),
+                ],
+                reloads=[
+                    (0xF80000, 0x000000, 0x80000),
+                    (0xF80000, 0x080000, 0x80000),
+                ],
+                disasm_targets=[
+                    DisasmTarget("swaj_v60_boot_f80000", "v60", 0xF80000, 0x80000, 0xF80000, "SWAJ V60 Fixed Boot/Main ROM (0xF80000-0xFFFFFF, mirrored at 0x000000)"),
+                    DisasmTarget("swaj_v60_code_200000", "v60", 0x200000, 0x100000, 0x200000, "SWAJ V60 Extended Code/Data ROM (0x200000-0x2FFFFF)"),
+                ],
+            ),
+            RegionSpec(
+                name="audiocpu_m68k",
+                size=0xA0000,
+                parts=[
+                    RomPart("epr-16470.7", 0x00000, 0x20000, "7da18cf7", "load16_word_swap"),
+                ],
+                reloads=[(0x00000, 0x80000, 0x20000)],
+                disasm_targets=[
+                    DisasmTarget("swaj_m68k_sound", "m68000", 0x00000, 0x20000, 0x00000, "SWAJ 68000 Sound Driver (epr-16470.7)"),
+                ],
+            ),
+            RegionSpec(
+                name="dsbz80_mpegcpu",
+                size=0x20000,
+                parts=[
+                    RomPart("epr-16471.2", 0x00000, 0x20000, "f4ee84a4", "plain"),
+                ],
+                disasm_targets=[
+                    DisasmTarget("swaj_dsbz80_mpeg", "z80", 0x00000, 0x20000, 0x0000, "SWAJ Digital Sound Board Z80 MPEG Controller Firmware (epr-16471.2)"),
+                ],
+            ),
+        ],
+    )
+
+    # 5. Wing War (wingwar) - World
     specs["wingwar"] = GameSpec(
         shortname="wingwar",
         description="Wing War (Sega Model 1, 1994 World)",
@@ -339,7 +403,7 @@ def build_game_specs() -> Dict[str, GameSpec]:
                 name="tgp_copro_315_5711",
                 size=0x2000,
                 fill_byte=0x00,
-                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "6a21f304", "plain")],
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
                 disasm_targets=[
                     DisasmTarget(
                         name="wingwar_tgp_315_5711",
@@ -384,7 +448,190 @@ def build_game_specs() -> Dict[str, GameSpec]:
         ],
     )
 
-    # 5. Sega NetMerc / TecWar (netmerc)
+    # 6. Wing War US (wingwaru)
+    specs["wingwaru"] = GameSpec(
+        shortname="wingwaru",
+        description="Wing War (Sega Model 1, 1994 US)",
+        parent="wingwar",
+        zip_candidates=["wingwaru", "wingwar", "model1io2", "m1comm"],
+        regions=get_shared_cpu_board_regions() + [
+            RegionSpec(
+                name="tgp_copro_315_5711",
+                size=0x2000,
+                fill_byte=0x00,
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
+                disasm_targets=[
+                    DisasmTarget(
+                        name="wingwaru_tgp_315_5711",
+                        arch="mb86233",
+                        region_offset=0x0000,
+                        length=0x2000,
+                        base_pc=0x0000,
+                        description="Wing War US TGP Coprocessor (315-5711)",
+                    )
+                ],
+            ),
+            RegionSpec(
+                name="maincpu_v60",
+                size=0x1000000,
+                parts=[
+                    RomPart("epr-16729.14", 0x200000, 0x80000, "7edec2cc", "load16_byte"),
+                    RomPart("epr-16730.15", 0x200001, 0x80000, "bab24dee", "load16_byte"),
+                    RomPart("epr-16951.4", 0xFC0000, 0x20000, "fbe12d15", "plain"),
+                    RomPart("epr-16950.5", 0xFE0000, 0x20000, "841e2195", "plain"),
+                ],
+                reloads=[
+                    (0xFC0000, 0x000000, 0x20000),
+                    (0xFE0000, 0x020000, 0x20000),
+                ],
+                disasm_targets=[
+                    DisasmTarget("wingwaru_v60_boot_fc0000", "v60", 0xFC0000, 0x40000, 0xFC0000, "Wing War US V60 Fixed Boot/Main ROM (0xFC0000-0xFFFFFF)"),
+                    DisasmTarget("wingwaru_v60_code_200000", "v60", 0x200000, 0x100000, 0x200000, "Wing War US V60 Extended Code/Data ROM (0x200000-0x2FFFFF)"),
+                ],
+            ),
+            RegionSpec(
+                name="audiocpu_m68k",
+                size=0xA0000,
+                parts=[
+                    RomPart("epr-16751.7", 0x00000, 0x20000, "23ba5ebc", "load16_word_swap"),
+                    RomPart("epr-16752.8", 0x20000, 0x20000, "6541c48f", "load16_word_swap"),
+                ],
+                reloads=[(0x20000, 0x80000, 0x20000)],
+                disasm_targets=[
+                    DisasmTarget("wingwaru_m68k_sound", "m68000", 0x00000, 0x40000, 0x00000, "Wing War US 68000 Sound Driver (epr-16751.7 + epr-16752.8)"),
+                ],
+            ),
+        ],
+    )
+
+    # 7. Wing War Japan (wingwarj)
+    specs["wingwarj"] = GameSpec(
+        shortname="wingwarj",
+        description="Wing War (Sega Model 1, 1994 Japan)",
+        parent="wingwar",
+        zip_candidates=["wingwarj", "wingwar", "model1io2", "m1comm"],
+        regions=get_shared_cpu_board_regions() + [
+            RegionSpec(
+                name="tgp_copro_315_5711",
+                size=0x2000,
+                fill_byte=0x00,
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
+                disasm_targets=[
+                    DisasmTarget(
+                        name="wingwarj_tgp_315_5711",
+                        arch="mb86233",
+                        region_offset=0x0000,
+                        length=0x2000,
+                        base_pc=0x0000,
+                        description="Wing War Japan TGP Coprocessor (315-5711)",
+                    )
+                ],
+            ),
+            RegionSpec(
+                name="maincpu_v60",
+                size=0x1000000,
+                parts=[
+                    RomPart("epr-16729.14", 0x200000, 0x80000, "7edec2cc", "load16_byte"),
+                    RomPart("epr-16730.15", 0x200001, 0x80000, "bab24dee", "load16_byte"),
+                    RomPart("epr-16728.4", 0xFC0000, 0x20000, "194d58ff", "plain"),
+                    RomPart("epr-16727.5", 0xFE0000, 0x20000, "430380eb", "plain"),
+                ],
+                reloads=[
+                    (0xFC0000, 0x000000, 0x20000),
+                    (0xFE0000, 0x020000, 0x20000),
+                ],
+                disasm_targets=[
+                    DisasmTarget("wingwarj_v60_boot_fc0000", "v60", 0xFC0000, 0x40000, 0xFC0000, "Wing War Japan V60 Fixed Boot/Main ROM (0xFC0000-0xFFFFFF)"),
+                    DisasmTarget("wingwarj_v60_code_200000", "v60", 0x200000, 0x100000, 0x200000, "Wing War Japan V60 Extended Code/Data ROM (0x200000-0x2FFFFF)"),
+                ],
+            ),
+            RegionSpec(
+                name="audiocpu_m68k",
+                size=0xA0000,
+                parts=[
+                    RomPart("epr-16751.7", 0x00000, 0x20000, "23ba5ebc", "load16_word_swap"),
+                    RomPart("epr-16752.8", 0x20000, 0x20000, "6541c48f", "load16_word_swap"),
+                ],
+                reloads=[(0x20000, 0x80000, 0x20000)],
+                disasm_targets=[
+                    DisasmTarget("wingwarj_m68k_sound", "m68000", 0x00000, 0x40000, 0x00000, "Wing War Japan 68000 Sound Driver (epr-16751.7 + epr-16752.8)"),
+                ],
+            ),
+        ],
+    )
+
+    # 8. Wing War R360 (wingwar360)
+    specs["wingwar360"] = GameSpec(
+        shortname="wingwar360",
+        description="Wing War (Sega Model 1, R360 Deluxe Cabinet)",
+        parent="wingwar",
+        zip_candidates=["wingwar360", "wingwar", "model1io2", "m1comm"],
+        regions=get_shared_cpu_board_regions() + [
+            RegionSpec(
+                name="tgp_copro_315_5711",
+                size=0x2000,
+                fill_byte=0x00,
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
+                disasm_targets=[
+                    DisasmTarget(
+                        name="wingwar360_tgp_315_5711",
+                        arch="mb86233",
+                        region_offset=0x0000,
+                        length=0x2000,
+                        base_pc=0x0000,
+                        description="Wing War R360 TGP Coprocessor (315-5711)",
+                    )
+                ],
+            ),
+            RegionSpec(
+                name="maincpu_v60",
+                size=0x1200000,
+                parts=[
+                    RomPart("epr-16729.14", 0x200000, 0x80000, "7edec2cc", "load16_byte"),
+                    RomPart("epr-16730.15", 0x200001, 0x80000, "bab24dee", "load16_byte"),
+                    RomPart("epr-17052.4", 0xFC0000, 0x20000, "0f4743e7", "plain"),
+                    RomPart("epr-17053.5", 0xFE0000, 0x20000, "83af2415", "plain"),
+                    RomPart("epr-17056.6", 0x1000000, 0x80000, "5216de4d", "load16_byte"),
+                    RomPart("epr-17057.7", 0x1000001, 0x80000, "b21aa2db", "load16_byte"),
+                ],
+                reloads=[
+                    (0xFC0000, 0x000000, 0x20000),
+                    (0xFE0000, 0x020000, 0x20000),
+                ],
+                disasm_targets=[
+                    DisasmTarget("wingwar360_v60_boot_fc0000", "v60", 0xFC0000, 0x40000, 0xFC0000, "Wing War R360 V60 Fixed Boot/Main ROM (0xFC0000-0xFFFFFF)"),
+                    DisasmTarget("wingwar360_v60_code_200000", "v60", 0x200000, 0x100000, 0x200000, "Wing War R360 V60 Extended Code/Data ROM (0x200000-0x2FFFFF)"),
+                    DisasmTarget("wingwar360_v60_extra_1000000", "v60", 0x1000000, 0x100000, 0x1000000, "Wing War R360 V60 Motion/Cabinet Code (0x1000000-0x10FFFFF)"),
+                ],
+            ),
+            RegionSpec(
+                name="audiocpu_m68k",
+                size=0xA0000,
+                parts=[
+                    RomPart("epr-17126.7", 0x00000, 0x20000, "50178e40", "load16_word_swap"),
+                    RomPart("epr-16752.8", 0x20000, 0x20000, "6541c48f", "load16_word_swap"),
+                ],
+                reloads=[(0x20000, 0x80000, 0x20000)],
+                disasm_targets=[
+                    DisasmTarget("wingwar360_m68k_sound", "m68000", 0x00000, 0x40000, 0x00000, "Wing War R360 68000 Sound Driver (epr-17126.7 + epr-16752.8)"),
+                ],
+            ),
+            RegionSpec(
+                name="controlboard",
+                size=0x400000,
+                parts=[
+                    RomPart("epr-18851.ic22", 0x00000, 0x20000, "85f75bd7", "plain"),
+                    RomPart("epr-18850.ic67", 0x20000, 0x08000, "45a3e9fc", "plain"),
+                ],
+                disasm_targets=[
+                    DisasmTarget("wingwar360_r360_control_ic22", "m68000", 0x00000, 0x20000, 0x0000, "Wing War R360 Attendant Control Board Main ROM (epr-18851.ic22)"),
+                    DisasmTarget("wingwar360_r360_control_ic67", "m68000", 0x20000, 0x08000, 0x20000, "Wing War R360 Attendant Control Board Sub ROM (epr-18850.ic67)"),
+                ],
+            ),
+        ],
+    )
+
+    # 9. Sega NetMerc / TecWar (netmerc)
     specs["netmerc"] = GameSpec(
         shortname="netmerc",
         description="Sega NetMerc / TecWar (Sega & Virtuality Model 1 VR Pod, 1993)",
@@ -395,7 +642,7 @@ def build_game_specs() -> Dict[str, GameSpec]:
                 name="tgp_copro_315_5711",
                 size=0x2000,
                 fill_byte=0x00,
-                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "6a21f304", "plain")],
+                parts=[RomPart("315-5711.bin", 0x0000, 0x2000, "c5ddb8fc,6a21f304", "plain")],
                 disasm_targets=[
                     DisasmTarget(
                         name="netmerc_tgp_315_5711",
@@ -538,7 +785,8 @@ class RomRepository:
 
     def checked(self, part: RomPart, raw: bytes, source: str) -> bytes:
         crc = f"{zlib.crc32(raw) & 0xffffffff:08x}"
-        if len(raw) != part.length or crc != part.crc32.lower():
+        expected_crcs = [c.strip().lower() for c in part.crc32.split(",") if c.strip()]
+        if len(raw) != part.length or (expected_crcs and crc not in expected_crcs):
             raise ValueError(f"{source}: expected {part.length} bytes/CRC {part.crc32}, "
                              f"got {len(raw)} bytes/CRC {crc}")
         self.provenance.append({"file": part.filename, "source": source,
@@ -559,7 +807,7 @@ class RomRepository:
         return self._zip_cache.get(candidate)
 
     def load_rom_bytes(self, part: RomPart, zip_candidates: Sequence[str]) -> Optional[bytes]:
-        target_crc = int(part.crc32, 16) if part.crc32 else None
+        target_crcs = [int(c.strip(), 16) for c in part.crc32.split(",") if c.strip()]
         target_name_lower = part.filename.lower()
 
         # 1. Check .zip archives first (cached ZipFile handles, fast in-memory directory lookup)
@@ -568,9 +816,9 @@ class RomRepository:
             if zf is None:
                 continue
             # Match by exact CRC32 first (handles renamed dumps across MAME versions)
-            if target_crc is not None:
+            if target_crcs:
                 for info in zf.infolist():
-                    if info.CRC == target_crc:
+                    if info.CRC in target_crcs:
                         return self.checked(part, zf.read(info.filename), f"{zf.filename}:{info.filename}")
             # Fallback to case-insensitive basename match
             for info in zf.infolist():
@@ -860,7 +1108,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--game",
         type=str,
         default="all",
-        choices=["all", "vf", "vr", "vformula", "swa", "wingwar", "netmerc", "subboards"],
+        choices=["all", "vf", "vr", "vformula", "swa", "swaj", "wingwar", "wingwaru", "wingwarj", "wingwar360", "netmerc", "subboards"],
         help="Target game or sub-board set to unpack and disassemble (default: all)",
     )
     args = parser.parse_args(argv)
