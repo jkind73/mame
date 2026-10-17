@@ -1358,6 +1358,7 @@ if opt_tool(CPUS, "MCS96") then
 --------------------------------------------------
 -- Intel 80x86 series (also a dynamic recompiler target)
 --@src/devices/cpu/i86/i86.h,CPUS["I86"] = true
+--@src/devices/cpu/i86/i186.h,CPUS["I86"] = true
 --@src/devices/cpu/i86/i286.h,CPUS["I86"] = true
 --@src/devices/cpu/i386/i386.h,CPUS["I386"] = true
 --------------------------------------------------

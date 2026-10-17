@@ -386,6 +386,9 @@ class netmerc_state : public model1_state
 public:
 	netmerc_state(const machine_config &mconfig, device_type type, const char *tag)
 		: model1_state(mconfig, type, tag)
+		, m_vr_yaw(*this, "VR_YAW")
+		, m_vr_pitch(*this, "VR_PITCH")
+		, m_vr_roll(*this, "VR_ROLL")
 	{
 	}
 
@@ -396,6 +399,12 @@ protected:
 
 private:
 	void netmerc_outputs_w(uint8_t data);
+	void screen_vblank_netmerc(int state);
+	void update_vr_tracker();
+
+	required_ioport m_vr_yaw;
+	required_ioport m_vr_pitch;
+	required_ioport m_vr_roll;
 };
 
 #endif // MAME_SEGA_MODEL1_H
