@@ -632,6 +632,21 @@ void model1_state::view_t::recompute_frustum()
 	a_top    = (-y2 + yc - viewy) / zoomy;
 }
 
+bool model1_state::fclip_isc_near(view_t *view, point_t *p)
+{
+	return p->z < 0.05f;
+}
+
+void model1_state::fclip_clip_near(view_t *view, point_t *pt, point_t *p1, point_t *p2)
+{
+	constexpr float z_near = 0.05f;
+	float t = (z_near - p2->z) / (p1->z - p2->z);
+	pt->x = p1->x * t + p2->x * (1.0f - t);
+	pt->y = p1->y * t + p2->y * (1.0f - t);
+	pt->z = z_near;
+	view->project_point(pt);
+}
+
 bool model1_state::fclip_isc_bottom(view_t *view, point_t *p)
 {
 	return p->y > (p->z * view->a_bottom);
@@ -698,7 +713,7 @@ void model1_state::fclip_push_quad(int level, quad_t& q)
 {
 	view_t *view = m_view.get();
 
-	if (level == 4)
+	if (level == 5)
 	{
 		LOGMASKED(LOG_TGP, "VIDEOCQ %d", level);
 		for (int i = 0; i < 4; i++)
@@ -908,7 +923,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 	m_view->transform_point(old_p0);
 	m_view->transform_point(old_p1);
 
-	if (old_p0->z > 0)
+	if (old_p0->z > 0.05f)
 	{
 		m_view->project_point(old_p0);
 	}
@@ -917,7 +932,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 		old_p0->s.x = old_p0->s.y = 0;
 	}
 
-	if (old_p1->z > 0)
+	if (old_p1->z > 0.05f)
 	{
 		m_view->project_point(old_p1);
 	}
@@ -972,11 +987,9 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 
 		int link = (flags >> 8) & 3;
 
-		m_view->transform_vector(vn);
-
 		m_view->transform_point(p0);
 		m_view->transform_point(p1);
-		if (p0->z > 0)
+		if (p0->z > 0.05f)
 		{
 			m_view->project_point(p0);
 		}
@@ -985,7 +998,7 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 			p0->s.x = p0->s.y = 0;
 		}
 
-		if (p1->z > 0)
+		if (p1->z > 0.05f)
 		{
 			m_view->project_point(p1);
 		}
@@ -994,31 +1007,37 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 			p1->s.x = p1->s.y = 0;
 		}
 
-#if 0
-		if (dump) {
-			LOGMASKED(LOG_TGP, "VIDEO:     %08x (%f, %f, %f) (%f, %f, %f)\n",
-				*(uint32_t *)(poly_data + poly_adr),
-				p0->x, p0->y, p0->z,
-				p1->x, p1->y, p1->z);
-
-			LOGMASKED(LOG_TGP, "VIDEO:     %08x (%d, %d) (%d, %d) (%d, %d) (%d, %d)\n",
-				*(uint32_t *)(poly_data + poly_adr),
-				old_p0->s.x, old_p0->s.y,
-				old_p1->s.x, old_p1->s.y,
-				p0->s.x, p0->s.y,
-				p1->s.x, p1->s.y);
+		if (m_view->cmd7_mode >= 2)
+		{
+			vn = glm::cross(glm::vec3(p0->x - old_p1->x, p0->y - old_p1->y, p0->z - old_p1->z),
+			                glm::vec3(old_p0->x - old_p1->x, old_p0->y - old_p1->y, old_p0->z - old_p1->z));
 		}
-#endif
+		else
+		{
+			m_view->transform_vector(vn);
+		}
 
 		quad_t cquad;
+		float facing = 0.0f;
 
 		if (!link)
 			goto next;
 
-		if (!(flags & 0x00004000) && view_determinant(old_p1, old_p0, p0) > 0)
+		facing = -view_determinant(old_p1, old_p0, p0);
+
+		if (!(flags & 0x00004000) && facing < 0.0f)
 			goto next;
 
-		vn = glm::normalize(vn);
+		if (m_view->cmd7_mode < 2 && m_view->cmd8_near_z > 0.0f &&
+		    (old_p1->z <= 0.0f || old_p0->z <= 0.0f || p0->z <= 0.0f || p1->z <= 0.0f) &&
+		    max4f(old_p1->z, old_p0->z, p0->z, p1->z) < m_view->cmd8_near_z)
+			goto next;
+
+		{
+			float vn_len = glm::length(vn);
+			if (vn_len > 0.0f)
+				vn /= vn_len;
+		}
 
 		cquad.p[0] = old_p1;
 		cquad.p[1] = old_p0;
@@ -1043,14 +1062,9 @@ void model1_state::push_object(uint32_t tex_adr, uint32_t poly_adr, uint32_t siz
 		}
 
 		{
-#if 0
-			float dif = mult_vector(&vn, &view->light);
-			float ln = view->lightparams[lightmode].a + view->lightparams[lightmode].d*MAX(0.0, dif);
-			cquad.col = scale_color(machine().pens[0x1000 | (m_tgp_ram[tex_adr - 0x40000] & 0x3ff)], MIN(1.0, ln));
-			cquad.col = scale_color(machine().pens[0x1000 | (m_tgp_ram[tex_adr - 0x40000] & 0x3ff)], MIN(1.0, ln));
-#endif
-
 			float dif = glm::dot(vn, m_view->light);
+			if ((flags & 0x00004000) && facing < 0.0f)
+				dif = -dif;
 			float spec = compute_specular(vn, m_view->light, dif, lightmode);
 			float ln = m_view->lightparams[lightmode].a + m_view->lightparams[lightmode].d * std::max(0.0f, dif) + spec;
 			int lumval = 255.0f * std::min(1.0f, ln);
@@ -1457,6 +1471,8 @@ void model1_state::tgp_render(bitmap_rgb32 &bitmap, const rectangle &cliprect, r
 		LOGMASKED(LOG_TGP, "VIDEO: render list %d\n", get_list_number());
 
 		m_view->init_translation_matrix();
+		m_view->cmd7_mode = 0;
+		m_view->cmd8_near_z = 0.0f;
 		float old_z = 0;
 
 		int list_offset = 0;
@@ -1545,23 +1561,24 @@ void model1_state::tgp_render(bitmap_rgb32 &bitmap, const rectangle &cliprect, r
 					float diffuse = (float(v & 0xff)) / 255.0f;
 					float ambient = (float((v >> 8) & 0xff)) / 255.0f;
 					float specular = (float((v >> 16) & 0xff)) / 255.0f;
-					int power = (v >> 24) & 0xff;
+					int power = (v >> 24) & 7;
 					m_view->set_lightparam(i + adr, diffuse, ambient, specular, power);
 				}
 				list_offset += 6 + len * 2;
 				break;
 			}
 			case 7:
-				// Mode word, as in the Model 2 GEO command 7: bit 0 enables the
-				// specular term (netmerc toggles it mid-list, on for the enemy
-				// mechs and off for terrain/cockpit); bit 1 tracks the display
-				// list double buffer parity.
-				LOGMASKED(LOG_TGP, "VIDEO:   mode word (%d)\n", readi(list_offset + 2));
-				m_view->spec_enable = BIT(readi(list_offset + 2), 0);
+			{
+				int val = readi(list_offset + 2);
+				LOGMASKED(LOG_TGP, "VIDEO:   mode word (%d)\n", val);
+				m_view->cmd7_mode = val & 3;
+				m_view->spec_enable = BIT(val, 0);
 				list_offset += 4;
 				break;
+			}
 			case 8:
-				LOGMASKED(LOG_TGP, "VIDEO:   select mode %08x\n", readi(list_offset + 2));
+				m_view->cmd8_near_z = readf(list_offset + 2);
+				LOGMASKED(LOG_TGP, "VIDEO:   cmd8_near_z %f\n", m_view->cmd8_near_z);
 				list_offset += 4;
 				break;
 			case 9:
@@ -1681,7 +1698,7 @@ void model1_state::tgp_scan()
 						m_view->lightparams[i + adr].d = (float(v & 0xff)) / 255.0f;
 						m_view->lightparams[i + adr].a = (float((v >> 8) & 0xff)) / 255.0f;
 						m_view->lightparams[i + adr].s = (float((v >> 16) & 0xff)) / 255.0f;
-						m_view->lightparams[i + adr].p = (v >> 24) & 0xff;
+						m_view->lightparams[i + adr].p = (v >> 24) & 7;
 						//LOGMASKED(LOG_TGP, "         %02X\n",v);
 					}
 					list_offset += 6 + len * 2;
@@ -1737,14 +1754,16 @@ void model1_state::video_start()
 	m_quadpt = &m_quaddb[0];
 	m_listctl[0] = m_listctl[1] = 0;
 
-	m_clipfn[0].m_isclipped = &model1_state::fclip_isc_bottom;
-	m_clipfn[0].m_clip = &model1_state::fclip_clip_bottom;
-	m_clipfn[1].m_isclipped = &model1_state::fclip_isc_top;
-	m_clipfn[1].m_clip = &model1_state::fclip_clip_top;
-	m_clipfn[2].m_isclipped = &model1_state::fclip_isc_left;
-	m_clipfn[2].m_clip = &model1_state::fclip_clip_left;
-	m_clipfn[3].m_isclipped = &model1_state::fclip_isc_right;
-	m_clipfn[3].m_clip = &model1_state::fclip_clip_right;
+	m_clipfn[0].m_isclipped = &model1_state::fclip_isc_near;
+	m_clipfn[0].m_clip = &model1_state::fclip_clip_near;
+	m_clipfn[1].m_isclipped = &model1_state::fclip_isc_bottom;
+	m_clipfn[1].m_clip = &model1_state::fclip_clip_bottom;
+	m_clipfn[2].m_isclipped = &model1_state::fclip_isc_top;
+	m_clipfn[2].m_clip = &model1_state::fclip_clip_top;
+	m_clipfn[3].m_isclipped = &model1_state::fclip_isc_left;
+	m_clipfn[3].m_clip = &model1_state::fclip_clip_left;
+	m_clipfn[4].m_isclipped = &model1_state::fclip_isc_right;
+	m_clipfn[4].m_clip = &model1_state::fclip_clip_right;
 
 	save_pointer(NAME(m_tgp_ram), 0x100000-0x40000);
 	save_pointer(NAME(m_poly_ram), 0x40000);

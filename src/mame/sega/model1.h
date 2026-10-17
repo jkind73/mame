@@ -194,6 +194,8 @@ protected:
 		glm::vec3 light;
 		lightparam_t lightparams[256];
 		bool spec_enable = false;
+		int cmd7_mode = 0;
+		float cmd8_near_z = 0.0f;
 	};
 
 	void model1_io(address_map &map) ATTR_COLD;
@@ -302,10 +304,12 @@ protected:
 	void    cross_product(point_t* o, const point_t* p, const point_t* q) const;
 	float   view_determinant(const point_t *p1, const point_t *p2, const point_t *p3) const;
 
+	static bool fclip_isc_near(view_t*, point_t*);
 	static bool fclip_isc_bottom(view_t*, point_t*);
 	static bool fclip_isc_top(view_t*, point_t*);
 	static bool fclip_isc_left(view_t*, point_t*);
 	static bool fclip_isc_right(view_t*, point_t*);
+	static void fclip_clip_near(view_t*, point_t*, point_t*, point_t*);
 	static void fclip_clip_bottom(view_t*, point_t*, point_t*, point_t*);
 	static void fclip_clip_top(view_t*, point_t*, point_t*, point_t*);
 	static void fclip_clip_left(view_t*, point_t*, point_t*, point_t*);
@@ -343,7 +347,7 @@ protected:
 	int     get_list_number();
 	void    end_frame();
 
-	clipper_t m_clipfn[4];
+	clipper_t m_clipfn[5];
 
 	// run-time rendering
 	uint16_t* m_display_list_current = nullptr;
