@@ -15,7 +15,7 @@
 #include "diserial.h"
 
 
-#define SCSP_FM_DELAY    0    // delay in number of slots processed before samples are written to the FM ring buffer
+#define SCSP_FM_DELAY    5    // sound-stack writeback latency in slot times
 				// driver code indicates should be 4, but sounds distorted then
 
 
@@ -32,10 +32,12 @@ public:
 	auto irq_cb() { return m_irq_cb.bind(); }
 	auto main_irq_cb() { return m_main_irq_cb.bind(); }
 	auto midi_out_cb() { return m_midi_out_cb.bind(); }
+	void set_saturn_mode(bool enabled) { m_saturn_mode = enabled; }
 
 	// SCSP register access
-	u16 read(offs_t offset, u16 mem_mask = ~0);
+	u16 read(offs_t offset, u16 mem_mask = 0xffff);
 	void write(offs_t offset, u16 data, u16 mem_mask = ~0);
+	attotime dma_access_wait(bool registers) const;
 
 	// MIDI I/O access (used for comms on Model 2/3)
 	void midi_in(int state) { rx_w(state); }
@@ -45,6 +47,8 @@ protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 	virtual void device_post_load() override;
+	s32 apply_master_volume(s32 sample) const;
+	u16 monitor_slot_data() const;
 	virtual void device_clock_changed() override;
 
 	virtual void rom_bank_pre_change() override;
@@ -58,22 +62,14 @@ protected:
 	virtual void rcv_complete() override;
 
 private:
+	bool m_saturn_mode = false; // Saturn/ST-V board restrictions, not generic SCSP memory modes
+	attotime m_reset_ready = attotime::zero;
 	enum SCSP_STATE { SCSP_ATTACK, SCSP_DECAY1, SCSP_DECAY2, SCSP_RELEASE };
 
 	struct SCSP_EG_t
 	{
-		int volume; //
 		SCSP_STATE state;
-		int step;
-		//step vals
-		int AR;     //Attack
-		int D1R;    //Decay1
-		int D2R;    //Decay2
-		int RR;     //Release
-
-		int DL;     //Decay level
-		u8 EGHOLD;
-		u8 LPLINK;
+		int att;    // attenuation, 0x000 (loudest) to 0x3ff, 3/32 dB a step
 	};
 
 	struct SCSP_LFO_t
@@ -102,6 +98,7 @@ private:
 		SCSP_LFO_t ALFO;     //Amplitude LFO
 		int slot;
 		s16 Prev;  //Previous sample (for interpolation)
+		s32 log_peak;  // SCSP_LOG: loudest direct output of the slot since it was keyed on
 	};
 
 	devcb_write8       m_irq_cb;  /* irq callback */
@@ -119,6 +116,7 @@ private:
 	u8 m_BUFPTR;
 #if SCSP_FM_DELAY
 	s16 m_DELAYBUF[SCSP_FM_DELAY];
+	bool m_DELAYVALID[SCSP_FM_DELAY];
 	u8 m_DELAYPTR;
 #endif
 	sound_stream * m_stream;
@@ -128,15 +126,15 @@ private:
 	u32 m_IrqMidi;
 	u32 m_IrqCPU;
 	u32 m_IrqDMA;
+	u8 m_cur_irq_level;    // level currently asserted to the sound CPU, 0 when none
 
 	u8 m_latched_MSLC;
 	u16 m_latched_MSLC_data;
 	u8 m_MidiOutStack[32];
 	u8 m_MidiOutW, m_MidiOutR;
-	bool m_MidiInOverflow;  // MIOVF: a byte arrived while the input FIFO was full
-	u16 m_read_mask;        // mem_mask of the register read in progress
 	u8 m_MidiStack[32];
 	u8 m_MidiW, m_MidiR;
+	bool m_MidiOverflow;
 
 	s32 m_EG_TABLE[0x400];
 
@@ -148,6 +146,8 @@ private:
 
 	// timers
 	emu_timer *m_timerA, *m_timerB, *m_timerC;
+	emu_timer *m_timerS;   // free-running 1 Fs interrupt, independent of enables
+	emu_timer *m_timerDMA;
 
 	// DMA stuff
 	struct
@@ -157,12 +157,21 @@ private:
 		u16 dtlg;
 		u8 dgate;
 		u8 ddir;
+		u16 remaining;
+		u16 data;
+		bool active;
+		bool write_phase;
 	} m_dma;
 
 	u16 m_mcieb;
 	u16 m_mcipd;
 
-	int m_ARTABLE[64], m_DRTABLE[64];
+	u32 m_eg_counter;    // envelope generator sample counter
+	u64 m_sample_counter = 0; // free-running timer prescaler phase
+	u32 m_lfsr;          // noise generator, 17 bit LFSR advanced once per slot
+	s32 m_log_peak[2];   // SCSP_LOG: output peak of the last second
+	u32 m_log_count;
+	s32 m_log_exts_peak; // SCSP_LOG: peak of the external (CD audio) input of the last second
 
 	SCSPDSP m_DSP;
 
@@ -175,28 +184,36 @@ private:
 	int m_ASCALES[8][256];
 
 	void exec_dma();       /*state DMA transfer function*/
+	void dma_step();
+	bool dma_memory_reserved(unsigned cycle) const;
+	unsigned memory_cycle() const;
+	TIMER_CALLBACK_MEMBER(dma_tick_cb);
 	u8 DecodeSCI(u8 irq);
 	void CheckPendingIRQ();
+	void SetPending(u16 mask);
+	void StartTimer(int n);
+	void TimerExpired(int n);
+	void UpdateSampleTimer();
 	void MainCheckPendingIRQ(u16 irq_type);
 	void ResetInterrupts();
 	TIMER_CALLBACK_MEMBER(timerA_cb);
 	TIMER_CALLBACK_MEMBER(timerB_cb);
 	TIMER_CALLBACK_MEMBER(timerC_cb);
-	int Get_AR(int base, int R);
-	int Get_DR(int base, int R);
-	void Compute_EG(SCSP_SLOT *slot);
+	TIMER_CALLBACK_MEMBER(timerS_cb);
+	unsigned EG_EffectiveRate(SCSP_SLOT *slot, unsigned rate, bool &overflow);
 	int EG_Update(SCSP_SLOT *slot);
 	u32 Step(SCSP_SLOT *slot);
 	void Compute_LFO(SCSP_SLOT *slot);
 	void StartSlot(SCSP_SLOT *slot);
 	void StopSlot(SCSP_SLOT *slot, int keyoff);
 	void init();
+	void init_state();
 	void UpdateSlotReg(int s, int r);
 	void UpdateReg(int reg);
 	void UpdateSlotRegR(int slot, int reg);
-	void UpdateRegR(int reg);
+	void UpdateRegR(int reg, u16 mem_mask);
 	void w16(u32 addr, u16 val);
-	u16 r16(u32 addr);
+	u16 r16(u32 addr, u16 mem_mask = 0xffff);
 	inline s32 UpdateSlot(SCSP_SLOT *slot);
 	void DoMasterSamples(sound_stream &stream);
 

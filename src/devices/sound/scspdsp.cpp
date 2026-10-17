@@ -12,7 +12,6 @@ u16 PACK(s32 val)
 {
 	if (val == 0)
 		return 0;
-
 	int const sign = BIT(val, 23);
 	u32 temp = (val ^ (val << 1)) & 0xFFFFFF;
 	int exponent = 0;
@@ -39,7 +38,6 @@ static s32 UNPACK(u16 val)
 {
 	if ((val & 0x7fff) == 0)
 		return 0;
-
 	int const sign = BIT(val, 15);
 	int exponent = (val >> 11) & 0xF;
 	int const mantissa = val & 0x7FF;
@@ -74,9 +72,10 @@ void SCSPDSP::Init()
 void SCSPDSP::Step()
 {
 	if (Stopped)
+	{
+		std::fill(std::begin(MIXS), std::end(MIXS), 0);
 		return;
-
-	std::fill(std::begin(EFREG), std::end(EFREG), 0);
+	}
 
 #if 0
 	int dump=0;
@@ -85,48 +84,44 @@ void SCSPDSP::Step()
 		f=fopen("dsp.txt","wt");
 #endif
 
-	s32 ACC = 0;    //26 bit
-	s32 MEMVAL = 0;
-	s32 FRC_REG = 0;    //13 bit
-	s32 Y_REG = 0;      //24 bit
-	u32 ADRS_REG = 0;  //13 bit
+	s32 ACC = AccReg;       //26 bit
+	s32 FRC_REG = FrcReg;   //13 bit
+	s32 Y_REG = YReg;       //24 bit
+	u32 ADRS_REG = AdrsReg; //12 bit
 
 	for (int step = 0; step < /*128*/LastStep; ++step)
 	{
-		u16 *const IPtr = MPRO + (step * 4);
+		DecodedStep const &inst = MPRO_decoded[step];
 
-		//if (!IPtr[0] && !IPtr[1] && !IPtr[2] && !IPtr[3])
-			//break;
+		u32 const TRA   = inst.TRA;
+		u32 const TWT   = inst.TWT;
+		u32 const TWA   = inst.TWA;
 
-		u32 const TRA   = (IPtr[0] >>  8) & 0x7f;
-		u32 const TWT   = (IPtr[0] >>  7) & 0x01;
-		u32 const TWA   = (IPtr[0] >>  0) & 0x7f;
+		u32 const XSEL  = inst.XSEL;
+		u32 const YSEL  = inst.YSEL;
+		u32 const IRA   = inst.IRA;
+		u32 const IWT   = inst.IWT;
+		u32 const IWA   = inst.IWA;
 
-		u32 const XSEL  = (IPtr[1] >> 15) & 0x01;
-		u32 const YSEL  = (IPtr[1] >> 13) & 0x03;
-		u32 const IRA   = (IPtr[1] >>  6) & 0x3f;
-		u32 const IWT   = (IPtr[1] >>  5) & 0x01;
-		u32 const IWA   = (IPtr[1] >>  0) & 0x1f;
+		u32 const TABLE = inst.TABLE;
+		u32 const MWT   = inst.MWT;
+		u32 const MRD   = inst.MRD;
+		u32 const EWT   = inst.EWT;
+		u32 const EWA   = inst.EWA;
+		u32 const ADRL  = inst.ADRL;
+		u32 const FRCL  = inst.FRCL;
+		u32 const SHIFT = inst.SHIFT;
+		u32 const YRL   = inst.YRL;
+		u32 const NEGB  = inst.NEGB;
+		u32 const ZERO  = inst.ZERO;
+		u32 const BSEL  = inst.BSEL;
 
-		u32 const TABLE = (IPtr[2] >> 15) & 0x01;
-		u32 const MWT   = (IPtr[2] >> 14) & 0x01;
-		u32 const MRD   = (IPtr[2] >> 13) & 0x01;
-		u32 const EWT   = (IPtr[2] >> 12) & 0x01;
-		u32 const EWA   = (IPtr[2] >>  8) & 0x0f;
-		u32 const ADRL  = (IPtr[2] >>  7) & 0x01;
-		u32 const FRCL  = (IPtr[2] >>  6) & 0x01;
-		u32 const SHIFT = (IPtr[2] >>  4) & 0x03;
-		u32 const YRL   = (IPtr[2] >>  3) & 0x01;
-		u32 const NEGB  = (IPtr[2] >>  2) & 0x01;
-		u32 const ZERO  = (IPtr[2] >>  1) & 0x01;
-		u32 const BSEL  = (IPtr[2] >>  0) & 0x01;
+		u32 const NOFL  = inst.NOFL;
+		u32 const COEF  = inst.COEF;
 
-		u32 const NOFL  = (IPtr[3] >> 15) & 0x01;  //????
-		u32 const COEF  = (IPtr[3] >>  9) & 0x3f;
-
-		u32 const MASA  = (IPtr[3] >>  2) & 0x1f;  //???
-		u32 const ADREB = (IPtr[3] >>  1) & 0x01;
-		u32 const NXADR = (IPtr[3] >>  0) & 0x01;
+		u32 const MASA  = inst.MASA;
+		u32 const ADREB = inst.ADREB;
+		u32 const NXADR = inst.NXADR;
 
 		//operations are done at 24 bit precision
 #if 0
@@ -160,24 +155,18 @@ void SCSPDSP::Step()
 		//INPUTS RW
 		// colmns97 hits this
 		//assert(IRA < 0x32);
-		s32 INPUTS; // 24-bit
+		// an IRA beyond EXTS leaves INPUTS as the previous step had it
+		s32 INPUTS = InputsReg; // 24-bit
 		if (IRA <= 0x1f)
 			INPUTS = MEMS[IRA];
 		else if (IRA <= 0x2F)
-			INPUTS = MIXS[IRA - 0x20] << 4;  //MIXS is 20 bit
+			INPUTS = MIXSPrev[IRA - 0x20] << 4;  //MIXS is 20 bit
 		else if (IRA <= 0x31)
 			INPUTS = EXTS[IRA - 0x30] << 8;  //EXTS is 16 bit
-		else
-			return;
 
 		INPUTS = util::sext(INPUTS, 24);
+		InputsReg = INPUTS;
 
-		if (IWT)
-		{
-			MEMS[IWA] = MEMVAL;  // MEMVAL was selected in previous MRD
-			if (IRA == IWA)
-				INPUTS = MEMVAL;
-		}
 
 		//Operand sel
 		s32 B; // 26-bit
@@ -227,7 +216,7 @@ void SCSPDSP::Step()
 		Y = util::sext(Y, 13);
 
 		s64 const v = (s64(X) * s64(Y)) >> 12;
-		ACC = int(v + B);
+		ACC = util::sext(int(v + B), 26);
 
 		if (TWT)
 			TEMP[(TWA + DEC) & 0x7f] = SHIFTED;
@@ -240,14 +229,30 @@ void SCSPDSP::Step()
 				FRC_REG = (SHIFTED >> 11) & 0x1fff;
 		}
 
-		if (MRD || MWT)
-		//if (0)
+		if (IWT)
+			MEMS[IWA] = ReadValue;   // the read issued two steps ago, see the pipeline below
+
+		// A read or write issued by a step is carried out by the next one, with the address that step
+		// calculated, so the value of a read is there for an IWT two steps after the MRD. A write waits while a read is carried out.
+		if (ReadPending)
+		{
+			u16 const data = space->read_word(ReadWriteAddr);
+			ReadValue = ReadNOFL ? s32(s16(data)) << 8 : UNPACK(data);
+			ReadPending = false;
+			ReadNOFL = false;
+		}
+		else if (WritePending)
+		{
+			space->write_word(ReadWriteAddr, WriteValue);
+			WritePending = false;
+		}
+
 		{
 			u32 ADDR = MADRS[MASA];
 			if (!TABLE)
 				ADDR += DEC;
 			if (ADREB)
-				ADDR += ADRS_REG & 0x0FFF;
+				ADDR += u32(util::sext(ADRS_REG, 12));
 			if (NXADR)
 				ADDR++;
 			if (!TABLE)
@@ -255,21 +260,18 @@ void SCSPDSP::Step()
 			else
 				ADDR &= 0xffff;
 			ADDR += RBP << 12;
-			ADDR <<= 1;
-			if (MRD && (step & 1)) //memory only allowed on odd? DoA inserts NOPs on even
-			{
-				if (NOFL)
-					MEMVAL = space->read_word(ADDR) << 8;
-				else
-					MEMVAL = UNPACK(space->read_word(ADDR));
-			}
-			if (MWT && (step & 1))
-			{
-				if (NOFL)
-					space->write_word(ADDR, SHIFTED >> 8);
-				else
-					space->write_word(ADDR, PACK(SHIFTED));
-			}
+			ReadWriteAddr = ADDR << 1;
+		}
+
+		if (MRD)
+		{
+			ReadPending = true;
+			ReadNOFL = NOFL;
+		}
+		if (MWT)
+		{
+			WritePending = true;
+			WriteValue = NOFL ? u16(SHIFTED >> 8) : PACK(SHIFTED);
 		}
 
 		if (ADRL)
@@ -281,10 +283,26 @@ void SCSPDSP::Step()
 		}
 
 		if (EWT)
-			EFREG[EWA] += SHIFTED >> 8;
+			EFREG[EWA] = SHIFTED >> 8;   // a register: the last value written stays
 	}
+
+	AccReg = ACC;
+	FrcReg = FRC_REG;
+	YReg = Y_REG;
+	AdrsReg = ADRS_REG;
+
+	// finish a write issued by the last step
+	if (WritePending)
+	{
+		space->write_word(ReadWriteAddr, WriteValue);
+		WritePending = false;
+	}
+
 	--DEC;
-	std::fill(std::begin(MIXS), std::end(MIXS), 0);
+	// the slots fill one MIXS bank while the program reads the other (double-buffered MIXS)
+	for (unsigned i = 0; i < 16; ++i)
+		std::swap(MIXS[i], MIXSPrev[i]);
+	MixWritten = 0;
 	//if (f)
 		//fclose(f);
 }
@@ -292,9 +310,57 @@ void SCSPDSP::Step()
 void SCSPDSP::SetSample(s32 sample, int SEL, int MXL)
 {
 	//MIXS[SEL] += sample << (MXL + 1)/*7*/;
-	MIXS[SEL] += sample;
+	if (MixWritten & (1U << SEL))
+		MIXS[SEL] += sample;
+	else
+		MIXS[SEL] = sample;
+	MixWritten |= 1U << SEL;
 	//if (MXL)
 		//int a = 1;
+}
+
+// The program words are decoded once, when the host writes them, not at every sample: the fields
+// of step `step` of MPRO
+void SCSPDSP::DecodeStep(int step)
+{
+	u16 const *const IPtr = MPRO + (step * 4);
+	DecodedStep &d = MPRO_decoded[step];
+	d.TRA   = (IPtr[0] >>  8) & 0x7f;
+	d.TWT   = (IPtr[0] >>  7) & 0x01;
+	d.TWA   = (IPtr[0] >>  0) & 0x7f;
+
+	d.XSEL  = (IPtr[1] >> 15) & 0x01;
+	d.YSEL  = (IPtr[1] >> 13) & 0x03;
+	d.IRA   = (IPtr[1] >>  6) & 0x3f;
+	d.IWT   = (IPtr[1] >>  5) & 0x01;
+	d.IWA   = (IPtr[1] >>  0) & 0x1f;
+
+	d.TABLE = (IPtr[2] >> 15) & 0x01;
+	d.MWT   = (IPtr[2] >> 14) & 0x01;
+	d.MRD   = (IPtr[2] >> 13) & 0x01;
+	d.EWT   = (IPtr[2] >> 12) & 0x01;
+	d.EWA   = (IPtr[2] >>  8) & 0x0f;
+	d.ADRL  = (IPtr[2] >>  7) & 0x01;
+	d.FRCL  = (IPtr[2] >>  6) & 0x01;
+	d.SHIFT = (IPtr[2] >>  4) & 0x03;
+	d.YRL   = (IPtr[2] >>  3) & 0x01;
+	d.NEGB  = (IPtr[2] >>  2) & 0x01;
+	d.ZERO  = (IPtr[2] >>  1) & 0x01;
+	d.BSEL  = (IPtr[2] >>  0) & 0x01;
+
+	d.NOFL  = (IPtr[3] >>  8) & 0x01;
+	d.COEF  = (IPtr[3] >>  9) & 0x3f;
+
+	d.MASA  = (IPtr[3] >>  2) & 0x1f;
+	d.ADREB = (IPtr[3] >>  1) & 0x01;
+	d.NXADR = (IPtr[3] >>  0) & 0x01;
+}
+
+// Decode the whole program, e.g. after a saved state was loaded (MPRO is saved, its decoded copy is not)
+void SCSPDSP::DecodeAll()
+{
+	for (int step = 0; step < 128; ++step)
+		DecodeStep(step);
 }
 
 void SCSPDSP::Start()
@@ -307,5 +373,8 @@ void SCSPDSP::Start()
 		if (IPtr[0] || IPtr[1] || IPtr[2] || IPtr[3])
 			break;
 	}
-	LastStep = i + 1;
+	// an all-zero instruction still updates the accumulator, and the hardware runs all 128 steps, so one
+	// step past the last used one carries out the side effects of the program
+	LastStep = std::min(i + 2, 128);
+
 }
