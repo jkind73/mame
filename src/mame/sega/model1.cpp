@@ -1181,7 +1181,7 @@ static INPUT_PORTS_START( swa )
 	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_X ) PORT_MINMAX(27,227) PORT_SENSITIVITY(100) PORT_KEYDELTA(4)  PORT_PLAYER(2) PORT_REVERSE
 
 	PORT_START("STICK2Y")
-	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_Y ) PORT_MINMAX(27,227) PORT_SENSITIVITY(100) PORT_KEYDELTA(4)  PORT_PLAYER(2)
+	PORT_BIT( 0xff, 0x7f, IPT_AD_STICK_Y ) PORT_MINMAX(27,227) PORT_SENSITIVITY(100) PORT_KEYDELTA(4)  PORT_PLAYER(2) PORT_REVERSE
 
 	PORT_INCLUDE(ioboard_dipswitches)
 INPUT_PORTS_END
@@ -1468,7 +1468,7 @@ ROM_START( swa )
 	ROM_REGION( 0x20000, "dsbz80:mpegcpu", 0 ) /* Z80 DSB code */
 	ROM_LOAD( "epr-16471.2", 0x000000, 0x020000, CRC(f4ee84a4) SHA1(f12b214e6f195b0e5f49ba9f41d8e54bfcea9acc) )
 
-	ROM_REGION( 0x800000, "dsbz80:mpeg", 0 ) /* DSB MPEG data */
+	ROM_REGION( 0x400000, "dsbz80:mpeg", 0 ) /* DSB MPEG data */
 	ROM_LOAD( "mpr-16514.57", 0x000000, 0x200000, CRC(3175b0be) SHA1(63649d053c8c17ce1746d16d0cc8202be20c302f) )
 	ROM_LOAD( "mpr-16515.58", 0x200000, 0x200000, CRC(3114d748) SHA1(9ef090623cdd2a1d06b5d1bc4b9a07ab4eff5b76) )
 
@@ -1877,6 +1877,7 @@ void model1_state::vr(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &model1_state::model1_comm_mem);
 
 	model1io_device &ioboard(*subdevice<model1io_device>("ioboard"));
+	ioboard.in_callback<2>().set_ioport("IN.2");
 	ioboard.drive_write_callback().set(FUNC(model1_state::drive_board_w));
 	ioboard.an_callback<0>().set_ioport("WHEEL");
 	ioboard.an_callback<1>().set_ioport("ACCEL");
@@ -1894,6 +1895,7 @@ void model1_state::vformula(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &model1_state::model1_comm_mem);
 
 	model1io_device &ioboard(*subdevice<model1io_device>("ioboard"));
+	ioboard.in_callback<2>().set_ioport("IN.2");
 	ioboard.drive_write_callback().set(FUNC(model1_state::drive_board_w));
 	ioboard.an_callback<0>().set_ioport("WHEEL");
 	ioboard.an_callback<1>().set_ioport("ACCEL");
@@ -2000,8 +2002,8 @@ void netmerc_state::netmerc(machine_config &config)
 GAME( 1993, vf,         0,       vf,         vf,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Fighter",           MACHINE_NOT_WORKING )
 GAMEL(1992, vr,         0,       vr,         vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Racing",            0, layout_vr )
 GAME( 1993, vformula,   vr,      vformula,   vr,         model1_state,  empty_init, ROT0,     "Sega",  "Virtua Formula",           MACHINE_IMPERFECT_GRAPHICS )
-GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_CONTROLS )
-GAME( 1994, swaj,       swa,     swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, Japan)",  MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_CONTROLS )
+GAME( 1994, swa,        0,       swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, US)",     MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1994, swaj,       swa,     swa,        swa,        model1_state,  empty_init, ROT0,     "Sega",  "Star Wars (Sega, Japan)",  MACHINE_IMPERFECT_GRAPHICS )
 GAME( 1994, wingwar,    0,       wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (World)",         0 )
 GAME( 1994, wingwaru,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (US)",            0 )
 GAME( 1994, wingwarj,   wingwar, wingwar,    wingwar,    model1_state,  empty_init, ROT0,     "Sega",  "Wing War (Japan)",         0 )
